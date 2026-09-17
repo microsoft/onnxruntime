@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -497,6 +498,117 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyFloat32_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SelectedOnlyLargeDecodeSet_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t cache_sequence_length = 257;
+  constexpr int64_t head_size = 64;
+  DynamicSparseAttentionCase c;
+  c.head_size = head_size;
+  c.cache_sequence_length = cache_sequence_length;
+  c.max_selected = cache_sequence_length;
+  c.total_sequence_length = cache_sequence_length;
+  c.query.assign(head_size, 0.0f);
+  c.key.assign(head_size, 0.0f);
+  c.value.assign(head_size, static_cast<float>(cache_sequence_length));
+  c.past_key.assign(cache_sequence_length * head_size, 0.0f);
+  c.past_value.resize(cache_sequence_length * head_size);
+  c.selected_indices.resize(cache_sequence_length);
+  for (int32_t index = 0; index < cache_sequence_length; ++index) {
+    c.selected_indices[index] = index;
+    std::fill_n(c.past_value.begin() + static_cast<int64_t>(index) * head_size,
+                head_size, static_cast<float>(index + 1));
+  }
+  c.selected_counts = {static_cast<int32_t>(cache_sequence_length)};
+  c.seqlens_k = {static_cast<int32_t>(cache_sequence_length - 1)};
+  c.expected_output.assign(head_size, 129.0f);
+  c.expected_present_key = c.past_key;
+  c.expected_present_value = c.past_value;
+
+  RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, LocalPlusSelectedLargeDecodeSet_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t candidate_count = 513;
+  constexpr int64_t head_size = 64;
+  DynamicSparseAttentionCase c;
+  c.batch_size = 2;
+  c.attention_mode = "local_plus_selected";
+  c.selected_kv_source = "auxiliary";
+  c.local_window_size = candidate_count;
+  c.head_size = head_size;
+  c.cache_sequence_length = candidate_count;
+  c.auxiliary_sequence_length = candidate_count;
+  c.max_selected = candidate_count;
+  c.total_sequence_length = candidate_count;
+  c.query.assign(2 * head_size, 0.0f);
+  c.key.assign(2 * head_size, 0.0f);
+  c.value.assign(head_size, 2.0f);
+  c.value.insert(c.value.end(), head_size, 3.0f);
+  c.past_key.assign(2 * candidate_count * head_size, 0.0f);
+  c.past_value.assign(candidate_count * head_size, 2.0f);
+  c.past_value.insert(c.past_value.end(), candidate_count * head_size, 3.0f);
+  c.auxiliary_key.assign(2 * candidate_count * head_size, 0.0f);
+  c.auxiliary_value.assign(candidate_count * head_size, 6.0f);
+  c.auxiliary_value.insert(c.auxiliary_value.end(), candidate_count * head_size, 9.0f);
+  c.selected_indices.resize(2 * candidate_count);
+  std::iota(c.selected_indices.begin(), c.selected_indices.begin() + candidate_count, 0);
+  std::iota(c.selected_indices.begin() + candidate_count, c.selected_indices.end(), 0);
+  c.selected_counts = {static_cast<int32_t>(candidate_count),
+                       static_cast<int32_t>(candidate_count)};
+  c.seqlens_k = {static_cast<int32_t>(candidate_count - 1),
+                 static_cast<int32_t>(candidate_count - 1)};
+  c.expected_output.assign(head_size, 4.0f);
+  c.expected_output.insert(c.expected_output.end(), head_size, 6.0f);
+  c.expected_present_key = c.past_key;
+  c.expected_present_value = c.past_value;
+
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, SplitSoftmaxRescalesDistinctMaxima_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t candidate_count = 257;
+  constexpr int64_t head_size = 64;
+  DynamicSparseAttentionCase c;
+  c.head_size = head_size;
+  c.cache_sequence_length = candidate_count;
+  c.max_selected = candidate_count;
+  c.total_sequence_length = candidate_count;
+  c.query.assign(head_size, 0.0f);
+  c.query[0] = 1.0f;
+  c.key.assign(head_size, 0.0f);
+  c.key[0] = std::log(256.0f);
+  c.value.assign(head_size, 10.0f);
+  c.past_key.assign(candidate_count * head_size, 0.0f);
+  c.past_value.assign(candidate_count * head_size, 0.0f);
+  c.selected_indices.resize(candidate_count);
+  std::iota(c.selected_indices.begin(), c.selected_indices.end(), 0);
+  c.selected_counts = {static_cast<int32_t>(candidate_count)};
+  c.seqlens_k = {static_cast<int32_t>(candidate_count - 1)};
+  c.head_sink = {std::log(256.0f)};
+  c.expected_output.assign(head_size, 10.0f / 3.0f);
+  c.expected_present_key = c.past_key;
+  c.expected_present_key[(candidate_count - 1) * head_size] = c.key[0];
+  c.expected_present_value = c.past_value;
+  std::fill_n(c.expected_present_value.begin() + (candidate_count - 1) * head_size,
+              head_size, 10.0f);
+
+  RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
+}
+
 TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
@@ -903,6 +1015,26 @@ TEST(DynamicSparseAttentionTest, RejectsInvalidSelectionMetadata_CUDA) {
     c.selected_indices = {0, 0};
     c.selected_counts = {2};
     RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure);
+  }
+  {
+    SCOPED_TRACE("duplicate selected entry in large set");
+    constexpr int64_t selected_count = 4096;
+    auto c = MakeSingleTokenSelectedOnlyCase();
+    c.cache_sequence_length = selected_count;
+    c.max_selected = selected_count;
+    c.total_sequence_length = selected_count;
+    c.past_key.assign(selected_count * c.head_size, 0.0f);
+    c.past_value.assign(selected_count * c.head_size, 0.0f);
+    c.selected_indices.resize(selected_count);
+    std::iota(c.selected_indices.begin(), c.selected_indices.end(), 0);
+    c.selected_indices.back() = c.selected_indices[c.selected_indices.size() - 2];
+    c.selected_counts = {static_cast<int32_t>(selected_count)};
+    c.seqlens_k = {static_cast<int32_t>(selected_count - 1)};
+    c.expected_present_key = c.past_key;
+    c.expected_present_value = c.past_value;
+    RunDynamicSparseAttentionCase(
+        c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+        "contains a duplicate active index");
   }
   {
     SCOPED_TRACE("selected entry outside main sequence");

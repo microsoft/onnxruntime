@@ -7,9 +7,11 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cfloat>
 #include <limits>
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -17,6 +19,10 @@ namespace contrib {
 namespace cuda {
 
 namespace {
+
+constexpr int kSplitCandidateSize = 256;
+constexpr size_t kMaxFusedSharedBytes = 16 * 1024;
+constexpr size_t kMaxValidationSharedBytes = 32 * 1024;
 
 template <typename T>
 __device__ __forceinline__ float ToFloat(T value) {
@@ -46,70 +52,117 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
                                      int rotary_max_position,
                                      bool do_rotary,
                                      bool use_auxiliary,
+                                     uint32_t* validation_bitmap,
+                                     size_t validation_bitmap_words,
+                                     bool use_shared_bitmap,
                                      int32_t* error_flag) {
   const int row = static_cast<int>(blockIdx.x);
   const int b = row / sequence_length;
   const int s = row - b * sequence_length;
-  if (b >= batch_size || threadIdx.x != 0) {
+  if (b >= batch_size) {
     return;
   }
 
-  const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
-  if (total_length_64 < sequence_length ||
-      total_length_64 > maximum_total_length ||
-      total_length_64 > main_capacity) {
-    SetValidationError(error_flag, kDynamicSparseAttentionInvalidSequenceLength);
-    return;
-  }
-  const int total_length = static_cast<int>(total_length_64);
-
-  if (do_rotary) {
-    const int64_t position = position_ids == nullptr
-                                 ? static_cast<int64_t>(total_length - sequence_length + s)
-                                 : position_ids[row];
-    if (position < 0 || position >= rotary_max_position) {
-      SetValidationError(error_flag, kDynamicSparseAttentionInvalidPosition);
-      return;
+  extern __shared__ uint32_t shared_bitmap[];
+  if (use_shared_bitmap) {
+    for (size_t i = threadIdx.x; i < validation_bitmap_words; i += blockDim.x) {
+      shared_bitmap[i] = 0;
     }
   }
+  __syncthreads();
 
-  const int count = selected_counts[row];
-  if (count < 0 || count > max_selected) {
-    SetValidationError(error_flag, kDynamicSparseAttentionInvalidCount);
+  __shared__ int count;
+  __shared__ int source_length;
+  __shared__ int query_position;
+  __shared__ int first_error_index;
+  __shared__ bool row_is_valid;
+  if (threadIdx.x == 0) {
+    first_error_index = std::numeric_limits<int>::max();
+    row_is_valid = false;
+    const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
+    if (total_length_64 < sequence_length ||
+        total_length_64 > maximum_total_length ||
+        total_length_64 > main_capacity) {
+      SetValidationError(error_flag, kDynamicSparseAttentionInvalidSequenceLength);
+    } else {
+      const int total_length = static_cast<int>(total_length_64);
+      query_position = total_length - sequence_length + s;
+      if (do_rotary) {
+        const int64_t position = position_ids == nullptr
+                                     ? static_cast<int64_t>(query_position)
+                                     : position_ids[row];
+        if (position < 0 || position >= rotary_max_position) {
+          SetValidationError(error_flag, kDynamicSparseAttentionInvalidPosition);
+        } else {
+          row_is_valid = true;
+        }
+      } else {
+        row_is_valid = true;
+      }
+
+      count = selected_counts[row];
+      if (count < 0 || count > max_selected) {
+        SetValidationError(error_flag, kDynamicSparseAttentionInvalidCount);
+        row_is_valid = false;
+      }
+      source_length = use_auxiliary ? auxiliary_sequence_length : total_length;
+    }
+  }
+  __syncthreads();
+  if (!row_is_valid) {
     return;
   }
 
-  const int source_length = use_auxiliary ? auxiliary_sequence_length : total_length;
-  const int query_position = total_length - sequence_length + s;
   const int32_t* row_indices =
       max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
-  for (int i = 0; i < max_selected; ++i) {
+  uint32_t* row_bitmap =
+      use_shared_bitmap
+          ? shared_bitmap
+          : validation_bitmap + static_cast<size_t>(row) * validation_bitmap_words;
+  for (int i = static_cast<int>(threadIdx.x); i < max_selected; i += static_cast<int>(blockDim.x)) {
     const int index = row_indices[i];
+    DynamicSparseAttentionValidationError error = kDynamicSparseAttentionValidationOk;
     if (i >= count) {
       if (index != -1) {
-        SetValidationError(error_flag, kDynamicSparseAttentionInvalidPadding);
-        return;
+        error = kDynamicSparseAttentionInvalidPadding;
       }
-      continue;
-    }
-    if (index < 0) {
-      SetValidationError(error_flag, kDynamicSparseAttentionNegativeIndex);
-      return;
-    }
-    if (index >= source_length) {
-      SetValidationError(error_flag, kDynamicSparseAttentionIndexOutOfBounds);
-      return;
-    }
-    if (!use_auxiliary && index > query_position) {
-      SetValidationError(error_flag, kDynamicSparseAttentionNonCausalIndex);
-      return;
-    }
-    for (int j = 0; j < i; ++j) {
-      if (row_indices[j] == index) {
-        SetValidationError(error_flag, kDynamicSparseAttentionDuplicateIndex);
-        return;
+    } else if (index < 0) {
+      error = kDynamicSparseAttentionNegativeIndex;
+    } else if (index >= source_length) {
+      error = kDynamicSparseAttentionIndexOutOfBounds;
+    } else if (!use_auxiliary && index > query_position) {
+      error = kDynamicSparseAttentionNonCausalIndex;
+    } else {
+      const uint32_t mask = 1U << (index & 31);
+      const uint32_t previous = atomicOr(row_bitmap + (index >> 5), mask);
+      if ((previous & mask) != 0) {
+        error = kDynamicSparseAttentionDuplicateIndex;
       }
     }
+    if (error != kDynamicSparseAttentionValidationOk) {
+      atomicMin(&first_error_index, i);
+    }
+  }
+  __syncthreads();
+  if (first_error_index != std::numeric_limits<int>::max()) {
+    if (threadIdx.x == 0) {
+      const int i = first_error_index;
+      const int index = row_indices[i];
+      DynamicSparseAttentionValidationError error;
+      if (i >= count) {
+        error = kDynamicSparseAttentionInvalidPadding;
+      } else if (index < 0) {
+        error = kDynamicSparseAttentionNegativeIndex;
+      } else if (index >= source_length) {
+        error = kDynamicSparseAttentionIndexOutOfBounds;
+      } else if (!use_auxiliary && index > query_position) {
+        error = kDynamicSparseAttentionNonCausalIndex;
+      } else {
+        error = kDynamicSparseAttentionDuplicateIndex;
+      }
+      SetValidationError(error_flag, error);
+    }
+    return;
   }
 }
 
@@ -356,79 +409,43 @@ __global__ void AppendKvKernel(const T* query,
 }
 
 template <typename T>
-__device__ __forceinline__ void AccumulateCandidate(const T* query,
-                                                    const T* key,
-                                                    const T* value,
-                                                    int head_size,
-                                                    float scale,
-                                                    float* reduction,
-                                                    float& accumulator,
-                                                    float& max_logit,
-                                                    float& denominator,
-                                                    float& old_weight,
-                                                    float& new_weight) {
-  const int h = static_cast<int>(threadIdx.x);
-  float partial = 0.0f;
-  if (h < head_size) {
-    partial = ToFloat(query[h]) * ToFloat(key[h]);
-  }
-  reduction[h] = partial;
-  __syncthreads();
-  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (h < static_cast<int>(stride)) {
-      reduction[h] += reduction[h + stride];
-    }
-    __syncthreads();
-  }
-
-  if (h == 0) {
-    const float logit = reduction[0] * scale;
-    const float next_max = fmaxf(max_logit, logit);
-    old_weight = denominator == 0.0f ? 0.0f : expf(max_logit - next_max);
-    new_weight = expf(logit - next_max);
-    denominator = denominator * old_weight + new_weight;
-    max_logit = next_max;
-  }
-  __syncthreads();
-  if (h < head_size) {
-    accumulator = accumulator * old_weight + new_weight * ToFloat(value[h]);
-  }
-  __syncthreads();
-}
-
-template <typename T>
-__global__ void DynamicSparseAttentionKernel(const T* query,
-                                             const T* main_key,
-                                             const T* main_value,
-                                             const T* auxiliary_key,
-                                             const T* auxiliary_value,
-                                             const int32_t* selected_indices,
-                                             const int32_t* selected_counts,
-                                             const int32_t* seqlens_k,
-                                             const T* head_sink,
-                                             T* output,
-                                             int block_count,
-                                             int sequence_length,
-                                             int num_heads,
-                                             int kv_num_heads,
-                                             int head_size,
-                                             int main_capacity,
-                                             int auxiliary_sequence_length,
-                                             int max_selected,
-                                             int local_window_size,
-                                             float scale,
-                                             bool local_plus_selected,
-                                             bool selected_from_auxiliary,
-                                             bool use_smooth_softmax) {
+__global__ void FusedDynamicSparseAttentionKernel(const T* query,
+                                                  const T* main_key,
+                                                  const T* main_value,
+                                                  const T* auxiliary_key,
+                                                  const T* auxiliary_value,
+                                                  const int32_t* selected_indices,
+                                                  const int32_t* selected_counts,
+                                                  const int32_t* seqlens_k,
+                                                  const T* head_sink,
+                                                  T* output,
+                                                  int block_count,
+                                                  int sequence_length,
+                                                  int num_heads,
+                                                  int kv_num_heads,
+                                                  int head_size,
+                                                  int main_capacity,
+                                                  int auxiliary_sequence_length,
+                                                  int max_selected,
+                                                  int local_window_size,
+                                                  int candidate_capacity,
+                                                  float scale,
+                                                  bool local_plus_selected,
+                                                  bool selected_from_auxiliary,
+                                                  bool use_smooth_softmax) {
   const int block = static_cast<int>(blockIdx.x);
   if (block >= block_count) {
     return;
   }
+
   const int head = block % num_heads;
   const int row = block / num_heads;
   const int b = row / sequence_length;
   const int s = row - b * sequence_length;
   const int h = static_cast<int>(threadIdx.x);
+  const int lane = h & 31;
+  const int warp = h >> 5;
+  const int warp_count = static_cast<int>(blockDim.x) >> 5;
   const int kv_head = head / (num_heads / kv_num_heads);
   const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
   const bool valid_length = total_length_64 >= sequence_length && total_length_64 <= main_capacity;
@@ -436,83 +453,409 @@ __global__ void DynamicSparseAttentionKernel(const T* query,
   const int query_position = valid_length ? total_length - sequence_length + s : -1;
   const T* query_head = query + (static_cast<int64_t>(row) * num_heads + head) * head_size;
 
-  extern __shared__ float reduction[];
-  __shared__ float max_logit;
-  __shared__ float denominator;
-  __shared__ float old_weight;
-  __shared__ float new_weight;
-  if (h == 0) {
-    if (use_smooth_softmax) {
-      max_logit = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
-      denominator = 1.0f;
-    } else {
-      max_logit = -FLT_MAX;
-      denominator = 0.0f;
-    }
-    old_weight = 0.0f;
-    new_weight = 0.0f;
+  int local_start = 0;
+  int local_count = 0;
+  if (local_plus_selected) {
+    local_start = max(0, query_position - local_window_size + 1);
+    const int local_end = min(query_position, min(total_length, main_capacity) - 1);
+    local_count = max(0, local_end - local_start + 1);
+  }
+  int selected_count = selected_counts[row];
+  selected_count = max(0, min(selected_count, max_selected));
+  const int candidate_count = local_count + selected_count;
+  const int32_t* row_indices =
+      max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
+
+  extern __shared__ float shared[];
+  float* logits = shared;
+  float* reduction = logits + candidate_capacity;
+  T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
+  if (h < head_size) {
+    shared_query[h] = query_head[h];
   }
   __syncthreads();
 
-  float accumulator = 0.0f;
-  int local_start = 0;
-  if (local_plus_selected && query_position >= 0) {
-    local_start = query_position - local_window_size + 1;
-    local_start = local_start < 0 ? 0 : local_start;
-    const int available_length = total_length < main_capacity ? total_length : main_capacity;
-    const int local_end = query_position < available_length - 1 ? query_position : available_length - 1;
-    for (int index = local_start; index <= local_end; ++index) {
-      const int64_t cache_offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-      AccumulateCandidate(query_head, main_key + cache_offset, main_value + cache_offset,
-                          head_size, scale, reduction, accumulator,
-                          max_logit, denominator, old_weight, new_weight);
-    }
-  }
-
-  int count = selected_counts[row];
-  count = count < 0 ? 0 : (count > max_selected ? max_selected : count);
-  const int32_t* row_indices =
-      max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
-  for (int i = 0; i < count; ++i) {
-    const int index = row_indices[i];
-    bool valid = index >= 0;
-    if (selected_from_auxiliary) {
-      valid = valid && index < auxiliary_sequence_length;
-    } else {
-      valid = valid && index < total_length && index <= query_position && index < main_capacity;
-      if (local_plus_selected && index >= local_start && index <= query_position) {
-        valid = false;
-      }
-    }
-    if (!valid) {
-      continue;
-    }
-
+  for (int candidate = warp; candidate < candidate_count; candidate += warp_count) {
+    int index;
     const T* key_head;
-    const T* value_head;
-    if (selected_from_auxiliary) {
-      const int64_t offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) *
-               auxiliary_sequence_length +
-           index) *
-          head_size;
-      key_head = auxiliary_key + offset;
-      value_head = auxiliary_value + offset;
-    } else {
+    bool valid = true;
+    if (candidate < local_count) {
+      index = local_start + candidate;
       const int64_t offset =
           ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
       key_head = main_key + offset;
-      value_head = main_value + offset;
+    } else {
+      index = row_indices[candidate - local_count];
+      if (selected_from_auxiliary) {
+        valid = index >= 0 && index < auxiliary_sequence_length;
+        if (valid) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+          key_head = auxiliary_key + offset;
+        }
+      } else {
+        valid = index >= 0 && index < total_length && index <= query_position && index < main_capacity;
+        if (local_plus_selected && index >= local_start && index <= query_position) {
+          valid = false;
+        }
+        if (valid) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+          key_head = main_key + offset;
+        }
+      }
     }
-    AccumulateCandidate(query_head, key_head, value_head, head_size, scale, reduction,
-                        accumulator, max_logit, denominator, old_weight, new_weight);
+
+    float dot = 0.0f;
+    if (valid) {
+      for (int d = lane; d < head_size; d += 32) {
+        dot += ToFloat(shared_query[d]) * ToFloat(key_head[d]);
+      }
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        dot += __shfl_down_sync(0xffffffff, dot, offset);
+      }
+    }
+    if (lane == 0) {
+      logits[candidate] = valid ? dot * scale : -FLT_MAX;
+    }
   }
+  __syncthreads();
+
+  float thread_max = use_smooth_softmax && h == 0
+                         ? (head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]))
+                         : -FLT_MAX;
+  for (int candidate = h; candidate < candidate_count; candidate += static_cast<int>(blockDim.x)) {
+    thread_max = fmaxf(thread_max, logits[candidate]);
+  }
+  reduction[h] = thread_max;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] = fmaxf(reduction[h], reduction[h + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_logit = reduction[0];
+  __syncthreads();
+
+  float thread_sum = 0.0f;
+  if (use_smooth_softmax && h == 0) {
+    const float sink = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
+    thread_sum = expf(sink - max_logit);
+  }
+  for (int candidate = h; candidate < candidate_count; candidate += static_cast<int>(blockDim.x)) {
+    const float logit = logits[candidate];
+    const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - max_logit);
+    logits[candidate] = weight;
+    thread_sum += weight;
+  }
+  reduction[h] = thread_sum;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] += reduction[h + stride];
+    }
+    __syncthreads();
+  }
+  const float denominator = reduction[0];
+  __syncthreads();
 
   if (h < head_size) {
+    float accumulator = 0.0f;
+    for (int candidate = 0; candidate < candidate_count; ++candidate) {
+      const float weight = logits[candidate];
+      if (weight == 0.0f) {
+        continue;
+      }
+
+      int index;
+      const T* value_head;
+      if (candidate < local_count) {
+        index = local_start + candidate;
+        const int64_t offset =
+            ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+        value_head = main_value + offset;
+      } else {
+        index = row_indices[candidate - local_count];
+        if (selected_from_auxiliary) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+          value_head = auxiliary_value + offset;
+        } else {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+          value_head = main_value + offset;
+        }
+      }
+      accumulator += weight * ToFloat(value_head[h]);
+    }
+
     const int64_t output_offset =
         (static_cast<int64_t>(row) * num_heads + head) * head_size + h;
     output[output_offset] =
+        denominator == 0.0f ? FromFloat<T>(0.0f) : FromFloat<T>(accumulator / denominator);
+  }
+}
+
+template <typename T>
+__global__ void SplitDynamicSparseAttentionKernel(const T* query,
+                                                  const T* main_key,
+                                                  const T* main_value,
+                                                  const T* auxiliary_key,
+                                                  const T* auxiliary_value,
+                                                  const int32_t* selected_indices,
+                                                  const int32_t* selected_counts,
+                                                  const int32_t* seqlens_k,
+                                                  const T* head_sink,
+                                                  float* partial_max,
+                                                  float* partial_sum,
+                                                  float* partial_output,
+                                                  int partial_block_count,
+                                                  int split_count,
+                                                  int sequence_length,
+                                                  int num_heads,
+                                                  int kv_num_heads,
+                                                  int head_size,
+                                                  int main_capacity,
+                                                  int auxiliary_sequence_length,
+                                                  int max_selected,
+                                                  int local_window_size,
+                                                  float scale,
+                                                  bool local_plus_selected,
+                                                  bool selected_from_auxiliary,
+                                                  bool use_smooth_softmax) {
+  const int partial_block = static_cast<int>(blockIdx.x);
+  if (partial_block >= partial_block_count) {
+    return;
+  }
+
+  const int split = partial_block % split_count;
+  const int query_block = partial_block / split_count;
+  const int head = query_block % num_heads;
+  const int row = query_block / num_heads;
+  const int b = row / sequence_length;
+  const int s = row - b * sequence_length;
+  const int h = static_cast<int>(threadIdx.x);
+  const int lane = h & 31;
+  const int warp = h >> 5;
+  const int warp_count = static_cast<int>(blockDim.x) >> 5;
+  const int kv_head = head / (num_heads / kv_num_heads);
+  const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
+  const bool valid_length = total_length_64 >= sequence_length && total_length_64 <= main_capacity;
+  const int total_length = valid_length ? static_cast<int>(total_length_64) : 0;
+  const int query_position = valid_length ? total_length - sequence_length + s : -1;
+  const T* query_head = query + (static_cast<int64_t>(row) * num_heads + head) * head_size;
+
+  int local_start = 0;
+  int local_count = 0;
+  if (local_plus_selected) {
+    local_start = max(0, query_position - local_window_size + 1);
+    const int local_end = min(query_position, min(total_length, main_capacity) - 1);
+    local_count = max(0, local_end - local_start + 1);
+  }
+  const int selected_count = max(0, min(selected_counts[row], max_selected));
+  const int candidate_count = local_count + selected_count;
+  const int candidate_start = split * kSplitCandidateSize;
+  const int split_candidate_count = max(0, min(kSplitCandidateSize, candidate_count - candidate_start));
+  const int32_t* row_indices =
+      max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
+
+  extern __shared__ float shared[];
+  float* logits = shared;
+  float* reduction = logits + kSplitCandidateSize;
+  T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
+  if (h < head_size) {
+    shared_query[h] = query_head[h];
+  }
+  __syncthreads();
+
+  for (int split_candidate = warp; split_candidate < split_candidate_count;
+       split_candidate += warp_count) {
+    const int candidate = candidate_start + split_candidate;
+    int index;
+    const T* key_head = nullptr;
+    bool valid = true;
+    if (candidate < local_count) {
+      index = local_start + candidate;
+      const int64_t offset =
+          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+      key_head = main_key + offset;
+    } else {
+      index = row_indices[candidate - local_count];
+      if (selected_from_auxiliary) {
+        valid = index >= 0 && index < auxiliary_sequence_length;
+        if (valid) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+          key_head = auxiliary_key + offset;
+        }
+      } else {
+        valid = index >= 0 && index < total_length && index <= query_position && index < main_capacity;
+        if (local_plus_selected && index >= local_start && index <= query_position) {
+          valid = false;
+        }
+        if (valid) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+          key_head = main_key + offset;
+        }
+      }
+    }
+
+    float dot = 0.0f;
+    if (valid) {
+      for (int d = lane; d < head_size; d += 32) {
+        dot += ToFloat(shared_query[d]) * ToFloat(key_head[d]);
+      }
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        dot += __shfl_down_sync(0xffffffff, dot, offset);
+      }
+    }
+    if (lane == 0) {
+      logits[split_candidate] = valid ? dot * scale : -FLT_MAX;
+    }
+  }
+  __syncthreads();
+
+  float thread_max = use_smooth_softmax && split == 0 && h == 0
+                         ? (head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]))
+                         : -FLT_MAX;
+  for (int candidate = h; candidate < split_candidate_count;
+       candidate += static_cast<int>(blockDim.x)) {
+    thread_max = fmaxf(thread_max, logits[candidate]);
+  }
+  reduction[h] = thread_max;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] = fmaxf(reduction[h], reduction[h + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_logit = reduction[0];
+  __syncthreads();
+
+  float thread_sum = 0.0f;
+  if (use_smooth_softmax && split == 0 && h == 0) {
+    const float sink = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
+    thread_sum = expf(sink - max_logit);
+  }
+  for (int candidate = h; candidate < split_candidate_count;
+       candidate += static_cast<int>(blockDim.x)) {
+    const float logit = logits[candidate];
+    const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - max_logit);
+    logits[candidate] = weight;
+    thread_sum += weight;
+  }
+  reduction[h] = thread_sum;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] += reduction[h + stride];
+    }
+    __syncthreads();
+  }
+  if (h == 0) {
+    partial_max[partial_block] = max_logit;
+    partial_sum[partial_block] = reduction[0];
+  }
+  __syncthreads();
+
+  if (h < head_size) {
+    float accumulator = 0.0f;
+    for (int split_candidate = 0; split_candidate < split_candidate_count; ++split_candidate) {
+      const float weight = logits[split_candidate];
+      if (weight == 0.0f) {
+        continue;
+      }
+
+      const int candidate = candidate_start + split_candidate;
+      int index;
+      const T* value_head;
+      if (candidate < local_count) {
+        index = local_start + candidate;
+        const int64_t offset =
+            ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+        value_head = main_value + offset;
+      } else {
+        index = row_indices[candidate - local_count];
+        if (selected_from_auxiliary) {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+          value_head = auxiliary_value + offset;
+        } else {
+          const int64_t offset =
+              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+          value_head = main_value + offset;
+        }
+      }
+      accumulator += weight * ToFloat(value_head[h]);
+    }
+    partial_output[static_cast<int64_t>(partial_block) * head_size + h] = accumulator;
+  }
+}
+
+template <typename T>
+__global__ void MergeDynamicSparseAttentionKernel(const float* partial_max,
+                                                  const float* partial_sum,
+                                                  const float* partial_output,
+                                                  T* output,
+                                                  int query_block_count,
+                                                  int split_count,
+                                                  int head_size) {
+  const int query_block = static_cast<int>(blockIdx.x);
+  if (query_block >= query_block_count) {
+    return;
+  }
+  const int h = static_cast<int>(threadIdx.x);
+  const int partial_start = query_block * split_count;
+
+  extern __shared__ float reduction[];
+  float thread_max = -FLT_MAX;
+  for (int split = h; split < split_count; split += static_cast<int>(blockDim.x)) {
+    thread_max = fmaxf(thread_max, partial_max[partial_start + split]);
+  }
+  reduction[h] = thread_max;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] = fmaxf(reduction[h], reduction[h + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_logit = reduction[0];
+  __syncthreads();
+
+  float thread_sum = 0.0f;
+  for (int split = h; split < split_count; split += static_cast<int>(blockDim.x)) {
+    const float split_max = partial_max[partial_start + split];
+    if (split_max != -FLT_MAX) {
+      thread_sum += partial_sum[partial_start + split] * expf(split_max - max_logit);
+    }
+  }
+  reduction[h] = thread_sum;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (h < static_cast<int>(stride)) {
+      reduction[h] += reduction[h + stride];
+    }
+    __syncthreads();
+  }
+  const float denominator = reduction[0];
+  __syncthreads();
+
+  if (h < head_size) {
+    float accumulator = 0.0f;
+    for (int split = 0; split < split_count; ++split) {
+      const float split_max = partial_max[partial_start + split];
+      if (split_max != -FLT_MAX) {
+        const float merge_scale = expf(split_max - max_logit);
+        const int64_t partial_offset =
+            (static_cast<int64_t>(partial_start + split) * head_size) + h;
+        accumulator += partial_output[partial_offset] * merge_scale;
+      }
+    }
+    output[static_cast<int64_t>(query_block) * head_size + h] =
         denominator == 0.0f ? FromFloat<T>(0.0f) : FromFloat<T>(accumulator / denominator);
   }
 }
@@ -531,7 +874,78 @@ Status CheckBlockCount(int64_t block_count, const char* kernel_name) {
   return Status::OK();
 }
 
+int64_t GetCandidateCapacity(const DynamicSparseAttentionParameters& parameters) {
+  return static_cast<int64_t>(parameters.max_selected) +
+         (parameters.attention_mode == DynamicSparseAttentionMode::kLocalPlusSelected
+              ? std::min(parameters.local_window_size, parameters.cache_capacity)
+              : 0);
+}
+
+bool UseFusedAttention(const DynamicSparseAttentionParameters& parameters,
+                       size_t element_size,
+                       size_t max_shared_memory_per_block) {
+  if (GetCandidateCapacity(parameters) > kSplitCandidateSize) {
+    return false;
+  }
+
+  const int threads = GetThreadsPerBlock(parameters.head_size);
+  const int fused_threads = threads < 128 ? 128 : threads;
+  const size_t fused_shared_bytes =
+      (static_cast<size_t>(GetCandidateCapacity(parameters)) + static_cast<size_t>(fused_threads)) * sizeof(float) +
+      static_cast<size_t>(parameters.head_size) * element_size;
+  return fused_shared_bytes <= kMaxFusedSharedBytes &&
+         fused_shared_bytes < max_shared_memory_per_block;
+}
+
+size_t GetValidationBitmapWords(const DynamicSparseAttentionParameters& parameters) {
+  if (parameters.max_selected == 0) {
+    return 0;
+  }
+
+  const size_t source_length =
+      parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary
+          ? static_cast<size_t>(parameters.auxiliary_sequence_length)
+          : static_cast<size_t>(parameters.cache_capacity);
+  return (source_length + 31) / 32;
+}
+
+bool UseSharedValidationBitmap(const DynamicSparseAttentionParameters& parameters,
+                               size_t max_shared_memory_per_block) {
+  const size_t shared_bytes = GetValidationBitmapWords(parameters) * sizeof(uint32_t);
+  return shared_bytes <= kMaxValidationSharedBytes &&
+         shared_bytes < max_shared_memory_per_block;
+}
+
 }  // namespace
+
+size_t GetDynamicSparseAttentionValidationWorkspaceSize(
+    const DynamicSparseAttentionParameters& parameters,
+    size_t max_shared_memory_per_block) {
+  if (UseSharedValidationBitmap(parameters, max_shared_memory_per_block)) {
+    return 0;
+  }
+
+  const size_t row_count =
+      SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length;
+  return SafeInt<size_t>(row_count) * GetValidationBitmapWords(parameters);
+}
+
+size_t GetDynamicSparseAttentionWorkspaceSize(
+    const DynamicSparseAttentionParameters& parameters,
+    size_t element_size,
+    size_t max_shared_memory_per_block) {
+  if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
+    return 0;
+  }
+
+  const size_t query_blocks =
+      static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
+  const size_t split_count =
+      (static_cast<size_t>(GetCandidateCapacity(parameters)) + kSplitCandidateSize - 1) /
+      kSplitCandidateSize;
+  return SafeInt<size_t>(query_blocks) * split_count *
+         (static_cast<size_t>(parameters.head_size) + 2);
+}
 
 Status ValidateDynamicSparseAttentionOnDevice(
     cudaStream_t stream,
@@ -541,19 +955,34 @@ Status ValidateDynamicSparseAttentionOnDevice(
     const int64_t* position_ids,
     const DynamicSparseAttentionParameters& parameters,
     int32_t* error_flag,
+    uint32_t* validation_bitmap,
+    size_t max_shared_memory_per_block,
     bool copy_result_to_host) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(error_flag, 0, sizeof(int32_t), stream));
   const int64_t row_count =
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length;
+  const size_t validation_bitmap_words = GetValidationBitmapWords(parameters);
+  const bool use_shared_bitmap =
+      UseSharedValidationBitmap(parameters, max_shared_memory_per_block);
+  const size_t validation_bitmap_elements =
+      use_shared_bitmap ? 0 : static_cast<size_t>(row_count) * validation_bitmap_words;
+  if (validation_bitmap_elements > 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+        validation_bitmap, 0, validation_bitmap_elements * sizeof(uint32_t), stream));
+  }
   ORT_RETURN_IF_ERROR(CheckBlockCount(row_count, "validation"));
-  ValidateInputsKernel<<<static_cast<int>(row_count), 1, 0, stream>>>(
+  constexpr int kValidationThreads = 256;
+  const size_t validation_shared_bytes =
+      use_shared_bitmap ? validation_bitmap_words * sizeof(uint32_t) : 0;
+  ValidateInputsKernel<<<static_cast<int>(row_count), kValidationThreads,
+                         validation_shared_bytes, stream>>>(
       selected_indices, selected_counts, seqlens_k, position_ids,
       parameters.batch_size, parameters.sequence_length, parameters.max_selected,
       parameters.total_sequence_length,
       parameters.cache_capacity, parameters.auxiliary_sequence_length,
       parameters.rotary_max_position, parameters.do_rotary,
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-      error_flag);
+      validation_bitmap, validation_bitmap_words, use_shared_bitmap, error_flag);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   if (!copy_result_to_host) {
@@ -608,7 +1037,8 @@ Status LaunchDynamicSparseAttention(
     const DynamicSparseAttentionData<T>& data,
     bool initialize_key_cache,
     bool initialize_value_cache,
-    int max_threads_per_block) {
+    int max_threads_per_block,
+    size_t max_shared_memory_per_block) {
   const int threads = GetThreadsPerBlock(parameters.head_size);
   ORT_RETURN_IF_NOT(threads <= max_threads_per_block,
                     "DynamicSparseAttention: head_size exceeds the CUDA thread-block limit.");
@@ -662,30 +1092,78 @@ Status LaunchDynamicSparseAttention(
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   ORT_RETURN_IF_ERROR(CheckBlockCount(query_blocks, "attention"));
-  const size_t attention_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
-  DynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, attention_shared_bytes, stream>>>(
-      data.prepared_query, data.present_key, data.present_value,
-      data.auxiliary_key, data.auxiliary_value, data.selected_indices,
-      data.selected_counts, data.seqlens_k, data.head_sink, data.output,
-      static_cast<int>(query_blocks), parameters.sequence_length, parameters.num_heads,
-      parameters.kv_num_heads, parameters.head_size, parameters.cache_capacity,
-      parameters.auxiliary_sequence_length, parameters.max_selected,
-      parameters.local_window_size, parameters.scale,
-      parameters.attention_mode == DynamicSparseAttentionMode::kLocalPlusSelected,
-      parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-      parameters.use_smooth_softmax);
+  const bool local_plus_selected =
+      parameters.attention_mode == DynamicSparseAttentionMode::kLocalPlusSelected;
+  const int64_t candidate_capacity_64 =
+      static_cast<int64_t>(parameters.max_selected) +
+      (local_plus_selected ? std::min(parameters.local_window_size, parameters.cache_capacity) : 0);
+  ORT_RETURN_IF_NOT(candidate_capacity_64 <= std::numeric_limits<int>::max(),
+                    "DynamicSparseAttention: candidate count exceeds CUDA kernel limits.");
+  const int candidate_capacity = static_cast<int>(candidate_capacity_64);
+  const int fused_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
+  const size_t fused_shared_bytes =
+      (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
+      static_cast<size_t>(parameters.head_size) * sizeof(T);
+  if (UseFusedAttention(parameters, sizeof(T), max_shared_memory_per_block)) {
+    FusedDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), fused_threads, fused_shared_bytes, stream>>>(
+        data.prepared_query, data.present_key, data.present_value,
+        data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+        data.selected_counts, data.seqlens_k, data.head_sink, data.output,
+        static_cast<int>(query_blocks), parameters.sequence_length, parameters.num_heads,
+        parameters.kv_num_heads, parameters.head_size, parameters.cache_capacity,
+        parameters.auxiliary_sequence_length, parameters.max_selected,
+        parameters.local_window_size, candidate_capacity, parameters.scale,
+        local_plus_selected,
+        parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+        parameters.use_smooth_softmax);
+  } else {
+    const int split_count =
+        (candidate_capacity + kSplitCandidateSize - 1) / kSplitCandidateSize;
+    const int64_t partial_blocks = query_blocks * split_count;
+    ORT_RETURN_IF_ERROR(CheckBlockCount(partial_blocks, "split attention"));
+    ORT_RETURN_IF_NOT(data.attention_workspace != nullptr,
+                      "DynamicSparseAttention: split attention workspace is required.");
+    float* partial_max = data.attention_workspace;
+    float* partial_sum = partial_max + partial_blocks;
+    float* partial_output = partial_sum + partial_blocks;
+    const int split_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
+    const size_t split_shared_bytes =
+        (static_cast<size_t>(kSplitCandidateSize) + static_cast<size_t>(split_threads)) * sizeof(float) +
+        static_cast<size_t>(parameters.head_size) * sizeof(T);
+    ORT_RETURN_IF_NOT(split_shared_bytes < max_shared_memory_per_block,
+                      "DynamicSparseAttention: split attention exceeds the CUDA shared-memory limit.");
+    SplitDynamicSparseAttentionKernel<<<static_cast<int>(partial_blocks), split_threads, split_shared_bytes, stream>>>(
+        data.prepared_query, data.present_key, data.present_value,
+        data.auxiliary_key, data.auxiliary_value, data.selected_indices,
+        data.selected_counts, data.seqlens_k, data.head_sink,
+        partial_max, partial_sum, partial_output,
+        static_cast<int>(partial_blocks), split_count,
+        parameters.sequence_length, parameters.num_heads,
+        parameters.kv_num_heads, parameters.head_size, parameters.cache_capacity,
+        parameters.auxiliary_sequence_length, parameters.max_selected,
+        parameters.local_window_size, parameters.scale,
+        local_plus_selected,
+        parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
+        parameters.use_smooth_softmax);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    const size_t merge_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
+    MergeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, merge_shared_bytes, stream>>>(
+        partial_max, partial_sum, partial_output, data.output,
+        static_cast<int>(query_blocks), split_count, parameters.head_size);
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 
 template Status LaunchDynamicSparseAttention<float>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<float>&, bool, bool, int);
+    const DynamicSparseAttentionData<float>&, bool, bool, int, size_t);
 template Status LaunchDynamicSparseAttention<half>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<half>&, bool, bool, int);
+    const DynamicSparseAttentionData<half>&, bool, bool, int, size_t);
 template Status LaunchDynamicSparseAttention<__nv_bfloat16>(
     cudaStream_t, const DynamicSparseAttentionParameters&,
-    const DynamicSparseAttentionData<__nv_bfloat16>&, bool, bool, int);
+    const DynamicSparseAttentionData<__nv_bfloat16>&, bool, bool, int, size_t);
 
 }  // namespace cuda
 }  // namespace contrib

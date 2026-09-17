@@ -196,21 +196,33 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
 
   cudaStream_t stream = Stream(context);
-  auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
   cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
-  ORT_RETURN_IF_NOT(
-      capture_status == cudaStreamCaptureStatusNone,
-      "DynamicSparseAttention metadata validation cannot run during CUDA graph capture.");
-  ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
-      stream, data.selected_indices, data.selected_counts, data.seqlens_k,
-      data.position_ids, parameters, validation_error.get(), true));
+  if (capture_status == cudaStreamCaptureStatusNone) {
+    auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    const size_t validation_workspace_elements =
+        GetDynamicSparseAttentionValidationWorkspaceSize(
+            parameters, GetDeviceProp().sharedMemPerBlock);
+    auto validation_workspace =
+        GetScratchBuffer<uint32_t>(validation_workspace_elements, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
+        stream, data.selected_indices, data.selected_counts, data.seqlens_k,
+        data.position_ids, parameters, validation_error.get(), validation_workspace.get(),
+        GetDeviceProp().sharedMemPerBlock, true));
+  }
+
+  const size_t attention_workspace_elements =
+      GetDynamicSparseAttentionWorkspaceSize(
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock);
+  auto attention_workspace =
+      GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
+  data.attention_workspace = attention_workspace.get();
 
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;
   return LaunchDynamicSparseAttention<CudaT>(
       stream, parameters, data, initialize_key_cache, initialize_value_cache,
-      GetDeviceProp().maxThreadsPerBlock);
+      GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlock);
 }
 
 template class DynamicSparseAttention<float>;
