@@ -65,7 +65,8 @@ Status LaunchDynamicSparseAttention(
     const DynamicSparseAttentionData<T>& data,
     bool initialize_key_cache,
     bool initialize_value_cache,
-    int max_threads_per_block);
+    int max_threads_per_block,
+    size_t max_shared_memory_per_block);
 
 }  // namespace cuda
 }  // namespace contrib
