@@ -269,7 +269,8 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key, const 
     }
 
     if (threadIdx.x == 0) {
-      block_scores[row * params.max_block_count + block_index] = score * params.scale;
+      const float scaled_score = score * params.scale;
+      block_scores[row * params.max_block_count + block_index] = scaled_score == 0.0f ? 0.0f : scaled_score;
     }
     __syncthreads();
   }
@@ -310,18 +311,6 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visibl
         for (int t = threadIdx.x; t < params.compress_ratio; t += blockDim.x) {
           out_row[rank * params.compress_ratio + t] =
               index_row[selected_block * params.compress_ratio + t];
-        }
-
-        __global__ void SetupQsaSortKernel(int32_t* indices, int32_t* offsets, int num_items,
-                                           int rows, int dimension) {
-          for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-               index < num_items; index += static_cast<int>(gridDim.x) * blockDim.x) {
-            indices[index] = index % dimension;
-          }
-          for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
-               index <= rows; index += static_cast<int>(gridDim.x) * blockDim.x) {
-            offsets[index] = index * dimension;
-          }
         }
       }
       __syncthreads();
@@ -366,6 +355,18 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visibl
       out_row[emitted * params.compress_ratio + t] = index_row[tail_start + t];
     }
     __syncthreads();
+  }
+}
+
+__global__ void SetupQsaSortKernel(int32_t* indices, int32_t* offsets, int num_items,
+                                   int rows, int dimension) {
+  for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < num_items; index += static_cast<int>(gridDim.x) * blockDim.x) {
+    indices[index] = index % dimension;
+  }
+  for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index <= rows; index += static_cast<int>(gridDim.x) * blockDim.x) {
+    offsets[index] = index * dimension;
   }
 }
 
