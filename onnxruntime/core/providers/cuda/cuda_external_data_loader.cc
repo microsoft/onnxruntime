@@ -4,7 +4,6 @@
 // provider_api.h must be first to set SHARED_PROVIDER
 #include "core/providers/shared_library/provider_api.h"
 
-#include "core/framework/tensor.h"
 #include "core/providers/cuda/cuda_external_data_loader.h"
 
 #include <algorithm>
@@ -55,8 +54,10 @@ common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, si
       reader_pool = std::make_unique<ExternalDataLoaderThreadPool>(reader_count);
     }
     return reader_pool->Run([&](size_t reader) {
-      const size_t begin = length * reader / reader_count;
-      const size_t end = length * (reader + 1) / reader_count;
+      const size_t reader_length = length / reader_count;
+      const size_t remainder = length % reader_count;
+      const size_t begin = reader_length * reader + std::min(reader, remainder);
+      const size_t end = begin + reader_length + (reader < remainder ? 1 : 0);
       return file.Read(offset + begin,
                        gsl::span<char>{static_cast<char*>(buffer) + begin, end - begin});
     });

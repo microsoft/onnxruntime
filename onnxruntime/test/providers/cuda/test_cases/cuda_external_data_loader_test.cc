@@ -171,6 +171,11 @@ TEST(CudaExternalDataLoaderTest, LoadsAtParallelReadThreshold) {
   VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold);
 }
 
+TEST(CudaExternalDataLoaderTest, LoadsFullBufferWithMaximumReadingThreads) {
+  VerifyLoad(cuda::kExternalDataLoaderBufferSize, 1,
+             OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount);
+}
+
 TEST(CudaExternalDataLoaderTest, LoadsSynchronouslyWhenConfiguredWithOneReadingThread) {
   VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold, 1, 1);
 }
