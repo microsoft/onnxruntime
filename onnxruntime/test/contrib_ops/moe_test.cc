@@ -2381,9 +2381,9 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
     ASSERT_EQ(shared, static_cast<size_t>(0));
   }
   ASSERT_EQ(prepacked_session_1, tester.GetNumPrePackedWeightsShared());
-  if (prepacked_session_1 == 0) {
-    return;  // platform without the QNBit kernels: nothing was prepacked, nothing to share
-  }
+  // Both expert weights pre-pack on every platform (the legacy 4-bit path pre-packs too), so a
+  // count of 2 proves the sharing round trip below exercises real buffers.
+  ASSERT_EQ(prepacked_session_1, static_cast<size_t>(2));
   {
     auto eps = cpu_ep();
     tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps, {}, &prepacked_session_2, &shared);
@@ -2465,6 +2465,42 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_AccuracyLevel4SelectsInt8) {
   ASSERT_FALSE(level4.empty());
   EXPECT_EQ(level4, forced_int8);
   EXPECT_NE(level4, forced_fp32);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_PolicyMatrix) {
+  // Cells of the documented policy that the tolerance checks cannot tell apart: runs that must
+  // select the same kernels produce bitwise-identical outputs. accuracy_level values other than 4
+  // behave as 0, and the fp32 override is the 4-bit default.
+  if (!MlasIsQNBitGemmAvailable(4, 32, SQNBIT_CompFp32)) {
+    GTEST_SKIP() << "platform lacks the 4-bit fp32 QNBit kernel";
+  }
+  const QMoEBlockWiseCase base{5, 4, 128, 64, 32, 2, true};
+  std::vector<float> by_default, level1, forced_fp32;
+  RunQMoECpuBlockWiseSwiGLU<float>(base, 0.01f, false, &by_default);
+  {
+    QMoEBlockWiseCase c = base;
+    c.accuracy_level = 1;
+    RunQMoECpuBlockWiseSwiGLU<float>(c, 0.01f, false, &level1);
+  }
+  {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "fp32"}}};
+    RunQMoECpuBlockWiseSwiGLU<float>(base, 0.01f, false, &forced_fp32);
+  }
+  ASSERT_FALSE(by_default.empty());
+  EXPECT_EQ(level1, by_default);
+  EXPECT_EQ(forced_fp32, by_default);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_DisabledByEnv) {
+  // "0" keeps the previous paths; the output still matches the exact reference.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "0"}}};
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true}, 0.01f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_DisabledByEnv) {
+  // "0" keeps the previous paths, which never pre-pack 8-bit experts.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "0"}}};
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8, false, 0, 0}, 0.01f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_ZeroPoints) {
