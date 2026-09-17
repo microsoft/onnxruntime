@@ -1665,12 +1665,22 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                            activation_type_ == ActivationType::SwiGLU;
   if (use_grouped_qnbit) {
     grouped_experts.reserve(static_cast<size_t>(num_active_experts));
+    SafeInt<size_t> total_grouped_rows = 0;
     for (int64_t i = 0; i < num_experts; ++i) {
-      if (!expert_token_map[static_cast<size_t>(i)].empty()) {
+      const size_t expert_rows = expert_token_map[static_cast<size_t>(i)].size();
+      if (expert_rows > 0) {
         grouped_experts.push_back(i);
+        total_grouped_rows += expert_rows;
       }
     }
-    use_grouped_qnbit = grouped_experts.size() > 1;
+
+    // Bound the additional route-wide staging matrices. Large prefills retain the per-expert
+    // path, whose scratch size is based on the largest expert rather than all routed rows.
+    constexpr size_t kMaxGroupedStagingBytes = 8 * 1024 * 1024;
+    const size_t staging_bytes_per_row = SafeInt<size_t>(hidden_size) * 2 * sizeof(float) +
+                                         SafeInt<size_t>(inter_size) * 3 * sizeof(float);
+    use_grouped_qnbit = grouped_experts.size() > 1 &&
+                        total_grouped_rows <= kMaxGroupedStagingBytes / staging_bytes_per_row;
   }
 
   if (use_grouped_qnbit) {
