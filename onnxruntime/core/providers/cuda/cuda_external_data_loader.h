@@ -18,6 +18,50 @@ inline constexpr size_t kExternalDataLoaderParallelReadThreshold = 16 * 1024 * 1
 
 class ExternalDataLoaderThreadPool;
 
+/**
+ * Loads large external initializers into CUDA memory through two reusable pinned host buffers.
+ *
+ * Data path:
+ *
+ *                           External-data file on local NVMe
+ *                                        |
+ *                                        | NVMe DMA / block I/O
+ *                                        v
+ *                           Linux kernel page-cache pages
+ *                                        |
+ *                                        | CPU copies performed by read()
+ *                                        | Parallel reads fill each block
+ *                                        |
+ *                      +-----------------+-----------------+
+ *                      |                                   |
+ *                      v                                   v
+ *           +-----------------------+           +-----------------------+
+ *           | pinned buffer 0, 64M  |           | pinned buffer 1, 64M  |
+ *           | CPU fills block N     |           | CPU fills block N + 1 |
+ *           +-----------------------+           +-----------------------+
+ *                      |                                   |
+ *                      | cudaMemcpyAsync                   | cudaMemcpyAsync
+ *                      |                                   |
+ *                      +-----------------+-----------------+
+ *                                        |
+ *                                        v
+ *                        CUDA BFC Arena initializer buffer
+ *                                        |
+ *                                        | optional CUDA prepack,
+ *                                        | transpose and unpack kernels
+ *                                        v
+ *                            Final prepared CUDA weights
+ *
+ * Timeline:
+ *
+ *   CPU reads block N + 1 into buffer 1
+ *          || concurrently with
+ *   PCIe DMA transfers block N from buffer 0
+ *
+ *   CPU reads block N + 2 into buffer 0
+ *          || concurrently with
+ *   PCIe DMA transfers block N + 1 from buffer 1
+ */
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
   using AllocatePinnedBufferFn = cudaError_t (*)(void**, size_t);
