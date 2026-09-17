@@ -151,6 +151,19 @@ TEST(OrtModelOnlyTests, RejectsGqaValueLayoutOptionWhenDisabled) {
 }
 #endif
 
+#if defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelOnlyTests, RejectsMoeExpertStatisticsInMinimalBuild) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  InferenceSessionWrapper session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  const Status status = session.Initialize();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+}
+#endif
+
 TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<int64_t> dims{32};

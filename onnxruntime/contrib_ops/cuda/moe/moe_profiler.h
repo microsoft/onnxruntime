@@ -54,6 +54,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
   CudaMoeRoutingRecord(const RunInstrumentationContext& instrumentation,
                        std::string node_name,
                        NodeIndex node_index,
+                       std::string node_type,
                        IAllocatorUniquePtr<int> expert_ids,
                        IAllocatorUniquePtr<float> router_weights,
                        size_t element_count,
@@ -64,6 +65,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
       : instrumentation_(instrumentation),
         node_name_(std::move(node_name)),
         node_index_(node_index),
+        node_type_(std::move(node_type)),
         expert_ids_(std::move(expert_ids)),
         router_weights_(std::move(router_weights)),
         element_count_(element_count),
@@ -154,7 +156,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
         static_cast<int64_t>(instrumentation_.ProfilerStartTimeNs());
 
     instrumentation_.RecordMoeRoutingEvent(
-        start_time_, completion_time, node_name_, node_index_,
+        start_time_, completion_time, node_name_, node_index_, node_type_,
         CudaMoeJsonArray(gsl::make_span(static_cast<const int*>(expert_ids_.get()), element_count_)),
         CudaMoeJsonArray(gsl::make_span(static_cast<const float*>(router_weights_.get()), element_count_)),
         num_rows_, top_k_, device_id_, completion_ns,
@@ -183,6 +185,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
   const RunInstrumentationContext& instrumentation_;
   std::string node_name_;
   NodeIndex node_index_;
+  std::string node_type_;
   IAllocatorUniquePtr<int> expert_ids_;
   IAllocatorUniquePtr<float> router_weights_;
   size_t element_count_;

@@ -1068,7 +1068,7 @@ TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
   const TimePoint now = std::chrono::high_resolution_clock::now();
 
   instrumentation.RecordMoeRoutingEvent(
-      now, now, "layer/0/QMoE", 42, "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
+      now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
 
   ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
   const std::string& message = capturing_sink_ptr->Messages()[0];
@@ -1078,6 +1078,7 @@ TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
   EXPECT_EQ(event["request_id"], "request \"one\"");
   EXPECT_EQ(event["node_name"], "layer/0/QMoE");
   EXPECT_EQ(event["node_index"], 42);
+  EXPECT_EQ(event["node_type"], "QMoE");
   EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
   EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
   EXPECT_EQ(event["num_rows"], 1);

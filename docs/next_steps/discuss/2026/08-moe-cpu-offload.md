@@ -157,10 +157,11 @@ not enable `profiling::Profiler`, retain a Chrome trace in memory, or record unr
 can redirect the logger output to a file and select lines beginning with `moe_routing `; the remainder of each such line
 is a standalone JSON object.
 
-Each current routing record contains `request_id`, `node_name`, `node_index`, `expert_ids`, `router_weights`, `num_rows`,
-`top_k`, and `execution_device_id`. CUDA routing buffers are copied asynchronously and retained until the normal
-end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound pinned
-host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
+Each current routing record contains `request_id`, `node_index`, `node_type`, `node_name`, `expert_ids`,
+`router_weights`, `num_rows`, `top_k`, and `execution_device_id`. The three node fields form the routing record's node
+identity; `node_name` may be empty. CUDA routing buffers are copied asynchronously and retained until the normal
+end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound
+pinned host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
 
 The runner surrounds every prompt with ordered `prompt_start` and `prompt_end` markers and writes a final
 `moe_routing_complete` footer containing the prompt, prompt-run, and routing-record counts. The analyzer requires all
@@ -388,7 +389,6 @@ Every persistent change is delivered through one of the following pull requests.
 - Add the `session.enable_moe_expert_statistics` session configuration entry, disabled by default.
 - Emit compact JSON routing records through the normal ORT logger without enabling general profiling.
 - Record the request identifier, MoE node, selected experts, router weights, row count, top-k, and execution device.
-- Record execution, cache-slot, and transfer endpoint device IDs so the trace format remains usable for the multi-GPU study.
 - Test the disabled path, JSON schema, CUDA and CPU routing, and explicit overflow behavior.
 
 ### PR 2: reproducible evaluation and statistical-analysis scripts
@@ -484,7 +484,8 @@ This is not a planned pull request or a requirement for completing the implement
 
 The initial implementation remains limited to one CUDA device, but the same trace-first plan can be extended to several CUDA devices installed in one machine. Every expert still has one canonical CPU copy. Each CUDA device owns an independent bounded cache containing copies of selected experts.
 
-PR 1 already makes the trace schema forward-compatible by recording execution devices, cache-slot devices, transfer endpoints, and visible-device topology. This does not add multi-GPU behavior to the main implementation.
+PR 1 records the execution device only. Cache-slot devices, transfer endpoints, and visible-device topology belong to
+the later cache and multi-device phases because no such placement or transfer exists in PR 1.
 
 The multi-device study should distinguish two use cases:
 

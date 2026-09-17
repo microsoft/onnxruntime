@@ -30,6 +30,8 @@ def _routing_event(expert_ids=None, router_weights=None, num_rows=1, top_k=1):
     expert_ids = [1] if expert_ids is None else expert_ids
     router_weights = [1.0] * len(expert_ids) if router_weights is None else router_weights
     return {
+        "node_index": 17,
+        "node_type": "QMoE",
         "node_name": "/layers.0/qmoe",
         "expert_ids": expert_ids,
         "router_weights": router_weights,
@@ -129,6 +131,20 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     ):
                         read_distributions(log_path, num_experts=2)
 
+    def test_unnamed_nodes_are_distinguished_by_index(self):
+        first_event = _routing_event([0])
+        first_event.update(node_index=3, node_name="")
+        second_event = _routing_event([1])
+        second_event.update(node_index=4, node_name="")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "routing.log"
+            log_path.write_text(_complete_trace([[first_event, second_event]]), encoding="utf-8")
+
+            _, by_qmoe, _, _ = read_distributions(log_path, num_experts=2)
+
+        self.assertEqual(by_qmoe[(3, "QMoE", "")], {0: 1})
+        self.assertEqual(by_qmoe[(4, "QMoE", "")], {1: 1})
+
     def test_router_weight_count_is_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
@@ -189,12 +205,12 @@ class TestQMoEExpertDistribution(unittest.TestCase):
 
         expert_bytes = calculate_qmoe_expert_bytes(
             {weight.name: weight for weight in (float_weight, packed_weight)},
-            {node.name: node},
-            [node.name],
+            {(0, node.op_type, node.name): node},
+            [(0, node.op_type, node.name)],
             num_experts=2,
         )
 
-        self.assertEqual(expert_bytes, {node.name: 10})
+        self.assertEqual(expert_bytes, {(0, node.op_type, node.name): 10})
 
     def test_external_data_length_and_file_range_are_validated(self):
         weight = onnx.helper.make_tensor("weight", onnx.TensorProto.FLOAT16, [2, 4], [0.0] * 8)
@@ -208,25 +224,37 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             _set_external_data(weight, location=external_path.name, length=8)
             with self.assertRaisesRegex(ValueError, "is 8, expected 16"):
                 calculate_qmoe_expert_bytes(
-                    {weight.name: weight}, {node.name: node}, [node.name], 2, model_path=model_path
+                    {weight.name: weight},
+                    {(0, node.op_type, node.name): node},
+                    [(0, node.op_type, node.name)],
+                    2,
+                    model_path=model_path,
                 )
 
             _set_external_data(weight, location=external_path.name, offset=4, length=16)
             with self.assertRaisesRegex(ValueError, "exceeds"):
                 calculate_qmoe_expert_bytes(
-                    {weight.name: weight}, {node.name: node}, [node.name], 2, model_path=model_path
+                    {weight.name: weight},
+                    {(0, node.op_type, node.name): node},
+                    [(0, node.op_type, node.name)],
+                    2,
+                    model_path=model_path,
                 )
 
             _set_external_data(weight, location=external_path.name, length=-1)
             with self.assertRaisesRegex(ValueError, "Invalid external_data.length"):
                 calculate_qmoe_expert_bytes(
-                    {weight.name: weight}, {node.name: node}, [node.name], 2, model_path=model_path
+                    {weight.name: weight},
+                    {(0, node.op_type, node.name): node},
+                    [(0, node.op_type, node.name)],
+                    2,
+                    model_path=model_path,
                 )
 
     def test_ranking_final_row_and_threshold_outputs(self):
-        node_name = "/layers.0/qmoe"
-        rankings = rank_experts_by_frequency({node_name: {0: 2, 1: 2, 2: 1}}, 3)
-        self.assertEqual(rankings, {node_name: [0, 1, 2]})
+        identity = (17, "QMoE", "/layers.0/qmoe")
+        rankings = rank_experts_by_frequency({identity: {0: 2, 1: 2, 2: 1}}, 3)
+        self.assertEqual(rankings, {identity: [0, 1, 2]})
 
         event = _routing_event([2, 0, 1, 2], num_rows=2, top_k=2)
         self.assertEqual(inference_expert_ids(event), [1, 2])
@@ -236,14 +264,17 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             log_path = temp_path / "routing.log"
             csv_path = temp_path / "ranked.csv"
             log_path.write_text(_complete_trace([[event]]), encoding="utf-8")
-            inference_counts, threshold_totals = aggregate_rank_thresholds_by_qmoe(log_path, {node_name: [0, 1, 2]}, 3)
-            self.assertEqual(inference_counts, {node_name: 1})
-            self.assertEqual(threshold_totals[node_name], [2, 2, 1])
+            inference_counts, threshold_totals = aggregate_rank_thresholds_by_qmoe(log_path, {identity: [0, 1, 2]}, 3)
+            self.assertEqual(inference_counts, {identity: 1})
+            self.assertEqual(threshold_totals[identity], [2, 2, 1])
 
             write_qmoe_ranked_experts_csv(csv_path, rankings)
             self.assertEqual(
                 csv_path.read_text(encoding="utf-8").splitlines(),
-                ["qmoe,expert_ids_by_decreasing_frequency", f'{node_name},"[0,1,2]"'],
+                [
+                    "node_index,node_type,node_name,expert_ids_by_decreasing_frequency",
+                    '17,QMoE,/layers.0/qmoe,"[0,1,2]"',
+                ],
             )
 
 

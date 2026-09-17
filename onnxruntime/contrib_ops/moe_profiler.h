@@ -67,7 +67,7 @@ inline void RecordMoeRoutingEvent(const RunInstrumentationContext& instrumentati
                              static_cast<int64_t>(instrumentation.ProfilerStartTimeNs());
 
   instrumentation.RecordMoeRoutingEvent(
-      start_time, completion_time, node.Name(), node.Index(),
+      start_time, completion_time, node.Name(), node.Index(), node.OpType(),
       MoeJsonArray(expert_ids), MoeJsonArray(router_weights),
       num_rows, top_k, -1, completion_ns, "host_clock");
 }

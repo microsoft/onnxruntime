@@ -1595,7 +1595,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     const TimePoint instrumentation_start = instrumentation->StartProfiling();
     auto record = std::make_unique<CudaMoeRoutingRecord>(
-        *instrumentation, Node().Name(), Node().Index(),
+        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
         std::move(host_expert_ids), std::move(host_router_weights),
         routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
     ORT_RETURN_IF_ERROR(record->Start(stream));

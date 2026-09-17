@@ -63,6 +63,7 @@ class RunInstrumentationContext {
                              const TimePoint&,
                              std::string_view node_name,
                              NodeIndex node_index,
+                             std::string_view node_type,
                              std::string expert_ids_json,
                              std::string router_weights_json,
                              int64_t num_rows,
@@ -76,7 +77,9 @@ class RunInstrumentationContext {
     event << ",\"node_name\":";
     common::WriteJsonString(event, node_name);
     event << ",\"node_index\":" << node_index
-          << ",\"expert_ids\":" << expert_ids_json
+          << ",\"node_type\":";
+    common::WriteJsonString(event, node_type);
+    event << ",\"expert_ids\":" << expert_ids_json
           << ",\"router_weights\":" << router_weights_json
           << ",\"num_rows\":" << num_rows
           << ",\"top_k\":" << top_k

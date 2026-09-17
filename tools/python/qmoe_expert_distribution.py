@@ -80,11 +80,34 @@ def layer_sort_key(node_name):
     return (int(match.group(1)), node_name) if match else (10**9, node_name)
 
 
+def node_identity(event):
+    return event["node_index"], event["node_type"], event["node_name"]
+
+
+def node_sort_key(identity):
+    node_index, node_type, node_name = identity
+    return (*layer_sort_key(node_name), node_index, node_type)
+
+
+def node_csv_fields(identity):
+    node_index, node_type, node_name = identity
+    return node_index, node_type, node_name
+
+
+def node_display_name(identity):
+    node_index, node_type, node_name = identity
+    return node_name or f"{node_type}[{node_index}]"
+
+
 def _validate_routing_event(event, line_number):
     if not isinstance(event, dict):
         raise ValueError(f"Line {line_number}: routing payload must be a JSON object.")
-    if not isinstance(event.get("node_name"), str) or not event["node_name"]:
-        raise ValueError(f"Line {line_number}: node_name must be a non-empty string.")
+    if not isinstance(event.get("node_index"), int) or isinstance(event["node_index"], bool) or event["node_index"] < 0:
+        raise ValueError(f"Line {line_number}: node_index must be a non-negative integer.")
+    if not isinstance(event.get("node_type"), str) or not event["node_type"]:
+        raise ValueError(f"Line {line_number}: node_type must be a non-empty string.")
+    if not isinstance(event.get("node_name"), str):
+        raise ValueError(f"Line {line_number}: node_name must be a string.")
     for field in ("num_rows", "top_k"):
         value = event.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -210,14 +233,14 @@ def read_distributions(log_path, num_experts):
     event_count = 0
 
     for prompt_index, event in iter_routing_events(log_path):
-        node_name = event["node_name"]
+        identity = node_identity(event)
         expert_ids = event["expert_ids"]
         for expert_id in expert_ids:
             if not 0 <= expert_id < num_experts:
                 raise ValueError(f"Trace contains expert ID {expert_id}, but the model has {num_experts} experts.")
         counts = Counter(expert_ids)
-        by_prompt_qmoe[(prompt_index, node_name)].update(counts)
-        by_qmoe[node_name].update(counts)
+        by_prompt_qmoe[(prompt_index, identity)].update(counts)
+        by_qmoe[identity].update(counts)
         global_counts.update(counts)
         event_count += 1
 
@@ -237,15 +260,26 @@ def distribution_rows(counts, num_experts):
 def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["prompt_index", "prompt", "qmoe", "expert_id", "count", "selection_share"])
-        keys = sorted(distributions, key=lambda key: (key[0], layer_sort_key(key[1])))
-        for prompt_index, node_name in keys:
-            for expert_id, count, share in distribution_rows(distributions[(prompt_index, node_name)], num_experts):
+        writer.writerow(
+            [
+                "prompt_index",
+                "prompt",
+                "node_index",
+                "node_type",
+                "node_name",
+                "expert_id",
+                "count",
+                "selection_share",
+            ]
+        )
+        keys = sorted(distributions, key=lambda key: (key[0], node_sort_key(key[1])))
+        for prompt_index, identity in keys:
+            for expert_id, count, share in distribution_rows(distributions[(prompt_index, identity)], num_experts):
                 writer.writerow(
                     [
                         prompt_index,
                         prompt_labels.get(prompt_index, ""),
-                        node_name,
+                        *node_csv_fields(identity),
                         expert_id,
                         count,
                         share,
@@ -256,27 +290,29 @@ def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
 def write_qmoe_csv(path, distributions, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["qmoe", "expert_id", "count", "selection_share"])
-        for node_name in sorted(distributions, key=layer_sort_key):
-            for expert_id, count, share in distribution_rows(distributions[node_name], num_experts):
-                writer.writerow([node_name, expert_id, count, share])
+        writer.writerow(["node_index", "node_type", "node_name", "expert_id", "count", "selection_share"])
+        for identity in sorted(distributions, key=node_sort_key):
+            for expert_id, count, share in distribution_rows(distributions[identity], num_experts):
+                writer.writerow([*node_csv_fields(identity), expert_id, count, share])
 
 
 def write_qmoe_pivot_csv(path, distributions, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["qmoe", *range(num_experts)])
-        for node_name in sorted(distributions, key=layer_sort_key):
-            writer.writerow([node_name, *(distributions[node_name][expert_id] for expert_id in range(num_experts))])
+        writer.writerow(["node_index", "node_type", "node_name", *range(num_experts)])
+        for identity in sorted(distributions, key=node_sort_key):
+            writer.writerow(
+                [*node_csv_fields(identity), *(distributions[identity][expert_id] for expert_id in range(num_experts))]
+            )
 
 
 def rank_experts_by_frequency(distributions, num_experts):
     return {
-        node_name: sorted(
+        identity: sorted(
             range(num_experts),
             key=lambda expert_id: (-counts[expert_id], expert_id),
         )
-        for node_name, counts in distributions.items()
+        for identity, counts in distributions.items()
     }
 
 
@@ -297,9 +333,9 @@ def expert_rank_threshold_counts(positions, num_experts):
 def write_qmoe_ranked_experts_csv(path, rankings):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["qmoe", "expert_ids_by_decreasing_frequency"])
-        for node_name in sorted(rankings, key=layer_sort_key):
-            writer.writerow([node_name, json.dumps(rankings[node_name], separators=(",", ":"))])
+        writer.writerow(["node_index", "node_type", "node_name", "expert_ids_by_decreasing_frequency"])
+        for identity in sorted(rankings, key=node_sort_key):
+            writer.writerow([*node_csv_fields(identity), json.dumps(rankings[identity], separators=(",", ":"))])
 
 
 def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, num_experts):
@@ -311,7 +347,9 @@ def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, nu
                 "prompt_index",
                 "prompt",
                 "inference_index",
-                "qmoe",
+                "node_index",
+                "node_type",
+                "node_name",
                 "num_rows",
                 "top_k",
                 "selected_expert_ids",
@@ -321,18 +359,18 @@ def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, nu
             ]
         )
         for prompt_index, event in iter_routing_events(log_path):
-            node_name = event["node_name"]
-            key = (prompt_index, node_name)
+            identity = node_identity(event)
+            key = (prompt_index, identity)
             inference_indexes[key] += 1
             expert_ids = inference_expert_ids(event)
-            positions = expert_rank_positions(expert_ids, rankings[node_name])
+            positions = expert_rank_positions(expert_ids, rankings[identity])
             threshold_counts = expert_rank_threshold_counts(positions, num_experts)
             writer.writerow(
                 [
                     prompt_index,
                     prompt_labels.get(prompt_index, ""),
                     inference_indexes[key],
-                    node_name,
+                    *node_csv_fields(identity),
                     event["num_rows"],
                     event["top_k"],
                     json.dumps(expert_ids, separators=(",", ":")),
@@ -347,19 +385,23 @@ def aggregate_rank_thresholds_by_qmoe(log_path, rankings, num_experts):
     inference_counts = Counter()
     threshold_totals = defaultdict(lambda: [0] * num_experts)
     for _, event in iter_routing_events(log_path):
-        node_name = event["node_name"]
+        identity = node_identity(event)
         expert_ids = inference_expert_ids(event)
-        positions = expert_rank_positions(expert_ids, rankings[node_name])
-        inference_counts[node_name] += 1
+        positions = expert_rank_positions(expert_ids, rankings[identity])
+        inference_counts[identity] += 1
         for index, count in enumerate(expert_rank_threshold_counts(positions, num_experts)):
-            threshold_totals[node_name][index] += count
+            threshold_totals[identity][index] += count
     return inference_counts, threshold_totals
 
 
 def load_qmoe_model_metadata(model_path):
     model = onnx.load(model_path, load_external_data=False)
     initializers = {initializer.name: initializer for initializer in model.graph.initializer}
-    qmoe_nodes = {node.name: node for node in model.graph.node if node.op_type == "QMoE"}
+    qmoe_nodes = {
+        (node_index, node.op_type, node.name): node
+        for node_index, node in enumerate(model.graph.node)
+        if node.op_type == "QMoE"
+    }
     expert_counts = {
         initializer.dims[0]
         for node in qmoe_nodes.values()
@@ -386,12 +428,12 @@ def _external_data_integer(external_data, key, initializer_name):
     return value
 
 
-def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_experts, model_path=None):
+def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_experts, model_path=None):
     expert_bytes = {}
-    for node_name in node_names:
-        node = qmoe_nodes.get(node_name)
+    for identity in node_identities:
+        node = qmoe_nodes.get(identity)
         if node is None:
-            raise ValueError(f"QMoE node from log not found in model: {node_name}")
+            raise ValueError(f"QMoE node from log not found in model: {node_display_name(identity)}")
 
         total_bytes = 0
         for input_name in node.input:
@@ -424,8 +466,8 @@ def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_expert
                 raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
             total_bytes += tensor_bytes // num_experts
         if total_bytes == 0:
-            raise ValueError(f"No expert initializers found for QMoE node: {node_name}")
-        expert_bytes[node_name] = total_bytes
+            raise ValueError(f"No expert initializers found for QMoE node: {node_display_name(identity)}")
+        expert_bytes[identity] = total_bytes
     return expert_bytes
 
 
@@ -451,22 +493,26 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         writer = csv.writer(stream)
         writer.writerow(
             [
-                "qmoe",
+                "node_index",
+                "node_type",
+                "node_name",
                 "inference_count",
                 *(f"experts_rank_ge_{threshold}" for threshold in range(num_experts)),
             ]
         )
-        for node_name in sorted(threshold_totals, key=layer_sort_key):
+        for identity in sorted(threshold_totals, key=node_sort_key):
             writer.writerow(
                 [
-                    node_name,
-                    inference_counts[node_name],
-                    *threshold_totals[node_name],
+                    *node_csv_fields(identity),
+                    inference_counts[identity],
+                    *threshold_totals[identity],
                 ]
             )
-        writer.writerow(["TOTAL", *total_values])
+        writer.writerow(["", "", "TOTAL", *total_values])
         writer.writerow(
             [
+                "",
+                "",
                 "TOTAL_NORMALIZED",
                 *(value / maximum for value in total_values),
             ]
@@ -474,6 +520,8 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         bytes_per_rank = sum(expert_bytes.values())
         writer.writerow(
             [
+                "",
+                "",
                 "QMOE_EXPERT_BYTES",
                 0,
                 *(rank * bytes_per_rank for rank in range(num_experts)),
@@ -482,6 +530,8 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         maximum_expert_bytes = num_experts * bytes_per_rank
         writer.writerow(
             [
+                "",
+                "",
                 "QMOE_EXPERT_BYTES_COMPLEMENT",
                 0,
                 *((num_experts - rank) * bytes_per_rank for rank in range(num_experts)),
@@ -489,6 +539,8 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         )
         writer.writerow(
             [
+                "",
+                "",
                 "QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
                 0.0,
                 *(
@@ -547,18 +599,19 @@ def write_normalized_comparison_plot(path, total_normalized, expert_bytes_comple
 def write_selected_layers_rank_plot(path, threshold_totals):
     import matplotlib.pyplot as plt  # noqa: PLC0415 - Only plotting requires matplotlib.
 
-    node_names = sorted(threshold_totals, key=layer_sort_key)
-    if len(node_names) > MAX_PLOTTED_LAYERS:
-        node_names = [
-            node_names[round(index * (len(node_names) - 1) / (MAX_PLOTTED_LAYERS - 1))]
+    identities = sorted(threshold_totals, key=node_sort_key)
+    if len(identities) > MAX_PLOTTED_LAYERS:
+        identities = [
+            identities[round(index * (len(identities) - 1) / (MAX_PLOTTED_LAYERS - 1))]
             for index in range(MAX_PLOTTED_LAYERS)
         ]
 
     figure, axes = plt.subplots(figsize=(10, 6))
-    for node_name in node_names:
-        values = threshold_totals[node_name]
+    for identity in identities:
+        values = threshold_totals[identity]
         maximum = max(values)
         normalized = [value / maximum for value in values]
+        node_name = node_display_name(identity)
         match = LAYER_NUMBER.search(node_name)
         label = f"Layer {match.group(1)}" if match else node_name
         axes.plot(

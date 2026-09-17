@@ -1442,6 +1442,7 @@ struct ProviderHost {
       const TimePoint& end_time,
       const std::string& node_name,
       NodeIndex node_index,
+      const std::string& node_type,
       std::string expert_ids_json,
       std::string router_weights_json,
       int64_t num_rows,

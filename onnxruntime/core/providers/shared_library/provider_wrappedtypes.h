@@ -1312,6 +1312,7 @@ class RunInstrumentationContext final {
                              const TimePoint& end_time,
                              const std::string& node_name,
                              NodeIndex node_index,
+                             const std::string& node_type,
                              std::string expert_ids_json,
                              std::string router_weights_json,
                              int64_t num_rows,
@@ -1320,7 +1321,7 @@ class RunInstrumentationContext final {
                              int64_t completion_ns,
                              const std::string& completion_timestamp_source) const {
     g_host->RunInstrumentationContext__RecordMoeRoutingEvent(
-        this, start_time, end_time, node_name, node_index,
+        this, start_time, end_time, node_name, node_index, node_type,
         std::move(expert_ids_json), std::move(router_weights_json),
         num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
   }

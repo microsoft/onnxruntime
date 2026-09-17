@@ -2983,7 +2983,8 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
     bool enable_moe_statistics,
     const std::vector<int64_t>& input_shape,
     OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
-    std::string_view expected_error = "") {
+    std::string_view expected_error = "",
+    int64_t top_k = 1) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 4;
@@ -3001,7 +3002,7 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
       6.970291f, 6.970291f, 6.970291f, 6.970291f};
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<int64_t>("k", top_k);
   tester.AddAttribute<std::string>("activation_type", "swiglu");
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("swiglu_fusion", 1);
@@ -3036,19 +3037,23 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
 }
 
 TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
-  const auto routing_events = RunMoECpuLoggingTest(true, {1, 2, 4});
+  const auto routing_events = RunMoECpuLoggingTest(
+      true, {1, 2, 4}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
-  ASSERT_EQ(event["router_weights"].size(), 2U);
-  EXPECT_FLOAT_EQ(event["router_weights"][0].get<float>(), 1.0f);
-  EXPECT_FLOAT_EQ(event["router_weights"][1].get<float>(), 1.0f);
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
+  ASSERT_EQ(event["router_weights"].size(), 4U);
+  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6456563f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3543437f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.5986876f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.4013123f, 1e-6f);
   EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 1);
+  EXPECT_EQ(event["top_k"], 2);
   EXPECT_EQ(event["execution_device_id"], -1);
   EXPECT_TRUE(event.contains("node_index"));
   EXPECT_TRUE(event.contains("node_name"));
+  EXPECT_EQ(event["node_type"], "MoE");
 }
 
 TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
@@ -3064,7 +3069,8 @@ TEST(MoETest, MoECpuRoutingLogRejectsBatchGreaterThanOne) {
 static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
     const std::vector<int64_t>& input_shape,
     OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
-    std::string_view expected_error = "") {
+    std::string_view expected_error = "",
+    int64_t top_k = 1) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 32;
@@ -3072,7 +3078,7 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
   constexpr int pack_size = 2;
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<int64_t>("k", top_k);
   tester.AddAttribute<std::string>("activation_type", "swiglu");
   tester.AddAttribute<int64_t>("swiglu_fusion", 1);
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
@@ -3114,15 +3120,21 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
 }
 
 TEST(MoETest, QMoECpuRoutingLogHasDecisionSchema) {
-  const auto routing_events = RunQMoECpuLoggingTest({1, 2, 32});
+  const auto routing_events = RunQMoECpuLoggingTest(
+      {1, 2, 32}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cpu qmoe request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({1, 0}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f}));
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({1, 0, 0, 1}));
+  ASSERT_EQ(event["router_weights"].size(), 4U);
+  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6899745f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3100255f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.6456563f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.3543437f, 1e-3f);
   EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 1);
+  EXPECT_EQ(event["top_k"], 2);
   EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_EQ(event["node_type"], "QMoE");
 }
 
 TEST(MoETest, QMoECpuRoutingLogRejectsBatchGreaterThanOne) {
@@ -3134,13 +3146,14 @@ TEST(MoETest, QMoECpuRoutingLogRejectsBatchGreaterThanOne) {
 #ifdef USE_CUDA
 static void ConfigureCudaMoeRoutingTester(
     OpTester& tester,
-    const std::vector<int64_t>& input_shape = {2, kMoEMinCudaDim}) {
+    const std::vector<int64_t>& input_shape = {2, kMoEMinCudaDim},
+    int64_t top_k = 1) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = kMoEMinCudaDim;
   constexpr int inter_size = kMoEMinCudaDim;
 
-  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<int64_t>("k", top_k);
   tester.AddAttribute<std::string>("activation_type", "relu");
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddInput<float>("input_ids", input_shape,
@@ -3170,7 +3183,7 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   }
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
-  ConfigureCudaMoeRoutingTester(tester);
+  ConfigureCudaMoeRoutingTester(tester, {2, kMoEMinCudaDim}, 2);
 
   SessionOptions session_options;
   session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
@@ -3187,9 +3200,16 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cuda request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f}));
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
+  ASSERT_EQ(event["router_weights"].size(), 4U);
+  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-6f);
+  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-6f);
+  EXPECT_EQ(event["num_rows"], 2);
+  EXPECT_EQ(event["top_k"], 2);
   EXPECT_GE(event["execution_device_id"].get<int>(), 0);
+  EXPECT_EQ(event["node_type"], "MoE");
 }
 
 TEST(MoETest, MoECudaRoutingLogRejectsBatchGreaterThanOne) {
@@ -3234,7 +3254,7 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   constexpr int pack_size = 2;
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<int64_t>("k", 2);
   tester.AddAttribute<std::string>("activation_type", "relu");
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("expert_weight_bits", 4);
@@ -3277,10 +3297,17 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "qmoe tiled request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 0}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f, 1.0f}));
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0, 0, 1}));
+  ASSERT_EQ(event["router_weights"].size(), 6U);
+  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][4].get<float>(), 0.9820138f, 1e-3f);
+  EXPECT_NEAR(event["router_weights"][5].get<float>(), 0.0179862f, 1e-3f);
   EXPECT_EQ(event["num_rows"], 3);
-  EXPECT_EQ(event["top_k"], 1);
+  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["node_type"], "QMoE");
 }
 
 TEST(MoETest, QMoECudaRoutingLogRejectsBatchGreaterThanOne) {

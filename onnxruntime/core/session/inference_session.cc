@@ -2717,7 +2717,6 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
-#if !defined(ORT_MINIMAL_BUILD)
     const std::string& enable_moe_statistics =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
     if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
@@ -2726,6 +2725,13 @@ common::Status InferenceSession::Initialize() {
           " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
     }
     const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
+#if defined(ORT_MINIMAL_BUILD)
+    if (enable_moe_expert_statistics) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          "=1 is not supported in a minimal build.");
+    }
+#else
     if (enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
         if (execution_provider->Type() == kCudaExecutionProvider &&
@@ -2741,7 +2747,7 @@ common::Status InferenceSession::Initialize() {
         }
       }
     }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
