@@ -254,7 +254,8 @@ template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
                   bool use_webgpu = false, bool omit_final_state = false,
-                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr) {
+                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr,
+                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -262,6 +263,25 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   std::vector<float> ref_out, ref_state;
   Reference(g, o, in, &ref_out, &ref_state);
+
+  std::unique_ptr<IExecutionProvider> webgpu_ep;
+  if (use_webgpu) {
+#ifdef USE_WEBGPU
+    if (test_max_storage_buffer_binding_size != 0) {
+      ORT_ENFORCE(webgpu_config != nullptr);
+      webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+          *webgpu_config, test_max_storage_buffer_binding_size);
+    } else {
+      webgpu_ep = webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
+                                           : DefaultWebGpuExecutionProvider();
+    }
+#else
+    webgpu_ep = DefaultWebGpuExecutionProvider();
+#endif
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+  }
 
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
   AddCommonAttrs(test, o);
@@ -340,12 +360,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   if (use_webgpu) {
-#ifdef USE_WEBGPU
-    eps.push_back(webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
-                                           : DefaultWebGpuExecutionProvider());
-#else
-    eps.push_back(DefaultWebGpuExecutionProvider());
-#endif
+    eps.push_back(std::move(webgpu_ep));
   } else {
     eps.push_back(DefaultCudaExecutionProvider());
   }
@@ -500,11 +515,10 @@ TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
   ASSERT_GT(value_view_offset, key_view_offset);
 
   ConfigOptions config_options;
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "256"));
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
   RunTypedCase<float>(g, options, inputs, 5e-4f, 5e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
-                      /*omit_final_state=*/false, &config_options);
+                      /*omit_final_state=*/false, &config_options, max_binding_size);
 }
 
 TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {

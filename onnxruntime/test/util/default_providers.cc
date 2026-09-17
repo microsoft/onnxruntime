@@ -420,9 +420,15 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 }
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(uint64_t max_size) {
+  return WebGpuExecutionProviderWithTestStorageBufferBindingSize(ConfigOptions{}, max_size);
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+    const ConfigOptions& config_options, uint64_t max_size) {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-  return WebGpuProviderFactoryCreator::CreateForTesting(ConfigOptions{}, max_size)->CreateProvider();
+  return WebGpuProviderFactoryCreator::CreateForTesting(config_options, max_size)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(config_options);
   ORT_UNUSED_PARAMETER(max_size);
   return nullptr;
 #endif
