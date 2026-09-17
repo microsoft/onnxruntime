@@ -27,6 +27,7 @@ class DynamicSparseAttention final : public onnxruntime::cuda::CudaKernel {
   bool rotary_interleaved_;
   bool use_smooth_softmax_;
   bool auxiliary_kv_shared_;
+  bool strict_validation_;
   DynamicSparseAttentionMode attention_mode_;
   DynamicSparseAttentionKvSource selected_kv_source_;
 };

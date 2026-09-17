@@ -9,6 +9,7 @@
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h"
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -40,6 +41,9 @@ REGISTER_KERNEL_TYPED(BFloat16)
 #undef REGISTER_KERNEL_TYPED
 
 namespace {
+
+// Enables synchronous device metadata checks for diagnosing malformed standalone inputs.
+constexpr const char* kStrictValidation = "ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION";
 
 DynamicSparseAttentionMode ParseAttentionMode(const std::string& value) {
   ORT_ENFORCE(value == "selected_only" || value == "local_plus_selected",
@@ -98,6 +102,7 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
   use_smooth_softmax_ = ParseBoolAttribute(info, "smooth_softmax", 0);
   auxiliary_kv_shared_ = ParseBoolAttribute(info, "auxiliary_kv_shared", 0);
+  strict_validation_ = ParseEnvironmentVariableWithDefault<bool>(kStrictValidation, false);
   attention_mode_ = ParseAttentionMode(
       info.GetAttrOrDefault<std::string>("attention_mode", "selected_only"));
   selected_kv_source_ = ParseKvSource(
@@ -196,21 +201,36 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
 
   cudaStream_t stream = Stream(context);
-  auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
-  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
-  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
-  ORT_RETURN_IF_NOT(
-      capture_status == cudaStreamCaptureStatusNone,
-      "DynamicSparseAttention metadata validation cannot run during CUDA graph capture.");
-  ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
-      stream, data.selected_indices, data.selected_counts, data.seqlens_k,
-      data.position_ids, parameters, validation_error.get(), true));
+  if (strict_validation_) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+    ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                      "DynamicSparseAttention strict validation is not supported during CUDA graph capture.");
+
+    auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    const size_t validation_workspace_elements =
+        GetDynamicSparseAttentionValidationWorkspaceSize(
+            parameters, GetDeviceProp().sharedMemPerBlock);
+    auto validation_workspace =
+        GetScratchBuffer<uint32_t>(validation_workspace_elements, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
+        stream, data.selected_indices, data.selected_counts, data.seqlens_k,
+        data.position_ids, parameters, validation_error.get(), validation_workspace.get(),
+        GetDeviceProp().sharedMemPerBlock, true));
+  }
+
+  const size_t attention_workspace_elements =
+      GetDynamicSparseAttentionWorkspaceSize(
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock);
+  auto attention_workspace =
+      GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
+  data.attention_workspace = attention_workspace.get();
 
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;
   return LaunchDynamicSparseAttention<CudaT>(
       stream, parameters, data, initialize_key_cache, initialize_value_cache,
-      GetDeviceProp().maxThreadsPerBlock);
+      GetDeviceProp().maxThreadsPerBlock, GetDeviceProp().sharedMemPerBlock);
 }
 
 template class DynamicSparseAttention<float>;
