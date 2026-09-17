@@ -149,6 +149,16 @@ def run_subprocess(
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
+def get_onnx_backend_test_environment():
+    if "ALLOW_RELEASED_ONNX_OPSET_ONLY" not in os.environ:
+        return {}
+
+    return {
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+    }
+
+
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
@@ -2042,12 +2052,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        # The materialized node corpus includes in-development ONNX opsets.
+                        # Strict-mode CI legs need the materialized corpus's in-development opsets.
                         run_subprocess(
                             [sys.executable, "onnx_backend_test_series.py"],
                             cwd=cwd,
                             dll_path=dll_path,
-                            env={"ALLOW_RELEASED_ONNX_OPSET_ONLY": "0"},
+                            env=get_onnx_backend_test_environment(),
                         )
 
             if not args.skip_keras_test:

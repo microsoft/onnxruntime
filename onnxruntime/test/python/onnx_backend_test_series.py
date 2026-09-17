@@ -19,7 +19,7 @@ import onnx.defs
 import onnxruntime.backend as backend  # pylint: disable=consider-using-from-import
 from onnxruntime.backend.backend import OnnxRuntimeBackend
 
-if OnnxRuntimeBackend.allowReleasedOpsetsOnly:
+if os.getenv("ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS") == "1" and OnnxRuntimeBackend.allowReleasedOpsetsOnly:
     raise RuntimeError(
         "onnx_backend_test_series requires ALLOW_RELEASED_ONNX_OPSET_ONLY=0 before importing onnxruntime.backend."
     )
