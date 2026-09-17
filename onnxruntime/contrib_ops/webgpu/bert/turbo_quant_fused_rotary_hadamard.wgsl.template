@@ -60,7 +60,9 @@ $MAIN {
 
   // Compute the logical total sequence length for this batch.
 #if use_seqlen_k
-  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
+  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
+  let per_batch_total_seq_length =
+  min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -77,6 +79,7 @@ $MAIN {
 #else
   let base_position = 0u;
 #endif
+  let max_rotary_position = min(uniforms.cos_cache_shape[0], uniforms.sin_cache_shape[0]);
 
   // Prepare indirect dispatch buffer (first workgroup, first thread only).
 #if prepare_indirect_dispatch
@@ -107,11 +110,17 @@ $MAIN {
 
     // Position index for rotary embedding cos/sin lookup.
     let seq_position_id = past_seq_length + seq;
+    let valid_rotary_position =
+        base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
     // Apply rotary embedding: rotate first HALF_ROTARY_DIM pairs.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
-      let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      var cos_v = cos_cache_value_t(1);
+      var sin_v = cos_cache_value_t(0);
+      if (valid_rotary_position) {
+        cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+        sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      }
 
       let q_i = packed_qkv.getByOffset(q_src_base + i);
       let q_j = packed_qkv.getByOffset(q_src_base + i + HALF_ROTARY_DIM);
@@ -162,13 +171,19 @@ $MAIN {
 
   // Position index for rotary embedding cos/sin lookup (K only).
   let seq_position_id = past_seq_length + seq;
+  let valid_rotary_position =
+      base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
   // Load from packed QKV into shared memory (f32). K gets rotary, V loads directly.
   if (!is_value) {
     // K path: apply rotary embedding during load.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
-      let sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      var cos_v = 1.0f;
+      var sin_v = 0.0f;
+      if (valid_rotary_position) {
+        cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+        sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      }
 
       let k_i = f32(packed_qkv.getByOffset(src_base + i));
       let k_j = f32(packed_qkv.getByOffset(src_base + i + HALF_ROTARY_DIM));

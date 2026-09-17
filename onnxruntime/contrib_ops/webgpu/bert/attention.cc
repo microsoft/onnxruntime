@@ -118,8 +118,10 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 
 void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   if (has_seqlen_k) {
-    ss << "total_sequence_length = u32(seqlen_k[batch_idx]) + 1;\n";
-    ss << "var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);\n";
+    ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
+    ss << "let source_sequence_length = uniforms.past_sequence_length + uniforms.kv_sequence_length;\n";
+    ss << "total_sequence_length = min(raw_total_sequence_length, min(source_sequence_length, uniforms.present_sequence_length));\n";
+    ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
   }
@@ -432,7 +434,9 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink, int local_window_size) {
+                             int32_t kv_sequence_length, int32_t present_sequence_length, const Tensor* seqlen_k,
+                             bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink,
+                             int local_window_size) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -455,6 +459,8 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
                             {static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(kv_sequence_length)},
+                            {static_cast<uint32_t>(present_sequence_length)},
                             {static_cast<uint32_t>(sequence_length)},
                             {static_cast<uint32_t>(total_sequence_length_comp)},
                             {static_cast<uint32_t>(elementsPerThread)},
@@ -622,7 +628,12 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   }
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink, local_window_size));
+                                            parameters.batch_size_, parameters.num_heads_,
+                                            parameters.past_sequence_length_, parameters.sequence_length_,
+                                            total_sequence_length, parameters.kv_sequence_length_,
+                                            parameters.seqlen_present_kv_cache_, seqlen_k,
+                                            parameters.is_first_prompt_, parameters.use_smooth_softmax_,
+                                            head_sink, local_window_size));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));

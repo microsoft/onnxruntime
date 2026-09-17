@@ -3906,25 +3906,43 @@ static void RunOnWebGpu(OpTester& tester, std::unique_ptr<IExecutionProvider> we
   tester.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
-static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(
+    bool enable_graph_capture,
+    uint32_t kv_cache_quant_bits,
+    uint32_t multi_rotary_cache_concat_offset);
+
+static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k,
+                                      uint32_t kv_cache_quant_bits = 0,
+                                      bool smooth_softmax = false,
+                                      int sequence_length = 2,
+                                      int past_seq_len = 4,
+                                      int present_seq_len = -1) {
+  auto webgpu_ep = WebGpuEPForGqaOptions(
+      /*enable_graph_capture=*/false, kv_cache_quant_bits,
+      /*multi_rotary_cache_concat_offset=*/0);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
 
   constexpr int batch_size = 1;
-  constexpr int sequence_length = 2;
-  constexpr int past_seq_len = 4;
   constexpr int num_heads = 2;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
-  constexpr int present_seq_len = past_seq_len + sequence_length;
+  const int cache_head_size = kv_cache_quant_bits == 0
+                                  ? head_size
+                                  : (head_size * static_cast<int>(kv_cache_quant_bits) + 32) / 32;
+  if (present_seq_len < 0) {
+    present_seq_len = past_seq_len + sequence_length;
+  }
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", num_heads);
   tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (smooth_softmax) {
+    tester.AddAttribute<int64_t>("smooth_softmax", 1);
+  }
 
   tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
@@ -3932,10 +3950,10 @@ static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k) {
                          std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
   tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
                          std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
-  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size},
-                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * head_size, 0.4f));
-  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
-                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * head_size, 0.5f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.4f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.5f));
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seqlens_k});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {present_seq_len}, /*is_initializer=*/true);
 
@@ -3945,18 +3963,18 @@ static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k) {
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
 
-  constexpr int output_size = batch_size * sequence_length * hidden_size;
+  const int output_size = batch_size * sequence_length * hidden_size;
   tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
                           std::vector<float>(output_size, 0.0f));
-  constexpr int present_size = batch_size * kv_num_heads * present_seq_len * head_size;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, head_size},
+  const int present_size = batch_size * kv_num_heads * present_seq_len * cache_head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
                           std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, head_size},
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
                           std::vector<float>(present_size, 0.0f));
 
   tester.SetOutputTolerance(1e6f);
-  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
-                                    const std::string& /*provider*/) {
+  tester.SetCustomOutputVerifier([output_size](const std::vector<OrtValue>& fetches,
+                                               const std::string& /*provider*/) {
     ASSERT_FALSE(fetches.empty());
     ASSERT_TRUE(fetches[0].IsTensor());
     EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), static_cast<int64_t>(output_size));
@@ -4027,6 +4045,33 @@ TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU) {
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU) {
   RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1);
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_ShortPastLargePresent_NoOOB_WebGPU) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/50, /*kv_cache_quant_bits=*/0,
+                            /*smooth_softmax=*/false, /*sequence_length=*/1,
+                            /*past_seq_len=*/2, /*present_seq_len=*/100);
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/4);
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/8);
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1, /*kv_cache_quant_bits=*/4);
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1, /*kv_cache_quant_bits=*/8);
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
+  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/0,
+                            /*smooth_softmax=*/true);
 }
 
 TEST(GroupQueryAttentionTest, PackedRotaryAsymmetricCaches_NoOOB_WebGPU) {
@@ -4497,6 +4542,30 @@ TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
 TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
   RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
                                   /*kv_cache_quant_bits=*/0,
+                                  /*enable_multi_rotary_cache=*/false,
+                                  /*rotary_interleaved=*/false,
+                                  /*sequence_length=*/4,
+                                  /*local_window_size=*/-1,
+                                  /*enable_graph_capture=*/true,
+                                  /*replay_output=*/nullptr,
+                                  /*use_asymmetric_rotary_caches=*/true);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*kv_cache_quant_bits=*/4,
+                                  /*enable_multi_rotary_cache=*/false,
+                                  /*rotary_interleaved=*/false,
+                                  /*sequence_length=*/4,
+                                  /*local_window_size=*/-1,
+                                  /*enable_graph_capture=*/true,
+                                  /*replay_output=*/nullptr,
+                                  /*use_asymmetric_rotary_caches=*/true);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*kv_cache_quant_bits=*/8,
                                   /*enable_multi_rotary_cache=*/false,
                                   /*rotary_interleaved=*/false,
                                   /*sequence_length=*/4,

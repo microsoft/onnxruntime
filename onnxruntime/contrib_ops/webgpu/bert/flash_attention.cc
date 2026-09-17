@@ -257,7 +257,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let batch = output_indices[0];\n";
   if (use_seqlen_k_) {
     shader.MainFunctionBody() << "  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;\n"
-                              << "  let total_seq_length = min(max(raw_total_seq_length, uniforms.kv_sequence_length), uniforms.present_sequence_length);\n";
+                              << "  let source_sequence_length = uniforms.past_sequence_length + uniforms.kv_sequence_length;\n"
+                              << "  let total_seq_length = min(max(raw_total_seq_length, uniforms.kv_sequence_length), min(source_sequence_length, uniforms.present_sequence_length));\n";
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
@@ -376,6 +377,10 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {has_past ? static_cast<uint32_t>(past_key->Shape()[2])
+                                      : (parameters.past_present_share_buffer_
+                                             ? static_cast<uint32_t>(present_key->Shape()[2])
+                                             : 0u)},
                             {static_cast<uint32_t>(present_key->Shape()[2])},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)},
