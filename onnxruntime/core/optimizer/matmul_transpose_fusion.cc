@@ -180,10 +180,16 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   new_transpose.SetExecutionProviderType(transpose->GetExecutionProviderType());
 
   size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
+  const NodeIndex cast_index = cast->Index();
+  const NodeIndex transpose_index = transpose->Index();
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
-  graph.RemoveNode(cast->Index());
+  graph.RemoveNode(cast_index);
+  graph.NotifyNodeReplacement(
+      gsl::span<const NodeIndex>{&cast_index, 1}, new_cast.Index());
   if (consumers == 0) {
-    removed_nodes.push_front(transpose->Index());
+    graph.NotifyNodeReplacement(
+        gsl::span<const NodeIndex>{&transpose_index, 1}, new_transpose.Index());
+    removed_nodes.push_front(transpose_index);
   }
   return &new_transpose;
 }
@@ -383,17 +389,23 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
+    bool remove_left = false;
     if (left) {
       size_t left_consumers = UpdateConsumerCount(graph, left_input, consumer_count);
-      if (left_consumers == 0)
+      if (left_consumers == 0) {
         removed_nodes.push_front(left->Index());
+        remove_left = true;
+      }
       left_input = left->MutableInputDefs()[0];
     }
 
+    bool remove_right = false;
     if (right) {
       size_t right_consumers = UpdateConsumerCount(graph, right_input, consumer_count);
-      if (right_consumers == 0)
+      if (right_consumers == 0) {
         removed_nodes.push_front(right->Index());
+        remove_right = true;
+      }
       right_input = right->MutableInputDefs()[0];
     }
 
@@ -422,6 +434,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
+    InlinedVector<NodeIndex> transpose_node_indices;
+    if (remove_left) {
+      transpose_node_indices.push_back(left->Index());
+    }
+    if (remove_right) {
+      transpose_node_indices.push_back(right->Index());
+    }
+    graph.NotifyNodeReplacement(transpose_node_indices, matmul_node.Index());
 
     modified = true;
   }

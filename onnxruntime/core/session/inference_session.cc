@@ -1372,8 +1372,9 @@ Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layou
 
   if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid value for session option 'session.gqa_value_layout': '", layout,
-                           "'. Expected 'BNSH' or 'BNHS'.");
+                           "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout,
+                           "': '", layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS,
+                           "'.");
   }
 
   return Status::OK();
@@ -1868,11 +1869,63 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+  WorkspaceReservationMap workspace_reservations;
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn));
+                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       &workspace_reservations));
+  graph.SetNodeReplacementCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> source_node_indices,
+                                NodeIndex destination_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it != workspace_reservations.end()) {
+          ConsolidateWorkspaceReservations(
+              graph_it->second, source_node_indices, destination_node_index);
+        }
+      });
+  graph.SetNodeRemovalCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> node_indices) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        for (const NodeIndex node_index : node_indices) {
+          graph_it->second.erase(node_index);
+        }
+
+        if (graph_it->second.empty()) {
+          workspace_reservations.erase(graph_it);
+        }
+      });
+#ifdef ENABLE_TRAINING
+  graph.SetNodeCloneCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                NodeIndex source_node_index,
+                                NodeIndex cloned_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        const auto source_it = graph_it->second.find(source_node_index);
+        if (source_it != graph_it->second.end()) {
+          graph_it->second.insert_or_assign(cloned_node_index, source_it->second);
+        }
+      });
+#endif
+  auto clear_node_mutation_callbacks =
+      gsl::finally([&graph]() {
+        graph.SetNodeReplacementCallback({});
+        graph.SetNodeRemovalCallback({});
+#ifdef ENABLE_TRAINING
+        graph.SetNodeCloneCallback({});
+#endif
+      });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA
@@ -2035,6 +2088,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
   }
 
+  session_state_->SetWorkspaceReservations(std::move(workspace_reservations));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -2502,8 +2556,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                         gqa_value_layout_explicitly_set));
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Session option 'session.gqa_value_layout' is not supported for ORT format models. "
-                           "Apply the Value layout transform when "
+                           "Session option '", kOrtSessionOptionsGqaValueLayout,
+                           "' is not supported for ORT format models. Apply the Value layout transform when "
                            "converting the model to ORT format and load it without setting this option, or load the "
                            "ONNX model instead.");
   }
@@ -2524,8 +2578,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
         "This ORT format model already carries the BNHS GroupQueryAttention Value layout. "
-        "It cannot be loaded with 'session.gqa_value_layout' set to 'BNSH', because the application "
-        "would bind BNSH buffers to a BNHS boundary. "
+        "It cannot be loaded with '",
+        kOrtSessionOptionsGqaValueLayout, "' set to '", kGqaValueLayoutBNSH,
+        "', because the application would bind BNSH buffers to a BNHS boundary. "
         "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
   }
 #endif
@@ -2864,6 +2919,16 @@ common::Status InferenceSession::Initialize() {
       }
       return false;
     }();
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    ORT_RETURN_IF(
+        loading_ort_format &&
+            session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1",
+        "session.strict_workspace_verification is not supported when loading an ORT format model because "
+        "partition-time workspace reservations are not serialized in the model. Load the ONNX model to use "
+        "strict workspace verification.");
+#endif
 
     if (!loading_ort_format) {
 #if !defined(ORT_MINIMAL_BUILD)

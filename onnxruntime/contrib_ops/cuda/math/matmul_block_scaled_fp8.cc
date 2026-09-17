@@ -45,7 +45,8 @@ ONNX_OPERATOR_KERNEL_EX(
 MatMulBlockQuantizedFp8Weight::MatMulBlockQuantizedFp8Weight(const OpKernelInfo& info)
     : CudaKernel(info),
       block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
-      max_dequant_scratch_bytes_(DequantScratchLimitBytes()) {
+      max_dequant_scratch_bytes_(DequantScratchLimitBytes()),
+      enable_deep_gemm_(ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_MATMUL_DEEPGEMM", false)) {
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive.");
 }
 
@@ -126,6 +127,44 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
                         m_i <= MatMulBlockScaledFp8GemvMaxM(k_i, SafeInt<int>(block_size_), GetDeviceProp()) &&
                         (k_i % 16 == 0) && (block_size_ % 16 == 0);
   const bool fuse_act_qdq = use_gemv && !FusedFp8ActivationQdqDisabled();
+
+#if defined(USE_DEEP_GEMM)
+  // Native FP8 changes intermediate rounding, so it is opt-in and requires the model's
+  // activation scale. Keep the tuned small-M path and unsupported layouts on the fallback.
+  if (enable_deep_gemm_ && !use_gemv && a_scale != nullptr && block_size_ == 128 &&
+      GetDeviceProp().major == 9 && GetDeviceProp().minor == 0 &&
+      k_i % 128 == 0 && n_i % 64 == 0 && n_i >= 2048 &&
+      SafeInt<size_t>(n_i) * k_i >= 8 * 1024 * 1024 &&
+      m_i <= 128) {
+    const size_t rows_per_tile = max_dequant_scratch_bytes_ / (SafeInt<size_t>(m_i) * sizeof(float));
+    const int tile_n = static_cast<int>(std::min<size_t>(n_i, rows_per_tile / 64 * 64));
+    if (tile_n > 0) {
+      LOGS_DEFAULT(VERBOSE) << "MatMulBlockQuantizedFp8Weight: using SM90 DeepGEMM";
+      const int aligned_m = (m_i + 3) / 4 * 4;
+      auto* stream = GetComputeStream(context);
+      auto a_quant = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * k_i, stream);
+      auto a_scales = GetScratchBuffer<float>(SafeInt<size_t>(aligned_m) * (k_i / 128), stream);
+      auto packed_b_scales = GetScratchBuffer<float>(SafeInt<size_t>(tile_n) * (k_i / 128), stream);
+      auto accum = GetScratchBuffer<float>(SafeInt<size_t>(m_i) * tile_n, stream);
+      ORT_RETURN_IF_ERROR(LaunchPrepareMatMulFp8DeepGemm(
+          a_quant.get(), a_scales.get(), a->DataRaw(), a_scale->Data<float>(),
+          m_i, k_i, aligned_m, std::is_same<T, BFloat16>::value, Stream(context)));
+      for (int64_t offset = 0; offset < n_i; offset += tile_n) {
+        const int rows = static_cast<int>(std::min<int64_t>(tile_n, n_i - offset));
+        const size_t weight_offset = SafeInt<size_t>(offset) * k_i;
+        const size_t scale_offset = SafeInt<size_t>(offset) * (k_i / 128);
+        ORT_RETURN_IF_ERROR(LaunchMatMulFp8DeepGemm(
+            Y->MutableData<T>() + offset, a_quant.get(), a_scales.get(),
+            static_cast<const uint8_t*>(b->DataRaw()) + weight_offset,
+            b_scale->Data<float>() + scale_offset,
+            bias != nullptr ? bias->Data<T>() + offset : nullptr,
+            packed_b_scales.get(), accum.get(), m_i, rows, k_i, aligned_m, n_i,
+            std::is_same<T, BFloat16>::value, GetDeviceProp().multiProcessorCount, Stream(context)));
+      }
+      return Status::OK();
+    }
+  }
+#endif
 
   const void* a_ptr = a->DataRaw();
   IAllocatorUniquePtr<CudaT> a_dequant;
