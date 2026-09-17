@@ -302,6 +302,17 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
         *cuda_ep->GetAttentionKernelOptions(),
         /*head_sink_is_constant_initializer=*/true);
     ASSERT_TRUE(estimate.has_value());
+
+    auto prepacked_config = Config();
+    prepacked_config.head_sink_is_prepacked = true;
+    prepacked_config.head_sink_may_be_prepacked = true;
+    const auto prepacked = EstimateGroupQueryAttentionWorkspace(
+        prepacked_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+        *cuda_ep->GetAttentionKernelOptions());
+    ASSERT_TRUE(prepacked.has_value());
+    EXPECT_GT(estimate->total_workspace_bytes, prepacked->total_workspace_bytes);
+    EXPECT_EQ(estimate->persistent_prepack_bytes,
+              prepacked->persistent_prepack_bytes);
   }
 
   constexpr size_t kHeadSinkInitializerBytes = 8 * sizeof(MLFloat16);
@@ -725,7 +736,8 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversEveryS
 TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
   auto xqa = Bounds();
   xqa.reachable_backends = GQAReachableBackend::Xqa;
-  xqa.xqa_head_sink_storage = GQAXqaHeadSinkStorage::PrepackedFp32;
+  xqa.xqa_head_sink_storage = GQAXqaHeadSinkStorage::DynamicConversion;
+  xqa.head_sink_may_be_prepacked = true;
   const auto xqa_only = GetGQAWorkspaceAggregateForBounds(xqa);
   ASSERT_TRUE(xqa_only.status.IsOK());
   auto unfused = xqa;
@@ -823,6 +835,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   shapes[11] = Known({8});
   auto expected_config = Config();
   expected_config.head_sink_is_prepacked = true;
+  expected_config.head_sink_may_be_prepacked = true;
   const auto expected = EstimateGroupQueryAttentionWorkspace(
       expected_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
       *cuda_ep->GetAttentionKernelOptions());

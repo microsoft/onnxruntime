@@ -310,6 +310,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
           ? (config.head_sink_is_prepacked ? GQAXqaHeadSinkStorage::PrepackedFp32
                                            : GQAXqaHeadSinkStorage::DynamicConversion)
           : GQAXqaHeadSinkStorage::None;
+  bounds.head_sink_may_be_prepacked =
+      Present(shapes, kHeadSink) && config.head_sink_may_be_prepacked;
 
   const bool has_bias = Present(shapes, kAttentionBias);
   const bool has_sink = Present(shapes, kHeadSink);
@@ -485,7 +487,7 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     bool head_sink_is_constant_initializer) {
   auto config = ConfigFromNode(node);
   if (!config.has_value()) return std::nullopt;
-  config->head_sink_is_prepacked = head_sink_is_constant_initializer;
+  config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }

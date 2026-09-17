@@ -65,6 +65,7 @@ struct GQAWorkspaceBounds {
   bool is_bf16 = false;
   GQAXqaKvType xqa_kv_type = GQAXqaKvType::None;
   GQAXqaHeadSinkStorage xqa_head_sink_storage = GQAXqaHeadSinkStorage::None;
+  bool head_sink_may_be_prepacked = false;
   int64_t local_window_size = -1;
 };
 

@@ -43,8 +43,8 @@ struct GQAWorkspaceEstimateConfig {
   bool cache_is_fp8 = false;
   bool enable_xqa = true;
   bool disable_flash_decode = false;
-  // A present sink may be prepacked at runtime, but Level 1 cannot prove that.
   bool head_sink_is_prepacked = false;
+  bool head_sink_may_be_prepacked = false;
 };
 
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
