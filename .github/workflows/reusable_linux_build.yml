@@ -116,7 +116,16 @@ jobs:
       - name: Setup VCPKG Cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          key: '"vcpkg-cache" | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
+          key: >-
+            "vcpkg-cache-v2" |
+            "${{ inputs.job_identifier }}" |
+            "${{ inputs.architecture }}" |
+            "${{ inputs.build_config }}" |
+            'cmake/vcpkg.json',
+              'cmake/vcpkg-configuration.json',
+              'cmake/vcpkg-ports/**',
+              'tools/ci_build/vcpkg_tool_info.json'
+            ) }}"
           path: ~/.cache/vcpkg
 
       # ------------- Update Step (CMake Generation) -------------
