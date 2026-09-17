@@ -107,8 +107,8 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
                              WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
-                             WGSL_TEMPLATE_PARAMETER(vectorized_value_io, vectorized_value_io_),
                              WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
+                             WGSL_TEMPLATE_PARAMETER(vectorized_value_io, vectorized_value_io_),
                              WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
                              WGSL_TEMPLATE_VARIABLE(beta, *beta),
                              WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens),
@@ -603,6 +603,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   const bool vectorized_value_io = !use_packed_qkv && dv % kValueChannelsPerWorkgroup == 0;
+  const int value_io_components = vectorized_value_io ? onnxruntime::narrow<int>(kValueChannelsPerWorkgroup) : 1;
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                                final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params,
                                vectorized_value_io};
@@ -611,8 +612,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   } else {
     program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
                        {key, ProgramTensorMetadataDependency::Type},
-                       {value, ProgramTensorMetadataDependency::Type,
-                        vectorized_value_io ? kValueChannelsPerWorkgroup : 1}});
+                       {value, ProgramTensorMetadataDependency::Type, value_io_components}});
   }
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});
@@ -621,8 +621,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   if (qwen_gate_ && !use_packed_params) program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
                                                            {dt_bias, ProgramTensorMetadataDependency::None}});
   if (use_packed_params) program.AddInput({&*packed_params, ProgramTensorMetadataDependency::None});
-  program.AddOutput({output, ProgramTensorMetadataDependency::Type,
-                     vectorized_value_io ? kValueChannelsPerWorkgroup : 1});
+  program.AddOutput({output, ProgramTensorMetadataDependency::Type, value_io_components});
   if (final_state != nullptr) {
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
   }
