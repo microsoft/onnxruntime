@@ -22,6 +22,7 @@
     // Key: str, the name of the test as defined by ONNX without any device suffix.
     // Val: float, max relative difference between expected and actual.
     "rtol_overrides": {
-        "test_attention_4d_causal_fp16": 0.002
+        "test_attention_4d_causal_fp16": 0.002,
+        "test_attention_4d_causal_fp16_expanded": 0.002
     }
 }
