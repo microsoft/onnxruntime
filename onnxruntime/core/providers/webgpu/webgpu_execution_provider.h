@@ -12,10 +12,6 @@
 #include <unordered_set>
 #include <vector>
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-#include "ep/adapters.h"
-#endif
-
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
@@ -29,6 +25,14 @@
 
 struct pthreadpool;
 namespace onnxruntime {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+namespace ep {
+namespace adapter {
+class Logger;
+}  // namespace adapter
+}  // namespace ep
+#endif
+
 namespace webgpu {
 
 // forward declaration for this EP's namespace.
@@ -128,12 +132,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
-    return *ep_logger_;
-  }
-  inline void SetEpLogger(const OrtLogger* logger) {
-    ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
-  }
+  onnxruntime::ep::adapter::Logger& GetEpLogger() const;
+  void SetEpLogger(const OrtLogger* logger);
 #endif
 
  private:
