@@ -37,11 +37,8 @@ class VarlenNGramValidateCuSeqlensProgram final : public Program<VarlenNGramVali
 // whole output regardless of what cu_seqlens contains.
 class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaultProgram> {
  public:
-  VarlenNGramFillDefaultProgram(bool has_present_ids, bool has_present_segment_ids, bool has_eos_token_id)
-      : Program{"VarlenNGramFillDefault"},
-        has_present_ids_(has_present_ids),
-        has_present_segment_ids_(has_present_segment_ids),
-        has_eos_token_id_(has_eos_token_id) {}
+  explicit VarlenNGramFillDefaultProgram(bool has_present_ids)
+      : Program{"VarlenNGramFillDefault"}, has_present_ids_(has_present_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
                                           {"present_count", ProgramUniformVariableDataType::Uint32},
@@ -49,8 +46,6 @@ class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaul
 
  private:
   bool has_present_ids_;
-  bool has_present_segment_ids_;
-  bool has_eos_token_id_;
 };
 
 // Computes n-gram hash ids over a packed, token-major batch of variable-length sequences. One
@@ -59,14 +54,8 @@ class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaul
 // across into an adjacent packed request.
 class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappingProgram> {
  public:
-  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id, bool has_segment_ids,
-                                bool has_past_segment_ids, bool reset_on_eos)
-      : Program{"VarlenNGramHashMapping"},
-        has_past_ids_(has_past_ids),
-        has_eos_token_id_(has_eos_token_id),
-        has_segment_ids_(has_segment_ids),
-        has_past_segment_ids_(has_past_segment_ids),
-        reset_on_eos_(reset_on_eos) {}
+  explicit VarlenNGramHashMappingProgram(bool has_past_ids)
+      : Program{"VarlenNGramHashMapping"}, has_past_ids_(has_past_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_tokens", ProgramUniformVariableDataType::Uint32},
@@ -76,18 +65,6 @@ class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappin
 
  private:
   bool has_past_ids_;
-  bool has_eos_token_id_;
-  bool has_segment_ids_;
-  bool has_past_segment_ids_;
-  bool reset_on_eos_;
-};
-
-class VarlenNGramAddHeadOffsetsProgram final : public Program<VarlenNGramAddHeadOffsetsProgram> {
- public:
-  VarlenNGramAddHeadOffsetsProgram() : Program{"VarlenNGramAddHeadOffsets"} {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 };
 
 // Emits the right-aligned trailing window of (past_ids ++ this request's tokens) per packed
@@ -95,14 +72,8 @@ class VarlenNGramAddHeadOffsetsProgram final : public Program<VarlenNGramAddHead
 // a fixed-stride batch row.
 class VarlenNGramPresentIdsProgram final : public Program<VarlenNGramPresentIdsProgram> {
  public:
-  VarlenNGramPresentIdsProgram(bool has_present_ids, bool has_present_segment_ids, bool has_past_ids,
-                               bool has_past_segment_ids, bool has_eos_token_id)
-      : Program{"VarlenNGramPresentIds"},
-        has_present_ids_(has_present_ids),
-        has_present_segment_ids_(has_present_segment_ids),
-        has_past_ids_(has_past_ids),
-        has_past_segment_ids_(has_past_segment_ids),
-        has_eos_token_id_(has_eos_token_id) {}
+  VarlenNGramPresentIdsProgram(bool has_input_ids, bool has_past_ids)
+      : Program{"VarlenNGramPresentIds"}, has_input_ids_(has_input_ids), has_past_ids_(has_past_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"state_length", ProgramUniformVariableDataType::Uint32},
@@ -111,11 +82,10 @@ class VarlenNGramPresentIdsProgram final : public Program<VarlenNGramPresentIdsP
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
-  bool has_present_ids_;
-  bool has_present_segment_ids_;
+  // False when total_tokens == 0. WebGPU cannot bind a zero-sized buffer, and in that case every
+  // present slot is history or pad_id, so the input_ids branch is omitted entirely.
+  bool has_input_ids_;
   bool has_past_ids_;
-  bool has_past_segment_ids_;
-  bool has_eos_token_id_;
 };
 
 class VarlenNGramHashMapping final : public WebGpuKernel {
@@ -127,7 +97,6 @@ class VarlenNGramHashMapping final : public WebGpuKernel {
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   int64_t pad_id_;
-  bool reset_on_eos_;
 };
 
 }  // namespace webgpu

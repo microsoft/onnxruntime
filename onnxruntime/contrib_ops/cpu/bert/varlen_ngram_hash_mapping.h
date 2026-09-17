@@ -16,13 +16,11 @@ class VarlenNGramHashMapping final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  T HistoryId(const T* past_data, int64_t b, int64_t slot, int64_t state_length,
-              T missing_history_value) const;
+  T HistoryId(const T* past_data, int64_t b, int64_t slot, int64_t state_length) const;
 
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   T pad_id_;
-  bool reset_on_eos_;
 };
 
 }  // namespace contrib
