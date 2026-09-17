@@ -1224,7 +1224,7 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
 }
 
 TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
-  auto webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(256);
+  auto webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(64 * 1024);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
