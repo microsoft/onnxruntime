@@ -23,77 +23,87 @@
 #param has_auxiliary
 #param has_head_sink
 
-#use guardAgainstOutOfBoundsWorkgroupSizes
 #use .getByOffset .setByOffset
 
 const negative_infinity: f32 = -3.4028234663852886e38;
 
-$MAIN {
-  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+var<workgroup> final_sum: f32;
+var<workgroup> main_weight: f32;
+var<workgroup> auxiliary_weight: f32;
 
-  let dim_idx = global_idx % uniforms.head_size;
-  let head_idx = (global_idx / uniforms.head_size) % uniforms.num_heads;
-  let token_idx = global_idx / (uniforms.head_size * uniforms.num_heads);
+$MAIN {
+  if (workgroup_idx >= uniforms.workgroup_count) {
+    return;
+  }
+
+  let token_idx = workgroup_idx / uniforms.num_heads;
+  let head_idx = workgroup_idx % uniforms.num_heads;
   let partial_base = (token_idx * uniforms.num_heads + head_idx) * (uniforms.head_size + 2u);
 
-  var running_max: f32 = negative_infinity;
-  var running_sum: f32 = 0.0;
-  var accumulator: f32 = 0.0;
+  if (local_idx == 0u) {
+    var merged_max: f32 = negative_infinity;
+    var sink_present = false;
+    main_weight = 0.0;
+    auxiliary_weight = 0.0;
 
 #if has_head_sink
-  running_max = f32(head_sink.getByOffset(head_idx));
-  running_sum = 1.0;
+    let sink = f32(head_sink.getByOffset(head_idx));
+    merged_max = max(merged_max, sink);
+    sink_present = true;
 #endif
 
 #if has_main
-  {
-    let other_max = partial_main.getByOffset(partial_base + uniforms.head_size);
-    let other_sum = partial_main.getByOffset(partial_base + uniforms.head_size + 1u);
-    if (other_sum > 0.0) {
-      if (running_sum > 0.0) {
-        let merged_max = max(running_max, other_max);
-        let self_weight = exp(running_max - merged_max);
-        let other_weight = exp(other_max - merged_max);
-        accumulator = accumulator * self_weight +
-                      partial_main.getByOffset(partial_base + dim_idx) * other_weight;
-        running_sum = running_sum * self_weight + other_sum * other_weight;
-        running_max = merged_max;
-      } else {
-        accumulator = partial_main.getByOffset(partial_base + dim_idx);
-        running_sum = other_sum;
-        running_max = other_max;
-      }
+    let main_max = partial_main.getByOffset(partial_base + uniforms.head_size);
+    let main_sum = partial_main.getByOffset(partial_base + uniforms.head_size + 1u);
+    if (main_sum > 0.0) {
+      merged_max = max(merged_max, main_max);
     }
-  }
 #endif
 
 #if has_auxiliary
-  {
-    let other_max = partial_auxiliary.getByOffset(partial_base + uniforms.head_size);
-    let other_sum = partial_auxiliary.getByOffset(partial_base + uniforms.head_size + 1u);
-    if (other_sum > 0.0) {
-      if (running_sum > 0.0) {
-        let merged_max = max(running_max, other_max);
-        let self_weight = exp(running_max - merged_max);
-        let other_weight = exp(other_max - merged_max);
-        accumulator = accumulator * self_weight +
-                      partial_auxiliary.getByOffset(partial_base + dim_idx) * other_weight;
-        running_sum = running_sum * self_weight + other_sum * other_weight;
-        running_max = merged_max;
-      } else {
-        accumulator = partial_auxiliary.getByOffset(partial_base + dim_idx);
-        running_sum = other_sum;
-        running_max = other_max;
-      }
+    let auxiliary_max = partial_auxiliary.getByOffset(partial_base + uniforms.head_size);
+    let auxiliary_sum = partial_auxiliary.getByOffset(partial_base + uniforms.head_size + 1u);
+    if (auxiliary_sum > 0.0) {
+      merged_max = max(merged_max, auxiliary_max);
     }
-  }
 #endif
 
-  // A token with no valid candidate at all (and no sink) produces a zero row,
-  // matching the CUDA kernel instead of emitting NaN.
-  var result: f32 = 0.0;
-  if (running_sum > 0.0) {
-    result = accumulator / running_sum;
+    final_sum = 0.0;
+#if has_head_sink
+    if (sink_present) {
+      final_sum = exp(sink - merged_max);
+    }
+#endif
+#if has_main
+    if (main_sum > 0.0) {
+      main_weight = exp(main_max - merged_max);
+      final_sum = final_sum + main_sum * main_weight;
+    }
+#endif
+#if has_auxiliary
+    if (auxiliary_sum > 0.0) {
+      auxiliary_weight = exp(auxiliary_max - merged_max);
+      final_sum = final_sum + auxiliary_sum * auxiliary_weight;
+    }
+#endif
   }
-  output.setByOffset(global_idx, output_value_t(result));
+  workgroupBarrier();
+
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * uniforms.head_size;
+  for (var dim_idx: u32 = local_idx; dim_idx < uniforms.head_size; dim_idx = dim_idx + workgroup_size_x) {
+    var accumulator = 0.0;
+#if has_main
+    accumulator = accumulator + partial_main.getByOffset(partial_base + dim_idx) * main_weight;
+#endif
+#if has_auxiliary
+    accumulator = accumulator + partial_auxiliary.getByOffset(partial_base + dim_idx) * auxiliary_weight;
+#endif
+    // A token with no valid candidate at all (and no sink) produces a zero row,
+    // matching the CUDA kernel instead of emitting NaN.
+    var result = 0.0;
+    if (final_sum > 0.0) {
+      result = accumulator / final_sum;
+    }
+    output.setByOffset(output_base + dim_idx, output_value_t(result));
+  }
 }

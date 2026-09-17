@@ -36,6 +36,10 @@ const negative_infinity: f32 = -3.4028234663852886e38;
 var<workgroup> q_shared: array<f32, head_size>;
 var<workgroup> accumulator: array<f32, head_size>;
 var<workgroup> reduction: array<f32, workgroup_size_x>;
+var<workgroup> running_max: f32;
+var<workgroup> running_sum: f32;
+var<workgroup> old_weight: f32;
+var<workgroup> new_weight: f32;
 
 $MAIN {
   if (workgroup_idx >= uniforms.workgroup_count) {
@@ -63,9 +67,10 @@ $MAIN {
   }
 
   let selected_count = u32(clamp(selected_counts.getByOffset(token_idx), 0, i32(uniforms.max_selected_entries)));
-  var running_max: f32 = negative_infinity;
-  var running_sum: f32 = 0.0;
-  var has_contribution = false;
+  if (local_idx == 0u) {
+    running_max = negative_infinity;
+    running_sum = 0.0;
+  }
   workgroupBarrier();
 
   for (var candidate: u32 = 0u; candidate < selected_count; candidate = candidate + 1u) {
@@ -95,17 +100,22 @@ $MAIN {
       workgroupBarrier();
     }
 
-    if (valid) {
+    if (valid && local_idx == 0u) {
       var logit = reduction[0] * uniforms.scale;
       if (uniforms.softcap > 0.0) {
         logit = tanh(logit / uniforms.softcap) * uniforms.softcap;
       }
       let new_max = max(running_max, logit);
-      var old_weight = 0.0;
-      if (has_contribution) {
+      old_weight = 0.0;
+      if (running_sum > 0.0) {
         old_weight = exp(running_max - new_max);
       }
-      let new_weight = exp(logit - new_max);
+      new_weight = exp(logit - new_max);
+      running_sum = running_sum * old_weight + new_weight;
+      running_max = new_max;
+    }
+    workgroupBarrier();
+    if (valid) {
       for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
 #if auxiliary_kv_shared
         let v = f32(auxiliary_key.getByOffset(cache_offset + c));
@@ -114,9 +124,6 @@ $MAIN {
 #endif
         accumulator[c] = accumulator[c] * old_weight + v * new_weight;
       }
-      running_sum = running_sum * old_weight + new_weight;
-      running_max = new_max;
-      has_contribution = true;
     }
     workgroupBarrier();
   }
