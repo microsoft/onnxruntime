@@ -103,6 +103,15 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Indicates whether SessionState is concurrently dispatching this kernel's PrePack() with other kernels.
+  void SetOuterPrePackParallelism(bool enabled) noexcept {
+    outer_prepack_parallelism_enabled_ = enabled;
+  }
+
+  bool IsOuterPrePackParallelismEnabled() const noexcept {
+    return outer_prepack_parallelism_enabled_;
+  }
+
   // Override this function to return a list of attributes the session can safely remove
   // after it is initialized and saved. This option is useful to reduce memory usage
   // when the kernel does not reuse the operator attributes but copies them.
@@ -169,6 +178,7 @@ class OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   std::unique_ptr<OpKernelInfo> op_kernel_info_;
+  bool outer_prepack_parallelism_enabled_{false};
 };
 class FuncManager;
 using KernelCreateFn = std::function<Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>;
