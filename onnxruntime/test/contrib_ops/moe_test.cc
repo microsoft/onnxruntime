@@ -2152,9 +2152,12 @@ struct QMoEBlockWiseCase {
   int expected_prepacked{-1};
 };
 
+// `output_out`, when set, receives the raw fp32 output of the run so callers can compare the
+// results of different kernel policies bitwise (T == float only).
 template <typename T>
 void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
-                               bool share_prepacked_weights_across_sessions = false) {
+                               bool share_prepacked_weights_across_sessions = false,
+                               std::vector<float>* output_out = nullptr) {
   const int num_rows = c.num_rows, num_experts = c.num_experts, hidden_size = c.hidden_size;
   const int inter_size = c.inter_size, block_size = c.block_size, top_k = c.top_k, bits = c.bits;
   const int fc1_rows = 2 * inter_size;  // interleaved [gate, up] rows
@@ -2342,6 +2345,13 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
     if (c.expected_prepacked >= 0) {
       ASSERT_EQ(prepacked, static_cast<size_t>(c.expected_prepacked));
     }
+    if (output_out != nullptr) {
+      static_assert(std::is_same_v<T, float>, "raw output capture is only wired for float");
+      const auto fetches = tester.GetFetches();
+      ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+      const Tensor& out = fetches[0].Get<Tensor>();
+      output_out->assign(out.Data<float>(), out.Data<float>() + out.Shape().Size());
+    }
     return;
   }
 
@@ -2419,6 +2429,35 @@ TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_Int8Activations) {
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Int8Activations) {
   // accuracy_level=4 opts into int8 activations, as for MatMulNBits.
   RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 4, false, 4}, 0.05f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_AccuracyLevel4SelectsInt8) {
+  // accuracy_level=4 must pick the int8 kernels even where the fp32 ones are also available. The
+  // output check alone cannot tell the two apart (both meet the int8 tolerance), so compare raw
+  // outputs: level 4 must be bitwise identical to the forced-int8 run (same kernels, each output
+  // column owned by one thread) and differ from the forced-fp32 run (int8 activation quantization
+  // perturbs every output).
+  if (!MlasIsQNBitGemmAvailable(4, 32, SQNBIT_CompInt8) || !MlasIsQNBitGemmAvailable(4, 32, SQNBIT_CompFp32)) {
+    GTEST_SKIP() << "platform lacks one of the 4-bit QNBit compute types";
+  }
+  const QMoEBlockWiseCase base{5, 4, 128, 64, 32, 2, true};
+  std::vector<float> level4, forced_fp32, forced_int8;
+  {
+    QMoEBlockWiseCase c = base;
+    c.accuracy_level = 4;
+    RunQMoECpuBlockWiseSwiGLU<float>(c, 0.05f, false, &level4);
+  }
+  {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "fp32"}}};
+    RunQMoECpuBlockWiseSwiGLU<float>(base, 0.01f, false, &forced_fp32);
+  }
+  {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "int8"}}};
+    RunQMoECpuBlockWiseSwiGLU<float>(base, 0.05f, false, &forced_int8);
+  }
+  ASSERT_FALSE(level4.empty());
+  EXPECT_EQ(level4, forced_int8);
+  EXPECT_NE(level4, forced_fp32);
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_ZeroPoints) {

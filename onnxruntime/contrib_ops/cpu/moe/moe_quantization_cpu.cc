@@ -967,13 +967,16 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   if (use_qnbit_gemm_ && (expert_weight_bits_ == 4 || expert_weight_bits_ == 8) && block_size_ > 0) {
     const size_t nbits = static_cast<size_t>(expert_weight_bits_);
     const size_t blk = static_cast<size_t>(block_size_);
-    // MLAS has no fp32-activation kernel for every bit width (8-bit is int8 only). Where fp32 is
-    // unavailable, int8 is the only way onto these kernels, so take it unless fp32 was forced.
-    const bool int8_is_only_option = !MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompFp32) && !fp32_compute_forced;
-    if (allow_fp32_compute && MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompFp32)) {
-      qnbit_compute_type_ = SQNBIT_CompFp32;
-    } else if ((allow_int8_compute || int8_is_only_option) && MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompInt8)) {
+    const bool fp32_available = MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompFp32);
+    const bool int8_available = MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompInt8);
+    // int8 is taken when asked for (accuracy_level 4 or the env override), like MatMulNBits, and
+    // also where MLAS has no fp32 kernel for the bit width (8-bit) unless fp32 was forced, since
+    // int8 is then the only way onto these kernels. fp32 is the fallback whenever it is allowed.
+    const bool want_int8 = allow_int8_compute || (!fp32_available && !fp32_compute_forced);
+    if (want_int8 && int8_available) {
       qnbit_compute_type_ = SQNBIT_CompInt8;
+    } else if (allow_fp32_compute && fp32_available) {
+      qnbit_compute_type_ = SQNBIT_CompFp32;
     } else {
       use_qnbit_gemm_ = false;
     }
@@ -1606,7 +1609,8 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   IAllocatorUniquePtr<std::byte> qnbit_workspace_ptr;
   std::byte* qnbit_workspace = nullptr;
   if (qnbit_workspace_per_thread > 0) {
-    qnbit_workspace_ptr = IAllocator::MakeUniquePtr<std::byte>(allocator, static_cast<size_t>(num_expert_threads) * qnbit_workspace_per_thread, true);
+    // Arena-backed (no reserve): this is per-call scratch that should be recycled between runs.
+    qnbit_workspace_ptr = IAllocator::MakeUniquePtr<std::byte>(allocator, static_cast<size_t>(num_expert_threads) * qnbit_workspace_per_thread);
     qnbit_workspace = qnbit_workspace_ptr.get();
   }
   // fp32 [E, N, K/block] scales for the kernels: the scales input itself for T == float, the copy
