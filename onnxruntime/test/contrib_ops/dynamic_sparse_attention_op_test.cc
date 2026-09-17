@@ -682,6 +682,63 @@ TEST(DynamicSparseAttentionTest, SplitPathStreamsMultipleTiles_CUDA) {
   RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SplitPathPrefillStreamsWithoutWorkspace_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t candidate_count = 513;
+  DynamicSparseAttentionCase c;
+  c.sequence_length = 32;
+  c.num_heads = 64;
+  c.cache_sequence_length = candidate_count;
+  c.max_selected = candidate_count;
+  c.total_sequence_length = candidate_count;
+  c.query.assign(c.sequence_length * c.num_heads * c.head_size, 0.0f);
+  for (int64_t row = 0; row < c.sequence_length; ++row) {
+    for (int64_t head = 0; head < c.num_heads; ++head) {
+      c.query[(row * c.num_heads + head) * c.head_size] = 1.0f;
+    }
+  }
+  c.key.assign(c.sequence_length * c.head_size, 0.0f);
+  c.key[(c.sequence_length - 1) * c.head_size] = std::log(512.0f);
+  c.value.assign(c.sequence_length * c.head_size, 1.0f);
+  std::fill_n(c.value.end() - c.head_size, c.head_size, 3.0f);
+  c.past_key.assign(candidate_count * c.head_size, 0.0f);
+  c.past_value.assign(candidate_count * c.head_size, 1.0f);
+  c.selected_indices.reserve(c.sequence_length * candidate_count);
+  c.selected_counts.reserve(c.sequence_length);
+  for (int32_t row = 0; row < c.sequence_length; ++row) {
+    const int32_t count =
+        static_cast<int32_t>(candidate_count - c.sequence_length + row + 1);
+    for (int32_t index = 0; index < count; ++index) {
+      c.selected_indices.push_back(index);
+    }
+    c.selected_indices.insert(
+        c.selected_indices.end(), candidate_count - count, -1);
+    c.selected_counts.push_back(count);
+  }
+  c.seqlens_k = {static_cast<int32_t>(candidate_count - 1)};
+  c.head_sink.assign(c.num_heads, std::log(512.0f));
+  c.expected_output.reserve(c.sequence_length * c.num_heads * c.head_size);
+  for (int64_t row = 0; row < c.sequence_length; ++row) {
+    const float count = static_cast<float>(candidate_count - c.sequence_length + row + 1);
+    const float expected = row == c.sequence_length - 1
+                               ? 4.0f / 3.0f
+                               : count / (count + 512.0f);
+    c.expected_output.insert(
+        c.expected_output.end(), c.num_heads * c.head_size, expected);
+  }
+  c.expected_present_key = c.past_key;
+  c.expected_present_key[(candidate_count - 1) * c.head_size] =
+      c.key[(c.sequence_length - 1) * c.head_size];
+  c.expected_present_value = c.past_value;
+  std::fill_n(c.expected_present_value.end() - c.head_size, c.head_size, 3.0f);
+
+  RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
+}
+
 TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
