@@ -125,7 +125,7 @@ class ComputeContextBase {
   //
   // Get the logger.
   //
-  inline const logging::Logger& Logger() const {
+  inline const auto& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
     return ep_.GetEpLogger();
 #else
