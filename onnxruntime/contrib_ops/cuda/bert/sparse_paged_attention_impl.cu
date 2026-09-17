@@ -83,7 +83,8 @@ __global__ void SparsePagedAttentionKernel(
     const bool is_local = candidate < local_count;
     const int selected_slot = candidate - local_count;
     int logical_position = is_local ? local_begin + candidate
-                                    : selected_indices[token_id * max_selected_entries + selected_slot];
+                                    : selected_indices[static_cast<int64_t>(token_id) * max_selected_entries +
+                                                       selected_slot];
     if (logical_position < 0) {
       continue;
     }
@@ -123,11 +124,12 @@ __global__ void SparsePagedAttentionKernel(
         continue;
       }
       const int physical_block =
-          block_table[batch_id * max_num_blocks_per_seq + logical_block];
+          block_table[static_cast<int64_t>(batch_id) * max_num_blocks_per_seq + logical_block];
       if (physical_block < 0 || physical_block >= num_blocks) {
         continue;
       }
-      const int physical_slot = physical_block * block_size + logical_position % block_size;
+      const int64_t physical_slot =
+          static_cast<int64_t>(physical_block) * block_size + logical_position % block_size;
       const int64_t cache_base =
           (static_cast<int64_t>(physical_slot) * kv_num_heads + kv_head_id) * head_size;
       main_key = key_cache + cache_base;
