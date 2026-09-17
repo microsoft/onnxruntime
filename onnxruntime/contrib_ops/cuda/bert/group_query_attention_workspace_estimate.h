@@ -57,7 +57,8 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const Node& node,
     gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop,
-    const AttentionKernelOptions& kernel_options);
+    const AttentionKernelOptions& kernel_options,
+    bool head_sink_is_constant_initializer = false);
 
 void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,

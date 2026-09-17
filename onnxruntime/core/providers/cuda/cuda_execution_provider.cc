@@ -3621,9 +3621,14 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto input_shapes = ResolveNodeInputShapes(
             *node, &graph.GetGraph(),
             resource_accountant->GetMaxShapeInferenceResult());
+        const auto& input_defs = node->InputDefs();
+        const bool head_sink_is_constant_initializer =
+            input_defs.size() > 11 && input_defs[11] != nullptr &&
+            input_defs[11]->Exists() &&
+            graph.IsConstantInitializer(input_defs[11]->Name(), true);
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
-            *GetAttentionKernelOptions());
+            *GetAttentionKernelOptions(), head_sink_is_constant_initializer);
         if (ws.has_value()) {
           Level1MemoryEstimate estimate;
           contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);

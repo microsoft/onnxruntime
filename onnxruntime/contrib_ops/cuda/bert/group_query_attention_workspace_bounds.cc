@@ -243,6 +243,12 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
         "A reachable cuDNN GQA route has no graph-free workspace oracle.");
     return aggregate;
   }
+  if (bounds.xqa_head_sink_storage == GQAXqaHeadSinkStorage::PrepackedFp32) {
+    aggregate.status = Mul(
+        static_cast<size_t>(bounds.num_heads), sizeof(float),
+        aggregate.persistent_prepack_bytes);
+    if (!aggregate.status.IsOK()) return aggregate;
+  }
 
   const auto retain = [&aggregate](GQAReachableBackend backend,
                                    GQAWorkspaceStatus status,

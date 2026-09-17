@@ -47,6 +47,7 @@ using contrib::cuda::GQAWorkspaceAggregate;
 using contrib::cuda::GQAWorkspaceBounds;
 using contrib::cuda::GQAWorkspaceEstimateConfig;
 using contrib::cuda::GQAWorkspaceProblem;
+using contrib::cuda::GQAXqaHeadSinkStorage;
 using contrib::cuda::HasGQAReachableBackend;
 using contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate;
 using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
@@ -298,7 +299,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     shapes[11] = Known({8});
     estimate = EstimateGroupQueryAttentionWorkspace(
         *node, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
-        *cuda_ep->GetAttentionKernelOptions());
+        *cuda_ep->GetAttentionKernelOptions(),
+        /*head_sink_is_constant_initializer=*/true);
     ASSERT_TRUE(estimate.has_value());
   }
 
@@ -309,13 +311,15 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
       kHeadSinkInitializerBytes + kOutputBytes + 2 * kPresentCacheBytes;
   constexpr size_t kFallbackWorkspaceBytes = kAccountedTensorBytes / 2;
   ASSERT_GT(estimate->total_workspace_bytes, kFallbackWorkspaceBytes);
+  EXPECT_EQ(estimate->persistent_prepack_bytes, 8 * sizeof(float));
   const auto kilobytes_above = [](size_t bytes) {
     return bytes / 1024 + 1;
   };
 
   {
     const size_t accepted_limit_kb = kilobytes_above(
-        kAccountedTensorBytes + estimate->total_workspace_bytes);
+        kAccountedTensorBytes + estimate->total_workspace_bytes +
+        estimate->persistent_prepack_bytes);
     InferenceSessionWrapper session(make_session_options(accepted_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
@@ -334,7 +338,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     const size_t rejected_limit_kb = kilobytes_above(
         kAccountedTensorBytes + kFallbackWorkspaceBytes);
     ASSERT_LT(rejected_limit_kb * 1024,
-              kAccountedTensorBytes + estimate->total_workspace_bytes);
+              kAccountedTensorBytes + estimate->total_workspace_bytes +
+                  estimate->persistent_prepack_bytes);
     InferenceSessionWrapper session(make_session_options(rejected_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
@@ -719,15 +724,16 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversEveryS
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
   auto xqa = Bounds();
-  xqa.sequence_length_bound = 1;
-  xqa.prompt_reachable = false;
   xqa.reachable_backends = GQAReachableBackend::Xqa;
+  xqa.xqa_head_sink_storage = GQAXqaHeadSinkStorage::PrepackedFp32;
   const auto xqa_only = GetGQAWorkspaceAggregateForBounds(xqa);
   ASSERT_TRUE(xqa_only.status.IsOK());
   auto unfused = xqa;
   unfused.reachable_backends = GQAReachableBackend::Unfused;
   const auto unfused_only = GetGQAWorkspaceAggregateForBounds(unfused);
   ASSERT_TRUE(unfused_only.status.IsOK());
+  ASSERT_GT(unfused_only.total_workspace_bytes,
+            xqa_only.total_workspace_bytes);
   auto both = xqa;
   both.reachable_backends =
       GQAReachableBackend::Xqa | GQAReachableBackend::Unfused;
@@ -736,6 +742,8 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
   EXPECT_EQ(aggregate.total_workspace_bytes,
             std::max(xqa_only.total_workspace_bytes,
                      unfused_only.total_workspace_bytes));
+  EXPECT_EQ(aggregate.persistent_prepack_bytes,
+            static_cast<size_t>(xqa.num_heads) * sizeof(float));
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CudnnReachabilityIsUnavailable) {
@@ -767,7 +775,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWork
   SetGroupQueryAttentionLevel1MemoryEstimate(*estimate, level1);
   EXPECT_EQ(level1.runtime_workspace_bytes, estimate->total_workspace_bytes);
   EXPECT_EQ(level1.runtime_transient_bytes, 17u);
-  EXPECT_EQ(level1.persistent_prepack_bytes, 19u);
+  EXPECT_EQ(level1.persistent_prepack_bytes, 0u);
   EXPECT_EQ(level1.initialization_scratch_bytes, 23u);
 
   auto unavailable = *estimate;

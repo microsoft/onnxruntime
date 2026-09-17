@@ -71,6 +71,7 @@ struct GQAWorkspaceBounds {
 struct GQAWorkspaceAggregate {
   GQAWorkspaceStatus status;
   size_t total_workspace_bytes = 0;
+  size_t persistent_prepack_bytes = 0;
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
 };
 

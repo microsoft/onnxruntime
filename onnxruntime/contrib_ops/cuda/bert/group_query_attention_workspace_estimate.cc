@@ -481,12 +481,13 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const Node& node,
     gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop,
-    const AttentionKernelOptions& kernel_options) {
-  const auto config = ConfigFromNode(node);
-  return config.has_value()
-             ? EstimateGroupQueryAttentionWorkspace(
-                   *config, input_shapes, device_prop, kernel_options)
-             : std::nullopt;
+    const AttentionKernelOptions& kernel_options,
+    bool head_sink_is_constant_initializer) {
+  auto config = ConfigFromNode(node);
+  if (!config.has_value()) return std::nullopt;
+  config->head_sink_is_prepacked = head_sink_is_constant_initializer;
+  return EstimateGroupQueryAttentionWorkspace(
+      *config, input_shapes, device_prop, kernel_options);
 }
 
 void SetGroupQueryAttentionWorkspaceRequirements(
@@ -503,6 +504,9 @@ void SetGroupQueryAttentionLevel1MemoryEstimate(
     Level1MemoryEstimate& estimate) {
   if (workspace.status.IsOK() && workspace.total_workspace_bytes != 0) {
     estimate.runtime_workspace_bytes = workspace.total_workspace_bytes;
+  }
+  if (workspace.status.IsOK()) {
+    estimate.persistent_prepack_bytes = workspace.persistent_prepack_bytes;
   }
 }
 
