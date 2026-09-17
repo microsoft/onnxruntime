@@ -601,13 +601,31 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(), program.Indices()[i]));
   }
 
-  const size_t uniform_count = shape_uniforms.size() + program.UniformVariables().size();
+  std::vector<ProgramUniformVariableValue> buffer_view_offset_uniforms;
+  buffer_view_offset_uniforms.reserve(inputs.size() + outputs.size());
+  for (const auto& input : inputs) {
+    if (input.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(input.buffer_offset_in_elements);
+    }
+  }
+  for (const auto& output : outputs) {
+    if (output.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(output.buffer_offset_in_elements);
+    }
+  }
+
+  const size_t uniform_count =
+      shape_uniforms.size() + buffer_view_offset_uniforms.size() + program.UniformVariables().size();
   size_t current_offset = 0;
   std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;
   uniform_and_offsets.reserve(uniform_count);
   for (size_t i = 0; i < uniform_count; i++) {
-    const auto& uniform = i < shape_uniforms.size() ? shape_uniforms[i]
-                                                    : program.UniformVariables()[i - shape_uniforms.size()];
+    const auto& uniform =
+        i < shape_uniforms.size()
+            ? shape_uniforms[i]
+        : i < shape_uniforms.size() + buffer_view_offset_uniforms.size()
+            ? buffer_view_offset_uniforms[i - shape_uniforms.size()]
+            : program.UniformVariables()[i - shape_uniforms.size() - buffer_view_offset_uniforms.size()];
     size_t length = uniform.length;
     if (length == 0) {  // skip zero-length uniform
       continue;

@@ -102,6 +102,10 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
   }
   const bool has_uniform_binding =
       std::any_of(shape_uniform_ranks.begin(), shape_uniform_ranks.end(), [](int rank) { return rank > 0; }) ||
+      std::any_of(program.Inputs().cbegin(), program.Inputs().cend(),
+                  [](const ProgramInput& input) { return input.is_buffer_view; }) ||
+      std::any_of(program.Outputs().cbegin(), program.Outputs().cend(),
+                  [](const ProgramOutput& output) { return output.is_buffer_view; }) ||
       std::any_of(program.UniformVariables().cbegin(), program.UniformVariables().cend(),
                   [](const ProgramUniformVariableValue& uniform) { return uniform.length > 0; });
 

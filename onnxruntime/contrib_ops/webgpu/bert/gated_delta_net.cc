@@ -469,7 +469,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       (sequence_length + kParallelPrefillChunkSize - 1) / kParallelPrefillChunkSize;
   const uint64_t state_elements =
       static_cast<uint64_t>(batch) * static_cast<uint64_t>(hv) * static_cast<uint64_t>(dv) * dk;
-  const auto prefill_plan = SelectGatedDeltaNetParallelPrefillPlan(state_elements, total_chunks);
+  constexpr uint64_t kMaxParallelPrefillWorkspaceBytes = 64ull << 20;
+  const uint64_t workspace_cap_bytes =
+      std::min<uint64_t>(kMaxParallelPrefillWorkspaceBytes, context.DeviceLimits().maxBufferSize / 8);
+  const auto prefill_plan =
+      SelectGatedDeltaNetParallelPrefillPlan(state_elements, total_chunks, workspace_cap_bytes);
   const auto binding_count_for_bytes = [&context](uint64_t bytes) {
     const uint64_t max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
     return (bytes + max_binding_size - 1) / max_binding_size;
