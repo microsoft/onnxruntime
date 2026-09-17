@@ -2223,7 +2223,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeDenseShape) {
 
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExcessiveDenseSize) {
   ONNX_NAMESPACE::SparseTensorProto sparse;
-  const size_t excessive_element_count = std::string{}.max_size() / sizeof(float) + 1;
+  const size_t excessive_element_count = utils::kMaxEmbeddedInitializerSizeInBytes / sizeof(float) + 1;
   sparse.add_dims(narrow<int64_t>(excessive_element_count));
 
   auto* values = sparse.mutable_values();
