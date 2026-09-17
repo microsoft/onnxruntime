@@ -28,7 +28,7 @@ namespace onnxruntime {
 #if defined(ORT_USE_EP_API_ADAPTERS)
 namespace ep {
 namespace adapter {
-class Logger;
+struct Logger;
 }  // namespace adapter
 }  // namespace ep
 #endif
