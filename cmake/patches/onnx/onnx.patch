@@ -35,6 +35,20 @@ index 791e24b..5f861a1 100644
  add_dependencies(onnx onnx_proto)
  set_target_properties(onnx PROPERTIES CXX_VISIBILITY_PRESET hidden)
  add_onnx_global_defines(onnx)
+diff --git a/onnx/defs/doc_strings.cc b/onnx/defs/doc_strings.cc
+index 9762803..8c22e55 100644
+--- a/onnx/defs/doc_strings.cc
++++ b/onnx/defs/doc_strings.cc
+@@ -1704,6 +1704,8 @@ const char kDoc_Mod_ver28[] = "";
+ const char kDoc_DequantizeLinear_ver24[] = "";
+ const char kDoc_RandomNormal_ver1[] = "";
+ const char kDoc_Round_ver11[] = "";
+ const char kDoc_SpaceToDepth_ver1[] = "";
++const char kDoc_SpaceToDepth_ver28[] = "";
++const char kDoc_DepthToSpace_ver28[] = "";
+ const char kDoc_InstanceNormalization_ver6[] = "";
+ const char kDoc_ThresholdedRelu_ver10[] = "";
+ const char kDoc_Acosh_ver9[] = "";
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
 index 3887169..8432613 100644
 --- a/onnx/defs/nn/old.cc
