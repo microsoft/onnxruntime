@@ -21,6 +21,7 @@ namespace cuda {
 namespace {
 
 constexpr int kSplitCandidateSize = 256;
+constexpr int kTargetSplitBlocks = 1024;
 constexpr size_t kMaxFusedSharedBytes = 16 * 1024;
 constexpr size_t kMaxValidationSharedBytes = 32 * 1024;
 
@@ -163,43 +164,6 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
       SetValidationError(error_flag, error);
     }
     return;
-  }
-}
-
-template <typename T>
-__global__ void InitializeCacheKernel(T* present_key,
-                                      T* present_value,
-                                      const T* past_key,
-                                      const T* past_value,
-                                      int cache_capacity,
-                                      int past_capacity,
-                                      int head_size,
-                                      bool initialize_key,
-                                      bool initialize_value,
-                                      int64_t element_count) {
-  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= element_count) {
-    return;
-  }
-
-  const int64_t row_width = static_cast<int64_t>(cache_capacity) * head_size;
-  const int64_t row = index / row_width;
-  const int64_t within_row = index - row * row_width;
-  const int sequence = static_cast<int>(within_row / head_size);
-  const int head_offset = static_cast<int>(within_row - static_cast<int64_t>(sequence) * head_size);
-  const int64_t source_index =
-      row * static_cast<int64_t>(past_capacity) * head_size +
-      static_cast<int64_t>(sequence) * head_size + head_offset;
-
-  if (initialize_key) {
-    present_key[index] = past_key != nullptr && sequence < past_capacity
-                             ? past_key[source_index]
-                             : FromFloat<T>(0.0f);
-  }
-  if (initialize_value) {
-    present_value[index] = past_value != nullptr && sequence < past_capacity
-                               ? past_value[source_index]
-                               : FromFloat<T>(0.0f);
   }
 }
 
@@ -655,8 +619,6 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
   }
   const int selected_count = max(0, min(selected_counts[row], max_selected));
   const int candidate_count = local_count + selected_count;
-  const int candidate_start = split * kSplitCandidateSize;
-  const int split_candidate_count = max(0, min(kSplitCandidateSize, candidate_count - candidate_start));
   const int32_t* row_indices =
       max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
 
@@ -669,129 +631,148 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
   }
   __syncthreads();
 
-  for (int split_candidate = warp; split_candidate < split_candidate_count;
-       split_candidate += warp_count) {
-    const int candidate = candidate_start + split_candidate;
-    int index;
-    const T* key_head = nullptr;
-    bool valid = true;
-    if (candidate < local_count) {
-      index = local_start + candidate;
-      const int64_t offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-      key_head = main_key + offset;
-    } else {
-      index = row_indices[candidate - local_count];
-      if (selected_from_auxiliary) {
-        valid = index >= 0 && index < auxiliary_sequence_length;
-        if (valid) {
-          const int64_t offset =
-              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
-          key_head = auxiliary_key + offset;
-        }
-      } else {
-        valid = index >= 0 && index < total_length && index <= query_position && index < main_capacity;
-        if (local_plus_selected && index >= local_start && index <= query_position) {
-          valid = false;
-        }
-        if (valid) {
-          const int64_t offset =
-              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-          key_head = main_key + offset;
-        }
-      }
-    }
+  float running_max = use_smooth_softmax && split == 0
+                          ? (head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]))
+                          : -FLT_MAX;
+  float running_sum = use_smooth_softmax && split == 0 ? 1.0f : 0.0f;
+  float running_accumulator = 0.0f;
+  const int candidate_stride = split_count * kSplitCandidateSize;
+  for (int candidate_start = split * kSplitCandidateSize;
+       candidate_start < candidate_count;
+       candidate_start += candidate_stride) {
+    const int split_candidate_count =
+        min(kSplitCandidateSize, candidate_count - candidate_start);
 
-    float dot = 0.0f;
-    if (valid) {
-      for (int d = lane; d < head_size; d += 32) {
-        dot += ToFloat(shared_query[d]) * ToFloat(key_head[d]);
-      }
-      for (int offset = 16; offset > 0; offset >>= 1) {
-        dot += __shfl_down_sync(0xffffffff, dot, offset);
-      }
-    }
-    if (lane == 0) {
-      logits[split_candidate] = valid ? dot * scale : -FLT_MAX;
-    }
-  }
-  __syncthreads();
-
-  float thread_max = use_smooth_softmax && split == 0 && h == 0
-                         ? (head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]))
-                         : -FLT_MAX;
-  for (int candidate = h; candidate < split_candidate_count;
-       candidate += static_cast<int>(blockDim.x)) {
-    thread_max = fmaxf(thread_max, logits[candidate]);
-  }
-  reduction[h] = thread_max;
-  __syncthreads();
-  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (h < static_cast<int>(stride)) {
-      reduction[h] = fmaxf(reduction[h], reduction[h + stride]);
-    }
-    __syncthreads();
-  }
-  const float max_logit = reduction[0];
-  __syncthreads();
-
-  float thread_sum = 0.0f;
-  if (use_smooth_softmax && split == 0 && h == 0) {
-    const float sink = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
-    thread_sum = expf(sink - max_logit);
-  }
-  for (int candidate = h; candidate < split_candidate_count;
-       candidate += static_cast<int>(blockDim.x)) {
-    const float logit = logits[candidate];
-    const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - max_logit);
-    logits[candidate] = weight;
-    thread_sum += weight;
-  }
-  reduction[h] = thread_sum;
-  __syncthreads();
-  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (h < static_cast<int>(stride)) {
-      reduction[h] += reduction[h + stride];
-    }
-    __syncthreads();
-  }
-  if (h == 0) {
-    partial_max[partial_block] = max_logit;
-    partial_sum[partial_block] = reduction[0];
-  }
-  __syncthreads();
-
-  if (h < head_size) {
-    float accumulator = 0.0f;
-    for (int split_candidate = 0; split_candidate < split_candidate_count; ++split_candidate) {
-      const float weight = logits[split_candidate];
-      if (weight == 0.0f) {
-        continue;
-      }
-
+    for (int split_candidate = warp; split_candidate < split_candidate_count;
+         split_candidate += warp_count) {
       const int candidate = candidate_start + split_candidate;
       int index;
-      const T* value_head;
+      const T* key_head = nullptr;
+      bool valid = true;
       if (candidate < local_count) {
         index = local_start + candidate;
         const int64_t offset =
             ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-        value_head = main_value + offset;
+        key_head = main_key + offset;
       } else {
         index = row_indices[candidate - local_count];
         if (selected_from_auxiliary) {
-          const int64_t offset =
-              ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
-          value_head = auxiliary_value + offset;
+          valid = index >= 0 && index < auxiliary_sequence_length;
+          if (valid) {
+            const int64_t offset =
+                ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+            key_head = auxiliary_key + offset;
+          }
         } else {
+          valid = index >= 0 && index < total_length && index <= query_position && index < main_capacity;
+          if (local_plus_selected && index >= local_start && index <= query_position) {
+            valid = false;
+          }
+          if (valid) {
+            const int64_t offset =
+                ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+            key_head = main_key + offset;
+          }
+        }
+      }
+
+      float dot = 0.0f;
+      if (valid) {
+        for (int d = lane; d < head_size; d += 32) {
+          dot += ToFloat(shared_query[d]) * ToFloat(key_head[d]);
+        }
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          dot += __shfl_down_sync(0xffffffff, dot, offset);
+        }
+      }
+      if (lane == 0) {
+        logits[split_candidate] = valid ? dot * scale : -FLT_MAX;
+      }
+    }
+    __syncthreads();
+
+    float thread_max = -FLT_MAX;
+    for (int candidate = h; candidate < split_candidate_count;
+         candidate += static_cast<int>(blockDim.x)) {
+      thread_max = fmaxf(thread_max, logits[candidate]);
+    }
+    reduction[h] = thread_max;
+    __syncthreads();
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (h < static_cast<int>(stride)) {
+        reduction[h] = fmaxf(reduction[h], reduction[h + stride]);
+      }
+      __syncthreads();
+    }
+    const float tile_max = reduction[0];
+    const float next_max = fmaxf(running_max, tile_max);
+    const float old_scale = running_sum == 0.0f ? 0.0f : expf(running_max - next_max);
+    __syncthreads();
+
+    float thread_sum = 0.0f;
+    for (int candidate = h; candidate < split_candidate_count;
+         candidate += static_cast<int>(blockDim.x)) {
+      const float logit = logits[candidate];
+      const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - next_max);
+      logits[candidate] = weight;
+      thread_sum += weight;
+    }
+    reduction[h] = thread_sum;
+    __syncthreads();
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (h < static_cast<int>(stride)) {
+        reduction[h] += reduction[h + stride];
+      }
+      __syncthreads();
+    }
+    const float tile_sum = reduction[0];
+    __syncthreads();
+
+    if (h < head_size) {
+      float tile_accumulator = 0.0f;
+      for (int split_candidate = 0; split_candidate < split_candidate_count; ++split_candidate) {
+        const float weight = logits[split_candidate];
+        if (weight == 0.0f) {
+          continue;
+        }
+
+        const int candidate = candidate_start + split_candidate;
+        int index;
+        const T* value_head;
+        if (candidate < local_count) {
+          index = local_start + candidate;
           const int64_t offset =
               ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
           value_head = main_value + offset;
+        } else {
+          index = row_indices[candidate - local_count];
+          if (selected_from_auxiliary) {
+            const int64_t offset =
+                ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * auxiliary_sequence_length + index) * head_size;
+            value_head = auxiliary_value + offset;
+          } else {
+            const int64_t offset =
+                ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
+            value_head = main_value + offset;
+          }
         }
+        tile_accumulator += weight * ToFloat(value_head[h]);
       }
-      accumulator += weight * ToFloat(value_head[h]);
+      running_accumulator =
+          running_accumulator * old_scale + tile_accumulator;
     }
-    partial_output[static_cast<int64_t>(partial_block) * head_size + h] = accumulator;
+
+    running_max = next_max;
+    running_sum = running_sum * old_scale + tile_sum;
+    __syncthreads();
+  }
+  if (h == 0) {
+    partial_max[partial_block] = running_max;
+    partial_sum[partial_block] = running_sum;
+  }
+  if (h < head_size) {
+    partial_output[static_cast<int64_t>(partial_block) * head_size + h] =
+        running_accumulator;
   }
 }
 
@@ -881,6 +862,18 @@ int64_t GetCandidateCapacity(const DynamicSparseAttentionParameters& parameters)
               : 0);
 }
 
+int GetAttentionSplitCount(const DynamicSparseAttentionParameters& parameters) {
+  const int64_t candidate_tiles =
+      (GetCandidateCapacity(parameters) + kSplitCandidateSize - 1) /
+      kSplitCandidateSize;
+  const int64_t query_blocks =
+      static_cast<int64_t>(parameters.batch_size) *
+      parameters.sequence_length * parameters.num_heads;
+  const int64_t occupancy_splits =
+      std::max<int64_t>(1, (kTargetSplitBlocks + query_blocks - 1) / query_blocks);
+  return static_cast<int>(std::min(candidate_tiles, occupancy_splits));
+}
+
 bool UseFusedAttention(const DynamicSparseAttentionParameters& parameters,
                        size_t element_size,
                        size_t max_shared_memory_per_block) {
@@ -940,9 +933,7 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
 
   const size_t query_blocks =
       static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
-  const size_t split_count =
-      (static_cast<size_t>(GetCandidateCapacity(parameters)) + kSplitCandidateSize - 1) /
-      kSplitCandidateSize;
+  const size_t split_count = GetAttentionSplitCount(parameters);
   return SafeInt<size_t>(query_blocks) * split_count *
          (static_cast<size_t>(parameters.head_size) + 2);
 }
@@ -1046,16 +1037,27 @@ Status LaunchDynamicSparseAttention(
   const int64_t cache_elements =
       static_cast<int64_t>(parameters.batch_size) * parameters.kv_num_heads *
       parameters.cache_capacity * parameters.head_size;
-  if (initialize_key_cache || initialize_value_cache) {
-    constexpr int kCopyThreads = 256;
-    const int64_t copy_blocks = (cache_elements + kCopyThreads - 1) / kCopyThreads;
-    ORT_RETURN_IF_ERROR(CheckBlockCount(copy_blocks, "cache initialization"));
-    InitializeCacheKernel<<<static_cast<int>(copy_blocks), kCopyThreads, 0, stream>>>(
-        data.present_key, data.present_value, data.past_key, data.past_value,
-        parameters.cache_capacity,
-        parameters.past_cache_capacity, parameters.head_size,
-        initialize_key_cache, initialize_value_cache, cache_elements);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  const size_t cache_bytes =
+      SafeInt<size_t>(cache_elements) * sizeof(T);
+  ORT_RETURN_IF_NOT(
+      data.past_key == nullptr ||
+          parameters.past_cache_capacity == parameters.cache_capacity,
+      "DynamicSparseAttention: past and present cache capacities must match.");
+  if (initialize_key_cache) {
+    if (data.past_key == nullptr) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(data.present_key, 0, cache_bytes, stream));
+    } else {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          data.present_key, data.past_key, cache_bytes, cudaMemcpyDeviceToDevice, stream));
+    }
+  }
+  if (initialize_value_cache) {
+    if (data.past_value == nullptr) {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(data.present_value, 0, cache_bytes, stream));
+    } else {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          data.present_value, data.past_value, cache_bytes, cudaMemcpyDeviceToDevice, stream));
+    }
   }
 
   const int64_t query_blocks =
@@ -1117,8 +1119,7 @@ Status LaunchDynamicSparseAttention(
         parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
         parameters.use_smooth_softmax);
   } else {
-    const int split_count =
-        (candidate_capacity + kSplitCandidateSize - 1) / kSplitCandidateSize;
+    const int split_count = GetAttentionSplitCount(parameters);
     const int64_t partial_blocks = query_blocks * split_count;
     ORT_RETURN_IF_ERROR(CheckBlockCount(partial_blocks, "split attention"));
     ORT_RETURN_IF_NOT(data.attention_workspace != nullptr,
