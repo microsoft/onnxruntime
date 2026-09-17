@@ -77,6 +77,24 @@ For eligible prepacked FP16/BF16 configurations, the `fpA_intB` profiler selects
 
 The proposed INT6 implementation should preserve this M-sensitive architecture: a fused GEMV for M=1 decode, a tiled fused GEMM for representative large-M prefill, and eventually a separate small-M path. It cannot simply reuse the existing INT4/INT8 CUTLASS kernels because NVIDIA hardware and the current CUTLASS integration do not expose a native INT6 weight-only operation. INT6 therefore also requires a new lower-4/upper-2 prepack, extraction logic, and fused compute kernels. Unsupported INT6 configurations should retain a correctness fallback, but that fallback is not a performance milestone.
 
+### INT2 QMoE Follow-Up Assessment
+
+INT2 QMoE is a meaningful follow-up because expert weights dominate the storage and memory traffic of large MoE models, and a fused operator preserves top-k routing instead of expanding every expert into independently scheduled dense operations. CPU QMoE already accepts blockwise INT2 and includes an MLAS LUT GEMM path, so it can provide a semantic reference. However, the current cross-provider implementation is not production-ready:
+
+| Area | Current state | Required work |
+| --- | --- | --- |
+| QMoE schema | Declares `expert_weight_bits` values 2, 4, and 8 | Define a versioned mixed-width contract before targeting the published Qwen recipe |
+| CPU QMoE | Accepts blockwise INT2 and has an optimized LUT path | Add mixed-width semantics and model-level conformance coverage |
+| CUDA QMoE | Constructor, packing, runner selection, and weight preprocessing assume INT4 or INT8 | Add explicit INT2 fallback and packed kernels without mapping INT2 to an INT4 CUTLASS type |
+| WebGPU QMoE | Rejects INT2 and uses a 4/8-bit-specific pack-size calculation | Use `8 / bits`, complete reachable INT2 shader support, and add QMoE tests |
+| Model production | Dense mixed-bit export is the initial Olive/Mobius target | Define and qualify a distinct fused QMoE graph and weight-binding contract |
+
+The largest model-contract blocker is that QMoE currently exposes one `expert_weight_bits` attribute for FC1 and FC2. This cannot represent the relevant Qwen3.8-Flash-Next placement, where expert gate/up tensors use an approximately 2-bit tier while expert down tensors use an approximately 4-bit tier. A production-oriented extension therefore needs independent FC1 and FC2 bit-width semantics, for example `fc1_expert_weight_bits=2` and `fc2_expert_weight_bits=4`, together with corresponding shape, scale, zero-point, prepacking, and backward-compatibility rules. The exact schema design requires review; these names are illustrative rather than a committed interface.
+
+CUDA dequantization to persistent FP16/BF16 expert weights is useful only as a correctness oracle because it expands INT2 payloads by approximately 8x and removes the deployment memory benefit. The first performance-relevant QMoE target should be packed INT2 fused decode for small expanded-row counts. Long-context prefill ultimately requires a native or equivalently bounded W2A16 grouped GEMM; full expert dequantization is not a production milestone.
+
+MatMulNBits remains the first implementation priority because its portable INT2 contract, CPU reference, quantization tooling, and isolated matrix tests reduce risk. Once its CUDA packing interpretation, correctness path, and fused M=1 load/dequantization primitives are stable, QMoE contract and export work can proceed in parallel rather than waiting for complete MatMulNBits coverage across every data type and block size.
+
 ## External Landscape
 
 ### llama.cpp
@@ -258,7 +276,19 @@ Integrate the selected approach into `MatMulNBits(bits=2)` with:
 
 After the scoped delivery, expand to BF16, additional block sizes, asymmetric zero points, bias, tails, intermediate/small-M execution, offline prepacking, and broader GPU tuning as justified by measured demand.
 
-### Phase 4: 6-Bit Follow-Up Gate
+### Phase 4: Mixed-Width INT2 QMoE Follow-Up
+
+Start the QMoE work after the MatMulNBits INT2 packing contract, CUDA correctness behavior, and fused M=1 primitives are stable:
+
+1. Define independent FC1 and FC2 bit-width semantics and preserve compatibility with the existing single-width QMoE contract.
+2. Add CPU correctness and model-level tests for FC1 INT2 with FC2 INT4.
+3. Qualify Olive/Mobius fused QMoE export, graph binding, and numerical parity separately from dense `MatMulNBits` export.
+4. Implement CUDA packed INT2 QMoE decode by reusing validated INT2 extraction and dequantization primitives.
+5. Implement or evaluate a bounded native W2A16 grouped-GEMM path for prefill.
+
+WebGPU QMoE enablement is an independent follow-up and should not block the CUDA model-level milestone. A cross-provider correctness fallback may be useful for conformance, but persistent full expert dequantization does not satisfy the production acceptance criteria.
+
+### Phase 5: 6-Bit Follow-Up Gate
 
 Evaluate INT6 if INT2 cannot achieve the required quality/size tradeoff or product requirements call for a less aggressive quantization option. Reuse the contiguous portable format and lower-4/upper-2 prepacking analysis in this document, but require a separate format review and measured advantage over mixed INT4/INT8 before implementation.
 
@@ -329,6 +359,8 @@ The following items should not put the November 15 commitment at risk:
 - INT6 format, tooling, or kernel implementation.
 - ONNX-native Olive INT2 RTN and built-in quantized-linear export completion.
 - Fused MoE/QMoE export, packing contracts, and runtime kernels.
+
+These QMoE items remain outside the November commitment, but the next implementation track should begin with the mixed FC1/FC2 contract and export qualification after the MatMulNBits INT2 foundation is stable.
 
 ### INT6 Scheduling Impact
 
