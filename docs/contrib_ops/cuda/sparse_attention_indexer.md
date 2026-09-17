@@ -86,24 +86,21 @@ for a runtime:
 | 3 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
 | 4 | `sin_cache` | both | `T` | same as `cos_cache` |
 | 5 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
-| 6 | `past_key` | `qsa` | `T` | `(B, P, D)` |
+| 6 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
 | 7 | `gate` | `csa` | `T` | `(B, S, 2D)` |
 | 8 | `position_bias` | `csa` | `T` | `(r, 2D)` |
 | 9 | `head_weights` | `csa` | `T` | `(B, S, N)` |
 | 10 | `position_ids` | `csa` | `I` | `(B, S)` |
-| 11 | `past_compressed_key` | `csa` | `T` | `(B, Pc, D)` |
-| 12 | `past_kv_buffer` | `csa` | `T` | `(B, Lb, 2D)`, `Lb` in `[0, 2r)` |
-| 13 | `past_gate_buffer` | `csa` | `T` | same as `past_kv_buffer` |
+| 11 | `past_sequence_length` | both | `M` | `(1)`; optional valid length for a max-capacity `past_key` |
+| 12 | `past_proj_buffer` | `csa` | `T` | `(2, B, Lb, 2D)`, `Lb` in `[0, 2r)`; keys then gates |
 
 ### Outputs
 
 | # | Name | Policy | Type | Shape |
 |---|---|---|---|---|
 | 0 | `selected_indices` | both | `M` | `(B, S, capacity)` |
-| 1 | `present_key` | `qsa` | `T` | `(B, T, D)` |
-| 2 | `present_compressed_key` | `csa` | `T` | `(B, Pc + W, D)` |
-| 3 | `present_kv_buffer` | `csa` | `T` | `(B, Lb', 2D)` |
-| 4 | `present_gate_buffer` | `csa` | `T` | same as `present_kv_buffer` |
+| 1 | `present_key` | both | `T` | updated raw (`qsa`) or compressed (`csa`) key cache |
+| 2 | `present_proj_buffer` | `csa` | `T` | `(2, B, Lb', 2D)` |
 
 `W` is the number of complete windows closed by this call and `Lb'` the new buffer length; both
 follow from `Lb`, `S` and `r` alone (see [§5](#5-policy-csa)).
@@ -117,17 +114,15 @@ follow from `Lb`, `S` and `r` alone (see [§5](#5-policy-csa)).
 | `I` | `tensor(int64)` |
 | `M` | `tensor(int32)` |
 
-CUDA registers all three `T` types. WebGPU registers `float` and `float16`; see the
-[WebGPU implementation notes](../webgpu/sparse_attention_indexer.md). There is no CPU kernel; the
-header under `contrib_ops/cpu/sparse/` only holds the provider-neutral constants that the schema,
-kernels and tests must agree on.
+Only the CUDA execution provider registers a kernel. There is no CPU kernel; the header under
+`contrib_ops/cpu/sparse/` only holds the CUDA-free constants that the schema, the kernel and the
+tests must agree on.
 
 ### Output slot discipline
 
 A `qsa` node declares exactly 2 outputs (`selected_indices`, `present_key`). A `csa` node declares
-exactly 5, leaving slot 1 as a missing optional so that the three `csa` state outputs keep their
-fixed indices. Shape inference verifies the declared output count *before* touching any output, so
-`getOutputType` is never called past the declared range.
+exactly 3, adding `present_proj_buffer`. Shape inference verifies the declared output count before
+touching any output, so `getOutputType` is never called past the declared range.
 
 ## 3. State Contract
 
@@ -137,13 +132,18 @@ returned as an output, so the caller (or the ORT session binding) owns the buffe
 | Policy | State pair |
 |---|---|
 | `qsa` | `past_key` → `present_key` |
-| `csa` | `past_compressed_key` → `present_compressed_key` |
-| `csa` | `past_kv_buffer` → `present_kv_buffer` |
-| `csa` | `past_gate_buffer` → `present_gate_buffer` |
+| `csa` | `past_key` → `present_key` |
+| `csa` | `past_proj_buffer` → `present_proj_buffer` |
 
-`present_key` and `present_compressed_key` grow by a number of positions that is known from the
-input shapes and the attributes, so the graph can pre-allocate them. The two `csa` buffers stay
-bounded by `2r - 1` positions.
+By default, `present_key` grows by a number of positions that is known from the input shapes and
+attributes. For autoregressive decoding, the caller can instead provide a max-capacity cache and
+`past_sequence_length`, which gives the valid raw-key count for `qsa` or compressed-key count for
+`csa`.
+
+In this mode, the past and present tensors have the same shape and the CUDA allocation planner may
+alias them. The kernel appends new rows at the valid length without copying existing rows. The
+capacity must accommodate all rows emitted by the call. The packed `csa` projection buffer retains
+its ordinary bounded state contract and stays below `2r` positions.
 
 ## 4. Policy `qsa`
 
@@ -168,7 +168,8 @@ The capacity is exactly `token_budget` selected tokens plus at most `r - 1` tail
 
 ### Window bookkeeping
 
-Let `ext = concat(past_kv_buffer, key)` along the sequence axis (and likewise for the gates).
+Let `ext = concat(past_proj_buffer[0], key)` along the sequence axis (and likewise use
+`past_proj_buffer[1]` for the gates).
 The buffer is split as
 
 ```
@@ -308,13 +309,12 @@ Shape inference and the kernel both reject:
 
 - a `policy_mode` other than `qsa` / `csa`;
 - `compress_ratio <= 0`;
-- a `qsa` node that provides any `csa`-only input (slots 7–13) or attribute, and vice versa;
+- a `qsa` node that provides any `csa`-only input (slots 7–10 or 12) or attribute, and vice versa;
 - a missing required input for the active policy;
 - `token_budget` absent, `<= 0`, or not divisible by `compress_ratio` for `qsa`;
 - `index_topk` absent or `<= 0` for `csa`;
-- an output count other than 2 (`qsa`) or 5 (`csa`);
-- `past_kv_buffer` / `past_gate_buffer` lengths outside `[0, 2 * compress_ratio)` or differing from
-  each other;
+- an output count other than 2 (`qsa`) or 3 (`csa`);
+- a `past_proj_buffer` length outside `[0, 2 * compress_ratio)`;
 - rank or dimension mismatches between `query`, `key`, the caches and the buffers.
 
 Because the checks live in shape inference, most misuse fails at `Graph::Resolve()` with a clear
@@ -357,9 +357,6 @@ The implementation is correctness-first. The following are known and deliberate:
    rotation per block.
 4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. For long
    contexts a batched exclusive scan over the whole `(B, S, T)` mask would be cheaper.
-5. **`present_key` / `present_compressed_key` are copied every call.** An in-place cache with a
-   `past_sequence_length` input (as `GroupQueryAttention` does) would avoid the copy, at the cost of
-   a less explicit state contract.
-6. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
+5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
-7. **No CPU kernel.** The operator is CUDA-only today.
+6. **No CPU kernel.** The operator is CUDA-only today.

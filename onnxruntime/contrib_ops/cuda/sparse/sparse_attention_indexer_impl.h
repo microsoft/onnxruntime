@@ -28,12 +28,16 @@ struct SparseAttentionIndexerParams {
   // policy_mode = "qsa"
   int past_sequence_length = 0;
   int total_sequence_length = 0;
+  int past_key_capacity = 0;
+  int key_cache_capacity = 0;
   int max_block_count = 0;  // total_sequence_length / compress_ratio
   int block_topk = 0;       // token_budget / compress_ratio
 
   // policy_mode = "csa"
   int past_compressed_length = 0;
   int present_compressed_length = 0;
+  int past_compressed_capacity = 0;
+  int compressed_cache_capacity = 0;
   int past_buffer_length = 0;
   int overlap_length = 0;
   int new_window_count = 0;
