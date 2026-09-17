@@ -10,7 +10,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import build  # noqa: I001
+import build
 import build_args
 
 _UNRELEASED_OPSET_ENVIRONMENT = {
