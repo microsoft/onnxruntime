@@ -2221,6 +2221,28 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeDenseShape) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor dense dims expected to be non-negative"));
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExcessiveDenseSize) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  const size_t excessive_element_count = std::string{}.max_size() / sizeof(float) + 1;
+  sparse.add_dims(narrow<int64_t>(excessive_element_count));
+
+  auto* values = sparse.mutable_values();
+  values->set_name("test_tensor");
+  values->add_dims(1);
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_float_data(1.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->add_dims(1);
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("dense data size"));
+}
+
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InvalidValuesRank_Zero) {
   ONNX_NAMESPACE::SparseTensorProto sparse;
   sparse.mutable_values()->set_name("test_tensor_val_rank_0");
