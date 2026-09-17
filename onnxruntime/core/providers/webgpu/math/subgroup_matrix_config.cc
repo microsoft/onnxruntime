@@ -30,8 +30,9 @@ bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_
           device_config.M == supported_config.M &&
           device_config.N == supported_config.N &&
           device_config.K == supported_config.K &&
-          adapter_info.subgroupMinSize == supported_config.subgroupMinSize &&
-          adapter_info.subgroupMaxSize == supported_config.subgroupMaxSize) {
+          IsSubgroupSizeSupported(adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
+                                  supported_config.subgroupSize,
+                                  context.HasFeature(wgpu::FeatureName::SubgroupSizeControl))) {
         config_index = index;
         return true;
       }
