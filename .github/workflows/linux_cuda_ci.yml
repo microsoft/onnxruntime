@@ -57,7 +57,7 @@ jobs:
     needs: build-linux-cuda-x64-release
     runs-on:
       - self-hosted
-      - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.Pool=Onnxruntime-github-Linux-GPU-H100"
       - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=test-linux-cuda-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 210
@@ -132,7 +132,7 @@ jobs:
             --cuda_home=/usr/local/cuda-13.0
             --cudnn_home=/usr/local/cuda-13.0
             --enable_cuda_profiling
-            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90-real
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
             --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
             --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON

@@ -42,7 +42,7 @@ jobs:
         --cuda_version=13.0
         --cuda_home=/usr/local/cuda-13.0
         --cudnn_home=/usr/local/cuda-13.0
-        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90-real
         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
         --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF
@@ -59,7 +59,7 @@ jobs:
     needs: build-linux-cuda-no-cudnn-x64-release
     runs-on:
       - self-hosted
-      - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.Pool=Onnxruntime-github-Linux-GPU-H100"
       - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=smoke-linux-cuda-no-cudnn-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     timeout-minutes: 210
