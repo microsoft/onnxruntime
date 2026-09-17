@@ -34,25 +34,24 @@ struct GatedDeltaNetParallelPrefillPlan {
 // The prepare and output passes each keep one state-shaped tile per live chunk. Two
 // additional state tiles ping-pong the recurrent carry between passes.
 inline std::optional<GatedDeltaNetParallelPrefillPlan> SelectGatedDeltaNetParallelPrefillPlan(
-    uint64_t state_elements, uint32_t total_chunks) {
-  constexpr uint64_t kWorkspaceCapBytes = 64ull << 20;
+    uint64_t state_elements, uint32_t total_chunks, uint64_t workspace_cap_bytes = 64ull << 20) {
   if (total_chunks < 2 || state_elements == 0 ||
       state_elements > std::numeric_limits<uint64_t>::max() / sizeof(float)) {
     return std::nullopt;
   }
 
   const uint64_t state_bytes = state_elements * sizeof(float);
-  if (state_bytes > kWorkspaceCapBytes / 2) {
+  if (state_bytes > workspace_cap_bytes / 2) {
     return std::nullopt;
   }
 
   const uint64_t fixed_bytes = 2 * state_bytes;
   const uint64_t bytes_per_chunk = 2 * state_bytes;
-  if (bytes_per_chunk == 0 || fixed_bytes >= kWorkspaceCapBytes) {
+  if (bytes_per_chunk == 0 || fixed_bytes >= workspace_cap_bytes) {
     return std::nullopt;
   }
 
-  const uint64_t max_chunks = (kWorkspaceCapBytes - fixed_bytes) / bytes_per_chunk;
+  const uint64_t max_chunks = (workspace_cap_bytes - fixed_bytes) / bytes_per_chunk;
   if (max_chunks == 0) {
     return std::nullopt;
   }
@@ -67,7 +66,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
  public:
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
                        bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
-                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params)
+                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool vectorized_value_io)
       : Program{"GatedDeltaNet"},
         update_rule_(update_rule),
         has_cu_seqlens_(has_cu_seqlens),
@@ -77,7 +76,8 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
         qwen_gate_(qwen_gate),
         sigmoid_beta_(sigmoid_beta),
         qk_l2_norm_(qk_l2_norm),
-        use_packed_params_(use_packed_params) {}
+        use_packed_params_(use_packed_params),
+        vectorized_value_io_(vectorized_value_io) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -100,6 +100,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool sigmoid_beta_;
   bool qk_l2_norm_;
   bool use_packed_params_;
+  bool vectorized_value_io_;
 };
 
 class GatedDeltaNetPrefillPrepareProgram final : public Program<GatedDeltaNetPrefillPrepareProgram> {

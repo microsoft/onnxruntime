@@ -254,7 +254,8 @@ template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
                   bool use_webgpu = false, bool omit_final_state = false,
-                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr) {
+                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr,
+                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -262,6 +263,27 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   std::vector<float> ref_out, ref_state;
   Reference(g, o, in, &ref_out, &ref_state);
+
+  std::unique_ptr<IExecutionProvider> webgpu_ep;
+  if (use_webgpu) {
+#ifdef USE_WEBGPU
+    if (test_max_storage_buffer_binding_size != 0) {
+      webgpu_ep = webgpu_config != nullptr
+                      ? WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+                            *webgpu_config, test_max_storage_buffer_binding_size)
+                      : WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+                            test_max_storage_buffer_binding_size);
+    } else {
+      webgpu_ep = webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
+                                           : DefaultWebGpuExecutionProvider();
+    }
+#else
+    webgpu_ep = DefaultWebGpuExecutionProvider();
+#endif
+    if (webgpu_ep == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available";
+    }
+  }
 
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
   AddCommonAttrs(test, o);
@@ -340,12 +362,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   if (use_webgpu) {
-#ifdef USE_WEBGPU
-    eps.push_back(webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
-                                           : DefaultWebGpuExecutionProvider());
-#else
-    eps.push_back(DefaultWebGpuExecutionProvider());
-#endif
+    eps.push_back(std::move(webgpu_ep));
   } else {
     eps.push_back(DefaultCudaExecutionProvider());
   }
@@ -430,6 +447,21 @@ TEST(GatedDeltaNetWebGpuTest, Rank3UniformFloat32) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, RecurrentVectorizedValueIoAndSharedGate) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 2, 1, 2, 8, 8};
+  Inputs inputs = MakeInputs(g, 212, /*with_state=*/false);
+  inputs.cu_seqlens = {0, 3, 7};
+  Options options;
+  options.update_rule = "gated";
+  options.gate_activation = "qwen";
+  RunTypedCase<MLFloat16>(g, options, inputs, 3e-3f, 3e-4f,
+                          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/true);
+}
+
 TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
@@ -448,22 +480,65 @@ TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
 }
 
 #ifdef USE_WEBGPU
+TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  constexpr uint64_t max_binding_size = 256;
+  constexpr uint32_t max_storage_buffers = 8;
+  Geometry g{9, 2, 1, 1, 8, 4};
+  Inputs inputs = MakeInputs(g, 228);
+  inputs.cu_seqlens = {0, 4, 9};
+  Options options;
+  options.update_rule = "gated_delta";
+  options.gate_activation = "qwen";
+
+  const auto binding_count = [](uint64_t bytes) {
+    return (bytes + max_binding_size - 1) / max_binding_size;
+  };
+  const uint64_t query_bytes = static_cast<uint64_t>(g.total_tokens) * g.hq * g.dk * sizeof(float);
+  const uint64_t key_bytes = query_bytes;
+  const uint64_t value_bytes = static_cast<uint64_t>(g.total_tokens) * g.hv * g.dv * sizeof(float);
+  const uint64_t qkv_binding_count =
+      binding_count(query_bytes) + binding_count(key_bytes) + binding_count(value_bytes);
+  const uint64_t packed_qkv_binding_count = binding_count(query_bytes + key_bytes + value_bytes);
+  constexpr uint64_t dynamic_param_binding_count = 4;
+  const uint64_t packed_param_binding_count =
+      binding_count(static_cast<uint64_t>(g.total_tokens) * g.hv * 2 * sizeof(float));
+  constexpr uint64_t other_binding_count = 4;  // cu_seqlens, state, output, and final state.
+  ASSERT_GT(qkv_binding_count + dynamic_param_binding_count + other_binding_count, max_storage_buffers);
+  ASSERT_GT(qkv_binding_count + packed_param_binding_count + other_binding_count, max_storage_buffers);
+  ASSERT_LE(packed_qkv_binding_count + packed_param_binding_count + other_binding_count, max_storage_buffers);
+  ASSERT_GT(query_bytes + key_bytes + value_bytes, max_binding_size);
+  const uint64_t key_view_offset = query_bytes / sizeof(float);
+  const uint64_t value_view_offset = (query_bytes + key_bytes) / sizeof(float);
+  ASSERT_GT(key_view_offset, 0u);
+  ASSERT_GT(value_view_offset, key_view_offset);
+
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxStorageBuffersPerShaderStage, "8"));
+  RunTypedCase<float>(g, options, inputs, 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/false, &config_options, max_binding_size);
+}
+
 TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
 
-  // A 128 MiB binding limit forces Q and K into two storage-buffer segments. The
-  // last token crosses that boundary, exercising the shader helper accessors.
-  Geometry g{131073, 1, 1, 1, 256, 1};
+  constexpr uint64_t max_binding_size = 256;
+  // The small test-only binding limit forces Q and K into two storage-buffer
+  // segments while keeping the test's memory footprint negligible.
+  Geometry g{17, 1, 1, 1, 4, 1};
+  Inputs inputs = MakeInputs(g, 227, /*with_state=*/false);
+  inputs.cu_seqlens = {0, g.total_tokens};
   Options options;
   options.update_rule = "linear";
-  ConfigOptions config_options;
-  ASSERT_STATUS_OK(
-      config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728"));
-  RunTypedCase<float>(g, options, MakeInputs(g, 227), 5e-4f, 5e-4f,
+  RunTypedCase<float>(g, options, inputs, 5e-4f, 5e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
-                      /*omit_final_state=*/true, &config_options);
+                      /*omit_final_state=*/true, /*config_options=*/nullptr, max_binding_size);
 }
 #endif
 
@@ -495,6 +570,7 @@ TEST(GatedDeltaNetWebGpuPlanTest, ParallelPrefillWorkspaceIsBounded) {
   EXPECT_LT(long_plan->chunks_per_pass, 4096u);
   EXPECT_LT(long_plan->workspace_bytes, 16 * short_plan->workspace_bytes);
   EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(32ull << 20, 2).has_value());
+  EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 2, 8ull << 20).has_value());
 }
 #endif
 
@@ -1148,13 +1224,13 @@ TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
 }
 
 TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  auto webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(64 * 1024);
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
   Options options;
   options.update_rule = "linear";
-  RunAliasedStateIoBindingCase(/*total_tokens=*/64, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/1, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
 }
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.

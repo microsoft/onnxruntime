@@ -220,6 +220,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_limits_.maxStorageBufferBindingSize =
           std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
     }
+    if (max_storage_buffers_per_shader_stage_ != 0) {
+      ORT_ENFORCE(max_storage_buffers_per_shader_stage_ <= device_limits_.maxStorageBuffersPerShaderStage,
+                  "maxStorageBuffersPerShaderStage exceeds the device limit");
+      device_limits_.maxStorageBuffersPerShaderStage = max_storage_buffers_per_shader_stage_;
+    }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -596,13 +601,31 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(), program.Indices()[i]));
   }
 
-  const size_t uniform_count = shape_uniforms.size() + program.UniformVariables().size();
+  std::vector<ProgramUniformVariableValue> buffer_view_offset_uniforms;
+  buffer_view_offset_uniforms.reserve(inputs.size() + outputs.size());
+  for (const auto& input : inputs) {
+    if (input.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(input.buffer_offset_in_elements);
+    }
+  }
+  for (const auto& output : outputs) {
+    if (output.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(output.buffer_offset_in_elements);
+    }
+  }
+
+  const size_t uniform_count =
+      shape_uniforms.size() + buffer_view_offset_uniforms.size() + program.UniformVariables().size();
   size_t current_offset = 0;
   std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;
   uniform_and_offsets.reserve(uniform_count);
   for (size_t i = 0; i < uniform_count; i++) {
-    const auto& uniform = i < shape_uniforms.size() ? shape_uniforms[i]
-                                                    : program.UniformVariables()[i - shape_uniforms.size()];
+    const auto& uniform =
+        i < shape_uniforms.size()
+            ? shape_uniforms[i]
+        : i < shape_uniforms.size() + buffer_view_offset_uniforms.size()
+            ? buffer_view_offset_uniforms[i - shape_uniforms.size()]
+            : program.UniformVariables()[i - shape_uniforms.size() - buffer_view_offset_uniforms.size()];
     size_t length = uniform.length;
     if (length == 0) {  // skip zero-length uniform
       continue;
@@ -1272,7 +1295,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size,
-                                                                    config.test_only_max_storage_buffer_binding_size));
+                                                                    config.test_only_max_storage_buffer_binding_size,
+                                                                    config.max_storage_buffers_per_shader_stage));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
