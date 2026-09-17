@@ -51,6 +51,14 @@ inline T WrappedMultiply(T a, T b) {
   return static_cast<T>(static_cast<UnsignedT>(a) * static_cast<UnsignedT>(b));
 }
 
+// Adds through the unsigned counterpart of T so that overflow wraps around instead of being
+// undefined behavior.
+template <typename T>
+inline T WrappedAdd(T a, T b) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  return static_cast<T>(static_cast<UnsignedT>(a) + static_cast<UnsignedT>(b));
+}
+
 // Multiplies two non-negative, attribute-derived dimensions (e.g. (max_ngram_size - 1) *
 // n_head_per_ngram) with an overflow check. Both factors are user-controlled model attributes with
 // only lower-bound checks, so the product must be validated before it is used to size any tensor or
