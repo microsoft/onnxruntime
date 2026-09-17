@@ -23,7 +23,8 @@ runs:
               'cmake/vcpkg.json',
               'cmake/vcpkg-configuration.json',
               'cmake/vcpkg-ports/**',
-              'tools/ci_build/vcpkg_tool_info.json'
+              'tools/ci_build/vcpkg_tool_info.json',
+              'tools/python/util/vcpkg_helpers.py'
             )
           }}
         restore-keys: |
@@ -40,7 +41,8 @@ runs:
               'cmake/vcpkg.json',
               'cmake/vcpkg-configuration.json',
               'cmake/vcpkg-ports/**',
-              'tools/ci_build/vcpkg_tool_info.json'
+              'tools/ci_build/vcpkg_tool_info.json',
+              'tools/python/util/vcpkg_helpers.py'
             )
           }}
         restore-keys: |
