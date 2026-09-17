@@ -11,6 +11,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/resource_accountant.h"
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
@@ -935,7 +936,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
   }
 }
 
-static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count, logging::Logger* logger) {
+static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int matmulnbits_count, int matmul_count,
+                          logging::Logger* logger, bool verify_workspace_reservations = false) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -943,13 +945,48 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+
+  NodeWorkspaceReservationMap reservations;
+  size_t total_reserved_bytes = 0;
+  if (verify_workspace_reservations) {
+    for (const Node& node : graph.Nodes()) {
+      reservations.insert_or_assign(
+          node.Index(), WorkspaceEstimateSelection{10, WorkspaceEstimateSource::kFallback});
+      total_reserved_bytes += 10;
+    }
+    graph.SetNodeReplacementCallback(
+        [&reservations](const Graph&,
+                        gsl::span<const NodeIndex> source_node_indices,
+                        NodeIndex destination_node_index) {
+          ConsolidateWorkspaceReservations(
+              reservations, source_node_indices, destination_node_index);
+        });
+  }
+
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+  graph.SetNodeReplacementCallback({});
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.MatMulNBits"] == matmulnbits_count);
   ASSERT_TRUE(op_to_count["MatMul"] == matmul_count);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  if (verify_workspace_reservations) {
+    size_t consolidated_reserved_bytes = 0;
+    bool found_fused_projection_reservation = false;
+    for (const auto& [node_index, reservation] : reservations) {
+      const Node* node = graph.GetNode(node_index);
+      ASSERT_NE(node, nullptr) << "Workspace reservation was orphaned at node index " << node_index;
+      consolidated_reserved_bytes += reservation.bytes;
+      if ((node->OpType() == "MatMulNBits" || node->OpType() == "MatMul") &&
+          reservation.bytes > 10) {
+        found_fused_projection_reservation = true;
+      }
+    }
+    EXPECT_EQ(consolidated_reserved_bytes, total_reserved_bytes);
+    EXPECT_TRUE(found_fused_projection_reservation);
+  }
 }
 
 static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
@@ -1328,7 +1365,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_3DGamma_NoFusion) {
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
-  TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
+  TestGQAFusion(
+      MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get(),
+      /*verify_workspace_reservations=*/true);
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }

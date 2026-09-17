@@ -65,10 +65,16 @@ Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int gr
         dropoutgrad_input, dropoutgrad_node.MutableOutputDefs(), &dropoutgrad_node.GetAttributes(), kMSDomain);
     bitmask_dropout_grad_node.SetExecutionProviderType(dropoutgrad_node.GetExecutionProviderType());
 
+    const NodeIndex dropout_node_index = node.Index();
+    const NodeIndex dropout_grad_node_index = dropoutgrad_node.Index();
     graph_utils::RemoveNodeOutputEdges(graph, node);
-    graph.RemoveNode(node.Index());
+    graph.RemoveNode(dropout_node_index);
+    graph.NotifyNodeReplacement(
+        gsl::span<const NodeIndex>{&dropout_node_index, 1}, bitmask_dropout_node.Index());
     graph_utils::RemoveNodeOutputEdges(graph, dropoutgrad_node);
-    graph.RemoveNode(dropoutgrad_node.Index());
+    graph.RemoveNode(dropout_grad_node_index);
+    graph.NotifyNodeReplacement(
+        gsl::span<const NodeIndex>{&dropout_grad_node_index, 1}, bitmask_dropout_grad_node.Index());
 
     modified = true;
   }

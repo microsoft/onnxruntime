@@ -164,6 +164,18 @@ TEST(OrtModelOnlyTests, RejectsMoeExpertStatisticsInMinimalBuild) {
 }
 #endif
 
+TEST(OrtModelOnlyTests, RejectsStrictWorkspaceVerification) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  InferenceSessionWrapper session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  const Status status = session.Initialize();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("strict_workspace_verification is not supported"));
+}
+
 TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<int64_t> dims{32};
