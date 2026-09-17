@@ -26,10 +26,14 @@ use the fallback recording. The core fix is tracked separately in
 [#32666](https://github.com/microsoft/onnxruntime/pull/32666) /
 [#32643](https://github.com/microsoft/onnxruntime/issues/32643).
 
-Native devices must enable Dawn's `ImplicitDeviceSynchronization` feature. ORT requests it for
-internally created devices; callers supplying an external device must include it in
-`DeviceDescriptor.requiredFeatures` when creating that device. Initialization rejects native
-devices without this feature, even for serial use. This requirement does not apply to WASM.
+ORT requests Dawn's `ImplicitDeviceSynchronization` feature for internally created native devices
+and checks that it is enabled. An externally supplied native device without the feature is accepted
+with a warning once during context initialization. ORT cannot enable the feature on an existing
+device, does not replace that device, and does not guarantee thread-safe access without it.
+The caller must serialize all Session and external WebGPU access to that device, or create a device
+with `ImplicitDeviceSynchronization` in `DeviceDescriptor.requiredFeatures` before using it concurrently.
+The concurrency support described below assumes this feature is enabled on native devices.
+This Dawn native feature does not apply to WASM.
 
 Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
 that the stream belongs to the same Session. For ordinary storage caches (`bucket` and

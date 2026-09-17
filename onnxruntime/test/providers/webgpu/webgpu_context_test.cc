@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -389,7 +390,7 @@ TEST(WebGpuContextTest, EnablesImplicitDeviceSynchronization) {
 #endif
 }
 
-TEST(WebGpuContextTest, ExternalDeviceRequiresImplicitDeviceSynchronization) {
+TEST(WebGpuContextTest, ExternalDeviceWithoutImplicitSynchronizationWarnsOnce) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
@@ -404,34 +405,34 @@ TEST(WebGpuContextTest, ExternalDeviceRequiresImplicitDeviceSynchronization) {
   auto adapters = instance.EnumerateAdapters(&adapter_options);
   ASSERT_FALSE(adapters.empty());
 
-  for (bool enable_synchronization : {false, true}) {
-    SCOPED_TRACE(enable_synchronization);
-    const auto feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
-    wgpu::DeviceDescriptor device_desc{};
-    device_desc.requiredFeatureCount = enable_synchronization ? 1 : 0;
-    device_desc.requiredFeatures = enable_synchronization ? &feature : nullptr;
-    auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
-    ASSERT_NE(device, nullptr);
-    ASSERT_EQ(device.HasFeature(feature), enable_synchronization);
+  auto device = wgpu::Device::Acquire(adapters.front().CreateDevice());
+  ASSERT_NE(device, nullptr);
+  const auto feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+  ASSERT_FALSE(device.HasFeature(feature));
 
-    ConfigOptions external_options;
-    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
-    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
-        kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
-    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
-        kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+  ConfigOptions external_options;
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+      kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
+  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+      kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
 
-    if (enable_synchronization) {
-      auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
-      ASSERT_NE(external_ep, nullptr);
-      EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(1).DeviceHasFeature(feature));
-    } else {
-      EXPECT_THAT([&]() { WebGpuProviderFactoryCreator::Create(external_options); },
-                  ::testing::ThrowsMessage<OnnxRuntimeException>(::testing::HasSubstr(
-                      "an externally supplied native device must enable ImplicitDeviceSynchronization "
-                      "in DeviceDescriptor.requiredFeatures when it is created.")));
-    }
-  }
+  std::unique_ptr<IExecutionProvider> external_ep;
+  testing::internal::CaptureStderr();
+  EXPECT_NO_THROW(external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider());
+  const std::string warning = testing::internal::GetCapturedStderr();
+  ASSERT_NE(external_ep, nullptr);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(1).Device().Get(), device.Get());
+  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(1).DeviceHasFeature(feature));
+  EXPECT_NE(warning.find("cannot enable it on an existing device"), std::string::npos);
+  EXPECT_NE(warning.find("does not guarantee thread-safe access"), std::string::npos);
+  EXPECT_NE(warning.find("serialize all Session and external WebGPU access"), std::string::npos);
+
+  testing::internal::CaptureStderr();
+  auto second_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+  const std::string second_warning = testing::internal::GetCapturedStderr();
+  ASSERT_NE(second_ep, nullptr);
+  EXPECT_EQ(second_warning.find("ImplicitDeviceSynchronization"), std::string::npos);
 #endif
 }
 

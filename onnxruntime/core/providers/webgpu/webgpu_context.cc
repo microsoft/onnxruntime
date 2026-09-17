@@ -229,15 +229,17 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_features_.insert(supported_features.features[i]);
     }
 #if !defined(__wasm__)
-    // Dawn native advertises this software feature on all adapters, and ORT requests it when
-    // creating a device. An externally supplied device must have requested it too: per-session
-    // encoders do not protect shared device entry points such as buffer creation and Queue::Submit.
-    ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
-                config.device != nullptr
-                    ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
-                      "in DeviceDescriptor.requiredFeatures when it is created."
-                    : "WebGPU: the internally created native device is missing the required "
-                      "ImplicitDeviceSynchronization feature.");
+    // Per-session encoders do not protect shared device entry points.
+    if (!DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization)) {
+      ORT_ENFORCE(config.device != nullptr,
+                  "WebGPU: the internally created native device is missing the required "
+                  "ImplicitDeviceSynchronization feature.");
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU: the externally supplied native device does not enable ImplicitDeviceSynchronization. "
+             "ORT cannot enable it on an existing device and does not guarantee thread-safe access without it. "
+             "The caller must serialize all Session and external WebGPU access to this device, or create a device "
+             "with ImplicitDeviceSynchronization in DeviceDescriptor.requiredFeatures.";
+    }
 #endif
     // cache adapter info
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
