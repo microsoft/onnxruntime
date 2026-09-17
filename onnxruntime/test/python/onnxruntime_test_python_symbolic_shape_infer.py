@@ -371,6 +371,69 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertTrue(compressed_shape[1].startswith("SparseAttentionIndexer_"))
         self.assertTrue(buffer_shape[1].startswith("SparseAttentionIndexer_"))
         self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), buffer_shape)
+
+    def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
+        def infer(query_width, packed):
+            input_names = ["query", "", ""]
+            inputs = [helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", query_width])]
+            if not packed:
+                input_names[1:] = ["key", "value"]
+                inputs.extend(
+                    [
+                        helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+                        helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+                    ]
+                )
+            inputs.extend(
+                [
+                    helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+                    helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+                    helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+                ]
+            )
+            node = helper.make_node(
+                "DynamicSparseAttention",
+                [
+                    *input_names,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "selected_indices",
+                    "selected_counts",
+                    "seqlens_k",
+                    "total_sequence_length",
+                ],
+                ["output", "present_key", "present_value"],
+                domain="com.microsoft",
+                num_heads=4,
+                kv_num_heads=2,
+            )
+            graph = helper.make_graph(
+                [node],
+                "DynamicSparseAttentionInvalidWidth",
+                inputs,
+                [
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+                ],
+                [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+            )
+            model = helper.make_model(
+                graph,
+                opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+            )
+            return SymbolicShapeInference.infer_shapes(model, auto_merge=True).graph
+
+        packed_graph = infer(65, True)
+        self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
+        self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
+
+        separate_graph = infer(33, False)
+        self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
+        self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [

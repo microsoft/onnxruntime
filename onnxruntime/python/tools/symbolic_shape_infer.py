@@ -2637,8 +2637,12 @@ class SymbolicShapeInference:
             if node.input[1] == "" and node.input[2] == "" and isinstance(output_shape[2], int):
                 num_heads = get_attribute(node, "num_heads")
                 kv_num_heads = get_attribute(node, "kv_num_heads")
-                head_size = output_shape[2] // (num_heads + 2 * kv_num_heads)
-                output_shape[2] = num_heads * head_size
+                divisor = num_heads + 2 * kv_num_heads
+                if output_shape[2] % divisor == 0:
+                    head_size = output_shape[2] // divisor
+                    output_shape[2] = num_heads * head_size
+                else:
+                    output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
@@ -2648,14 +2652,16 @@ class SymbolicShapeInference:
             num_heads = get_attribute(node, "num_heads")
             kv_num_heads = get_attribute(node, "kv_num_heads")
             packed = node.input[1] == "" and node.input[2] == ""
-            head_size = query_shape[2] // ((num_heads + 2 * kv_num_heads) if packed else num_heads)
-            total_length = self._try_get_value(node, 10)
-            cache_length = (
-                as_scalar(total_length)
-                if total_length is not None
-                else str(self._new_symbolic_dim_from_output(node, 1, 2))
-            )
-            cache_shape = [query_shape[0], kv_num_heads, cache_length, head_size]
+            divisor = num_heads + 2 * kv_num_heads if packed else num_heads
+            if query_shape[2] % divisor == 0:
+                head_size = query_shape[2] // divisor
+                total_length = self._try_get_value(node, 10)
+                cache_length = (
+                    as_scalar(total_length)
+                    if total_length is not None
+                    else str(self._new_symbolic_dim_from_output(node, 1, 2))
+                )
+                cache_shape = [query_shape[0], kv_num_heads, cache_length, head_size]
 
         for output_index in (1, 2):
             if len(node.output) > output_index and node.output[output_index]:
