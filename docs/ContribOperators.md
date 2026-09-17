@@ -4752,14 +4752,14 @@ This version of the operator has been available since version 1 of the 'com.micr
     * derives ordinary causal visibility purely from that packed metadata -- there is no mask input;
     * uses a single generic set of state slots (past_key_state / past_kv_buffer / past_gate_buffer /
       past_state_lengths) for both policy_mode values, each with a shape that is fixed across calls
-      (state never grows and is never concatenated); state overflow beyond the fixed capacity is
+      (state never grows and is never concatenated); a step that would overflow the fixed capacity is
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-
+  
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-
+  
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -4770,7 +4770,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block.
-
+  
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -4778,7 +4778,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-
+  
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -4798,8 +4798,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-
-  OgaEngine integration note: this operator only defines the ORT operator; wiring
+  
+  OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
   OgaEngine / Model Builder integration, which is out of scope for this operator definition.
@@ -4829,7 +4829,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (10 - 15)
+#### Inputs
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -4864,7 +4864,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Generic per-request state length with shape (batch_size, 2). Column 0 is the key_state entry count (policy_mode 'qsa': complete-block count; 'csa': compressed-entry count); column 1 is the pending-buffer length (policy_mode 'qsa': incomplete-block length in [0, compress_ratio); 'csa': buffer length in [0, 2 * compress_ratio)).</dd>
 </dl>
 
-#### Outputs (6 - 6)
+#### Outputs
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
@@ -8125,4 +8125,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-

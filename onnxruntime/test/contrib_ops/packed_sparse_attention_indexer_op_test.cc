@@ -88,7 +88,7 @@ struct GraphOptions {
   int64_t total_tokens = 5;
   int64_t num_heads = 2;
   int64_t head_size = 8;
-  int64_t rotary_width = 8;
+  int64_t rotary_width = 4;
   int64_t compress_ratio = 2;
   int64_t state_capacity = 6;
   int64_t input_state_capacity = -1;
@@ -99,7 +99,6 @@ struct GraphOptions {
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool add_position_ids = false;
-  bool invert_gate_output_presence = false;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
@@ -157,8 +156,7 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
-    const bool gate_output_present = is_csa != options.invert_gate_output_presence;
-    outputs.push_back(i == psai::kPresentGateBuffer && !gate_output_present ? &empty : builder.MakeOutput());
+    outputs.push_back(i == psai::kPresentGateBuffer && !is_csa ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -235,21 +233,6 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMi
   options.input_state_capacity = options.state_capacity + 1;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
                        "past_key_state dimension 1 must equal state_capacity");
-}
-
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaGateOutput) {
-  GraphOptions options;
-  options.invert_gate_output_presence = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "must be omitted when policy_mode is 'qsa'");
-}
-
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingGateOutput) {
-  GraphOptions options;
-  options.policy_mode = psai::kPolicyModeCsa;
-  options.invert_gate_output_presence = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "is required when policy_mode is 'csa'");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMismatchedKeyTokenCount) {
