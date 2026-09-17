@@ -304,6 +304,9 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     const auto* total_sequence_length_data = ctx.getInputData(6);
     if (total_sequence_length_data != nullptr) {
       const auto& data = ParseData<int32_t>(total_sequence_length_data);
+      if (data.size() != 1) {
+        fail_shape_inference("Input 6 (total_sequence_length) must contain exactly one element");
+      }
       total_sequence_length_value = static_cast<int64_t>(data[0]);
     }
 

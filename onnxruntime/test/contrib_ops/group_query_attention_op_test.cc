@@ -138,6 +138,31 @@ static void RunGQASeqlensKTest(
   tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
 }
 
+TEST(GroupQueryAttentionTest, RejectsEmptyTotalSequenceLengthInitializer) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int head_size = 8;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddInput<float>("query", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 1.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 1.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 1.0f));
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {0}, {}, /*is_initializer=*/true);
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, 1, sequence_length, head_size},
+                          std::vector<float>(head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, 1, sequence_length, head_size},
+                          std::vector<float>(head_size, 0.0f));
+
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "must contain exactly one element");
+}
+
 template <typename T>
 static void RunGQACausalMaskTest(
     GqaTargetEp target_ep,
