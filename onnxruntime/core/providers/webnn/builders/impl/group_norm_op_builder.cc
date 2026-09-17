@@ -299,6 +299,9 @@ bool GroupNormOpBuilder::IsOpSupportedImpl(const GraphViewer&,
       LOGS(logger, VERBOSE) << op_type << " only supports activation 0 (None) or 1 (SiLU).";
       return false;
     }
+  } else if (helper.Get("stash_type", static_cast<int64_t>(1)) != 1) {
+    LOGS(logger, VERBOSE) << op_type << " only supports stash_type 1 (FLOAT).";
+    return false;
   }
 
   if (is_skip) {
