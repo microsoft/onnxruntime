@@ -13233,10 +13233,9 @@ TEST_F(GraphTransformationTests, STFTDecomposition_LargeDftSizeNumericalAccuracy
                     std::make_unique<STFTDecomposition>());
 }
 
-TEST_F(GraphTransformationTests, STFTDecomposition_RunsAtLevel2ByDefault) {
+TEST_F(GraphTransformationTests, STFTDecomposition_Float2DWithWindowOnly) {
   constexpr int64_t batch_size = 2;
   constexpr int64_t signal_length = 12;
-  constexpr int64_t dft_size = 5;
   constexpr int64_t frame_step = 2;
   constexpr int64_t output_num_frames = 4;
   constexpr int64_t dft_unique_bins = 3;
@@ -13249,10 +13248,10 @@ TEST_F(GraphTransformationTests, STFTDecomposition_RunsAtLevel2ByDefault) {
 
     auto* signal = builder.MakeInput<float>({batch_size, signal_length}, signal_data);
     auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
-    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* window = builder.Make1DInitializer<float>({0.2f, 0.4f, 0.6f, 0.8f, 1.0f});
     auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
 
-    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+    builder.AddNode("STFT", {signal, frame_step_arg, window}, {output})
         .AddAttribute("onesided", static_cast<int64_t>(1));
   };
 
@@ -13362,6 +13361,42 @@ TEST_F(GraphTransformationTests, STFTDecomposition_SkipsNonConstantFrameStep) {
     auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
 
     builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("STFT") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("Conv") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        17,
+                                        *logger_,
+                                        std::make_unique<STFTDecomposition>(),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_SkipsNonConstantFrameLength) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* signal = builder.MakeInput<float>(std::vector<int64_t>{batch_size, signal_length});
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* window = builder.Make1DInitializer<float>(std::vector<float>(dft_size, 1.0f));
+    auto* frame_length = builder.MakeInput<int64_t>(std::vector<int64_t>{}, std::vector<int64_t>{dft_size});
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, window, frame_length}, {output})
         .AddAttribute("onesided", static_cast<int64_t>(1));
   };
 

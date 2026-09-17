@@ -142,7 +142,8 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in,
     This function decomposes a STFT node into a subgraph.
     The decomposition requires that:
       1) The signal input is real valued and not complex valued!
-      2) Both (frame_step) *and* either (window or frame_length) inputs must be constant.
+      2) The frame_step input must be constant.
+      3) If frame_length is present, it must be constant. Otherwise, window must be constant.
     Otherwise the transform will not be applied.
 
     Subgraph pattern 1: STFT with optional Window parameter set
@@ -193,44 +194,50 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     Node& stft = *node;
-    if (stft.InputDefs().size() < 4 || stft.OutputDefs().empty()) {
+    if (stft.InputDefs().size() < 3 || stft.OutputDefs().empty()) {
       continue;
     }
 
     auto signal = stft.MutableInputDefs()[0];
     auto frame_step = stft.MutableInputDefs()[1];
     auto window = stft.MutableInputDefs()[2];
-    auto frame_length = stft.MutableInputDefs()[3];
+    auto frame_length = stft.MutableInputDefs().size() > 3 ? stft.MutableInputDefs()[3] : nullptr;
 
     const auto* signal_type = signal->TypeAsProto();
     if (signal_type == nullptr || !signal_type->has_tensor_type()) {
       continue;
     }
 
-    const auto* signal_shape = signal->Shape();
-    if (signal_shape == nullptr || signal_shape->dim_size() < 2 || signal_shape->dim_size() > 3) {
+    const auto* signal_shape_proto = signal->Shape();
+    if (signal_shape_proto == nullptr || signal_shape_proto->dim_size() < 2 || signal_shape_proto->dim_size() > 3) {
       continue;
     }
 
-    auto batch_size_dim = signal_shape->dim(0);
-    auto signal_length_dim = signal_shape->dim(1);
+    auto batch_size_dim = signal_shape_proto->dim(0);
+    auto signal_length_dim = signal_shape_proto->dim(1);
     CONTINUE_IF_NO_DIM_VALUE(signal_length_dim);
 
     auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : static_cast<int64_t>(-1);
     auto signal_length = signal_length_dim.dim_value();
-    auto is_real = signal_shape->dim_size() == 2 ||
-                   (signal_shape->dim_size() == 3 &&
-                    signal_shape->dim(2).has_dim_value() &&
-                    signal_shape->dim(2).dim_value() == 1);
+    auto is_real = signal_shape_proto->dim_size() == 2 ||
+                   (signal_shape_proto->dim_size() == 3 &&
+                    signal_shape_proto->dim(2).has_dim_value() &&
+                    signal_shape_proto->dim(2).dim_value() == 1);
     auto data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(signal_type->tensor_type().elem_type());
     if (!is_real || (may_run_on_cpu && data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       continue;
     }
 
+    const bool has_frame_length = frame_length != nullptr && frame_length->Exists();
     auto frame_step_initializer = graph_utils::GetConstantInitializer(graph, frame_step->Name());
     auto window_initializer = window->Exists() ? graph_utils::GetConstantInitializer(graph, window->Name()) : nullptr;
-    auto frame_length_initializer = frame_length->Exists() ? graph_utils::GetConstantInitializer(graph, frame_length->Name()) : nullptr;
+    auto frame_length_initializer = has_frame_length
+                                        ? graph_utils::GetConstantInitializer(graph, frame_length->Name())
+                                        : nullptr;
     CONTINUE_IF_NULL(frame_step_initializer);
+    if (has_frame_length && frame_length_initializer == nullptr) {
+      continue;
+    }
     const auto* window_type = window->Exists() ? window->TypeAsProto() : nullptr;
     if (window->Exists() && (window_type == nullptr || !window_type->has_tensor_type())) {
       continue;
@@ -253,12 +260,12 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
       dft_size = *frame_length_value;
     }
-    if (!frame_length_initializer && window_initializer) {
-      const auto* window_shape = window->Shape();
-      if (window_shape == nullptr || window_shape->dim_size() != 1) {
+    if (!has_frame_length && window_initializer) {
+      const auto* window_shape_proto = window->Shape();
+      if (window_shape_proto == nullptr || window_shape_proto->dim_size() != 1) {
         continue;
       }
-      auto window_length_dim = window_shape->dim(0);
+      auto window_length_dim = window_shape_proto->dim(0);
       CONTINUE_IF_NO_DIM_VALUE(window_length_dim);
       dft_size = window_length_dim.dim_value();
     }
@@ -275,10 +282,10 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    const auto* window_shape = window->Exists() ? window->Shape() : nullptr;
-    if (window_shape != nullptr && window_shape->dim_size() == 1 &&
-        window_shape->dim(0).has_dim_value() &&
-        window_shape->dim(0).dim_value() != dft_size) {
+    const auto* window_shape_proto = window->Exists() ? window->Shape() : nullptr;
+    if (window_shape_proto != nullptr && window_shape_proto->dim_size() == 1 &&
+        window_shape_proto->dim(0).has_dim_value() &&
+        window_shape_proto->dim(0).dim_value() != dft_size) {
       continue;
     }
 
