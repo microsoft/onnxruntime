@@ -10,8 +10,10 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# isort: off
 import build
 import build_args
+# isort: on
 
 _UNRELEASED_OPSET_ENVIRONMENT = {
     "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
