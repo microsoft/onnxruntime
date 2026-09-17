@@ -17,6 +17,7 @@
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/default_providers.h"
 #endif
 
@@ -1113,12 +1114,29 @@ TEST(DynamicSparseAttentionTest, RejectsMissingAuxiliaryInputInAuxiliaryMode_CUD
       "auxiliary KV inputs are required when selected_kv_source is auxiliary");
 }
 
+TEST(DynamicSparseAttentionTest, NormalPathSkipsDeviceMetadataValidation_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", "0"}}};
+
+  auto c = MakeSingleTokenSelectedOnlyCase();
+  c.selected_counts = {3};
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
 TEST(DynamicSparseAttentionTest, RejectsInvalidSelectionMetadata_CUDA) {
   auto cuda_ep_probe = DefaultCudaExecutionProvider();
   if (!cuda_ep_probe) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
   cuda_ep_probe.reset();
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", "1"}}};
 
   {
     SCOPED_TRACE("selected_counts shape");

@@ -9,6 +9,7 @@
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h"
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
@@ -98,6 +99,9 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
   use_smooth_softmax_ = ParseBoolAttribute(info, "smooth_softmax", 0);
   auxiliary_kv_shared_ = ParseBoolAttribute(info, "auxiliary_kv_shared", 0);
+  strict_validation_ =
+      ParseEnvironmentVariableWithDefault<bool>(
+          "ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", false);
   attention_mode_ = ParseAttentionMode(
       info.GetAttrOrDefault<std::string>("attention_mode", "selected_only"));
   selected_kv_source_ = ParseKvSource(
@@ -196,9 +200,12 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
 
   cudaStream_t stream = Stream(context);
-  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
-  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
-  if (capture_status == cudaStreamCaptureStatusNone) {
+  if (strict_validation_) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+    ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                      "DynamicSparseAttention strict validation is not supported during CUDA graph capture.");
+
     auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
     const size_t validation_workspace_elements =
         GetDynamicSparseAttentionValidationWorkspaceSize(
