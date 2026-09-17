@@ -12,6 +12,7 @@
 #include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor_shape.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 
@@ -45,6 +46,23 @@ int32_t Get2BitElementUint8(const uint8_t* data_ptr, int64_t data_idx) {
   const uint8_t data_val_u8 = data_ptr[data_idx >> 2];
   const int shift = static_cast<int>((data_idx & 3) * 2);
   return static_cast<int32_t>((data_val_u8 >> shift) & 0x03);
+}
+
+constexpr int64_t kUint8DequantBatch = 256;
+
+void UnpackUint8Elements(const uint8_t* data_ptr, int64_t data_idx, int64_t count, int64_t bits,
+                         uint8_t* output) {
+  if (bits == 8) {
+    memcpy(output, data_ptr + data_idx, narrow<size_t>(count));
+  } else if (bits == 4) {
+    for (int64_t i = 0; i < count; ++i) {
+      output[i] = static_cast<uint8_t>(Get4BitElement(data_ptr, data_idx + i));
+    }
+  } else {
+    for (int64_t i = 0; i < count; ++i) {
+      output[i] = static_cast<uint8_t>(Get2BitElementUint8(data_ptr, data_idx + i));
+    }
+  }
 }
 
 // Trait identifying the FP8/FP4 data types supported by GatherBlockQuantized. Unlike the integer
@@ -439,28 +457,20 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
         return;
       }
 
-      int64_t output_idx = output_idx_base;
-      int64_t data_idx = data_idx_base;
-      for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
-        int32_t data_val;
-        if constexpr (!std::is_same_v<T1, uint8_t>) {
-          data_val = Get4BitElement(data_ptr, data_idx);
-        } else if (bits_ == 2) {
-          data_val = Get2BitElementUint8(data_ptr, data_idx);
-        } else if (bits_ == 4) {
-          data_val = Get4BitElement(data_ptr, data_idx);
-        } else {
-          data_val = static_cast<int32_t>(data_ptr[data_idx]);
-        }
+      if constexpr (std::is_same_v<T1, uint8_t>) {
+        uint8_t unpacked[kUint8DequantBatch];
 
-        int64_t x = data_idx / quantize_full_block;
-        int64_t y = data_idx % quantize_full_block / quantize_N;
-        int64_t z = data_idx % quantize_N;
-        int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
-        auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
-        int32_t zp_val;
+        int64_t output_idx = output_idx_base;
+        int64_t data_idx = data_idx_base;
+        int64_t i = 0;
+        while (i < gather_block) {
+          const int64_t y = data_idx % quantize_full_block;
+          const int64_t scale_idx = data_idx / quantize_full_block * scale_full_block + y / block_size_;
+          int64_t run_len = std::min(block_size_ - y % block_size_, quantize_full_block - y);
+          run_len = std::min({run_len, gather_block - i, kUint8DequantBatch});
 
-        if constexpr (std::is_same_v<T1, uint8_t>) {
+          const auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
+          int32_t zp_val;
           if (zero_points_ptr) {
             const int64_t scale_qaxis_dim = scale_full_block;
             const int64_t scale_row = scale_idx / scale_qaxis_dim;
@@ -481,14 +491,39 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
           } else {
             zp_val = 1 << (static_cast<int>(bits_) - 1);
           }
-        } else {
-          zp_val = zero_points_ptr
-                       ? static_cast<int32_t>(
-                             zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1)))
-                       : 0;
-        }
 
-        output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
+          UnpackUint8Elements(data_ptr, data_idx, run_len, bits_, unpacked);
+          if constexpr (std::is_same_v<T2, float>) {
+            MlasDequantizeLinear(unpacked, output_ptr + output_idx, narrow<size_t>(run_len), scale_val,
+                                 static_cast<uint8_t>(zp_val));
+          } else {
+            float dequantized[kUint8DequantBatch];
+            MlasDequantizeLinear(unpacked, dequantized, narrow<size_t>(run_len), scale_val,
+                                 static_cast<uint8_t>(zp_val));
+            MlasConvertFloatToHalfBuffer(dequantized, output_ptr + output_idx, narrow<size_t>(run_len));
+          }
+
+          i += run_len;
+          output_idx += run_len;
+          data_idx += run_len;
+        }
+      } else {
+        int64_t output_idx = output_idx_base;
+        int64_t data_idx = data_idx_base;
+        for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
+          const int32_t data_val = Get4BitElement(data_ptr, data_idx);
+          const int64_t x = data_idx / quantize_full_block;
+          const int64_t y = data_idx % quantize_full_block / quantize_N;
+          const int64_t z = data_idx % quantize_N;
+          const int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
+          const auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
+          const int32_t zp_val =
+              zero_points_ptr
+                  ? static_cast<int32_t>(
+                        zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1)))
+                  : 0;
+          output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
+        }
       }
 
       cache[data_idx_base] = output_idx_base;

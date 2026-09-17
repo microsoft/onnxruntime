@@ -106,6 +106,14 @@ struct IndexedSubGraph {
     }
   }
 
+  // Accounts for all constituent nodes and moves their workspace reservations
+  // to the fused node that survives graph partitioning.
+  void AccountForAllNodes(const void* graph_identity, NodeIndex fused_node_index) const {
+    AccountForAllNodes();
+    resource_accountant->ConsolidateCommittedWorkspaceReservations(
+        graph_identity, gsl::make_span(nodes), fused_node_index);
+  }
+
   // Accounts for a node given its index and a pre-computed resource cost.
   // Use this when the cost was computed externally (e.g. for a fused node).
   void AccountForNode(NodeIndex node_index, const ResourceCount& resource_count) const {

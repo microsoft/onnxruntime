@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 #include <type_traits>
@@ -699,6 +700,26 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits) {
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0Uint8DequantBatchBoundary) {
+  constexpr int64_t block_size = 512;
+  std::vector<int> data(block_size * 2, 0);
+  std::fill_n(data.begin() + block_size, block_size / 2, -8);
+  std::fill_n(data.begin() + block_size + block_size / 2, block_size / 2, 7);
+
+  std::vector<int> zero_points;
+  std::vector<float> expected_output(block_size, -4.0f);
+  std::fill_n(expected_output.begin() + block_size / 2, block_size / 2, 3.5f);
+
+  RunUnpackedData<uint8_t, float, int32_t>(
+      data, {2, block_size}, {1}, {1}, {1.0f, 0.5f}, {2, 1}, zero_points,
+      /*gather_axis=*/0, /*quantize_axis=*/1, block_size, /*bits=*/4,
+      expected_output, {1, block_size}, true);
+  RunUnpackedData<uint8_t, MLFloat16, int64_t>(
+      data, {2, block_size}, {1}, {1}, {1.0f, 0.5f}, {2, 1}, zero_points,
+      /*gather_axis=*/0, /*quantize_axis=*/1, block_size, /*bits=*/4,
+      expected_output, {1, block_size}, true);
 }
 #endif
 
