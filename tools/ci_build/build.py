@@ -151,7 +151,7 @@ def run_subprocess(
 
 def get_onnx_backend_test_environment(use_cuda):
     if use_cuda:
-        return {}
+        return {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}
 
     return {
         "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
@@ -2052,7 +2052,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        # Non-CUDA CI legs need the materialized corpus's in-development opsets.
+                        # Set the opset policy explicitly so the child process does not inherit the CI default.
                         run_subprocess(
                             [sys.executable, "onnx_backend_test_series.py"],
                             cwd=cwd,

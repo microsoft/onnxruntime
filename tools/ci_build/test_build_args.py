@@ -17,6 +17,7 @@ _UNRELEASED_OPSET_ENVIRONMENT = {
     "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
     "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
 }
+_CUDA_OPSET_ENVIRONMENT = {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}
 
 
 class BuildArgsTest(unittest.TestCase):
@@ -86,13 +87,19 @@ class OnnxBackendTestEnvironmentTest(unittest.TestCase):
                 _UNRELEASED_OPSET_ENVIRONMENT,
             )
 
-    def test_cuda_preserves_default_opset_mode(self):
+    def test_cuda_enables_released_opset_only_mode_by_default(self):
         with mock.patch.dict(build.os.environ, {}, clear=True):
-            self.assertEqual(build.get_onnx_backend_test_environment(use_cuda=True), {})
+            self.assertEqual(
+                build.get_onnx_backend_test_environment(use_cuda=True),
+                _CUDA_OPSET_ENVIRONMENT,
+            )
 
-    def test_cuda_preserves_explicit_parent_strict_opset_mode(self):
-        with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}, clear=True):
-            self.assertEqual(build.get_onnx_backend_test_environment(use_cuda=True), {})
+    def test_cuda_overrides_explicit_parent_unreleased_opset_mode(self):
+        with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "0"}, clear=True):
+            self.assertEqual(
+                build.get_onnx_backend_test_environment(use_cuda=True),
+                _CUDA_OPSET_ENVIRONMENT,
+            )
 
 
 if __name__ == "__main__":
