@@ -3911,12 +3911,21 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(
     uint32_t kv_cache_quant_bits,
     uint32_t multi_rotary_cache_concat_offset);
 
-static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k,
-                                      uint32_t kv_cache_quant_bits = 0,
-                                      bool smooth_softmax = false,
-                                      int sequence_length = 2,
-                                      int past_seq_len = 4,
-                                      int present_seq_len = -1) {
+struct MalformedSeqlensKTestOptions {
+  int32_t seqlens_k;
+  uint32_t kv_cache_quant_bits = 0;
+  bool smooth_softmax = false;
+  int sequence_length = 2;
+  int past_seq_len = 4;
+  int present_seq_len = -1;
+};
+
+static void RunMalformedSeqlensKNoOOB(const MalformedSeqlensKTestOptions& options) {
+  const auto [seqlens_k, kv_cache_quant_bits, smooth_softmax,
+              sequence_length, past_seq_len, configured_present_seq_len] = options;
+  const int present_seq_len = configured_present_seq_len < 0
+                                  ? past_seq_len + sequence_length
+                                  : configured_present_seq_len;
   auto webgpu_ep = WebGpuEPForGqaOptions(
       /*enable_graph_capture=*/false, kv_cache_quant_bits,
       /*multi_rotary_cache_concat_offset=*/0);
@@ -3933,9 +3942,6 @@ static void RunMalformedSeqlensKNoOOB(int32_t seqlens_k,
   const int cache_head_size = kv_cache_quant_bits == 0
                                   ? head_size
                                   : (head_size * static_cast<int>(kv_cache_quant_bits) + 32) / 32;
-  if (present_seq_len < 0) {
-    present_seq_len = past_seq_len + sequence_length;
-  }
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", num_heads);
@@ -4040,38 +4046,38 @@ static void RunPackedRotaryWithAsymmetricCachesNoOOB() {
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = 106});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = -1});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_ShortPastLargePresent_NoOOB_WebGPU) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/50, /*kv_cache_quant_bits=*/0,
-                            /*smooth_softmax=*/false, /*sequence_length=*/1,
-                            /*past_seq_len=*/2, /*present_seq_len=*/100);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = 50,
+                             .sequence_length = 1,
+                             .past_seq_len = 2,
+                             .present_seq_len = 100});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/4);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = 106, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/8);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = 106, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1, /*kv_cache_quant_bits=*/4);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = -1, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/-1, /*kv_cache_quant_bits=*/8);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = -1, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
-  RunMalformedSeqlensKNoOOB(/*seqlens_k=*/106, /*kv_cache_quant_bits=*/0,
-                            /*smooth_softmax=*/true);
+  RunMalformedSeqlensKNoOOB({.seqlens_k = 106, .smooth_softmax = true});
 }
 
 TEST(GroupQueryAttentionTest, PackedRotaryAsymmetricCaches_NoOOB_WebGPU) {
