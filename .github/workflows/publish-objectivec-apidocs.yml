@@ -28,6 +28,9 @@ jobs:
     name: Generate Objective-C API docs
     runs-on: macos-latest
     timeout-minutes: 120
+    env:
+      BUNDLE_GEMFILE: ./objectivec/docs/Gemfile
+      BUNDLE_PATH: /tmp/onnxruntime-objectivec-apidocs
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
     - name: Get vcpkg tool info
@@ -44,15 +47,11 @@ jobs:
 
     - name: Install Jazzy
       run: |
-        export BUNDLE_GEMFILE=./objectivec/docs/Gemfile
-        export BUNDLE_PATH=/tmp/onnxruntime-objectivec-apidocs
         bundle install
 
     - name: Generate Objective-C docs
       run: |
         set -e
-        export BUNDLE_GEMFILE=./objectivec/docs/Gemfile
-        export BUNDLE_PATH=/tmp/onnxruntime-objectivec-apidocs
 
         # add commit info to main page of generated docs
         ORT_COMMIT_SHORT="$(git rev-parse --short HEAD)"
