@@ -197,14 +197,28 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
 
   cudaStream_t stream = Stream(context);
   auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+  const size_t validation_workspace_elements =
+      GetDynamicSparseAttentionValidationWorkspaceSize(parameters);
+  auto validation_workspace =
+      GetScratchBuffer<uint32_t>(validation_workspace_elements, GetComputeStream(context));
+  const size_t row_count =
+      SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length;
+  const size_t validation_bitmap_words =
+      row_count == 0 ? 0 : validation_workspace_elements / row_count;
+
+  const size_t attention_workspace_elements =
+      GetDynamicSparseAttentionWorkspaceSize(
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock);
+  auto attention_workspace =
+      GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
+  data.attention_workspace = attention_workspace.get();
+
   cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
-  ORT_RETURN_IF_NOT(
-      capture_status == cudaStreamCaptureStatusNone,
-      "DynamicSparseAttention metadata validation cannot run during CUDA graph capture.");
   ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
       stream, data.selected_indices, data.selected_counts, data.seqlens_k,
-      data.position_ids, parameters, validation_error.get(), true));
+      data.position_ids, parameters, validation_error.get(), validation_workspace.get(),
+      validation_bitmap_words, capture_status == cudaStreamCaptureStatusNone));
 
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;
