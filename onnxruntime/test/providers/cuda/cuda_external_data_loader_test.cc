@@ -350,7 +350,8 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
         session_state.GetPrepackedIniitializersForGraph().GetPrepackedWeights(std::string{kPrepackedKey});
     ASSERT_NE(restored_prepack, nullptr);
     ASSERT_EQ(restored_prepack->buffers_.size(), 1U);
-    ASSERT_EQ(restored_prepack->buffer_sizes_, std::vector<size_t>{prepacked_blob.size()});
+    ASSERT_EQ(restored_prepack->buffer_sizes_.size(), 1U);
+    ASSERT_EQ(restored_prepack->buffer_sizes_[0], prepacked_blob.size());
     EXPECT_TRUE(std::equal(
         prepacked_blob.begin(), prepacked_blob.end(),
         static_cast<const uint8_t*>(restored_prepack->buffers_[0].get())));
