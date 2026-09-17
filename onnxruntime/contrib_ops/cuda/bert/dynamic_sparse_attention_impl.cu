@@ -22,6 +22,7 @@ namespace {
 
 constexpr int kSplitCandidateSize = 256;
 constexpr size_t kMaxFusedSharedBytes = 16 * 1024;
+constexpr size_t kMaxValidationSharedBytes = 32 * 1024;
 
 template <typename T>
 __device__ __forceinline__ float ToFloat(T value) {
@@ -53,6 +54,7 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
                                      bool use_auxiliary,
                                      uint32_t* validation_bitmap,
                                      size_t validation_bitmap_words,
+                                     bool use_shared_bitmap,
                                      int32_t* error_flag) {
   const int row = static_cast<int>(blockIdx.x);
   const int b = row / sequence_length;
@@ -60,6 +62,14 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
   if (b >= batch_size) {
     return;
   }
+
+  extern __shared__ uint32_t shared_bitmap[];
+  if (use_shared_bitmap) {
+    for (size_t i = threadIdx.x; i < validation_bitmap_words; i += blockDim.x) {
+      shared_bitmap[i] = 0;
+    }
+  }
+  __syncthreads();
 
   __shared__ int count;
   __shared__ int source_length;
@@ -106,7 +116,9 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
   const int32_t* row_indices =
       max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
   uint32_t* row_bitmap =
-      validation_bitmap == nullptr ? nullptr : validation_bitmap + static_cast<size_t>(row) * validation_bitmap_words;
+      use_shared_bitmap
+          ? shared_bitmap
+          : validation_bitmap + static_cast<size_t>(row) * validation_bitmap_words;
   for (int i = static_cast<int>(threadIdx.x); i < max_selected; i += static_cast<int>(blockDim.x)) {
     const int index = row_indices[i];
     DynamicSparseAttentionValidationError error = kDynamicSparseAttentionValidationOk;
@@ -394,47 +406,6 @@ __global__ void AppendKvKernel(const T* query,
     present_key[cache_offset] = result;
     present_value[cache_offset] = (is_packed ? query : value)[value_offset];
   }
-}
-
-template <typename T>
-__device__ __forceinline__ void AccumulateCandidate(const T* query,
-                                                    const T* key,
-                                                    const T* value,
-                                                    int head_size,
-                                                    float scale,
-                                                    float* reduction,
-                                                    float& accumulator,
-                                                    float& max_logit,
-                                                    float& denominator,
-                                                    float& old_weight,
-                                                    float& new_weight) {
-  const int h = static_cast<int>(threadIdx.x);
-  float partial = 0.0f;
-  if (h < head_size) {
-    partial = ToFloat(query[h]) * ToFloat(key[h]);
-  }
-  reduction[h] = partial;
-  __syncthreads();
-  for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (h < static_cast<int>(stride)) {
-      reduction[h] += reduction[h + stride];
-    }
-    __syncthreads();
-  }
-
-  if (h == 0) {
-    const float logit = reduction[0] * scale;
-    const float next_max = fmaxf(max_logit, logit);
-    old_weight = denominator == 0.0f ? 0.0f : expf(max_logit - next_max);
-    new_weight = expf(logit - next_max);
-    denominator = denominator * old_weight + new_weight;
-    max_logit = next_max;
-  }
-  __syncthreads();
-  if (h < head_size) {
-    accumulator = accumulator * old_weight + new_weight * ToFloat(value[h]);
-  }
-  __syncthreads();
 }
 
 template <typename T>
@@ -889,127 +860,6 @@ __global__ void MergeDynamicSparseAttentionKernel(const float* partial_max,
   }
 }
 
-template <typename T>
-__global__ void DynamicSparseAttentionKernel(const T* query,
-                                             const T* main_key,
-                                             const T* main_value,
-                                             const T* auxiliary_key,
-                                             const T* auxiliary_value,
-                                             const int32_t* selected_indices,
-                                             const int32_t* selected_counts,
-                                             const int32_t* seqlens_k,
-                                             const T* head_sink,
-                                             T* output,
-                                             int block_count,
-                                             int sequence_length,
-                                             int num_heads,
-                                             int kv_num_heads,
-                                             int head_size,
-                                             int main_capacity,
-                                             int auxiliary_sequence_length,
-                                             int max_selected,
-                                             int local_window_size,
-                                             float scale,
-                                             bool local_plus_selected,
-                                             bool selected_from_auxiliary,
-                                             bool use_smooth_softmax) {
-  const int block = static_cast<int>(blockIdx.x);
-  if (block >= block_count) {
-    return;
-  }
-  const int head = block % num_heads;
-  const int row = block / num_heads;
-  const int b = row / sequence_length;
-  const int s = row - b * sequence_length;
-  const int h = static_cast<int>(threadIdx.x);
-  const int kv_head = head / (num_heads / kv_num_heads);
-  const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
-  const bool valid_length = total_length_64 >= sequence_length && total_length_64 <= main_capacity;
-  const int total_length = valid_length ? static_cast<int>(total_length_64) : 0;
-  const int query_position = valid_length ? total_length - sequence_length + s : -1;
-  const T* query_head = query + (static_cast<int64_t>(row) * num_heads + head) * head_size;
-
-  extern __shared__ float reduction[];
-  __shared__ float max_logit;
-  __shared__ float denominator;
-  __shared__ float old_weight;
-  __shared__ float new_weight;
-  if (h == 0) {
-    if (use_smooth_softmax) {
-      max_logit = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
-      denominator = 1.0f;
-    } else {
-      max_logit = -FLT_MAX;
-      denominator = 0.0f;
-    }
-    old_weight = 0.0f;
-    new_weight = 0.0f;
-  }
-  __syncthreads();
-
-  float accumulator = 0.0f;
-  int local_start = 0;
-  if (local_plus_selected && query_position >= 0) {
-    local_start = query_position - local_window_size + 1;
-    local_start = local_start < 0 ? 0 : local_start;
-    const int available_length = total_length < main_capacity ? total_length : main_capacity;
-    const int local_end = query_position < available_length - 1 ? query_position : available_length - 1;
-    for (int index = local_start; index <= local_end; ++index) {
-      const int64_t cache_offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-      AccumulateCandidate(query_head, main_key + cache_offset, main_value + cache_offset,
-                          head_size, scale, reduction, accumulator,
-                          max_logit, denominator, old_weight, new_weight);
-    }
-  }
-
-  int count = selected_counts[row];
-  count = count < 0 ? 0 : (count > max_selected ? max_selected : count);
-  const int32_t* row_indices =
-      max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
-  for (int i = 0; i < count; ++i) {
-    const int index = row_indices[i];
-    bool valid = index >= 0;
-    if (selected_from_auxiliary) {
-      valid = valid && index < auxiliary_sequence_length;
-    } else {
-      valid = valid && index < total_length && index <= query_position && index < main_capacity;
-      if (local_plus_selected && index >= local_start && index <= query_position) {
-        valid = false;
-      }
-    }
-    if (!valid) {
-      continue;
-    }
-
-    const T* key_head;
-    const T* value_head;
-    if (selected_from_auxiliary) {
-      const int64_t offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) *
-               auxiliary_sequence_length +
-           index) *
-          head_size;
-      key_head = auxiliary_key + offset;
-      value_head = auxiliary_value + offset;
-    } else {
-      const int64_t offset =
-          ((static_cast<int64_t>(b) * kv_num_heads + kv_head) * main_capacity + index) * head_size;
-      key_head = main_key + offset;
-      value_head = main_value + offset;
-    }
-    AccumulateCandidate(query_head, key_head, value_head, head_size, scale, reduction,
-                        accumulator, max_logit, denominator, old_weight, new_weight);
-  }
-
-  if (h < head_size) {
-    const int64_t output_offset =
-        (static_cast<int64_t>(row) * num_heads + head) * head_size + h;
-    output[output_offset] =
-        denominator == 0.0f ? FromFloat<T>(0.0f) : FromFloat<T>(accumulator / denominator);
-  }
-}
-
 int GetThreadsPerBlock(int head_size) {
   int threads = 32;
   while (threads < head_size) {
@@ -1047,10 +897,7 @@ bool UseFusedAttention(const DynamicSparseAttentionParameters& parameters,
          fused_shared_bytes < max_shared_memory_per_block;
 }
 
-}  // namespace
-
-size_t GetDynamicSparseAttentionValidationWorkspaceSize(
-    const DynamicSparseAttentionParameters& parameters) {
+size_t GetValidationBitmapWords(const DynamicSparseAttentionParameters& parameters) {
   if (parameters.max_selected == 0) {
     return 0;
   }
@@ -1059,10 +906,28 @@ size_t GetDynamicSparseAttentionValidationWorkspaceSize(
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary
           ? static_cast<size_t>(parameters.auxiliary_sequence_length)
           : static_cast<size_t>(parameters.cache_capacity);
-  const size_t words_per_row = (source_length + 31) / 32;
+  return (source_length + 31) / 32;
+}
+
+bool UseSharedValidationBitmap(const DynamicSparseAttentionParameters& parameters,
+                               size_t max_shared_memory_per_block) {
+  const size_t shared_bytes = GetValidationBitmapWords(parameters) * sizeof(uint32_t);
+  return shared_bytes <= kMaxValidationSharedBytes &&
+         shared_bytes < max_shared_memory_per_block;
+}
+
+}  // namespace
+
+size_t GetDynamicSparseAttentionValidationWorkspaceSize(
+    const DynamicSparseAttentionParameters& parameters,
+    size_t max_shared_memory_per_block) {
+  if (UseSharedValidationBitmap(parameters, max_shared_memory_per_block)) {
+    return 0;
+  }
+
   const size_t row_count =
       SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length;
-  return SafeInt<size_t>(row_count) * words_per_row;
+  return SafeInt<size_t>(row_count) * GetValidationBitmapWords(parameters);
 }
 
 size_t GetDynamicSparseAttentionWorkspaceSize(
@@ -1091,27 +956,33 @@ Status ValidateDynamicSparseAttentionOnDevice(
     const DynamicSparseAttentionParameters& parameters,
     int32_t* error_flag,
     uint32_t* validation_bitmap,
-    size_t validation_bitmap_words,
+    size_t max_shared_memory_per_block,
     bool copy_result_to_host) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(error_flag, 0, sizeof(int32_t), stream));
   const int64_t row_count =
       static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length;
+  const size_t validation_bitmap_words = GetValidationBitmapWords(parameters);
+  const bool use_shared_bitmap =
+      UseSharedValidationBitmap(parameters, max_shared_memory_per_block);
   const size_t validation_bitmap_elements =
-      static_cast<size_t>(row_count) * validation_bitmap_words;
+      use_shared_bitmap ? 0 : static_cast<size_t>(row_count) * validation_bitmap_words;
   if (validation_bitmap_elements > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
         validation_bitmap, 0, validation_bitmap_elements * sizeof(uint32_t), stream));
   }
   ORT_RETURN_IF_ERROR(CheckBlockCount(row_count, "validation"));
   constexpr int kValidationThreads = 256;
-  ValidateInputsKernel<<<static_cast<int>(row_count), kValidationThreads, 0, stream>>>(
+  const size_t validation_shared_bytes =
+      use_shared_bitmap ? validation_bitmap_words * sizeof(uint32_t) : 0;
+  ValidateInputsKernel<<<static_cast<int>(row_count), kValidationThreads,
+                         validation_shared_bytes, stream>>>(
       selected_indices, selected_counts, seqlens_k, position_ids,
       parameters.batch_size, parameters.sequence_length, parameters.max_selected,
       parameters.total_sequence_length,
       parameters.cache_capacity, parameters.auxiliary_sequence_length,
       parameters.rotary_max_position, parameters.do_rotary,
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-      validation_bitmap, validation_bitmap_words, error_flag);
+      validation_bitmap, validation_bitmap_words, use_shared_bitmap, error_flag);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   if (!copy_result_to_host) {
