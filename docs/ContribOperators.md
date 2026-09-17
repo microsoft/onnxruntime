@@ -5794,6 +5794,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>Minimum accuracy level of the expert GEMMs on CPU, with the MatMulNBits meaning. For block-wise 4-bit experts, 0 (default) or 1 keeps fp32 activations and 4 allows int8 activations (int8 dot-product kernels). Block-wise 8-bit experts have no fp32 kernel and use int8 activations at every level. Other values are treated as 0.</dd>
 <dt><tt>activation_alpha</tt> : float</dt>
 <dd>Alpha parameter used in activation function.</dd>
 <dt><tt>activation_beta</tt> : float</dt>
