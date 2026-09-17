@@ -4198,6 +4198,109 @@ TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
   EXPECT_EQ(default_counts.count("com.microsoft.BiasGelu") ? default_counts.at("com.microsoft.BiasGelu") : 0, 0);
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// SessionState::FinalizeSessionStateImpl unconditionally static_casts any node that carries
+// a subgraph to controlflow::IControlFlowKernel and calls the control-flow-only virtual
+// SetupSubgraphExecutionInfo on it. The "only control flow nodes have subgraphs" invariant it
+// relies on is enforced nowhere: Node::Init builds a subgraph for ANY attribute of GRAPH type,
+// with no schema gate. So a model whose ordinary node carries a GRAPH attribute reaches an
+// out-of-bounds vtable slot read (IControlFlowKernel appends a vtable slot that a plain kernel
+// does not have).
+//
+// SimplifiedLayerNormalization is a usable carrier: its schema (kOnnxDomain, since v1) sets
+// AllowUncheckedAttributes(), ONNX defines no competing op of that name, and it has a plain
+// (non-control-flow) CPU kernel. The CPU EP assigns it as a single node and keeps its GRAPH
+// attribute, so finalize hits the bad cast.
+TEST(InferenceSessionTests, SubgraphAttributeOnNonControlFlowNodeIsRejected) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Minimal, self-contained subgraph body: a single Constant producing one output and taking
+  // no inputs, so it needs no outer-scope wiring. Its contents are irrelevant to the defect.
+  ONNX_NAMESPACE::GraphProto forged_subgraph;
+  {
+    onnxruntime::Model sub_model("forged_subgraph", false, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+    Graph& sub_graph = sub_model.MainGraph();
+
+    ONNX_NAMESPACE::TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    auto& sub_out = sub_graph.GetOrCreateNodeArg("forged_sub_out", &float_tensor);
+    std::vector<onnxruntime::NodeArg*> const_inputs;
+    std::vector<onnxruntime::NodeArg*> const_outputs = {&sub_out};
+    auto& const_node = sub_graph.AddNode("forged_const", "Constant", "", const_inputs, const_outputs);
+
+    ONNX_NAMESPACE::TensorProto value;
+    value.set_name("forged_value");
+    value.add_dims(1);
+    value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    value.add_float_data(0.0f);
+    const_node.AddAttribute("value", value);
+
+    std::vector<const onnxruntime::NodeArg*> sub_graph_outputs = {&sub_out};
+    sub_graph.SetOutputs(sub_graph_outputs);
+    ASSERT_STATUS_OK(sub_graph.Resolve());
+    forged_subgraph = sub_graph.ToGraphProto();
+  }
+
+  // Main graph: SimplifiedLayerNormalization(X, scale) -> Y, plus a forged GRAPH attribute that
+  // no schema forbids because the op allows unchecked attributes.
+  onnxruntime::Model model("subgraph_type_confusion", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto vec_type;
+  vec_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  vec_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& scale = graph.GetOrCreateNodeArg("scale", &vec_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &x_type);
+
+  std::vector<onnxruntime::NodeArg*> inputs = {&x, &scale};
+  std::vector<onnxruntime::NodeArg*> outputs = {&y};
+  auto& node = graph.AddNode("sln", "SimplifiedLayerNormalization", "carrier", inputs, outputs);
+  node.AddAttribute("axis", int64_t{-1});
+  // The forged, non-control-flow subgraph. Node::Init materializes a Graph for it with no schema
+  // gate, and finalize then treats this ordinary node as a control flow kernel.
+  node.AddAttribute("forged_subgraph", forged_subgraph);
+
+  std::vector<const onnxruntime::NodeArg*> graph_inputs = {&x, &scale};
+  std::vector<const onnxruntime::NodeArg*> graph_outputs = {&y};
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+  // Resolving OK proves the model is otherwise well-formed, so a later Initialize failure can
+  // only come from the type-confusion guard, not from a malformed graph.
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.SubgraphAttributeOnNonControlFlowNodeIsRejected";
+  // Keep optimizers out so the carrier node reaches finalize unchanged, mirroring the WebNN
+  // dispatch session which also runs with ORT_DISABLE_ALL.
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+
+  // Mirrors the attacker's entry point (CreateSessionFromArray on attacker-controlled bytes).
+  ASSERT_STATUS_OK(session_object.Load(serialized.data(), static_cast<int>(serialized.size())));
+
+  const auto status = session_object.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("has a subgraph but is not a control flow node"),
+            std::string::npos)
+      << "actual error: " << status.ErrorMessage();
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test
