@@ -58,10 +58,10 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
   __shared__ int count;
   __shared__ int source_length;
   __shared__ int query_position;
-  __shared__ int metadata_error;
+  __shared__ int first_error_index;
   __shared__ bool row_is_valid;
   if (threadIdx.x == 0) {
-    metadata_error = std::numeric_limits<int>::max();
+    first_error_index = std::numeric_limits<int>::max();
     row_is_valid = false;
     const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
     if (total_length_64 < sequence_length ||
@@ -101,36 +101,49 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
       max_selected == 0 ? selected_indices : selected_indices + static_cast<int64_t>(row) * max_selected;
   for (int i = static_cast<int>(threadIdx.x); i < max_selected; i += static_cast<int>(blockDim.x)) {
     const int index = row_indices[i];
+    DynamicSparseAttentionValidationError error = kDynamicSparseAttentionValidationOk;
     if (i >= count) {
       if (index != -1) {
-        atomicMin(&metadata_error, static_cast<int>(kDynamicSparseAttentionInvalidPadding));
+        error = kDynamicSparseAttentionInvalidPadding;
       }
-      continue;
-    }
-    if (index < 0) {
-      atomicMin(&metadata_error, static_cast<int>(kDynamicSparseAttentionNegativeIndex));
+    } else if (index < 0) {
+      error = kDynamicSparseAttentionNegativeIndex;
     } else if (index >= source_length) {
-      atomicMin(&metadata_error, static_cast<int>(kDynamicSparseAttentionIndexOutOfBounds));
+      error = kDynamicSparseAttentionIndexOutOfBounds;
     } else if (!use_auxiliary && index > query_position) {
-      atomicMin(&metadata_error, static_cast<int>(kDynamicSparseAttentionNonCausalIndex));
+      error = kDynamicSparseAttentionNonCausalIndex;
+    } else {
+      for (int j = 0; j < i; ++j) {
+        if (row_indices[j] == index) {
+          error = kDynamicSparseAttentionDuplicateIndex;
+          break;
+        }
+      }
+    }
+    if (error != kDynamicSparseAttentionValidationOk) {
+      atomicMin(&first_error_index, i);
     }
   }
   __syncthreads();
-  if (metadata_error != std::numeric_limits<int>::max()) {
+  if (first_error_index != std::numeric_limits<int>::max()) {
     if (threadIdx.x == 0) {
-      SetValidationError(error_flag, static_cast<DynamicSparseAttentionValidationError>(metadata_error));
+      const int i = first_error_index;
+      const int index = row_indices[i];
+      DynamicSparseAttentionValidationError error;
+      if (i >= count) {
+        error = kDynamicSparseAttentionInvalidPadding;
+      } else if (index < 0) {
+        error = kDynamicSparseAttentionNegativeIndex;
+      } else if (index >= source_length) {
+        error = kDynamicSparseAttentionIndexOutOfBounds;
+      } else if (!use_auxiliary && index > query_position) {
+        error = kDynamicSparseAttentionNonCausalIndex;
+      } else {
+        error = kDynamicSparseAttentionDuplicateIndex;
+      }
+      SetValidationError(error_flag, error);
     }
     return;
-  }
-
-  for (int i = static_cast<int>(threadIdx.x); i < count; i += static_cast<int>(blockDim.x)) {
-    const int index = row_indices[i];
-    for (int j = 0; j < i; ++j) {
-      if (row_indices[j] == index) {
-        SetValidationError(error_flag, kDynamicSparseAttentionDuplicateIndex);
-        break;
-      }
-    }
   }
 }
 
@@ -456,8 +469,10 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
   const int warp = h >> 5;
   const int warp_count = static_cast<int>(blockDim.x) >> 5;
   const int kv_head = head / (num_heads / kv_num_heads);
-  const int total_length = seqlens_k[b] + 1;
-  const int query_position = total_length - sequence_length + s;
+  const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
+  const bool valid_length = total_length_64 >= sequence_length && total_length_64 <= main_capacity;
+  const int total_length = valid_length ? static_cast<int>(total_length_64) : 0;
+  const int query_position = valid_length ? total_length - sequence_length + s : -1;
   const T* query_head = query + (static_cast<int64_t>(row) * num_heads + head) * head_size;
 
   int local_start = 0;
@@ -476,6 +491,11 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
   extern __shared__ float shared[];
   float* logits = shared;
   float* reduction = logits + candidate_capacity;
+  T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
+  if (h < head_size) {
+    shared_query[h] = query_head[h];
+  }
+  __syncthreads();
 
   for (int candidate = warp; candidate < candidate_count; candidate += warp_count) {
     int index;
@@ -511,7 +531,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
     float dot = 0.0f;
     if (valid) {
       for (int d = lane; d < head_size; d += 32) {
-        dot += ToFloat(query_head[d]) * ToFloat(key_head[d]);
+        dot += ToFloat(shared_query[d]) * ToFloat(key_head[d]);
       }
       for (int offset = 16; offset > 0; offset >>= 1) {
         dot += __shfl_down_sync(0xffffffff, dot, offset);
@@ -538,6 +558,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
     __syncthreads();
   }
   const float max_logit = reduction[0];
+  __syncthreads();
 
   float thread_sum = 0.0f;
   if (use_smooth_softmax && h == 0) {
@@ -874,10 +895,14 @@ Status LaunchDynamicSparseAttention(
   ORT_RETURN_IF_NOT(candidate_capacity_64 <= std::numeric_limits<int>::max(),
                     "DynamicSparseAttention: candidate count exceeds CUDA kernel limits.");
   const int candidate_capacity = static_cast<int>(candidate_capacity_64);
+  const int fused_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
   const size_t fused_shared_bytes =
-      (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(threads)) * sizeof(float);
-  if (fused_shared_bytes <= max_shared_memory_per_block) {
-    FusedDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, fused_shared_bytes, stream>>>(
+      (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
+      static_cast<size_t>(parameters.head_size) * sizeof(T);
+  constexpr size_t kMaxFusedSharedBytes = 16 * 1024;
+  if (fused_shared_bytes <= kMaxFusedSharedBytes &&
+      fused_shared_bytes < max_shared_memory_per_block) {
+    FusedDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), fused_threads, fused_shared_bytes, stream>>>(
         data.prepared_query, data.present_key, data.present_value,
         data.auxiliary_key, data.auxiliary_value, data.selected_indices,
         data.selected_counts, data.seqlens_k, data.head_sink, data.output,
