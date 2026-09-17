@@ -29,19 +29,24 @@ class GateProgram final : public Program<GateProgram> {
         normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* router_weights = &router_logits;
     if (has_router_weights_) {
-      shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
     }
-    shader.AddOutput("topk_values");
-    shader.AddOutput("hiddenstate_for_expert");
+    const auto& topk_values = shader.AddOutput("topk_values");
+    const auto& hiddenstate_for_expert = shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                                WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_));
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                               WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
+                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -66,18 +71,23 @@ class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
         normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* router_weights = &router_logits;
     if (has_router_weights_) {
-      shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
     }
-    shader.AddOutput("topk_values");
-    shader.AddOutput("indirect_experts");
+    const auto& topk_values = shader.AddOutput("topk_values");
+    const auto& indirect_experts = shader.AddOutput("indirect_experts");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                                WGSL_TEMPLATE_PARAMETER(k, k_),
-                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_));
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -96,12 +106,16 @@ class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> 
   HiddenStateGatherProgram() : Program<HiddenStateGatherProgram>{"QmoeHiddenStateGather"} {};
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("new_hidden_state");
-    shader.AddOutput("tokens");
+    const auto& hiddenstate_for_expert = shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
+    const auto& hidden_state = shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
+    const auto& new_hidden_state = shader.AddOutput("new_hidden_state");
+    const auto& tokens = shader.AddOutput("tokens");
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/hidden_state_gather.wgsl.template");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/hidden_state_gather.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(hidden_state, hidden_state),
+                               WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
+                               WGSL_TEMPLATE_VARIABLE(new_hidden_state, new_hidden_state),
+                               WGSL_TEMPLATE_VARIABLE(tokens, tokens));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -118,8 +132,9 @@ class ZeroTensorProgram final : public Program<ZeroTensorProgram> {
   ZeroTensorProgram() : Program<ZeroTensorProgram>{"QmoeZeroTensor"} {};
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template");
+    const auto& tensor = shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(tensor, tensor));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -133,8 +148,9 @@ class ZeroU32Program final : public Program<ZeroU32Program> {
   ZeroU32Program() : Program<ZeroU32Program>{"QmoeZeroU32"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddOutput("output");
-    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_u32.wgsl.template");
+    const auto& output = shader.AddOutput("output");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_u32.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(output, output));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
@@ -149,16 +165,20 @@ class MoEActivationProgram final : public Program<MoEActivationProgram> {
         has_fc3_{has_fc3} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+    const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* fc3_input = &input;
     if (has_fc3_) {
-      shader.AddInput("fc3_input", ShaderUsage::UseElementTypeAlias);
+      fc3_input = &shader.AddInput("fc3_input", ShaderUsage::UseElementTypeAlias);
     }
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/activation.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(activation_type_)),
                                WGSL_TEMPLATE_PARAMETER(has_fc3, has_fc3_),
-                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, swiglu_fusion_));
+                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, swiglu_fusion_),
+                               WGSL_TEMPLATE_VARIABLE(fc3_input, *fc3_input),
+                               WGSL_TEMPLATE_VARIABLE(input, input),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -179,11 +199,15 @@ class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgr
   FusedFinalMix1TokenProgram() : Program<FusedFinalMix1TokenProgram>{"QmoeFusedFinalMix1Token"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "moe/fused_final_mix_1token.wgsl.template");
+    const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    const auto& indirect_experts = shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "moe/fused_final_mix_1token.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(fc2_outputs, fc2_outputs),
+                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -196,12 +220,16 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
   QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    const auto& expert_tokens = shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(expert_tokens, expert_tokens),
+                               WGSL_TEMPLATE_VARIABLE(fc2_outputs, fc2_outputs),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(

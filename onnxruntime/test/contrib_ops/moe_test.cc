@@ -1496,14 +1496,16 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 }
 
 #if defined(USE_WEBGPU)
-static void RunWebGpuOnly(OpTester& tester,
-                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                          const std::string& expected_error = {}) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU execution provider is not available";
+// This must be used before constructing OpTester: an unexecuted OpTester traps in Debug builds.
+#define GET_WEBGPU_EP_OR_SKIP(name)                               \
+  auto name = DefaultWebGpuExecutionProvider();                   \
+  if (!name) {                                                    \
+    GTEST_SKIP() << "WebGPU execution provider is not available"; \
   }
 
+static void RunWebGpuOnly(OpTester& tester, std::unique_ptr<IExecutionProvider> webgpu_ep,
+                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
+                          const std::string& expected_error = {}) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
@@ -1516,6 +1518,8 @@ static void RunWebGpuOnly(OpTester& tester,
 // single 2D token-major input. Distinct token values and nonzero weights make each output depend on
 // the corresponding hidden-state row, while expert-specific biases expose the selected expert.
 TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_rows = 5;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 64;
@@ -1585,13 +1589,15 @@ TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
   tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected_output));
   tester.SetOutputTolerance(0.01f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 // Test QMoE with num_rows=1 on WebGPU to exercise the fused 1-token decode path.
 // Uses SwiGLU activation without FC3 (2-gate fused in FC1), which is the configuration
 // used by real MoE models on WebGPU (e.g., gpt-oss-20b).
 TEST(MoETest, QMoETest_WebGPU_SingleToken) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   int num_rows = 1;
   int num_experts = 2;
   int hidden_size = 64;
@@ -1649,7 +1655,7 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken) {
   webgpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
   webgpu_tester.SetOutputTolerance(0.01f);
 
-  RunWebGpuOnly(webgpu_tester);
+  RunWebGpuOnly(webgpu_tester, std::move(webgpu_ep));
 }
 
 // Regression test for issue where large router logits (e.g. one-hot @ 100) caused
@@ -1658,6 +1664,8 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken) {
 // log-sum-exp trick. After the fix, the gate shaders subtract max_val before exp(),
 // so the output should match the CPU result (here, all-zero from zeroed weights).
 TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   int num_rows = 1;
   int num_experts = 2;
   int hidden_size = 64;
@@ -1709,7 +1717,7 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
   webgpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
   webgpu_tester.SetOutputTolerance(0.01f);
 
-  RunWebGpuOnly(webgpu_tester);
+  RunWebGpuOnly(webgpu_tester, std::move(webgpu_ep));
 }
 
 TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
@@ -1727,6 +1735,8 @@ TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
 
   const auto run_case = [&](const std::string& activation_type, int64_t swiglu_fusion,
                             bool has_fc3, bool use_fp16, bool dense_3d) {
+    GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
     const int fc1_size = activation_type == "swiglu" && !has_fc3 ? 2 * inter_size : inter_size;
     const std::vector<float> fc1_weights(num_experts * fc1_size * hidden_size, 0.0f);
     const std::vector<float> fc2_weights(num_experts * hidden_size * inter_size, 0.0f);
@@ -1773,7 +1783,7 @@ TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
       tester.AddOutput<float>("output", input_dims, expected);
       tester.SetOutputTolerance(0.001f);
     }
-    RunWebGpuOnly(tester);
+    RunWebGpuOnly(tester, std::move(webgpu_ep));
   };
 
   run_case("relu", 0, false, false, false);
@@ -1786,6 +1796,8 @@ TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
 }
 
 TEST(MoETest, MoETest_WebGPU_NonzeroExpertMatMuls) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int hidden_size = 8;
   constexpr int inter_size = 8;
   const std::vector<float> input = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f};
@@ -1809,10 +1821,12 @@ TEST(MoETest, MoETest_WebGPU_NonzeroExpertMatMuls) {
   tester.AddOutput<float>("output", {1, hidden_size}, input);
   tester.SetOutputTolerance(0.001f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 TEST(MoETest, MoETest_WebGPU_NonAlignedGatherMultipleRows) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 65;
@@ -1844,10 +1858,12 @@ TEST(MoETest, MoETest_WebGPU_NonAlignedGatherMultipleRows) {
   tester.AddOutput<float>("output", {num_rows, hidden_size}, input);
   tester.SetOutputTolerance(0.001f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 TEST(MoETest, MoETest_WebGPU_ChunkBoundary) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_rows = 2049;
   constexpr int hidden_size = 8;
 
@@ -1875,10 +1891,12 @@ TEST(MoETest, MoETest_WebGPU_ChunkBoundary) {
   tester.AddOutput<float>("output", {num_rows, hidden_size}, input);
   tester.SetOutputTolerance(0.001f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 static void RunWebGpuExpertLimitTest(bool quantized, bool empty) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_experts = 1025;
   constexpr int hidden_size = 64;
   constexpr int inter_size = 64;
@@ -1923,7 +1941,7 @@ static void RunWebGpuExpertLimitTest(bool quantized, bool empty) {
     tester.AddOutput<float>("output", {num_rows, hidden_size}, expected);
   }
 
-  RunWebGpuOnly(tester,
+  RunWebGpuOnly(tester, std::move(webgpu_ep),
                 empty ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure,
                 empty ? "" : "requires num_experts to fit in one workgroup");
 }
@@ -1945,6 +1963,8 @@ TEST(MoETest, QMoETest_WebGPU_EmptyInputAboveExpertLimit) {
 }
 
 TEST(MoETest, QMoETest_WebGPU_ZeroPointsAndFC3) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 64;
@@ -1996,10 +2016,12 @@ TEST(MoETest, QMoETest_WebGPU_ZeroPointsAndFC3) {
   tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
   tester.SetOutputTolerance(0.05f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 static void RunQMoEWebGpuNormalizedRouterWeightsTest(int64_t num_rows) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
   constexpr int num_experts = 2;
   constexpr int hidden_size = 64;
   constexpr int inter_size = 64;
@@ -2044,7 +2066,7 @@ static void RunQMoEWebGpuNormalizedRouterWeightsTest(int64_t num_rows) {
   tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
   tester.SetOutputTolerance(0.02f);
 
-  RunWebGpuOnly(tester);
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
 }
 
 TEST(MoETest, QMoETest_WebGPU_RouterWeights_SingleToken) {
@@ -2067,6 +2089,8 @@ TEST(MoETest, QMoETest_WebGPU_ActivationsAndSwiGLUFusion) {
   const std::vector<float> expected(hidden_size, 1.0f);
 
   const auto run_case = [&](const std::string& activation_type, int64_t swiglu_fusion) {
+    GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
     const int fc1_size = activation_type == "swiglu" ? 2 * inter_size : inter_size;
     const std::vector<uint8_t> fc1_weights(num_experts * fc1_size * hidden_size / pack_size, 0x88);
     const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / pack_size, 0x88);
@@ -2093,7 +2117,7 @@ TEST(MoETest, QMoETest_WebGPU_ActivationsAndSwiGLUFusion) {
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddOutput<MLFloat16>("output", {1, hidden_size}, ToFloat16(expected));
     tester.SetOutputTolerance(0.01f);
-    RunWebGpuOnly(tester);
+    RunWebGpuOnly(tester, std::move(webgpu_ep));
   };
 
   run_case("relu", 0);
@@ -2103,6 +2127,7 @@ TEST(MoETest, QMoETest_WebGPU_ActivationsAndSwiGLUFusion) {
   run_case("swiglu", 1);
   run_case("swiglu", 2);
 }
+#undef GET_WEBGPU_EP_OR_SKIP
 #endif
 
 // CPU-specific QMoE tests
