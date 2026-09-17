@@ -895,10 +895,10 @@ class BlockingPrePackTestState {
     release_condition_.wait(lock, [this]() { return released_; });
   }
 
-  void WaitForEntered(size_t count) {
+  bool WaitForEntered(size_t count) {
     std::unique_lock<std::mutex> lock(mutex_);
-    entered_condition_.wait_for(lock, std::chrono::seconds(5),
-                                [this, count]() { return entered_count_ >= count; });
+    return entered_condition_.wait_for(lock, std::chrono::seconds(5),
+                                       [this, count]() { return entered_count_ >= count; });
   }
 
   void Release() {
@@ -1459,17 +1459,21 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCancellat
                              profiler,
                              sess_options);
 
+  bool workers_entered = false;
   std::thread canceller([&]() {
     // Wait until both workers are blocked inside PrePack() before requesting cancellation,
     // then release them so FinalizeSessionState can join and recheck the flag.
-    blocking_prepack_test_state->WaitForEntered(2);
-    sess_options.SetLoadCancellationFlag(true);
+    workers_entered = blocking_prepack_test_state->WaitForEntered(2);
+    if (workers_entered) {
+      sess_options.SetLoadCancellationFlag(true);
+    }
     blocking_prepack_test_state->Release();
   });
 
   Status status = session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager);
   canceller.join();
 
+  ASSERT_TRUE(workers_entered);
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Category(), common::ONNXRUNTIME);
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
