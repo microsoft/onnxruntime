@@ -45,6 +45,7 @@ jobs:
     - name: Install Jazzy
       run: |
         sudo gem install jazzy --version 0.14.3
+        sudo gem install mustache --version 1.1.2
 
     - name: Generate Objective-C docs
       run: |
@@ -56,8 +57,9 @@ jobs:
                "This documentation was generated from the ONNX Runtime source at commit ${ORT_COMMIT_SHORT}." \
                >> ./objectivec/docs/main_page.md
 
-        jazzy --config ./objectivec/docs/jazzy_config.yaml \
-              --clean --output ./_site/docs/api/objectivec
+        ruby -e "gem 'mustache', '1.1.2'; load Gem.bin_path('jazzy', 'jazzy', '0.14.3')" -- \
+             --config ./objectivec/docs/jazzy_config.yaml \
+             --clean --output ./_site/docs/api/objectivec
       shell: bash
 
     - name: Upload new site
