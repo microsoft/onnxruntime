@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_map>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -166,9 +169,10 @@ TEST(CompressTest, Compress_3dims_neg_axis) {
 // inputs to {0, 1}) and asserts the output is sized by truthiness.
 TEST(CompressTest, Compress_cuda_non_canonical_bool_condition) {
   // Build: output = Compress(input, condition, axis=0)
+  const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 27}};
   auto model = std::make_unique<onnxruntime::Model>(
       "compress_non_canonical_bool", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-      {{kOnnxDomain, 27}}, {}, DefaultLoggingManager().DefaultLogger());
+      domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
   ASSERT_EQ(model->ToProto().opset_import_size(), 1);
   EXPECT_EQ(model->ToProto().opset_import(0).domain(), kOnnxDomain);
   EXPECT_EQ(model->ToProto().opset_import(0).version(), 27);
