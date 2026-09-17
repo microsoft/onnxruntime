@@ -611,7 +611,8 @@ size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
 }
 
 template <typename T>
-Status LaunchQsaSparseAttentionIndexer(const CudaKernel* kernel, cudaStream_t stream, void* alloc_stream,
+Status LaunchQsaSparseAttentionIndexer(const onnxruntime::cuda::CudaKernel* kernel, cudaStream_t stream,
+                                       void* alloc_stream,
                                        const SparseAttentionIndexerParams& params,
                                        const T* query, const T* key, const T* key_norm_weight,
                                        const T* cos_cache, const T* sin_cache, const bool* mask,
@@ -754,11 +755,11 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                              \
-  template Status LaunchQsaSparseAttentionIndexer<T>(const CudaKernel*, cudaStream_t, void*,                 \
-                                                     const SparseAttentionIndexerParams&,                    \
-                                                     const T*, const T*, const T*, const T*, const T*,       \
-                                                     const bool*, const T*, int32_t*, T*, float*, int32_t*); \
+#define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                                \
+  template Status LaunchQsaSparseAttentionIndexer<T>(const onnxruntime::cuda::CudaKernel*, cudaStream_t, void*, \
+                                                     const SparseAttentionIndexerParams&,                      \
+                                                     const T*, const T*, const T*, const T*, const T*,         \
+                                                     const bool*, const T*, int32_t*, T*, float*, int32_t*);   \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                        \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*,   \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);

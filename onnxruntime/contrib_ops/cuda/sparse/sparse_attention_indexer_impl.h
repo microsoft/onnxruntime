@@ -55,7 +55,7 @@ size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
 
 template <typename T>
 Status LaunchQsaSparseAttentionIndexer(
-    const CudaKernel* kernel,
+    const onnxruntime::cuda::CudaKernel* kernel,
     cudaStream_t stream,
     void* alloc_stream,
     const SparseAttentionIndexerParams& params,
