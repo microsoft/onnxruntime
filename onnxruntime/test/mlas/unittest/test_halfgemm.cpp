@@ -21,10 +21,21 @@ Abstract:
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 #endif
 
+#if defined(__linux__) && defined(__aarch64__)
+#include <asm/sigcontext.h>
+#include <linux/prctl.h>
+#include <sys/prctl.h>
+#endif
+
 #include <array>
 #include <cstddef>
-#include <stdexcept>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
 #include <limits>
+#include <memory>
+#include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -44,6 +55,23 @@ void ExpectBufferFilledWith(const std::vector<std::byte>& buffer, std::byte expe
 
 #if defined(USE_KLEIDIAI)
 namespace {
+
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_ENABLE_TEST_HOOKS)
+constexpr const char* kSve2p1HalfGemmKernelName =
+    "kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot";
+
+testing::AssertionResult IsSve2p1HalfGemmSelected() {
+  const char* kernel_name = ArmKleidiAI::GetKleidiAIHalfGemmKernelNameForTesting();
+  if (kernel_name == nullptr) {
+    return testing::AssertionFailure() << "No KleidiAI HalfGemm kernel is selected";
+  }
+  if (std::strcmp(kernel_name, kSve2p1HalfGemmKernelName) != 0) {
+    return testing::AssertionFailure() << "Selected " << kernel_name << " instead of " << kSve2p1HalfGemmKernelName;
+  }
+  return testing::AssertionSuccess();
+}
+
+#endif
 
 bool g_test_halfgemm_override_called = false;
 
@@ -600,6 +628,281 @@ TEST(HalfGemmKleidiAINativeFp16, NoPackSingleThreadWithoutOutputProcessor) {
 
   MlasHalfGemmTest<MLFp16, MLFp16, false, false> test;
   test.TestNativeFp16WithoutOutputProcessor(43, 500, 401, 1, true);
+}
+
+TEST(HalfGemmKleidiAISVE2p1, RuntimePackedExactTileSingleThread) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const size_t n_step = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  ASSERT_GT(n_step, size_t{0});
+
+  MlasHalfGemmTest<MLFp16, MLFp16, false, false> test;
+  test.TestNativeFp16WithoutOutputProcessor(6, n_step, 8, 1, false);
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, NativePackedDifferentExecutionThreadVectorLengthIsRejected) {
+#if defined(__linux__) && defined(__aarch64__) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const int packing_vl_config = prctl(PR_SVE_GET_VL);
+  ASSERT_GE(packing_vl_config, 0);
+  const int packing_vl = packing_vl_config & PR_SVE_VL_LEN_MASK;
+  const unsigned long requested_execution_vl = packing_vl == SVE_VL_MIN ? SVE_VL_MAX : SVE_VL_MIN;
+
+  constexpr size_t M = 1;
+  constexpr size_t K = 9;
+  const size_t N = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting() + 1;
+  std::vector<MLFp16> a(M * K);
+  std::vector<MLFp16> b(K * N);
+  std::vector<MLFp16> c(M * N, MLFp16(-1.0f));
+  SmallFloatFill(a.data(), a.size());
+  SmallFloatFill(b.data(), b.size());
+
+  const size_t packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, K);
+  ASSERT_NE(packed_b_size, size_t{0});
+  std::vector<std::byte> packed_b(packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasNoTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), N, packed_b.data()));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = packed_b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = 0;
+  data.ldc = N;
+  data.BIsBackendNativePacked = true;
+
+  int execution_vl = -1;
+  bool handled = true;
+  std::thread execution_thread([&]() {
+    const int execution_vl_config = prctl(PR_SVE_SET_VL, requested_execution_vl);
+    if (execution_vl_config < 0) {
+      return;
+    }
+    execution_vl = execution_vl_config & PR_SVE_VL_LEN_MASK;
+    if (execution_vl != packing_vl) {
+      handled = ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr);
+    }
+  });
+  execution_thread.join();
+
+  if (execution_vl < 0 || execution_vl == packing_vl) {
+    GTEST_SKIP() << "The system does not expose two usable SVE vector lengths.";
+  }
+  EXPECT_FALSE(handled);
+  for (size_t i = 0; i < c.size(); ++i) {
+    EXPECT_EQ(c[i], MLFp16(-1.0f)) << "index=" << i;
+  }
+#else
+  GTEST_SKIP() << "Differing SVE vector lengths require a Linux ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, NativePackedMixedExecutionThreadVectorLengthsComplete) {
+#if defined(__linux__) && defined(__aarch64__) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS) && \
+    !defined(BUILD_MLAS_NO_ONNXRUNTIME)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const int packing_vl_config = prctl(PR_SVE_GET_VL);
+  ASSERT_GE(packing_vl_config, 0);
+  const int packing_vl = packing_vl_config & PR_SVE_VL_LEN_MASK;
+  const unsigned long requested_worker_vl = packing_vl == SVE_VL_MIN ? SVE_VL_MAX : SVE_VL_MIN;
+
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool;
+  int worker_vl = -1;
+  std::thread pool_creator([&]() {
+    const int worker_vl_config = prctl(PR_SVE_SET_VL, requested_worker_vl);
+    if (worker_vl_config < 0) {
+      return;
+    }
+    worker_vl = worker_vl_config & PR_SVE_VL_LEN_MASK;
+    if (worker_vl != packing_vl) {
+      thread_pool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
+          &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, false);
+    }
+  });
+  pool_creator.join();
+
+  if (thread_pool == nullptr) {
+    GTEST_SKIP() << "The system does not expose two usable SVE vector lengths.";
+  }
+
+  constexpr size_t M = 6;
+  constexpr size_t K = 512;
+  const size_t N = 2 * ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  std::vector<MLFp16> a(M * K, MLFp16(1.0f));
+  std::vector<MLFp16> b(K * N, MLFp16(1.0f));
+  std::vector<MLFp16> c(M * N, MLFp16(-1.0f));
+
+  const size_t packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, K);
+  ASSERT_NE(packed_b_size, size_t{0});
+  std::vector<std::byte> packed_b(packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasNoTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), N, packed_b.data()));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = a.data();
+  data.B = packed_b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
+  data.lda = K;
+  data.ldb = 0;
+  data.ldc = N;
+  data.BIsBackendNativePacked = true;
+
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool.get()));
+  for (size_t i = 0; i < c.size(); ++i) {
+    EXPECT_EQ(c[i], MLFp16(static_cast<float>(K))) << "index=" << i;
+  }
+#else
+  GTEST_SKIP() << "Mixed-VL SVE2.1 HalfGemm requires a Linux ARM64 ONNX Runtime test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, RejectsKAboveKernelLimit) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  constexpr size_t N = 1;
+  constexpr size_t max_kernel_k = (std::numeric_limits<uint32_t>::max)();
+  constexpr size_t unsupported_k = max_kernel_k + 1;
+  MLAS_FP16 b{};
+  std::byte packed_b{};
+
+  EXPECT_NE(
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, max_kernel_k), size_t{0});
+  EXPECT_EQ(
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, unsupported_k), size_t{0});
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasNoTrans, N, unsupported_k, &b, N, &packed_b));
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, RuntimePackedTailCasesSingleThread) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const size_t n_step = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  ASSERT_GT(n_step, size_t{1});
+  const HalfGemmCase test_cases[] = {
+      {"MinimumShape", 1, 1, 1, 1, false},
+      {"BelowMAndNTile", 5, n_step - 1, 7, 1, true},
+      {"AboveMAndNTile", 7, n_step + 1, 9, 1, false},
+      {"MultipleMAndNTiles", 13, 2 * n_step + 1, 9, 1, true},
+  };
+  RunNativeFp16WithoutOutputProcessorCases<false>(test_cases, std::size(test_cases));
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, BackendNativePackedTailCasesSingleThread) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const size_t n_step = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  ASSERT_GT(n_step, size_t{1});
+  const std::array<std::array<size_t, 3>, 5> shapes = {{
+      {1, 1, 1},
+      {5, n_step - 1, 7},
+      {6, n_step, 8},
+      {7, n_step + 1, 9},
+      {13, 2 * n_step + 1, 9},
+  }};
+
+  MlasHalfGemmTest<MLFp16, MLFp16, false, false> test;
+  for (const auto& shape : shapes) {
+    SCOPED_TRACE(testing::Message() << "M=" << shape[0] << " N=" << shape[1] << " K=" << shape[2]);
+    test.TestNativeFp16BackendPackedWithoutOutputProcessor(shape[0], shape[1], shape[2]);
+  }
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, PaddedLeadingDimensionsAndCanaries) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const size_t n_step = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  ASSERT_GT(n_step, size_t{0});
+  constexpr size_t M = 7;
+  constexpr size_t K = 9;
+  const size_t N = n_step + 1;
+
+  MlasHalfGemmTest<MLFp16, MLFp16, false, false> test;
+  test.TestNativeFp16WithStridesWithoutOutputProcessor(M, N, K, K + 3, N + 5, N + 7, true, false);
+  test.TestNativeFp16WithStridesWithoutOutputProcessor(M, N, K, K + 3, N + 5, N + 7, false, true);
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, RuntimeAndBackendNativePackedSmallMMultiNTileThreaded) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+  if (GetMlasThreadPool() == nullptr) {
+    GTEST_SKIP() << "MLAS thread pool unavailable.";
+  }
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const size_t n_step = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting();
+  ASSERT_GT(n_step, size_t{0});
+  constexpr size_t M = 1;
+  constexpr size_t K = 257;
+  const size_t N = 16 * n_step + 1;
+
+  MlasHalfGemmTest<MLFp16, MLFp16, false, true> test;
+  test.TestNativeFp16WithoutOutputProcessor(M, N, K, 1, true);
+  test.TestNativeFp16BackendPackedWithoutOutputProcessor(M, N, K);
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
 }
 
 TEST(HalfGemmKleidiAINativeFp16, NoPackSingleThreadWithoutOutputProcessorBatch3) {
