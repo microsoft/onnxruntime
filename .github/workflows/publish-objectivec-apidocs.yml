@@ -23,10 +23,6 @@ concurrency:
 permissions:
   contents: write
 
-env:
-  JAZZY_VERSION: 0.14.3
-  MUSTACHE_VERSION: 1.1.2
-
 jobs:
   build:
     name: Generate Objective-C API docs
@@ -48,12 +44,15 @@ jobs:
 
     - name: Install Jazzy
       run: |
-        sudo gem install jazzy --version "${JAZZY_VERSION}"
-        sudo gem install mustache --version "${MUSTACHE_VERSION}"
+        export BUNDLE_GEMFILE=./objectivec/docs/Gemfile
+        export BUNDLE_PATH=/tmp/onnxruntime-objectivec-apidocs
+        bundle install
 
     - name: Generate Objective-C docs
       run: |
         set -e
+        export BUNDLE_GEMFILE=./objectivec/docs/Gemfile
+        export BUNDLE_PATH=/tmp/onnxruntime-objectivec-apidocs
 
         # add commit info to main page of generated docs
         ORT_COMMIT_SHORT="$(git rev-parse --short HEAD)"
@@ -61,13 +60,8 @@ jobs:
                "This documentation was generated from the ONNX Runtime source at commit ${ORT_COMMIT_SHORT}." \
                >> ./objectivec/docs/main_page.md
 
-        # Mustache 1.1.3 does not accept Jazzy's Pathname template directory.
-        ruby -e '
-          gem "mustache", ENV.fetch("MUSTACHE_VERSION")
-          load Gem.bin_path("jazzy", "jazzy", ENV.fetch("JAZZY_VERSION"))
-        ' -- \
-             --config ./objectivec/docs/jazzy_config.yaml \
-             --clean --output ./_site/docs/api/objectivec
+        bundle exec jazzy --config ./objectivec/docs/jazzy_config.yaml \
+                          --clean --output ./_site/docs/api/objectivec
       shell: bash
 
     - name: Upload new site
