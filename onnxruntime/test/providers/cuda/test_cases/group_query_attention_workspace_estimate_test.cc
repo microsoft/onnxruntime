@@ -808,6 +808,13 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWork
   EXPECT_EQ(level1.persistent_prepack_bytes, 0u);
   EXPECT_EQ(level1.initialization_scratch_bytes, 0u);
 
+  auto lifetime_estimate = *estimate;
+  lifetime_estimate.persistent_prepack_bytes = 29;
+  lifetime_estimate.initialization_scratch_bytes = 31;
+  SetGroupQueryAttentionLevel1MemoryEstimate(lifetime_estimate, level1);
+  EXPECT_EQ(level1.persistent_prepack_bytes, 29u);
+  EXPECT_EQ(level1.initialization_scratch_bytes, 31u);
+
   auto unavailable = *estimate;
   unavailable.status.error = contrib::cuda::GQAWorkspaceError::Unavailable;
   SetGroupQueryAttentionWorkspaceRequirements(unavailable, requirements);
