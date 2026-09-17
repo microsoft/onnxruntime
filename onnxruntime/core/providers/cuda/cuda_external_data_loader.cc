@@ -4,6 +4,7 @@
 // provider_api.h must be first to set SHARED_PROVIDER
 #include "core/providers/shared_library/provider_api.h"
 
+#include "core/framework/tensor.h"
 #include "core/providers/cuda/cuda_external_data_loader.h"
 
 #include <algorithm>
