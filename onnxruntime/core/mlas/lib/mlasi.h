@@ -451,7 +451,7 @@ size_t
 
 #else
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
     const float* A,
     const bfloat16_t* B,
@@ -657,6 +657,21 @@ void
     const float* Input,
     float* Output,
     size_t N
+    );
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+constexpr size_t kDepthwiseGeneralMaxKernelWidth = 16;
+#endif
+
+typedef
+bool
+(MLASCALL MLAS_ACTIVATION_ROUTINE)(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
     );
 
 typedef
@@ -1075,7 +1090,7 @@ typedef void(MLASCALL MLAS_QNBIT_GEMM_BATCH_OVERRIDE)(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef
 bool
 (MLASCALL MLAS_SBGEMM_BATCH_OVERRIDE)(
@@ -1278,7 +1293,7 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
@@ -1467,6 +1482,7 @@ MlasReorderOutputNchwBlock16Avx512F(
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelRvv;
+    MLAS_ACTIVATION_ROUTINE MlasActivationRvv;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
@@ -1527,7 +1543,7 @@ MlasReorderOutputNchwBlock16Avx512F(
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 #define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
 #endif
 
@@ -1696,6 +1712,7 @@ struct MLAS_LINEAR_ATTENTION_DISPATCH;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchSve;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1792,7 +1809,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
     MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
     MLAS_SBGEMM_PACK_B_SIZE_OVERRIDE* MlasSBGemmPackBSizeOverride = nullptr;
@@ -1892,6 +1909,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
+    MLAS_ACTIVATION_ROUTINE* ActivationRoutine;
 #endif
 
 MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;

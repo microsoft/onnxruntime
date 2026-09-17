@@ -15,7 +15,7 @@ Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, Te
   auto& __param_pad_mode = params.param_pad_mode;
 
   // Extract variables
-  auto& __var_output = *params.var_output;
+  auto* __var_output = params.var_output;
 
 //  1 | #define PAD_MODE_CONSTANT 0
 //  2 | #define PAD_MODE_REFLECT 1
@@ -60,7 +60,7 @@ ss << "  output[global_idx] = constant_value;\n";
 } else {
 // 27 |   let output_indices = output.offsetToIndices(global_idx);
 ss << "  let output_indices = ";
-ss << __var_output.OffsetToIndices("global_idx");
+ss << __var_output->OffsetToIndices("global_idx");
 ss << ";\n";
 // 28 |   var input_index = u32(0);
 ss << "  var input_index = u32(0);\n";
@@ -72,19 +72,19 @@ ss << "  var in_coord = i32(0);\n";
 ss << "\n";
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
 ss << "  for (var dim = 0; dim < ";
-ss << __var_output.Rank();
+ss << __var_output->Rank();
 ss << " && !use_pad_value; dim++) {\n";
 // 33 |     let output_index = i32(getElementAt(output_indices, dim, output.rank));
 ss << "    let output_index = i32(";
-ss << GetElementAt("output_indices", "dim", __var_output.Rank());
+ss << GetElementAt("output_indices", "dim", __var_output->Rank());
 ss << ");\n";
 // 34 |     let lower_pads = getElementAt(uniforms.lower_pads, dim, output.rank);
 ss << "    let lower_pads = ";
-ss << GetElementAt("uniforms.lower_pads", "dim", __var_output.Rank());
+ss << GetElementAt("uniforms.lower_pads", "dim", __var_output->Rank());
 ss << ";\n";
 // 35 |     let data_shape = i32(getElementAt(uniforms.data_shape, dim, output.rank));
 ss << "    let data_shape = i32(";
-ss << GetElementAt("uniforms.data_shape", "dim", __var_output.Rank());
+ss << GetElementAt("uniforms.data_shape", "dim", __var_output->Rank());
 ss << ");\n";
 // 36 | #if pad_mode == PAD_MODE_CONSTANT
 if (__param_pad_mode == 0) {
@@ -154,16 +154,16 @@ ss << "    in_coord = ((in_coord % data_shape) + data_shape) % data_shape;\n";
 // 69 |     input_index += select(u32(in_coord)
 ss << "    input_index += select(u32(in_coord)\n";
 // 70 | #if output.rank > 1
-if (__var_output.Rank() > 1) {
+if (__var_output->Rank() > 1) {
 // 71 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
 ss << "        * ";
-ss << GetElementAt("uniforms.data_stride", "dim", __var_output.Rank() - 1);
+ss << GetElementAt("uniforms.data_stride", "dim", __var_output->Rank() - 1);
 ss << "\n";
 // 72 | #endif
 }
 // 73 |         , u32(in_coord), dim == output.rank - 1);
 ss << "        , u32(in_coord), dim == ";
-ss << __var_output.Rank();
+ss << __var_output->Rank();
 ss << " - 1);\n";
 // 74 |   }
 ss << "  }\n";
@@ -171,7 +171,7 @@ ss << "  }\n";
 ss << "\n";
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << "  ";
-ss << __var_output.SetByOffset("global_idx", "select(data[input_index], constant_value, use_pad_value)");
+ss << __var_output->SetByOffset("global_idx", "select(data[input_index], constant_value, use_pad_value)");
 ss << ";\n";
 // 77 | #endif
 }

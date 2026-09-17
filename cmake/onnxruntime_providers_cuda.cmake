@@ -80,8 +80,13 @@
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
   )
+  # Flash Attention sources are dropped entirely (not just excluded from this OBJECT library)
+  # when onnxruntime_USE_FLASH_ATTENTION is OFF; see onnxruntime_extract_flash_attention_sources.
   onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
+  )
+  onnxruntime_extract_xqa_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    XQA_SOURCES onnxruntime_cuda_xqa_srcs
   )
   onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     LLM_SOURCES onnxruntime_cuda_llm_srcs
@@ -90,7 +95,7 @@
   )
   if(MSVC OR UNIX)
     foreach(_src IN LISTS onnxruntime_cuda_llm_sm90_srcs)
-      if(_src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+      if(_src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
         if(MSVC)
           set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=/wd4068")
         else()
@@ -393,9 +398,10 @@
 
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
-    if(ORT_HAS_SM90_OR_LATER AND NOT onnxruntime_CUDA_MINIMAL AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_CUDA_MINIMAL AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
       include(deep_gemm)
       target_include_directories(${target} PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+      target_compile_definitions(${target} PRIVATE USE_DEEP_GEMM)
     endif()
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
@@ -496,14 +502,18 @@
   # (GMMA, TMA) that cannot produce useful device code for older architectures.
   #
   # SM90/SM120 TMA and LLM OBJECT libraries contain MoE and MatMulNBits kernels (contrib ops).
-  # Flash Attention is also used by the ONNX domain Attention op, so it is included even
-  # when contrib ops are disabled.
+  # Flash Attention is also used by the ONNX domain Attention op, so when
+  # onnxruntime_USE_FLASH_ATTENTION is ON it is included even when contrib ops are disabled.
   if(NOT onnxruntime_CUDA_MINIMAL)
     # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
     # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
     # Isolating them allows the rest of the build to use higher --threads without OOM.
-    # Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
-    # kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+    # Included even with onnxruntime_DISABLE_CONTRIB_OPS (when onnxruntime_USE_FLASH_ATTENTION
+    # is ON) because the ONNX domain Attention kernel depends on flash attention infrastructure
+    # in contrib_ops/cuda/bert/. onnxruntime_cuda_flash_attention_srcs is only populated when
+    # onnxruntime_USE_FLASH_ATTENTION is ON; otherwise the .cu sources are excluded from the
+    # build entirely (see extraction above), and onnxruntime_USE_FLASH_ATTENTION always takes
+    # precedence over onnxruntime_DISABLE_CONTRIB_OPS.
     set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
         "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
     if(onnxruntime_cuda_flash_attention_srcs)
@@ -520,6 +530,26 @@
         # linker can find the host-side symbols referenced by flash_api.cc. The kernels
         # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
         target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_flash_attention_srcs})
+      endif()
+    endif()
+
+    # XQA kernels require SM80+. Compiling them with mixed SM75/SM80+ architectures
+    # causes CUDA 13.3 to emit host references to kernels omitted from the SM75 pass.
+    if(onnxruntime_cuda_xqa_srcs)
+      onnxruntime_filter_cuda_archs(_ort_xqa_cuda_architectures MIN_SM 80)
+      if(_ort_xqa_cuda_architectures)
+        onnxruntime_add_cuda_object_library(
+          NAME onnxruntime_providers_cuda_xqa
+          PARENT onnxruntime_providers_cuda
+          CUDA_ARCHITECTURES "${_ort_xqa_cuda_architectures}"
+          NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+          SOURCES ${onnxruntime_cuda_xqa_srcs})
+      else()
+        if(TARGET onnxruntime_providers_cuda_obj)
+          target_sources(onnxruntime_providers_cuda_obj PRIVATE ${onnxruntime_cuda_xqa_srcs})
+        else()
+          target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_xqa_srcs})
+        endif()
       endif()
     endif()
 

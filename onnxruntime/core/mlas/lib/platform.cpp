@@ -346,6 +346,7 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
 
 #if defined(MLAS_USE_RVV)
+    this->ActivationRoutine = nullptr;
     bool has_rvv = true;
 #if defined(__linux__)
     has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
@@ -364,6 +365,7 @@ Return Value:
         this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
         this->SiluKernelRoutine = MlasSiluKernelRvv;
         this->TanhKernelRoutine = MlasTanhKernelRvv;
+        this->ActivationRoutine = MlasActivationRvv;
         this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
@@ -808,7 +810,7 @@ Return Value:
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){
             this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
@@ -837,6 +839,12 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        //
+        // Overrides the NEON LinearAttention dispatch registered above. The SVE
+        // driver hands anything outside its envelope straight back to
+        // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
+        //
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;

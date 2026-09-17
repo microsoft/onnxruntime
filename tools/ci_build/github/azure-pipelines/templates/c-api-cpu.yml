@@ -13,8 +13,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
 
@@ -243,7 +241,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     templateContext:
       inputs:
@@ -287,7 +285,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     templateContext:
       sdl:
