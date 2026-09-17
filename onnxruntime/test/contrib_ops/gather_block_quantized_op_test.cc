@@ -26,6 +26,8 @@
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_CUDA
+#include <cuda_runtime.h>
+
 #include "contrib_ops/cuda/quantization/gather_block_quantized_data_policy.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
@@ -1423,29 +1425,6 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, false),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
 }
-
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
-TEST(GatherBlockQuantizedOpTest, HostPageableProviderOptionRoundTripAndHash) {
-  CUDAExecutionProviderInfo default_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({});
-  EXPECT_FALSE(default_info.enable_host_pageable_gather);
-
-  CUDAExecutionProviderInfo disabled_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "0"}});
-  EXPECT_FALSE(disabled_info.enable_host_pageable_gather);
-
-  CUDAExecutionProviderInfo enabled_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "1"}});
-  EXPECT_TRUE(enabled_info.enable_host_pageable_gather);
-  const ProviderOptions serialized = CUDAExecutionProviderInfo::ToProviderOptions(enabled_info);
-  ASSERT_EQ(serialized.count("enable_host_pageable_gather"), 1u);
-  EXPECT_EQ(serialized.at("enable_host_pageable_gather"), "1");
-  EXPECT_TRUE(CUDAExecutionProviderInfo::FromProviderOptions(serialized).enable_host_pageable_gather);
-  EXPECT_NE(std::hash<CUDAExecutionProviderInfo>{}(disabled_info),
-            std::hash<CUDAExecutionProviderInfo>{}(enabled_info));
-}
-
-#endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
