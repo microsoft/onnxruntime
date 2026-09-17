@@ -1505,6 +1505,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_beta",
               "Beta parameter used in activation function.",
               AttributeProto::FLOAT, 0.0f)
+        .Attr("accuracy_level",
+              "Minimum accuracy level of the expert GEMMs on CPU, with the MatMulNBits meaning. For block-wise 4-bit "
+              "experts, 0 (default) or 1 keeps fp32 activations and 4 allows int8 activations (int8 dot-product kernels). "
+              "Block-wise 8-bit experts have no fp32 kernel and use int8 activations at every level. "
+              "Other values are treated as 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
@@ -3081,18 +3087,18 @@ The output columns `N` and the contraction dimension `K` are derived from the we
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp8Weight, 1,
     OpSchema()
-        .SetDoc(R"DOC(Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+        .SetDoc(R"DOC(Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
 
-The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
-K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
-`fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
-type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
-independent and runs on any CUDA architecture (SM80+).
+The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
+(`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
+`B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
 
-When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
-quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
-matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
-full FP16/BF16 precision (weight-only W8A16).)DOC")
+When the optional scalar `a_scale` is provided, the activation values used in the multiplication
+are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains its FP16/BF16
+precision (weight-only W8A16).
+
+The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
+The output has shape [..., N] and the same element type as A.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one weight scale. Default 128.",
               AttributeProto::INT, static_cast<int64_t>(128))
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
@@ -3100,8 +3106,8 @@ full FP16/BF16 precision (weight-only W8A16).)DOC")
         .Input(2, "b_scale", "Per-block FP32 weight scales of shape [N, ceil(K / block_size)].", "T2")
         .Input(3, "a_scale",
                "Optional global fp32 activation scale (scalar). When present, A is statically "
-               "quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 "
-               "numerics); when absent, A stays in full FP16/BF16 precision.",
+               "quantized to FP8 E4M3 with this scale (W8A8 numerics); when absent, A retains "
+               "its FP16/BF16 precision.",
                "T2", OpSchema::Optional)
         .Input(4, "bias", "Optional bias of shape [N].", "T", OpSchema::Optional)
         .Output(0, "Y", "Output of shape [..., N] in the activation type.", "T")

@@ -3,7 +3,7 @@
 
 # Shared filtering logic for CUDA contrib ops .cu source lists.
 # Both the main CUDA provider and the plugin EP build use identical filtering
-# rules for flash attention (quick build) and MoE GEMM FP4/FP8 kernels.
+# rules for flash attention, XQA, and MoE GEMM FP4/FP8 kernels.
 #
 # Usage:
 #   onnxruntime_filter_cuda_cu_sources(<list_variable_name>)
@@ -152,6 +152,25 @@ function(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
   set("${_FA_FLASH_SOURCES}" "${_flash_srcs}" PARENT_SCOPE)
 endfunction()
 
+# Extract XQA CUDA source files into a separate list for SM80+ compilation.
+function(onnxruntime_extract_xqa_sources CU_SRC_LIST)
+  cmake_parse_arguments(PARSE_ARGV 1 _XQA "" "XQA_SOURCES" "")
+
+  set(_list "${${CU_SRC_LIST}}")
+  set(_xqa_srcs)
+  foreach(_src IN LISTS _list)
+    if(_src MATCHES "/bert/xqa/.*\\.cu$")
+      list(APPEND _xqa_srcs "${_src}")
+    endif()
+  endforeach()
+  if(_xqa_srcs)
+    list(REMOVE_ITEM _list ${_xqa_srcs})
+  endif()
+
+  set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
+  set("${_XQA_XQA_SOURCES}" "${_xqa_srcs}" PARENT_SCOPE)
+endfunction()
+
 # Extract LLM CUDA source files into separate lists for per-architecture compilation.
 # The LLM directory (contrib_ops/cuda/llm/) contains kernels with minimum SM75 support
 # (fpA_intB_gemv/gemm enforce arch >= 75). SM90-specific launchers (fpA_intB_gemm
@@ -175,7 +194,7 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   set(_llm_fp4_srcs)
   set(_llm_excluded_srcs)
   if(WIN32)
-    list(FILTER _list EXCLUDE REGEX "/moe_gemm/deep_gemm_sm90\\.cu$")
+    list(FILTER _list EXCLUDE REGEX "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
   endif()
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
@@ -187,7 +206,7 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
         list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
       elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
-         _src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+         _src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
