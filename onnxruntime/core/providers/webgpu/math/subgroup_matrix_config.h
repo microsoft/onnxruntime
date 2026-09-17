@@ -8,10 +8,12 @@
 #include <cstdint>
 #include <string_view>
 
-#include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+class ComputeContextBase;
 
 // Human-readable names for wgpu::SubgroupMatrixComponentType, indexed by the enum value.
 constexpr std::string_view ComponentTypeName[] = {"unknown", "f32", "f16", "u32", "i32"};
