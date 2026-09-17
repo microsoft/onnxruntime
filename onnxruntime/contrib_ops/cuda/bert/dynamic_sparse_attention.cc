@@ -42,6 +42,9 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 namespace {
 
+// Enables synchronous device metadata checks for diagnosing malformed standalone inputs.
+constexpr const char* kStrictValidation = "ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION";
+
 DynamicSparseAttentionMode ParseAttentionMode(const std::string& value) {
   ORT_ENFORCE(value == "selected_only" || value == "local_plus_selected",
               "DynamicSparseAttention: attention_mode must be selected_only or local_plus_selected.");
@@ -99,9 +102,7 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
   use_smooth_softmax_ = ParseBoolAttribute(info, "smooth_softmax", 0);
   auxiliary_kv_shared_ = ParseBoolAttribute(info, "auxiliary_kv_shared", 0);
-  strict_validation_ =
-      ParseEnvironmentVariableWithDefault<bool>(
-          "ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", false);
+  strict_validation_ = ParseEnvironmentVariableWithDefault<bool>(kStrictValidation, false);
   attention_mode_ = ParseAttentionMode(
       info.GetAttrOrDefault<std::string>("attention_mode", "selected_only"));
   selected_kv_source_ = ParseKvSource(
