@@ -707,6 +707,7 @@ ORT_API_STATUS_IMPL(Graph_GetNodes, _In_ const OrtGraph* graph,
 ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 ORT_API_STATUS_IMPL(Graph_GetGraphView, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
                     _Outptr_ OrtGraph** subgraph);
+ORT_API_STATUS_IMPL(Graph_SaveToOnnx, _In_ const OrtGraph* graph, _In_ const ORTCHAR_T* model_path);
 
 // OrtNode
 ORT_API_STATUS_IMPL(Node_GetId, _In_ const OrtNode* node, _Out_ size_t* node_id);

@@ -17,7 +17,6 @@
 #include "core/graph/ep_api_types.h"
 #include "core/graph/graph_proto_serializer.h"
 
-#define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
 #include "core/providers/utils/ort_graph_to_proto.h"
 
 #include "test/ep_graph/test_ep_graph_utils.h"

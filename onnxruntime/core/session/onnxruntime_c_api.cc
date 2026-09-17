@@ -5,6 +5,8 @@
 #include <cassert>
 #include <climits>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <mutex>
 #include <sstream>
@@ -57,6 +59,12 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
+#define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+#include "core/providers/utils/ort_graph_to_proto.h"
+#undef ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+#endif
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -3003,6 +3011,46 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo
 // OrtGraph
 //
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_SaveToOnnx, _In_ const OrtGraph* graph, _In_ const ORTCHAR_T* model_path) {
+  API_IMPL_BEGIN
+  if (graph == nullptr || model_path == nullptr || model_path[0] == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Graph_SaveToOnnx requires a graph and a non-empty model path.");
+  }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
+  if (EpGraph::ToInternal(graph) == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Graph_SaveToOnnx does not support model editor graphs.");
+  }
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto status = OrtEpUtils::OrtGraphToProto(*graph, model_proto);
+  if (!status.IsOK()) {
+    return status.release();
+  }
+
+  if (model_proto.ByteSizeLong() > static_cast<size_t>(INT_MAX)) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Graph_SaveToOnnx requires a serialized model smaller than 2 GB.");
+  }
+
+  std::ofstream stream(std::filesystem::path(model_path), std::ios::binary | std::ios::trunc);
+  if (!stream.is_open()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Graph_SaveToOnnx failed to open the output file.");
+  }
+  if (!model_proto.SerializeToOstream(&stream)) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Graph_SaveToOnnx failed to serialize the model.");
+  }
+  stream.close();
+  if (stream.fail()) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Graph_SaveToOnnx failed to finish writing the output file.");
+  }
+  return nullptr;
+#else
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "Graph_SaveToOnnx requires a non-minimal build with exceptions enabled.");
+#endif
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name) {
   API_IMPL_BEGIN
   if (graph_name == nullptr) {
@@ -4943,6 +4991,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::KernelContext_GetPreallocatedOutput,
     // End of Version 30 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::Graph_SaveToOnnx,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
