@@ -237,6 +237,10 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
 
   const int64_t capacity = psai::SelectedCapacity(psai::Policy::kQsa, token_budget_, index_topk_, compress_ratio_);
 
+  Tensor* present_gate_buffer = context->Output(psai::kPresentGateBuffer, TensorShape({0}));
+  ORT_RETURN_IF(present_gate_buffer != nullptr,
+                "PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
+                " must be omitted for policy_mode 'qsa'");
   Tensor* selected_indices = context->Output(psai::kSelectedIndices, TensorShape({total_tokens, capacity}));
   Tensor* selected_counts = context->Output(psai::kSelectedCounts, TensorShape({total_tokens}));
   Tensor* present_key_state = context->Output(psai::kPresentKeyState, key_state_shape);
