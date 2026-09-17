@@ -70,6 +70,17 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidInputRank2) {
 }
 #endif  // !ORT_NO_EXCEPTIONS
 
+// Test that mismatched input/weight ranks are rejected.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_MismatchedInputWeightRank) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", {1, 1, 2, 2, 2}, std::vector<float>(8, 0.0f));
+  test.AddInput<float>("W", {1, 1, 3}, std::vector<float>(3, 0.0f));
+  test.AddInput<int64_t>("Pads", {6}, std::vector<int64_t>(6, 0));
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "num_dims does not match",
+           {kTensorrtExecutionProvider});
+}
+
 // Test that incorrectly sized dynamic pads are rejected.
 // This runs through kernel validation (not shape inference) so it works in no-exception builds.
 TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsSize) {
