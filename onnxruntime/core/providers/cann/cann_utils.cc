@@ -236,14 +236,5 @@ Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model) 
   });
 }
 
-static bool repeat_acl_init_flag = false;
-
-bool GetRepeatInitFlag() {
-  return repeat_acl_init_flag;
-}
-
-void SetRepeatInitFlag(bool val) {
-  repeat_acl_init_flag = val;
-}
 }  // namespace cann
 }  // namespace onnxruntime

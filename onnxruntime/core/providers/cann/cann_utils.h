@@ -191,7 +191,5 @@ inline std::string MatchFile(const std::string& file_name) {
 
 Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
-bool GetRepeatInitFlag();
-void SetRepeatInitFlag(bool val);
 }  // namespace cann
 }  // namespace onnxruntime
