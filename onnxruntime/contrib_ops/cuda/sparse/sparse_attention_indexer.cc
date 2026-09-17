@@ -235,7 +235,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   auto int_workspace = GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params), GetComputeStream(context));
 
   return LaunchQsaSparseAttentionIndexer<CudaT>(
-      Stream(context), params,
+      this, Stream(context), GetComputeStream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),

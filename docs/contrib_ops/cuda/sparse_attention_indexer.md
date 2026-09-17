@@ -277,19 +277,18 @@ that assign one block to each work item clamp the grid to the CUDA `gridDim.x` l
 
 | Policy | Buffer | Elements |
 |---|---|---|
-| `qsa` | float | `B*S*N*D` (rotated query) + `B*S*max_block_count` (block scores) |
+| `qsa` | float | `B*S*max_block_count` (block scores) |
 | `qsa` | int32 | `B*S*T` (visible indices) + `B*S` (visible counts) |
 | `csa` | float | `B*S*N*D` (rotated query) + `B*S*present_compressed_length` (scores) |
 
 Every size is derived from shapes and attributes only.
 
-### Selection without a visited bitmap
+### Selection
 
-`QsaSelectKernel` and `CsaSelectKernel` repeatedly scan for the next element in the total order
-"score descending, index ascending", using the previously emitted `(score, index)` pair as the
-cursor. That avoids an `O(entries)` bitmap in shared memory, keeps the selection deterministic and
-makes ties resolve to the smaller index. The cost is `O(topk * entries)` per query row, which is
-the main performance follow-up below.
+For QSA rows with at least 512 candidate blocks, a stable segmented radix sort orders all block
+scores in `O(entries)` work before `QsaSelectKernel` emits the requested blocks. Initial indices
+are ascending, so the stable sort preserves the deterministic "score descending, index ascending"
+order for ties. Smaller QSA rows and CSA use the in-kernel block TopK or repeated-scan path.
 
 ## 8. Numerics and Determinism
 
@@ -347,16 +346,17 @@ Run them with:
 
 The implementation is correctness-first. The following are known and deliberate:
 
-1. **Large TopK selection remains `O(topk * entries)` per query row.** The common case of at most
-   32 selected blocks uses a single-read block TopK with deterministic score/index ordering.
-   Larger values retain the repeated-scan fallback to avoid excessive shared memory.
+1. **Large QSA TopK uses a segmented radix sort.** This removes the `O(topk * entries)` repeated
+   scans at long context lengths. Rows below 512 candidate blocks retain the in-kernel block TopK
+   or repeated-scan fallback because radix-sort setup can cost more than selection at small sizes.
 2. **Scoring is not tensor-core accelerated.** `QsaBlockScoreKernel` and `CsaScoreKernel` compute
    `q · k` with a shared-memory block reduction, one dot product per block. A tiled GEMM (or a
    fused `ReLU`+reduce epilogue) would be far better once shapes grow.
 3. **Query rotation is fused into QSA scoring.** This removes the separate rotation launch and the
    `B*S*N*D` float workspace, at the cost of recomputing rotation for each scored block.
-4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. For long
-   contexts a batched exclusive scan over the whole `(B, S, T)` mask would be cheaper.
+4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. Its
+   warp-ballot scan reduces synchronization overhead, but reusing visibility information across
+   query rows would require assumptions about mask structure that the operator schema does not make.
 5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
 6. **No CPU kernel.** The operator is CUDA-only today.
