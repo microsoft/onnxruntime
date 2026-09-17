@@ -574,6 +574,7 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
                                                   float* partial_max,
                                                   float* partial_sum,
                                                   float* partial_output,
+                                                  T* output,
                                                   int partial_block_count,
                                                   int split_count,
                                                   int sequence_length,
@@ -766,13 +767,22 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
     running_sum = running_sum * old_scale + tile_sum;
     __syncthreads();
   }
-  if (h == 0) {
-    partial_max[partial_block] = running_max;
-    partial_sum[partial_block] = running_sum;
-  }
-  if (h < head_size) {
-    partial_output[static_cast<int64_t>(partial_block) * head_size + h] =
-        running_accumulator;
+  if (split_count == 1) {
+    if (h < head_size) {
+      output[static_cast<int64_t>(query_block) * head_size + h] =
+          running_sum == 0.0f
+              ? FromFloat<T>(0.0f)
+              : FromFloat<T>(running_accumulator / running_sum);
+    }
+  } else {
+    if (h == 0) {
+      partial_max[partial_block] = running_max;
+      partial_sum[partial_block] = running_sum;
+    }
+    if (h < head_size) {
+      partial_output[static_cast<int64_t>(partial_block) * head_size + h] =
+          running_accumulator;
+    }
   }
 }
 
@@ -934,6 +944,9 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
   const size_t query_blocks =
       static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads;
   const size_t split_count = GetAttentionSplitCount(parameters);
+  if (split_count == 1) {
+    return 0;
+  }
   return SafeInt<size_t>(query_blocks) * split_count *
          (static_cast<size_t>(parameters.head_size) + 2);
 }
@@ -1122,11 +1135,11 @@ Status LaunchDynamicSparseAttention(
     const int split_count = GetAttentionSplitCount(parameters);
     const int64_t partial_blocks = query_blocks * split_count;
     ORT_RETURN_IF_ERROR(CheckBlockCount(partial_blocks, "split attention"));
-    ORT_RETURN_IF_NOT(data.attention_workspace != nullptr,
+    ORT_RETURN_IF_NOT(split_count == 1 || data.attention_workspace != nullptr,
                       "DynamicSparseAttention: split attention workspace is required.");
     float* partial_max = data.attention_workspace;
-    float* partial_sum = partial_max + partial_blocks;
-    float* partial_output = partial_sum + partial_blocks;
+    float* partial_sum = split_count == 1 ? nullptr : partial_max + partial_blocks;
+    float* partial_output = split_count == 1 ? nullptr : partial_sum + partial_blocks;
     const int split_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
     const size_t split_shared_bytes =
         (static_cast<size_t>(kSplitCandidateSize) + static_cast<size_t>(split_threads)) * sizeof(float) +
@@ -1137,7 +1150,7 @@ Status LaunchDynamicSparseAttention(
         data.prepared_query, data.present_key, data.present_value,
         data.auxiliary_key, data.auxiliary_value, data.selected_indices,
         data.selected_counts, data.seqlens_k, data.head_sink,
-        partial_max, partial_sum, partial_output,
+        partial_max, partial_sum, partial_output, data.output,
         static_cast<int>(partial_blocks), split_count,
         parameters.sequence_length, parameters.num_heads,
         parameters.kv_num_heads, parameters.head_size, parameters.cache_capacity,
@@ -1148,10 +1161,12 @@ Status LaunchDynamicSparseAttention(
         parameters.use_smooth_softmax);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-    const size_t merge_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
-    MergeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, merge_shared_bytes, stream>>>(
-        partial_max, partial_sum, partial_output, data.output,
-        static_cast<int>(query_blocks), split_count, parameters.head_size);
+    if (split_count > 1) {
+      const size_t merge_shared_bytes = static_cast<size_t>(threads) * sizeof(float);
+      MergeDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), threads, merge_shared_bytes, stream>>>(
+          partial_max, partial_sum, partial_output, data.output,
+          static_cast<int>(query_blocks), split_count, parameters.head_size);
+    }
   }
   return CUDA_CALL(cudaGetLastError());
 }
