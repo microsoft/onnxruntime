@@ -2147,6 +2147,14 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
   return nullptr;
 }
 
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options) try {
+  return GetProviderInfo_CUDA().CreateExecutionProviderFactory(provider_options);
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory>
 CannProviderFactoryCreator::Create(const OrtCANNProviderOptions* provider_options) {
   return s_library_cann.Get().CreateExecutionProviderFactory(provider_options);

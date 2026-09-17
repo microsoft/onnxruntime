@@ -201,6 +201,25 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const ProviderOptions& provider_options) {
+#ifdef USE_CUDA
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  ConfigOptions config_options;
+  for (const auto& [key, value] : provider_options) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(key.c_str(), value.c_str()));
+  }
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+#else
+  if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
+    return factory->CreateProvider();
+  return nullptr;
+#endif
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
 #ifdef USE_DNNL
   OrtDnnlProviderOptions dnnl_options;
