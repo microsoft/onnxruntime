@@ -2152,8 +2152,8 @@ struct QMoEBlockWiseCase {
   int expected_prepacked{-1};
 };
 
-// `output_out`, when set, receives the raw fp32 output of the run so callers can compare the
-// results of different kernel policies bitwise (T == float only).
+// `output_out`, when set, receives the run's output as fp32 so callers can compare the results of
+// different kernel policies bitwise.
 template <typename T>
 void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
                                bool share_prepacked_weights_across_sessions = false,
@@ -2346,11 +2346,18 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
       ASSERT_EQ(prepacked, static_cast<size_t>(c.expected_prepacked));
     }
     if (output_out != nullptr) {
-      static_assert(std::is_same_v<T, float>, "raw output capture is only wired for float");
       const auto fetches = tester.GetFetches();
       ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
       const Tensor& out = fetches[0].Get<Tensor>();
-      output_out->assign(out.Data<float>(), out.Data<float>() + out.Shape().Size());
+      const T* data = out.Data<T>();
+      output_out->resize(static_cast<size_t>(out.Shape().Size()));
+      for (size_t i = 0; i < output_out->size(); ++i) {
+        if constexpr (is_fp16) {
+          (*output_out)[i] = data[i].ToFloat();
+        } else {
+          (*output_out)[i] = data[i];
+        }
+      }
     }
     return;
   }
