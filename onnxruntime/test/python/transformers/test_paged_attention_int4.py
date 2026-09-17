@@ -763,6 +763,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
             accelerated["output"].astype(np.float32), portable["output"].astype(np.float32), atol=8e-4, rtol=5e-3
         )
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_xqa_large_attention_scale_and_k_scale(self):
         # An attention scale above one together with a channel scale at FLT_MAX would make
         # attention_scale * normalizer overflow fp32 and every logit NaN. The normalizer exponent is
