@@ -59,10 +59,9 @@ enum class ValueAttributePayload {
 // IMLOperatorAttributes1::GetTensorAttribute, which wraps the raw AttributeProto tensor in an
 // OnnxTensorWrapper.
 //
-// Attribute tensors are not graph initializers, so none of the framework-level guards apply to them:
-// Graph::ConvertInitializersIntoOrtValues never sees them, and ONNX shape inference for
-// ConstantOfShape only reads the attribute's data_type (to type the output), never its data. That
-// leaves OnnxTensorWrapper as the only place the payload can be validated.
+// Attribute tensors are not graph initializers, so Graph::ConvertInitializersIntoOrtValues never
+// sees them. Older ONNX versions also did not validate byte-aligned raw_data sizes in check_tensor,
+// leaving OnnxTensorWrapper as the only place the payload could be validated.
 std::string BuildConstantOfShapeModel(ValueAttributePayload payload) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -113,8 +112,8 @@ std::string BuildConstantOfShapeModel(ValueAttributePayload payload) {
   return serialized;
 }
 
-// Loads |serializedModel| into a session that has only the DML EP registered, and returns the status
-// of Initialize(). |skipped| is set when no DirectML device is available.
+// Loads |serializedModel| into a session that has only the DML EP registered, and returns the first
+// failure from Load() or Initialize(). |skipped| is set when no DirectML device is available.
 //
 // Constant folding is disabled so the ConstantOfShape node survives graph optimization and is handed
 // to the DML EP. Without this, the CPU EP would evaluate the node during Level1 optimization and the
@@ -166,15 +165,19 @@ TEST(DmlOnnxTensorWrapperTest, TruncatedRawDataAttributeTensorIsRejected) {
     GTEST_SKIP() << "DirectML execution provider is not available on this machine.";
   }
 
-  ASSERT_FALSE(status.IsOK()) << "Session initialization should reject a tensor whose declared shape "
-                                 "exceeds the data it carries.";
+  ASSERT_FALSE(status.IsOK()) << "Model loading or session initialization should reject a tensor whose declared "
+                                 "shape exceeds the data it carries.";
 
-  // The detailed message raised inside the constructor does not survive: OnnxTensorWrapper is
-  // constructed behind the IMLOperatorAttributes1 COM boundary, whose ORT_CATCH_RETURN reduces the
-  // exception to a bare HRESULT before it is rethrown. 0x80070057 is E_INVALIDARG, so this asserts the
-  // model was rejected as malformed rather than failing for an unrelated reason.
-  EXPECT_NE(status.ErrorMessage().find("80070057"), std::string::npos)
-      << "Unexpected failure reason: " << status.ErrorMessage();
+  // ONNX 1.23 rejects the malformed attribute during Graph::Resolve. With older ONNX versions it
+  // reaches OnnxTensorWrapper, where the detailed constructor exception is reduced to E_INVALIDARG
+  // (0x80070057) at the IMLOperatorAttributes1 COM boundary.
+  const std::string& errorMessage = status.ErrorMessage();
+  EXPECT_TRUE(
+      errorMessage.find("80070057") != std::string::npos ||
+      errorMessage.find(
+          "raw_data size (1 bytes) is too small for the declared shape and type (8 bytes required)") !=
+          std::string::npos)
+      << "Unexpected failure reason: " << errorMessage;
 }
 
 // The constructor's typed-field branch has the same defect in principle: UnpackTensor sizes the buffer
