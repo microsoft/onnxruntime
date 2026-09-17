@@ -2035,8 +2035,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       auto* p_op_kernel = GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
 
-      // Downcast is safe, since only control flow nodes have subgraphs
-      // (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
+      // A node carries a subgraph whenever it has a GRAPH-typed attribute, which Node::Init
+      // materializes with no schema gate. The downcast below is only valid for control flow
+      // kernels, so reject any other kernel that reached here with a subgraph instead of
+      // reading an out-of-bounds vtable slot.
+      ORT_RETURN_IF_NOT(p_op_kernel->IsControlFlowKernel(), "Node '", node.Name(),
+                        "' (OpType: ", node.OpType(),
+                        ") has a subgraph but is not a control flow node.");
+
+      // Downcast is safe: only control flow nodes reach here (guarded above), and
+      // node.GetAttributeNameToMutableSubgraphMap() is non-empty.
       auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(*this, attr_name, subgraph_session_state));
     }
