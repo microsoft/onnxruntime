@@ -1,4 +1,5 @@
 source "https://rubygems.org"
 
 gem "jazzy", "0.14.3"
+# Mustache 1.1.3 does not accept Jazzy's Pathname template directory.
 gem "mustache", "1.1.2"
