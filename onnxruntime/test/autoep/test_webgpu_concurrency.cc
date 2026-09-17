@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <barrier>
-#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -114,6 +115,19 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
   ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
   if (output_data != input_data) {
     throw std::runtime_error("CopyTensor round trip returned incorrect data");
+  }
+}
+
+void VerifyGpuTensorValue(Ort::Value& gpu_tensor, float expected) {
+  const auto shape = gpu_tensor.GetTensorTypeAndShapeInfo().GetShape();
+  Ort::AllocatorWithDefaultOptions cpu_allocator;
+  auto cpu_tensor = Ort::Value::CreateTensor<float>(cpu_allocator, shape.data(), shape.size());
+  const auto count = cpu_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
+  auto* data = cpu_tensor.GetTensorMutableData<float>();
+  std::fill_n(data, count, -1.0f);
+  ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_tensor, nullptr));
+  for (size_t index = 0; index < count; ++index) {
+    ASSERT_EQ(data[index], expected) << "element " << index;
   }
 }
 
@@ -233,7 +247,6 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
   }
 
   enum class OutputBinding { None,
-                             CpuToGpu,
                              CpuOnlyGraphToGpu };
 
   void RunWithCpuPartitionFeeds(bool use_gpu_feed, bool reverse_feeds = false,
@@ -423,14 +436,6 @@ TEST_F(PluginEpWebGpuConcurrency, CpuFeedsWithCpuPartition) {
   RunWithCpuPartitionFeeds(false);
 }
 
-TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpu) {
-  RunWithCpuPartitionFeeds(false, false, OutputBinding::CpuToGpu);
-}
-
-TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpuFirst) {
-  RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuToGpu);
-}
-
 TEST_F(PluginEpWebGpuConcurrency, CpuOnlyGraphOutputBoundToGpu) {
   RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuOnlyGraphToGpu);
 }
@@ -583,6 +588,77 @@ TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorsCreateAndCopyConcurrently) {
   });
 
   ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, RecycledBufferIsZeroWithoutRun) {
+  auto session = CreateSession();
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  constexpr std::array<int64_t, 1> shape{2049};
+  std::array<float, 2049> input_data{};
+  input_data.fill(7.0f);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), shape.data(), shape.size());
+  auto gpu_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  ASSERT_EQ(gpu_tensor.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+  void* const handle = gpu_tensor.GetTensorMutableRawData();
+  ASSERT_NE(handle, nullptr);
+  ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
+  ASSERT_NO_FATAL_FAILURE(VerifyGpuTensorValue(gpu_tensor, 7.0f));
+
+  // No Run or intervening copy may be needed to recycle an external allocation.
+  gpu_tensor = Ort::Value{nullptr};
+  gpu_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  ASSERT_EQ(gpu_tensor.GetTensorMutableRawData(), handle);
+  ASSERT_NO_FATAL_FAILURE(VerifyGpuTensorValue(gpu_tensor, 0.0f));
+}
+
+TEST_F(PluginEpWebGpuConcurrency, RecycledBufferBatchIsZeroWithoutRun) {
+  auto session = CreateSession();
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  // Two live buffers per bucket, distinct from the model's small allocations.
+  constexpr std::array<int64_t, 6> element_counts{4097, 4097, 8193, 8193, 16385, 16385};
+  std::array<float, 16385> input_data{};
+  InlinedVector<Ort::Value> gpu_tensors;
+  gpu_tensors.reserve(element_counts.size());
+  std::array<void*, element_counts.size()> original_handles{};
+  for (size_t index = 0; index < element_counts.size(); ++index) {
+    gpu_tensors.push_back(Ort::Value::CreateTensor<float>(allocator, &element_counts[index], 1));
+    ASSERT_EQ(gpu_tensors.back().GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+    original_handles[index] = gpu_tensors.back().GetTensorMutableRawData();
+    ASSERT_NE(original_handles[index], nullptr);
+    for (size_t previous = 0; previous < index; ++previous) {
+      ASSERT_NE(original_handles[index], original_handles[previous]);
+    }
+  }
+
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    SCOPED_TRACE(iteration);
+    for (size_t index = 0; index < gpu_tensors.size(); ++index) {
+      SCOPED_TRACE(index);
+      const float value = static_cast<float>(iteration * element_counts.size() + index + 1);
+      input_data.fill(value);
+      auto cpu_input = Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data.data(), input_data.size(), &element_counts[index], 1);
+      ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensors[index], nullptr));
+      ASSERT_NO_FATAL_FAILURE(VerifyGpuTensorValue(gpu_tensors[index], value));
+    }
+
+    gpu_tensors.clear();
+    std::array<void*, element_counts.size()> recycled_handles{};
+    // Allocate the entire batch before any readback can incidentally flush queued clears.
+    for (size_t index = 0; index < element_counts.size(); ++index) {
+      gpu_tensors.push_back(Ort::Value::CreateTensor<float>(allocator, &element_counts[index], 1));
+      recycled_handles[index] = gpu_tensors.back().GetTensorMutableRawData();
+    }
+    ASSERT_TRUE(std::is_permutation(original_handles.begin(), original_handles.end(),
+                                    recycled_handles.begin(), recycled_handles.end()));
+    for (size_t index = 0; index < gpu_tensors.size(); ++index) {
+      SCOPED_TRACE(index);
+      ASSERT_NO_FATAL_FAILURE(VerifyGpuTensorValue(gpu_tensors[index], 0.0f));
+    }
+  }
 }
 
 TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {

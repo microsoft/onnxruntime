@@ -1025,55 +1025,56 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   Status status = EncodeDeferredDispatches(recording);
-  if (!recording.command_encoder) {
-    return status;
+  if (status.IsOK()) {
+    buffer_mgr.ClearPendingBuffers(recording);
   }
+  if (recording.command_encoder) {
+    EndComputePass(recording);
 
-  EndComputePass(recording);
+    if (is_profiling_ && recording.num_pending_dispatches > 0 &&
+        recording.graph_capture_state != GraphCaptureState::Capturing) {
+      ORT_ENFORCE(recording.num_pending_dispatches == recording.pending_kernels.size(),
+                  "Number of pending dispatches (", recording.num_pending_dispatches,
+                  ") does not match pending kernels size (", recording.pending_kernels.size(), ")");
 
-  if (is_profiling_ && recording.num_pending_dispatches > 0 &&
-      recording.graph_capture_state != GraphCaptureState::Capturing) {
-    ORT_ENFORCE(recording.num_pending_dispatches == recording.pending_kernels.size(),
-                "Number of pending dispatches (", recording.num_pending_dispatches,
-                ") does not match pending kernels size (", recording.pending_kernels.size(), ")");
+      // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+      // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
+      if (profiling_first_submit_cpu_offset_us_ < 0) {
+        profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+      }
 
-    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
-    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
-    if (profiling_first_submit_cpu_offset_us_ < 0) {
-      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+      uint32_t query_count = recording.num_pending_dispatches * 2;
+      recording.command_encoder.ResolveQuerySet(
+          query_set_,
+          0,
+          query_count,
+          query_resolve_buffer_,
+          0);
+
+      wgpu::BufferDescriptor bufferDescriptor;
+      bufferDescriptor.size = query_count * sizeof(uint64_t);
+      bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
+      wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
+
+      recording.command_encoder.CopyBufferToBuffer(
+          query_resolve_buffer_,
+          0,
+          query_read_buffer,
+          0,
+          query_count * sizeof(uint64_t));
+
+      pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer);
+      recording.pending_kernels.clear();
     }
-
-    uint32_t query_count = recording.num_pending_dispatches * 2;
-    recording.command_encoder.ResolveQuerySet(
-        query_set_,
-        0,
-        query_count,
-        query_resolve_buffer_,
-        0);
-
-    wgpu::BufferDescriptor bufferDescriptor;
-    bufferDescriptor.size = query_count * sizeof(uint64_t);
-    bufferDescriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
-    wgpu::Buffer query_read_buffer = device_.CreateBuffer(&bufferDescriptor);
-
-    recording.command_encoder.CopyBufferToBuffer(
-        query_resolve_buffer_,
-        0,
-        query_read_buffer,
-        0,
-        query_count * sizeof(uint64_t));
-
-    pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer);
-    recording.pending_kernels.clear();
+    auto command_buffer = recording.command_encoder.Finish();
+    device_queue_.Submit(1, &command_buffer);
+    recording.command_encoder = nullptr;
+    recording.num_pending_dispatches = 0;
+    recording.has_unsubmitted_work = false;
   }
-  auto command_buffer = recording.command_encoder.Finish();
-  device_queue_.Submit(1, &command_buffer);
-  if (recording.graph_capture_state != GraphCaptureState::Replaying) {
+  if (status.IsOK() && recording.graph_capture_state != GraphCaptureState::Replaying) {
     buffer_mgr.RefreshPendingBuffers(recording);
   }
-  recording.command_encoder = nullptr;
-  recording.num_pending_dispatches = 0;
-  recording.has_unsubmitted_work = false;
   return status;
 }
 

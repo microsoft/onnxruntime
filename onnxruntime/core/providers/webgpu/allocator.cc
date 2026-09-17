@@ -16,8 +16,7 @@ namespace webgpu {
 GpuBufferAllocator::GpuBufferAllocator(
     std::function<const BufferManager&()> buffer_manager_getter,
     std::function<CommandRecordingState&()> recording_getter,
-    bool is_read_only_allocator,
-    std::function<bool()> should_submit_zero_initialize)
+    bool is_read_only_allocator)
     : IAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
@@ -26,22 +25,10 @@ GpuBufferAllocator::GpuBufferAllocator(
                         OrtMemTypeDefault)),
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       recording_getter_{std::move(recording_getter)},
-      should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
-      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
-      initialize_to_zero_{!is_read_only_allocator} {
+      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()} {
 }
 
-// Streamless allocation, e.g., application CreateTensor/Alloc APIs using a Session allocator,
-// or framework allocations without a stream, including during Run. The plugin's writable device
-// allocator submits cached clears before returning: the consumer may use a different recording.
-// Other allocator roles/native-EP callers can supply a different submission policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
-  auto& recording = recording_getter_();
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
-  return Allocate(size, should_submit_zero_initialize_ && should_submit_zero_initialize_());
-}
-
-void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
   if (size == 0) {
     return nullptr;
   }
@@ -53,22 +40,16 @@ void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  return buffer_manager_getter_().Create(recording, size, usage, initialize_to_zero_,
-                                         submit_zero_initialize);
+  return buffer_manager_getter_().Create(recording, size, usage);
 }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-// Stream-ordered allocation for Run input copies, intermediate/output tensors and kernel scratch.
-// BindInput can also use this path before Run. A matching Session stream orders deferred clears
-// with subsequent copies/kernels in the same recording, without submitting each allocation.
-// Null streams use Alloc's policy; streams from another Session are rejected.
 void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
-  if (stream == nullptr) {
-    return Alloc(size);
+  if (stream != nullptr) {
+    ORT_ENFORCE(&GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
+                "WebGPU allocator and stream belong to different Sessions.");
   }
-  ORT_ENFORCE(&GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
-              "WebGPU allocator and stream belong to different Sessions.");
-  return Allocate(size, false);
+  return Alloc(size);
 }
 
 namespace {
@@ -154,8 +135,7 @@ void* ExternalGpuBufferAllocator::Alloc(size_t size) {
   ++stats_.num_allocs;
   constexpr wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                       wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-  return context_->BufferManager().Create(*command_state_, size, usage,
-                                          true, true);
+  return context_->BufferManager().Create(*command_state_, size, usage);
 }
 
 void ExternalGpuBufferAllocator::Free(void* p) {
@@ -192,14 +172,12 @@ void WebGpuNoOpAllocator::Free(void* /*p*/) {
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
-                                   bool is_read_only_allocator,
-                                   std::function<bool()> should_submit_zero_initialize) {
+                                   bool is_read_only_allocator) {
   if (device_free) {
     return std::make_shared<WebGpuNoOpAllocator>(is_read_only_allocator);
   }
   return std::make_shared<GpuBufferAllocator>(std::move(buffer_manager_getter), std::move(recording_getter),
-                                              is_read_only_allocator,
-                                              std::move(should_submit_zero_initialize));
+                                              is_read_only_allocator);
 }
 
 }  // namespace webgpu

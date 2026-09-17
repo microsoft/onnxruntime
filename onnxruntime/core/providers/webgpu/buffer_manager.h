@@ -92,12 +92,11 @@ class BufferManager {
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
   void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
   void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
-                    bool initialize_to_zero = false,
-                    bool submit_zero_initialize = false) const;
+  WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   void Release(CommandRecordingState& recording, WGPUBuffer buffer) const;
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
+  void ClearPendingBuffers(CommandRecordingState& recording) const;
   void RefreshPendingBuffers(CommandRecordingState& recording) const;
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
@@ -108,6 +107,7 @@ class BufferManager {
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
   WebGpuContext& context_;
+  const bool clear_storage_on_recycle_;
   mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;

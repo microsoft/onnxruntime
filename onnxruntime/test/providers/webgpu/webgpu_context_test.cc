@@ -182,8 +182,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
-      false,
-      [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
+      false);
 
   std::array<uint32_t, 16> nonzero_data;
   nonzero_data.fill(0xffffffffu);
@@ -240,6 +239,8 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   }
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
   const Status flush_status = context.Flush(buffer_manager, webgpu_ep->Recording());
   context.CaptureEnd(webgpu_ep->Recording());
   if (!flush_status.IsOK()) {
@@ -252,7 +253,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   allocator.Free(allocation);
 }
 
-TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
+TEST(WebGpuContextTest, SessionAllocatorReusesZeroedBufferDuringRun) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
@@ -267,8 +268,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
       [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
-      false,
-      [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
+      false);
 
   std::array<uint32_t, 16> nonzero_data;
   nonzero_data.fill(0xffffffffu);
@@ -285,27 +285,96 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), nonzero_data);
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
+  EXPECT_FALSE(webgpu_ep->Recording().has_unsubmitted_work);
 
   ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
-  const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer), expected_data);
 
   allocator.Free(allocation);
 }
 
-TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
+TEST(WebGpuContextTest, ClearsRetiredStorageAfterLastUse) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
-  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
-  RunOptions run_options;
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
 
-  EXPECT_FALSE(webgpu_ep->IsRunActive());
-  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
-  EXPECT_TRUE(webgpu_ep->IsRunActive());
-  ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
-  EXPECT_FALSE(webgpu_ep->IsRunActive());
+  for (auto mode : {webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Simple}) {
+    SCOPED_TRACE(mode);
+    webgpu::BufferManager buffer_manager(context, mode,
+                                         webgpu::BufferCacheMode::Disabled,
+                                         webgpu::BufferCacheMode::Disabled,
+                                         webgpu::BufferCacheMode::Disabled);
+    webgpu::CommandRecordingState recording;
+    std::array<uint32_t, 16> nonzero_data;
+    nonzero_data.fill(7);
+    constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    auto buffer = wgpu::Buffer::Acquire(buffer_manager.Create(recording, sizeof(nonzero_data), usage));
+    WGPUBuffer retired_buffer = buffer.Get();
+    buffer_manager.Upload(recording, nonzero_data.data(), buffer.Get(), sizeof(nonzero_data));
+
+    wgpu::BufferDescriptor desc{};
+    desc.size = sizeof(nonzero_data);
+    desc.usage = usage;
+    auto output = context.Device().CreateBuffer(&desc);
+    buffer_manager.MemCpy(recording, buffer.Get(), output.Get(), sizeof(nonzero_data));
+    buffer_manager.Release(recording, buffer.MoveToCHandle());
+
+    auto fresh_buffer = wgpu::Buffer::Acquire(buffer_manager.Create(recording, sizeof(nonzero_data), usage));
+    EXPECT_NE(fresh_buffer.Get(), retired_buffer);
+    EXPECT_TRUE(recording.has_unsubmitted_work);
+    EXPECT_EQ(recording.pending_buffers.size(), 1u);
+
+    ASSERT_STATUS_OK(context.Flush(buffer_manager, recording));
+    EXPECT_TRUE(recording.pending_buffers.empty());
+    EXPECT_FALSE(recording.has_unsubmitted_work);
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, output.Get()), nonzero_data);
+
+    auto reused_buffer = wgpu::Buffer::Acquire(buffer_manager.Create(recording, sizeof(nonzero_data), usage));
+    EXPECT_EQ(reused_buffer.Get(), retired_buffer);
+    const std::array<uint32_t, 16> expected_data{};
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer.Get()), expected_data);
+    EXPECT_FALSE(recording.has_unsubmitted_work);
+  }
+}
+
+TEST(WebGpuContextTest, FailedFlushDoesNotRecycleUnclearedBuffers) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager buffer_manager(context,
+                                       webgpu::BufferCacheMode::Simple,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled,
+                                       webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  std::array<uint32_t, 16> nonzero_data;
+  nonzero_data.fill(7);
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto buffer = wgpu::Buffer::Acquire(buffer_manager.Create(recording, sizeof(nonzero_data), usage));
+  WGPUBuffer retired_buffer = buffer.Get();
+  buffer_manager.Upload(recording, nonzero_data.data(), buffer.Get(), sizeof(nonzero_data));
+  buffer_manager.Release(recording, buffer.MoveToCHandle());
+
+  webgpu::CapturedCommandInfo invalid_dispatch;
+  invalid_dispatch.program_key = "missing-pipeline-for-recycle-test";
+  recording.deferred_dispatches.push_back(std::move(invalid_dispatch));
+  recording.has_unsubmitted_work = true;
+  const auto status = context.Flush(buffer_manager, recording);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("No cached or pending pipeline"), std::string::npos);
+  EXPECT_EQ(recording.pending_buffers.size(), 1u);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, retired_buffer), nonzero_data);
+
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, recording));
+  EXPECT_TRUE(recording.pending_buffers.empty());
+  auto reused_buffer = wgpu::Buffer::Acquire(buffer_manager.Create(recording, sizeof(nonzero_data), usage));
+  EXPECT_EQ(reused_buffer.Get(), retired_buffer);
+  const std::array<uint32_t, 16> expected_data{};
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, reused_buffer.Get()), expected_data);
 }
 
 TEST(WebGpuContextTest, EnablesImplicitDeviceSynchronization) {

@@ -641,8 +641,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
           device_free,
           [this]() -> const webgpu::BufferManager& { return BufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); },
-          false,
-          [this]() { return !IsRunActive(); }),
+          false),
   };
 }
 
@@ -871,7 +870,6 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
-  run_active_.store(true);
   return Status::OK();
 }
 
@@ -893,7 +891,6 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     if (context_.ValidationMode() >= ValidationMode::Basic) {
       static_cast<void>(context_.PopErrorScope());
     }
-    run_active_.store(false);
     return flush_status;
   }
 
@@ -923,7 +920,6 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   // Reset buffer manager routing after run completes
   graph_buffer_mgr_active_ = false;
-  run_active_.store(false);
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();

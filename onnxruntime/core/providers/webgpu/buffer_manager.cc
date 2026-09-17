@@ -24,6 +24,12 @@ void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
   }
 }
 
+bool CanClearOnRecycle(WGPUBuffer buffer) {
+  const auto usage = wgpuBufferGetUsage(buffer);
+  return (usage & WGPUBufferUsage_Storage) != 0 && (usage & WGPUBufferUsage_CopyDst) != 0 &&
+         wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped;
+}
+
 }  // namespace
 
 class DisabledCacheManager : public IBufferCacheManager {
@@ -489,6 +495,8 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
 
 BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
     : context_{context},
+      clear_storage_on_recycle_{storage_buffer_cache_mode == BufferCacheMode::Bucket ||
+                                storage_buffer_cache_mode == BufferCacheMode::Simple},
       storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
@@ -547,30 +555,32 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
-WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
-                                 bool initialize_to_zero,
-                                 bool submit_zero_initialize) const {
+WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage) const {
   size_t buffer_size;
   WGPUBuffer buffer;
+  const bool zeroed_cache = clear_storage_on_recycle_ && (usage & wgpu::BufferUsage::Storage);
   {
     std::lock_guard<std::mutex> lock{mutex_};
     auto& cache = GetCacheManager(usage);
     buffer_size = cache.CalculateBufferSize(size);
     buffer = cache.TryAcquireCachedBuffer(buffer_size);
   }
+  // Reclaim outside-Run frees without cutting a live compute batch short.
+  if (!buffer && zeroed_cache && !recording.has_unsubmitted_work && !recording.pending_buffers.empty()) {
+    ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    std::lock_guard<std::mutex> lock{mutex_};
+    buffer = storage_cache_->TryAcquireCachedBuffer(buffer_size);
+  }
   if (buffer) {
-    if (initialize_to_zero) {
-      // initialize_to_zero controls whether a cached buffer is cleared; submit_zero_initialize
-      // separately controls submission before Create returns. Plugin allocations on an explicit
-      // Session stream defer clears; plain/null-stream and Env allocations submit them immediately,
-      // even during Run. Flush submits the whole recording, not just this buffer's clear.
+    if ((usage & wgpu::BufferUsage::Storage) && !zeroed_cache) {
+      // Capture caches retain their allocation-time policy: their buffers may still be
+      // referenced by replay commands after the CPU Tensor is released. Submit the clear
+      // before returning because the next consumer may use a different recording.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);
       context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
-      if (submit_zero_initialize) {
-        ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
-      }
+      ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
       return buffer_guard.MoveToCHandle();
     }
     return buffer;
@@ -605,7 +615,7 @@ bool BufferManager::SupportsUMA() const {
 
 void BufferManager::Release(CommandRecordingState& recording, WGPUBuffer buffer) const {
   EnforceBufferUnmapped(context_, buffer);
-  if (recording.has_unsubmitted_work) {
+  if (clear_storage_on_recycle_ || recording.has_unsubmitted_work) {
     recording.pending_buffers.emplace_back(wgpu::Buffer::Acquire(buffer));
     return;
   }
@@ -662,10 +672,28 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   staging_buffer.Unmap();
 }
 
+void BufferManager::ClearPendingBuffers(CommandRecordingState& recording) const {
+  if (!clear_storage_on_recycle_ || recording.pending_buffers.empty()) {
+    return;
+  }
+  context_.EndComputePass(recording);
+  for (const auto& buffer : recording.pending_buffers) {
+    if (CanClearOnRecycle(buffer.Get())) {
+      context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer.GetSize());
+    }
+  }
+}
+
 void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
   for (auto& buffer : recording.pending_buffers) {
-    GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
+    if (clear_storage_on_recycle_ && (buffer.GetUsage() & wgpu::BufferUsage::Storage) &&
+        !CanClearOnRecycle(buffer.Get())) {
+      // Non-clearable storage must not enter a cache advertised as zero-initialized.
+      buffer = nullptr;
+    } else {
+      GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
+    }
   }
   recording.pending_buffers.clear();
 

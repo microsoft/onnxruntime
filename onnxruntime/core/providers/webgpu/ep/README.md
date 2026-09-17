@@ -6,7 +6,7 @@ The current folder contains the implementation of EP ABI adapter for WebGPU.
 
 To ensure both static library and dynamic library builds work, we need to make as few changes to existing code as possible. A few design decisions are as below:
 
-- No changes to static library build. It should still work as before.
+- Static and dynamic builds share the provider's buffer initialization and recycling policy.
 
 - For dynamic library:
 
@@ -20,8 +20,11 @@ To ensure both static library and dynamic library builds work, we need to make a
 
 The WebGPU plugin implements `OrtEp::CreateSyncStreamForDevice`. Each stream references its
 owning EP's command state; kernels and stream-bearing data transfers use that same state.
-Graph Memcpy kernels access their owning EP directly. The generic single-tensor transfer
-wrapper also forwards explicit streams, keeping BindInput copies ordered with allocation clears.
+Graph Memcpy kernels access their owning EP directly. On ORT cores without single-copy stream
+forwarding, the generic single-tensor transfer wrapper drops explicit streams, so those copies
+use the fallback recording. The core fix is tracked separately in
+[#32666](https://github.com/microsoft/onnxruntime/pull/32666) /
+[#32643](https://github.com/microsoft/onnxruntime/issues/32643).
 
 Native devices must enable Dawn's `ImplicitDeviceSynchronization` feature. ORT requests it for
 internally created devices; callers supplying an external device must include it in
@@ -29,12 +32,23 @@ internally created devices; callers supplying an external device must include it
 devices without this feature, even for serial use. This requirement does not apply to WASM.
 
 Session allocators expose the existing `OrtAllocator::AllocOnStream` callback and validate
-that the stream belongs to the same Session. Allocations with a matching stream defer cached-buffer
-clears. Plugin kernel scratch tensors created through `CreateGPUTensor` use the kernel's explicit
-sync stream, so cached-buffer clears stay ordered with kernel work without submitting each scratch
-allocation. Plain `Alloc` and null-stream allocations submit clears before returning, including
-during Run. This keeps CPU-produced outputs bound to GPU ordered with fallback uploads without
-additional core stream creation. The policy depends on the allocation's stream, not `IsRunActive()`.
+that the stream belongs to the same Session. For ordinary storage caches (`bucket` and
+`simple`), all frees go through the existing recording's pending-buffer list. Flush appends storage
+clears after deferred computation, submits once, and then returns the buffers to the existing cache.
+Allocation from that cache needs no additional clear. On a cache miss, a recording with only
+pending frees can be flushed to reclaim them; a live compute batch is not flushed just to allocate.
+This also handles frees outside Run and Flush calls that initially have no command encoder.
+
+Capture caches retain allocation-time clearing and immediate submission: captured commands may
+still depend on buffers after their CPU Tensor is released. Uniform and other non-storage caches
+are unchanged. Explicit kernel `FillZero` stays at its original recording position without forcing
+a separate submission. These initialization rules are shared by native and plugin builds;
+allocators do not choose a separate clear or submission policy.
+
+Submitted initialization precedes fallback uploads, but does not order later deferred computation
+before a fallback output readback. Mixed GPU-to-CPU and CPU-to-GPU output-copy batches remain a
+known correctness limitation without core stream forwarding, even for serialized Runs: they
+can return incorrect results rather than being safely rejected.
 Uploads, readbacks, stream synchronization, dispatch batch limits, and Run/capture boundaries can
 still submit work.
 
@@ -42,8 +56,8 @@ Multiple threads may use one Session allocator, including while that Session or 
 provided they operate on independent tensors. A dedicated small Session can also allocate inputs
 for concurrent inference Sessions on the same WebGPU device/context. Keep the allocator Session
 and allocator alive until their tensors are released, and synchronize writes before consuming a
-shared tensor. Plain allocations can flush pending Session work, so correctness isolation does
-not guarantee freedom from contention.
+shared tensor. Ordinary-cache misses without live computation can submit pending clears; capture-cache
+allocations can still flush pending Session work. Neither guarantees freedom from contention.
 
 Environment transfers with no stream use their private command state. GPU-to-GPU copies
 without a stream submit and wait before returning. Stream notifications currently complete
@@ -51,8 +65,10 @@ producer work synchronously during activation; the wait callbacks consequently h
 remaining work. This conservative implementation prioritizes correctness over overlap.
 
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
-copies, mixed feed copies, CPU outputs bound to GPU, concurrent Sessions, and same-Session and
-dedicated-Session allocator concurrency are covered by AutoEP tests.
+copies, mixed feed copies, CPU-only graph outputs bound to GPU, concurrent Sessions, and
+same-Session and dedicated-Session allocator concurrency have AutoEP test coverage, including
+single-buffer and batch handle reuse without Run. Mixed-direction output-copy cases affected
+by the missing core forwarding are excluded from this coverage, not fixed by their exclusion.
 Concurrent graph capture, concurrent profiling, cross-device transfer, and arbitrary foreign
 stream overrides are not established by these tests. Performance must be measured separately.
 

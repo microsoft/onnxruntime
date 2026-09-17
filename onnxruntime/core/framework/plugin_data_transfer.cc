@@ -51,14 +51,14 @@ Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) c
 }
 
 // optimized version for a single copy. see comments above in CopyTensors regarding the OrtValue usage and const_cast
-Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor, onnxruntime::Stream* stream) const {
+Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor, onnxruntime::Stream* /*stream*/) const {
   OrtValue src, dst;
   Tensor* src_tensor_ptr = const_cast<Tensor*>(&src_tensor);
   src.Init(static_cast<void*>(src_tensor_ptr), ml_tensor_type, no_op_deleter);
   dst.Init(static_cast<void*>(&dst_tensor), ml_tensor_type, no_op_deleter);
   const OrtValue* src_ptr = &src;
   OrtValue* dst_ptr = &dst;
-  OrtSyncStream* stream_ptr = reinterpret_cast<OrtSyncStream*>(stream);
+  OrtSyncStream* stream_ptr = nullptr;  // static_cast<OrtSyncStream*>(stream);
   auto* status = impl_.CopyTensors(&impl_, &src_ptr, &dst_ptr, &stream_ptr, 1);
 
   return ToStatusAndRelease(status);
