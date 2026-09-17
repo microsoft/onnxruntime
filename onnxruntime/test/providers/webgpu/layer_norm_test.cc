@@ -7,9 +7,12 @@
 #include "gtest/gtest.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
 
 #if !defined(DISABLE_CONTRIB_OPS)
 
@@ -99,7 +102,49 @@ void RunLayerNormTests() {
   RunLayerNormTest<T, V>(true, false);
 }
 
+template <typename V, typename U>
+void CheckLayerNormKernelTypes(const KernelRegistry& kernel_registry, bool simplified, bool expect_supported) {
+  SCOPED_TRACE(MakeString("simplified=", simplified, ", V=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<V>()),
+                          ", U=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<U>())));
+  OpTester test(simplified ? "SimplifiedLayerNormalization" : "LayerNormalization", 15);
+  test.AddAttribute<int64_t>("stash_type", std::is_same_v<U, double> ? ONNX_NAMESPACE::TensorProto_DataType_DOUBLE
+                                                                     : ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  test.AddInput<float>("X", {1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<V>("Scale", {4}, {V(1.0f), V(1.0f), V(1.0f), V(1.0f)});
+  test.AddOutput<V>("Y", {1, 4}, {V(0.0f), V(0.0f), V(0.0f), V(0.0f)});
+  if (!simplified) {
+    test.AddOutput<U>("Mean", {1, 1}, {U(0.0f)});
+  }
+  test.AddOutput<U>("InvStdDev", {1, 1}, {U(0.0f)});
+
+  auto& graph = test.BuildModel().MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(graph.NumberOfNodes(), 1u);
+  const KernelCreateInfo* kernel_create_info = nullptr;
+  const auto status = kernel_registry.TryFindKernel(*graph.Nodes().begin(), kWebGpuExecutionProvider,
+                                                    OpSchemaKernelTypeStrResolver{},
+                                                    DefaultLoggingManager().DefaultLogger(), &kernel_create_info);
+  EXPECT_EQ(status.IsOK(), expect_supported) << status.ErrorMessage();
+  EXPECT_EQ(kernel_create_info != nullptr, expect_supported);
+}
+
 }  // namespace
+
+TEST(LayerNorm_WebGPU, KernelTypeSupport) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  auto kernel_registry = webgpu_ep->GetKernelRegistry();
+  ASSERT_NE(kernel_registry, nullptr);
+  for (bool simplified : {false, true}) {
+    CheckLayerNormKernelTypes<float, float>(*kernel_registry, simplified, true);
+    CheckLayerNormKernelTypes<MLFloat16, float>(*kernel_registry, simplified, true);
+    CheckLayerNormKernelTypes<double, float>(*kernel_registry, simplified, false);
+    CheckLayerNormKernelTypes<BFloat16, float>(*kernel_registry, simplified, false);
+    CheckLayerNormKernelTypes<float, double>(*kernel_registry, simplified, false);
+  }
+}
 
 TEST(LayerNorm_WebGPU, Float16InputFloat32Output) {
   RunLayerNormTests<MLFloat16, float>();
