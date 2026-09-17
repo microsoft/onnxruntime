@@ -897,7 +897,7 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
     }
 
-    // A null allocator requests the default CPU allocator.
+    // A successful callback may return nullptr to request ORT's default CPU allocator.
     if (ort_allocator_ptr == nullptr) {
       continue;
     }
