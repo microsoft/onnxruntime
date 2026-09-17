@@ -36,12 +36,13 @@ namespace {
 
 constexpr size_t kFilePrefixSize = 13;
 
-uint8_t TestValue(size_t index) {
-  return static_cast<uint8_t>((index * 31 + 7) & 0xff);
+uint8_t TestValue(size_t index, size_t load = 0) {
+  return static_cast<uint8_t>((index * 31 + load * 97 + 7) & 0xff);
 }
 
 void CreateExternalDataFile(size_t length, PathString& path,
-                            gsl::span<const uint8_t> suffix = {}) {
+                            gsl::span<const uint8_t> suffix = {},
+                            size_t load = 0) {
   FILE* file = nullptr;
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
@@ -51,7 +52,7 @@ void CreateExternalDataFile(size_t length, PathString& path,
   for (size_t offset = 0; offset < length;) {
     const size_t chunk_size = std::min(chunk.size(), length - offset);
     for (size_t i = 0; i < chunk_size; ++i) {
-      chunk[i] = TestValue(offset + i);
+      chunk[i] = TestValue(offset + i, load);
     }
     ASSERT_EQ(chunk_size, fwrite(chunk.data(), 1, chunk_size, file));
     offset += chunk_size;
@@ -63,9 +64,6 @@ void CreateExternalDataFile(size_t length, PathString& path,
 }
 
 void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_count = 4) {
-  PathString path;
-  CreateExternalDataFile(length, path);
-  ScopedFileDeleter file_deleter{path};
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
@@ -83,13 +81,17 @@ void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_coun
   Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(length)}), *allocator);
 
   for (size_t load = 0; load < load_count; ++load) {
+    PathString path;
+    CreateExternalDataFile(length, path, {}, load);
+    ScopedFileDeleter file_deleter{path};
+    ASSERT_EQ(cudaSuccess, cudaMemset(tensor.MutableDataRaw(), 0xa5, length));
     ASSERT_STATUS_OK(loader->LoadTensor(Env::Default(), path, kFilePrefixSize, length, tensor));
-  }
 
-  std::vector<uint8_t> output(length);
-  ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), tensor.DataRaw(), length, cudaMemcpyDeviceToHost));
-  for (size_t i = 0; i < length; ++i) {
-    ASSERT_EQ(TestValue(i), output[i]) << "Mismatch at byte " << i;
+    std::vector<uint8_t> output(length);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), tensor.DataRaw(), length, cudaMemcpyDeviceToHost));
+    for (size_t i = 0; i < length; ++i) {
+      ASSERT_EQ(TestValue(i, load), output[i]) << "Mismatch at byte " << i << " during load " << load;
+    }
   }
 }
 
