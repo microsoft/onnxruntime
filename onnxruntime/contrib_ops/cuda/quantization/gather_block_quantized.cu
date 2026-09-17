@@ -133,13 +133,22 @@ __global__ void GatherBlockQuantizedKernel(
   int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
   const int64_t blocks_per_row = (quantize_axis_dim + block_size - 1) / block_size;
+  const int64_t row = in_idx / quantize_axis_dim;
+  const int64_t block_in_row = in_idx % quantize_axis_dim / block_size;
   const int64_t block_id =
-      in_idx / quantize_axis_dim * blocks_per_row + in_idx % quantize_axis_dim / block_size;
+      row * blocks_per_row + block_in_row;
 
   // unpack zero_point for this block:
   int64_t offset = 0;
   if (zero_points) {
-    offset = get_val(zero_points, block_id, bits, sign);
+    int64_t zero_point_id = block_id;
+    if constexpr (std::is_same_v<T1, uint8_t>) {
+      const int64_t packing_factor = 8 / bits;
+      const int64_t packed_blocks_per_row =
+          (blocks_per_row + packing_factor - 1) / packing_factor * packing_factor;
+      zero_point_id = row * packed_blocks_per_row + block_in_row;
+    }
+    offset = get_val(zero_points, zero_point_id, bits, sign);
   } else if constexpr (std::is_same_v<T1, uint8_t>) {
     offset = int64_t{1} << (bits - 1);
   }
