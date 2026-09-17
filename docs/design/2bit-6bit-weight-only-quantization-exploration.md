@@ -17,7 +17,9 @@ This document focuses on weight-only block quantization for `MatMulNBits` and re
 - Model-format and packing choices.
 - A staged implementation and evaluation plan.
 
-Activation quantization, KV-cache quantization, and floating-point formats such as FP4 and FP6 are outside the primary scope.
+The initial CUDA vertical slice is limited to dense projections represented as individual `MatMulNBits` nodes. Expert gate/up tensors are included only when the model-production path exports them as independent dense nodes. Fused MoE/QMoE operators and their packed expert-weight contracts are a separate workstream.
+
+Activation quantization, KV-cache quantization, floating-point formats such as FP4 and FP6, and fused MoE/QMoE execution are outside the primary scope.
 
 ## Current ONNX Runtime Support
 
@@ -96,7 +98,7 @@ The published Unsloth `UD-Q2_K_XL` GGUF for Qwen3.8-Flash-Next is approximately 
 
 `IQ2_XS` is a nominal 2-bit importance-quantized format with approximately 2.31 effective bits per weight after its scales and indexing metadata. It is not the same numerical format as blockwise affine `MatMulNBits(bits=2)`. Consequently, "2-bit" describes the lowest and dominant expert tier of this GGUF, not a two-bit average across every parameter.
 
-The first ONNX Runtime model-level experiment should nevertheless target the same tensor placement: use `MatMulNBits(bits=2)` for the 47 expert gate/up tensor groups, retain layer 2 and the remaining sensitive tensor classes at supported higher precision, and then measure quality and effective model size. This tests whether expert gate/up INT2 captures most of the useful compression and bandwidth reduction without claiming bit-exact equivalence to `IQ2_XS`. Comparisons with `UD-Q2_K_XL` must report tensor-type distribution and effective bits per parameter rather than comparing quantization names alone.
+The first ONNX Runtime model-level experiment should nevertheless target the same tensor placement: use `MatMulNBits(bits=2)` for the 47 expert gate/up tensor groups when they are exported as independent dense projections, retain layer 2 and the remaining sensitive tensor classes at supported higher precision, and then measure quality and effective model size. This tests whether expert gate/up INT2 captures most of the useful compression and bandwidth reduction without claiming bit-exact equivalence to `IQ2_XS`. Comparisons with `UD-Q2_K_XL` must report tensor-type distribution and effective bits per parameter rather than comparing quantization names alone.
 
 Q6_K stores each 6-bit code as two planes:
 
@@ -196,14 +198,33 @@ Before implementation, agree on:
 - Required block sizes, bias, `g_idx`, and data types.
 - Accuracy and performance acceptance criteria.
 
+### Initial Model-Production Contract
+
+The required model-production workflow for the initial CUDA vertical slice is:
+
+```text
+HF/PyTorch model
+       -> Olive RTN, GPTQ, or SelectiveMixedPrecision INT2/mixed checkpoint
+       -> Mobius export
+       -> dense MatMulNBits(bits=2/4/8) ONNX model
+       -> ONNX Runtime CUDA execution
+```
+
+This path best matches the GPTQ, selective mixed-precision, and Qwen quality goals. The vertical slice must qualify graph conversion, initializer binding, tensor-wise bit-width selection, and numerical parity from the Olive checkpoint through Mobius export and ONNX Runtime execution.
+
+The ONNX-native workflow, `FP ONNX -> Olive OnnxBlockWiseRtnQuantization -> MatMulNBits(bits=2)`, remains required for broader product support but follows the initial PyTorch/Mobius milestone. Complete Olive ONNX RTN and built-in quantized-linear INT2 export support must be tracked with the owning Olive work rather than assumed to exist because the ONNX Runtime kernel is available.
+
+The initial contract produces dense `MatMulNBits` nodes only. Exporting expert tensors into a fused MoE/QMoE operator would require a separate Olive/Mobius/runtime schema, packing, weight-binding, kernel, and parity contract and is not part of this CUDA delivery.
+
 ### Phase 1: 2-Bit Quality and Kernel Gate
 
 1. Freeze representative Qwen shapes, workloads, quality metrics, and performance baselines.
 2. Validate the existing portable INT2 packing and CPU implementation as the CUDA semantic reference.
-3. Measure uniform and mixed INT2/INT4/INT8 coding, tool-calling, KL-divergence, and effective model size, starting with `MatMulNBits(bits=2)` on the 47 expert gate/up tensor groups and higher precision elsewhere.
-4. Prototype direct packed-INT2 and GPU-native LUT extraction for M=1 decode.
-5. Prototype a tiled direct or LUT-based path for representative large-M prefill.
-6. Select the CUDA execution and runtime-prepacking strategy using measured quality and performance data.
+3. Measure uniform and mixed INT2/INT4/INT8 coding, tool-calling, KL-divergence, and effective model size, starting with `MatMulNBits(bits=2)` on independently exported expert gate/up projections and higher precision elsewhere.
+4. Qualify the Olive checkpoint-to-Mobius-to-ONNX path for graph structure, initializer binding, tensor-wise bit widths, and numerical parity.
+5. Prototype direct packed-INT2 and GPU-native LUT extraction for M=1 decode.
+6. Prototype a tiled direct or LUT-based path for representative large-M prefill.
+7. Select the CUDA execution and runtime-prepacking strategy using measured quality and performance data.
 
 The first week is a quality and workload gate, not a stop condition for all INT2 engineering. If uniform INT2 misses model-quality thresholds, the implementation should proceed with a mixed-precision recipe that preserves sensitive layers at INT4, INT8, or BF16. The CUDA kernel decision must be based on end-to-end value rather than unpack throughput alone.
 
@@ -211,6 +232,7 @@ The first week is a quality and workload gate, not a stop condition for all INT2
 
 - Uniform and mixed-precision INT2 quality and effective-size results on the agreed Qwen coding-model workload.
 - An expert gate/up INT2 model variant compared with the approximately 78.9 GB Unsloth `UD-Q2_K_XL` baseline, including tensor-type distribution and effective bits per parameter.
+- An end-to-end mixed INT2/INT4/INT8 model exported through Olive and Mobius with graph, weight-binding, and numerical-parity coverage.
 - Direct-unpack versus GPU-native LUT microbenchmarks for representative M=1 decode and large-M prefill shapes.
 - A selected CUDA runtime-prepacking and kernel strategy, including memory overhead and architecture constraints.
 - A written assessment of whether INT2 delivers useful end-to-end decode, TTFT, and memory improvements over INT4.
@@ -230,6 +252,7 @@ Integrate the selected approach into `MatMulNBits(bits=2)` with:
 - Runtime prepacking where it provides a measured benefit while preserving the existing portable INT2 model layout.
 - Correctness checks against the existing CPU implementation and explicit dequantization.
 - Focused Qwen-shape performance tests and end-to-end decode throughput and TTFT measurements.
+- A deployable dense `MatMulNBits` model produced through the qualified PyTorch/Olive-to-Mobius workflow.
 
 ### Phase 3: 2-Bit Production Expansion
 
@@ -273,6 +296,7 @@ There are approximately 8.5 calendar weeks from September 16 to November 15, 202
 ### Committed INT2 Scope
 
 - Uniform and mixed INT2/INT4/INT8 quality and effective-size results for representative Qwen3.8 coding-model workloads.
+- A qualified PyTorch/Olive-to-Mobius export path producing dense mixed-bit `MatMulNBits` nodes, with graph, initializer-binding, and numerical-parity tests.
 - Direct packed-INT2 versus GPU-native LUT prototype results and a selected CUDA strategy.
 - CUDA runtime prepacking if justified by profiling, plus fused M=1 GEMV and fused large-M GEMM for FP16 activations, symmetric weights, and one selected block size.
 - Correctness and performance results for M=1 decode and representative prefill M values, such as 128, 512, and 2048, on Qwen3.8-27B and Qwen3.8-Flash-Next matrix shapes.
@@ -284,8 +308,8 @@ There are approximately 8.5 calendar weeks from September 16 to November 15, 202
 | Dates | Milestone |
 | --- | --- |
 | September 16-20 | Freeze quality thresholds, Qwen workloads, candidate block sizes, and INT4/INT8/BF16 baselines. |
-| September 21-27 | Run uniform and mixed-precision INT2 quality/size experiments; validate the existing portable format and CPU reference. |
-| September 28-October 11 | Prototype and compare direct packed-INT2 and GPU-native LUT paths for M=1 decode and large-M prefill. |
+| September 21-27 | Run uniform and mixed-precision INT2 quality/size experiments; validate the portable format and qualify Olive checkpoint-to-Mobius graph and weight export. |
+| September 28-October 11 | Complete export numerical-parity coverage; prototype and compare direct packed-INT2 and GPU-native LUT paths for M=1 decode and large-M prefill. |
 | October 12-25 | Select the kernel/prepack strategy; implement fused M=1 GEMV and large-M GEMM for the primary FP16 configuration. |
 | October 26-November 1 | Integrate both paths into CUDA `MatMulNBits(bits=2)` and validate representative Qwen decode and prefill shapes. |
 | November 2-8 | Add focused correctness tests, serialization, memory estimates, build integration, and performance measurements. |
@@ -303,6 +327,8 @@ The following items should not put the November 15 commitment at risk:
 - Offline CUDA-specific prepacking.
 - Broad multi-GPU tuning.
 - INT6 format, tooling, or kernel implementation.
+- ONNX-native Olive INT2 RTN and built-in quantized-linear export completion.
+- Fused MoE/QMoE export, packing contracts, and runtime kernels.
 
 ### INT6 Scheduling Impact
 
