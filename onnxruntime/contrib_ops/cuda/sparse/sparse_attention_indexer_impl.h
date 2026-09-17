@@ -6,7 +6,6 @@
 #include <cstdint>
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -55,9 +54,7 @@ size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
 
 template <typename T>
 Status LaunchQsaSparseAttentionIndexer(
-    const onnxruntime::cuda::CudaKernel* kernel,
     cudaStream_t stream,
-    void* alloc_stream,
     const SparseAttentionIndexerParams& params,
     const T* query,
     const T* key,
