@@ -149,8 +149,8 @@ def run_subprocess(
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
-def get_onnx_backend_test_environment():
-    if "ALLOW_RELEASED_ONNX_OPSET_ONLY" not in os.environ:
+def get_onnx_backend_test_environment(use_cuda):
+    if use_cuda:
         return {}
 
     return {
@@ -2052,12 +2052,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        # Strict-mode CI legs need the materialized corpus's in-development opsets.
+                        # Non-CUDA CI legs need the materialized corpus's in-development opsets.
                         run_subprocess(
                             [sys.executable, "onnx_backend_test_series.py"],
                             cwd=cwd,
                             dll_path=dll_path,
-                            env=get_onnx_backend_test_environment(),
+                            env=get_onnx_backend_test_environment(args.use_cuda),
                         )
 
             if not args.skip_keras_test:
