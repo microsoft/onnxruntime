@@ -83,6 +83,7 @@ struct CUDAExecutionProviderInfo {
   bool fuse_conv_bias{false};
 
   int sdpa_kernel{0};
+  bool enable_host_pageable_gather{false};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
@@ -117,6 +118,7 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
     onnxruntime::HashCombine(info.enable_cudnn, value);
+    onnxruntime::HashCombine(info.enable_host_pageable_gather, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);

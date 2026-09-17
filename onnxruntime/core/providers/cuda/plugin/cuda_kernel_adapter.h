@@ -534,6 +534,8 @@ struct CudaKernelAdapterRuntimeConfig {
   bool cudnn_conv1d_pad_to_nc1d = false;
   bool enable_cudnn = true;
   bool fuse_conv_bias = false;
+  bool enable_cuda_graph = false;
+  bool enable_host_pageable_gather = false;
   int sdpa_kernel = 0;
   int device_id = 0;
   bool do_copy_in_default_stream = true;
@@ -1173,7 +1175,10 @@ class CudaKernel : public OpKernel {
   bool GetCudnnConv1dPadToNc1d() const { return runtime_config_->cudnn_conv1d_pad_to_nc1d; }
   bool UseTF32() const { return use_tf32_; }
   bool IsFuseConvBias() const { return runtime_config_->fuse_conv_bias; }
+  bool EnableHostPageableGather() const { return runtime_config_->enable_host_pageable_gather; }
+  bool IsCudaGraphEnabled() const { return runtime_config_->enable_cuda_graph; }
   bool IsArchAvailable(int arch) const { return GetDeviceProp().major >= arch; }
+  int GetDeviceId() const { return device_id_; }
   // Delegate to the base OpKernel::Info() which holds a safe copy of OpKernelInfo.
   // Do NOT store a reference to the constructor parameter — it becomes dangling.
   const OpKernelInfo& Info() const { return OpKernel::Info(); }
