@@ -56,6 +56,8 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
 constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
+constexpr const char* kMaxStorageBuffersPerShaderStage =
+    "ep.webgpuexecutionprovider.maxStorageBuffersPerShaderStage";
 // Valid range: 1-4096. Larger values are rejected to avoid excessive
 // query buffer sizing and unpredictable memory/performance behavior.
 constexpr const char* kMaxNumPendingDispatches = "ep.webgpuexecutionprovider.maxNumPendingDispatches";
