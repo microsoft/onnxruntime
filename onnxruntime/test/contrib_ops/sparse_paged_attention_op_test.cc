@@ -376,11 +376,13 @@ TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
   }
 
   constexpr int kNumBlocks = 2;
-  constexpr int kPackedSize = 3 * kHeadSize;
+  constexpr int kRotaryHeadSize = 16;
+  constexpr int kPackedSize = 3 * kRotaryHeadSize;
+  constexpr int kRotaryCacheElems = kBlockSize * kRotaryHeadSize;
   std::vector<MLFloat16> packed_qkv(kPackedSize, MLFloat16(0.0f));
-  std::fill_n(packed_qkv.begin() + 2 * kHeadSize, kHeadSize, MLFloat16(4.0f));
-  std::vector<MLFloat16> expected_value_cache(kNumBlocks * kCacheElems, MLFloat16(0.0f));
-  SetConstantCacheRow(expected_value_cache, kBlockSize, kHeadSize, 4.0f);
+  std::fill_n(packed_qkv.begin() + 2 * kRotaryHeadSize, kRotaryHeadSize, MLFloat16(4.0f));
+  std::vector<MLFloat16> expected_value_cache(kNumBlocks * kRotaryCacheElems, MLFloat16(0.0f));
+  SetConstantCacheRow(expected_value_cache, kBlockSize, kRotaryHeadSize, 4.0f);
 
   OpTester tester("SparsePagedAttention", 1, kMSDomain);
   AddAttributes(tester);
@@ -388,10 +390,10 @@ TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
   tester.AddInput<MLFloat16>("query", {1, kPackedSize}, packed_qkv);
   tester.AddOptionalInputEdge<MLFloat16>();  // key is packed with query
   tester.AddOptionalInputEdge<MLFloat16>();  // value is packed with query
-  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
-                             HalfVector(0.0f, kNumBlocks * kCacheElems));
-  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
-                             HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kRotaryCacheElems));
+  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kRotaryCacheElems));
   tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
   tester.AddInput<int32_t>("past_seqlens", {1}, {0});
   tester.AddInput<int32_t>("block_table", {1, 1}, {1});
@@ -401,14 +403,14 @@ TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
   tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_key
   tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_value
   tester.AddOptionalInputEdge<int32_t>();    // auxiliary_lengths
-  tester.AddInput<MLFloat16>("cos_cache", {1, kHeadSize / 2},
-                             HalfVector(1.0f, kHeadSize / 2));
-  tester.AddInput<MLFloat16>("sin_cache", {1, kHeadSize / 2},
-                             HalfVector(0.0f, kHeadSize / 2));
-  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(4.0f));
-  tester.AddOutput<MLFloat16>("key_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
-                              HalfVector(0.0f, kNumBlocks * kCacheElems));
-  tester.AddOutput<MLFloat16>("value_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
+  tester.AddInput<MLFloat16>("cos_cache", {1, kRotaryHeadSize / 2},
+                             HalfVector(1.0f, kRotaryHeadSize / 2));
+  tester.AddInput<MLFloat16>("sin_cache", {1, kRotaryHeadSize / 2},
+                             HalfVector(0.0f, kRotaryHeadSize / 2));
+  tester.AddOutput<MLFloat16>("output", {1, kRotaryHeadSize}, HalfVector(4.0f, kRotaryHeadSize));
+  tester.AddOutput<MLFloat16>("key_cache_out", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
+                              HalfVector(0.0f, kNumBlocks * kRotaryCacheElems));
+  tester.AddOutput<MLFloat16>("value_cache_out", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
                               expected_value_cache);
   tester.SetOutputTolerance(0.01f);
   RunWebGpu(tester);

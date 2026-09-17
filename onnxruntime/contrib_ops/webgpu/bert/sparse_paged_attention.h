@@ -233,7 +233,7 @@ class SparsePagedAttentionFinalizeProgram final
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"workgroup_count", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_main_;

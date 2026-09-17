@@ -25,8 +25,9 @@ namespace {
 // reduction below assumes a power of two.
 constexpr uint32_t kAttentionWorkgroupSize = 64;
 
-// The staged shaders keep two head_size-sized FP32 arrays plus one
-// workgroup-size-sized reduction array in workgroup memory.
+// The staged shaders keep two head_size-sized FP32 arrays, one
+// workgroup-size-sized reduction array, and four scalar softmax values in
+// workgroup memory.
 constexpr int kMaxSupportedHeadSize = 512;
 
 // Upper bound for every sanitized position the shaders derive from
@@ -422,8 +423,7 @@ Status RunSparseFinalize(onnxruntime::webgpu::ComputeContext& context,
                          Tensor* output) {
   const uint32_t num_heads = static_cast<uint32_t>(parameters.num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
-  const uint32_t dispatch_size =
-      static_cast<uint32_t>(parameters.token_count) * num_heads * head_size;
+  const uint32_t workgroup_count = static_cast<uint32_t>(parameters.token_count) * num_heads;
 
   SparsePagedAttentionFinalizeProgram program{partial_main != nullptr, partial_auxiliary != nullptr,
                                               head_sink != nullptr};
@@ -440,13 +440,15 @@ Status RunSparseFinalize(onnxruntime::webgpu::ComputeContext& context,
       .AddOutputs({
           {output, ProgramTensorMetadataDependency::TypeAndRank},
       })
-      .CacheHint(partial_main != nullptr, partial_auxiliary != nullptr, head_sink != nullptr)
+      .CacheHint(partial_main != nullptr, partial_auxiliary != nullptr, head_sink != nullptr,
+                 kAttentionWorkgroupSize)
       .AddUniformVariables({
           {num_heads},
           {head_size},
-          {dispatch_size},
+          {workgroup_count},
       })
-      .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize(workgroup_count)
+      .SetWorkgroupSize(kAttentionWorkgroupSize);
   return context.RunProgram(program);
 }
 
@@ -730,7 +732,7 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   const bool direct_output = run_main != run_auxiliary && head_sink == nullptr;
 
   const uint64_t workgroup_storage_bytes =
-      (2ull * static_cast<uint64_t>(parameters.head_size) + kAttentionWorkgroupSize) * sizeof(float);
+      (2ull * static_cast<uint64_t>(parameters.head_size) + kAttentionWorkgroupSize + 4) * sizeof(float);
   if (workgroup_storage_bytes > context.DeviceLimits().maxComputeWorkgroupStorageSize) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparsePagedAttention (WebGPU): head_size ", parameters.head_size,
