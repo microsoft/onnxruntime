@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -1121,7 +1122,7 @@ TEST(DynamicSparseAttentionTest, NormalPathSkipsDeviceMetadataValidation_CUDA) {
   }
 
   ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{{"ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", "0"}}};
+      EnvVarMap{{"ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", std::nullopt}}};
 
   auto c = MakeSingleTokenSelectedOnlyCase();
   c.selected_counts = {3};
