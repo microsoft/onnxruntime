@@ -573,23 +573,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
-  // both hard-code a bottom-right causal mask.
+  // cuDNN paged SDPA is causal-only. FlashAttention, paged decode, and CUTLASS all consume the
+  // causality flag directly.
   bool use_paged_decode =
       !use_cudnn_paged &&
-      decode_eligible && parameters.is_causal &&
+      decode_eligible &&
       ((decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible)) ||
        xqa_spec_dec_candidate || portable_spec_dec_candidate);
   bool use_flash_attention = flash_eligible && !use_paged_decode && !use_cudnn_paged;
   const bool use_memory_efficient_attention =
-      mea_eligible && !use_paged_decode && !use_cudnn_paged && parameters.is_causal;
-
-  if (!parameters.is_causal && !use_flash_attention) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
-                           "head_size ",
-                           parameters.head_size, ", block_size ", parameters.block_size, ").");
-  }
+      mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
   // Both gather-based backends need a dense KV staging buffer when the cache is quantized
   // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
