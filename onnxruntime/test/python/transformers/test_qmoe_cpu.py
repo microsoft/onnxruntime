@@ -385,6 +385,68 @@ def quant_dequant_blockwise(weights, block_size, quant_bits: int = 4, asymmetric
     return scales, quantized, dequantized, zero_points_storage
 
 
+def quant_dequant_blockwise_float_zp(weights, block_size, quant_bits: int = 2, float_zp: float = 1.5):
+    """Block-wise quantization with a constant *fractional* float zero-point.
+
+    Mirrors the Quark uint2 export path this PR targets (e.g. gemma-4 with a constant zp of 1.5):
+    codes {0,1,2,3} dequantize to (code - zp) * scale, which for zp=1.5 gives the symmetric grid
+    {-1.5, -0.5, 0.5, 1.5} * scale that cannot be represented on the integer zero-point grid.
+
+    Unlike quant_dequant_blockwise, the returned zero_points tensor is FLOAT (unpacked, one value
+    per group, matching the scales layout) rather than packed uint8, exercising the float
+    zero-point code path (detected by dtype in the kernel).
+
+    Returns:
+        scales: [rows, num_blocks] float32
+        quantized: packed uint8 weights
+        dequantized: reference dequantized weights
+        zero_points_float: [rows, num_blocks] float32 (constant = float_zp)
+    """
+    assert quant_bits == 2, "Float zero-points are only supported for 2-bit block-wise on CPU."
+    rows, cols = weights.shape
+    num_blocks = (cols + block_size - 1) // block_size
+    pack_size = 8 // quant_bits
+    value_mask = (1 << quant_bits) - 1
+    code_min, code_max = 0, (1 << quant_bits) - 1
+
+    scales = torch.zeros((rows, num_blocks), dtype=torch.float32, device=weights.device)
+    zero_points_float = torch.full((rows, num_blocks), float(float_zp), dtype=torch.float32, device=weights.device)
+    dequantized = torch.zeros_like(weights)
+    packed_size = (cols + pack_size - 1) // pack_size
+    quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+
+    # With codes centered at float_zp, the representable magnitude on each side is
+    # max(float_zp - code_min, code_max - float_zp). Pick scale from the block abs-max so the
+    # widest-magnitude weight maps to the outermost code.
+    half_span = max(float_zp - code_min, code_max - float_zp)
+
+    for row in range(rows):
+        for block_idx in range(num_blocks):
+            start_col = block_idx * block_size
+            end_col = min(start_col + block_size, cols)
+            block_data = weights[row, start_col:end_col]
+
+            abs_max = block_data.abs().max()
+            scale = torch.clamp(abs_max / half_span, min=1e-8)
+            scales[row, block_idx] = scale.to(torch.float32)
+
+            codes = torch.round(block_data.double() / scale.double() + float_zp)
+            codes = codes.clamp(code_min, code_max).to(torch.int64)
+            dequantized[row, start_col:end_col] = ((codes.float() - float_zp) * scale.float()).to(weights.dtype)
+
+            for i in range(0, end_col - start_col, pack_size):
+                col_idx = start_col + i
+                packed_idx = col_idx // pack_size
+                packed_val = 0
+                for packed_offset in range(pack_size):
+                    src_idx = i + packed_offset
+                    code = int(codes[src_idx]) if src_idx < len(codes) else 0
+                    packed_val |= (code & value_mask) << (packed_offset * quant_bits)
+                quantized[row, packed_idx] = packed_val
+
+    return scales, quantized, dequantized, zero_points_float
+
+
 def create_cpu_moe_onnx_graph(
     hidden_size,
     sequence_length,
@@ -402,6 +464,7 @@ def create_cpu_moe_onnx_graph(
     fc1_zero_points=None,
     fc2_zero_points=None,
     use_swiglu=False,
+    use_geglu=False,
     use_quant=False,
     quant_bits=4,
     swiglu_fusion=0,
@@ -465,7 +528,26 @@ def create_cpu_moe_onnx_graph(
             "",  # fc3_experts_bias (not used)
         ]
 
-    activation = "swiglu" if use_swiglu else "silu"
+    # GeGLU and SwiGLU share the interleaved doubled-fc1 gated layout; only the gate
+    # nonlinearity differs (gelu-tanh vs swish).
+    is_gated = use_swiglu or use_geglu
+    if use_geglu:
+        activation = "geglu"
+    elif use_swiglu:
+        activation = "swiglu"
+    else:
+        activation = "silu"
+
+    # GeGLU (Gemma-style) uses a plain gelu-tanh gate: alpha=1, beta=0, and no clamp.
+    # SwiGLU uses the OpenAI-style scaled/clamped gate (alpha=1.702, beta=1, limit=7).
+    if use_geglu:
+        activation_alpha = 1.0
+        activation_beta = 0.0
+        swiglu_limit = float("inf")
+    else:
+        activation_alpha = 1.702
+        activation_beta = 1.0
+        swiglu_limit = 7.0
 
     # Set normalization behavior based on operator type:
     # - QMoE: Raw logits passed, needs normalization in C++ kernel
@@ -483,9 +565,9 @@ def create_cpu_moe_onnx_graph(
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=swiglu_fusion,
-            swiglu_limit=7.0,
-            activation_alpha=1.702,
-            activation_beta=1.0,
+            swiglu_limit=swiglu_limit,
+            activation_alpha=activation_alpha,
+            activation_beta=activation_beta,
             domain="com.microsoft",
         ),
     ]
@@ -537,11 +619,11 @@ def create_cpu_moe_onnx_graph(
         fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
         fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
 
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
+        fc1_scale_shape = [num_experts, 2 * inter_size if is_gated else inter_size, fc1_blocks_per_row]
         fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
     else:
         # Row-wise quantization: 2D scale tensors
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
+        fc1_scale_shape = [num_experts, 2 * inter_size if is_gated else inter_size]
         fc2_scale_shape = [num_experts, hidden_size]
 
     # Handle scale tensors
@@ -571,32 +653,24 @@ def create_cpu_moe_onnx_graph(
         ]
     )
 
-    # Add zero-point initializers if provided
-    if fc1_zero_points is not None:
-        fc1_zp_np = fc1_zero_points.detach().cpu().numpy().astype(numpy.uint8)
-        fc1_zp_np = numpy.ascontiguousarray(fc1_zp_np)
-        initializers.append(
-            helper.make_tensor(
-                "fc1_zero_points",
-                TensorProto.UINT8,
-                list(fc1_zero_points.shape),
-                fc1_zp_np.tobytes(),
-                raw=True,
+    # Add zero-point initializers if provided. Float zero-points (unpacked, one per group,
+    # matching the scales layout) are emitted with the graph's float dtype; integer zero-points
+    # keep the packed uint8 layout. The kernel distinguishes them by element dtype.
+    def _append_zero_points(name, zp_tensor):
+        if zp_tensor is None:
+            return
+        if zp_tensor.is_floating_point():
+            zp_np = zp_tensor.to(torch_dtype).detach().cpu().numpy().astype(ort_to_numpy_type_map[onnx_dtype])
+            zp_np = numpy.ascontiguousarray(zp_np)
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(zp_tensor.shape), zp_np.tobytes(), raw=True))
+        else:
+            zp_np = numpy.ascontiguousarray(zp_tensor.detach().cpu().numpy().astype(numpy.uint8))
+            initializers.append(
+                helper.make_tensor(name, TensorProto.UINT8, list(zp_tensor.shape), zp_np.tobytes(), raw=True)
             )
-        )
 
-    if fc2_zero_points is not None:
-        fc2_zp_np = fc2_zero_points.detach().cpu().numpy().astype(numpy.uint8)
-        fc2_zp_np = numpy.ascontiguousarray(fc2_zp_np)
-        initializers.append(
-            helper.make_tensor(
-                "fc2_zero_points",
-                TensorProto.UINT8,
-                list(fc2_zero_points.shape),
-                fc2_zp_np.tobytes(),
-                raw=True,
-            )
-        )
+    _append_zero_points("fc1_zero_points", fc1_zero_points)
+    _append_zero_points("fc2_zero_points", fc2_zero_points)
 
     if fc1_bias is not None:
         fc1_bias_np = fc1_bias.detach().cpu().numpy().astype(ort_to_numpy_type_map[onnx_dtype])
@@ -689,6 +763,20 @@ class SwigluMoeConfig:
         self.num_experts_per_token = num_experts_per_token
 
 
+class GegluMoeConfig:
+    def __init__(
+        self,
+        hidden_size=4096,
+        intermediate_size=14336,
+        num_local_experts=8,
+        num_experts_per_token=2,
+    ):
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.num_local_experts = num_local_experts
+        self.num_experts_per_token = num_experts_per_token
+
+
 def swiglu(x: torch.Tensor, alpha: float = 1.702, beta: float = 1.0, limit: float = 7.0):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
@@ -699,6 +787,23 @@ def swiglu(x: torch.Tensor, alpha: float = 1.702, beta: float = 1.0, limit: floa
         x_linear = x_linear.clamp(min=-limit, max=limit)
 
     y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + beta)
+    return y.view(-1, dim // 2)
+
+
+def geglu(x: torch.Tensor, alpha: float = 1.0, beta: float = 0.0, limit: float | None = None):
+    """GeGLU reference matching ApplyGeGLUActivation in the CPU QMoE kernel: a gelu-tanh
+    gate (HF gelu_pytorch_tanh) on the interleaved [gate, linear] pairs."""
+    dim = x.shape[-1]
+    x = x.view(-1, dim // 2, 2)
+    x_glu, x_linear = x[..., 0], x[..., 1]
+
+    if limit is not None:
+        x_glu = x_glu.clamp(max=limit)
+        x_linear = x_linear.clamp(min=-limit, max=limit)
+
+    g = alpha * x_glu
+    gelu_out = 0.5 * g * (1.0 + torch.tanh(0.7978845608 * (g + 0.044715 * g * g * g)))
+    y = gelu_out * (x_linear + beta)
     return y.view(-1, dim // 2)
 
 
@@ -756,6 +861,21 @@ class SwigluMlp(nn.Module):
     def forward(self, x):
         x1 = self.w1(x)
         y = swiglu(x1)
+        y = self.w2(y)
+        return y
+
+
+class GegluMlp(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.intermediate_size = config.intermediate_size
+        self.hidden_dim = config.hidden_size
+        self.w1 = nn.Linear(self.hidden_dim, 2 * self.intermediate_size, bias=True)
+        self.w2 = nn.Linear(self.intermediate_size, self.hidden_dim, bias=True)
+
+    def forward(self, x):
+        x1 = self.w1(x)
+        y = geglu(x1)
         y = self.w2(y)
         return y
 
@@ -975,7 +1095,14 @@ class SparseMoeBlockORTHelper(nn.Module):
                 w2 = self.experts[i].w2.weight
                 w1_bias = self.experts[i].w1.bias
 
-                if self.block_size > 0:
+                if self.block_size > 0 and getattr(self, "use_float_zp", False):
+                    w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise_float_zp(
+                        w1, self.block_size, self.quant_bits, float_zp=self.float_zp_value
+                    )
+                    w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise_float_zp(
+                        w2, self.block_size, self.quant_bits, float_zp=self.float_zp_value
+                    )
+                elif self.block_size > 0:
                     w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
                         w1, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
@@ -992,7 +1119,8 @@ class SparseMoeBlockORTHelper(nn.Module):
                 if w1_bias is not None:
                     w1_bias_list.append(w1_bias.detach().cpu())
 
-            if self.use_swiglu:
+            # GeGLU shares SwiGLU's interleaved doubled-fc1 write-back path.
+            if self.use_swiglu or getattr(self, "use_geglu", False):
                 if getattr(self, "swiglu_fusion", 0) == 1:
                     self.experts[i].w1.weight = nn.Parameter(w1_qdq.contiguous().clone())
                 else:
@@ -1056,6 +1184,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 fc1_zero_points=moe_experts_zp1,
                 fc2_zero_points=moe_experts_zp2,
                 use_swiglu=self.use_swiglu,
+                use_geglu=getattr(self, "use_geglu", False),
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
                 swiglu_fusion=getattr(self, "swiglu_fusion", 0),
@@ -1103,8 +1232,14 @@ class SparseMoeBlockORTHelper(nn.Module):
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
+        is_geglu = getattr(self, "use_geglu", False)
         is_interleaved = getattr(self, "swiglu_fusion", 0) == 1
-        act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
+        if is_geglu:
+            act_type = f"GeGLU(interleaved={is_interleaved})"
+        elif is_swiglu:
+            act_type = f"SwiGLU(interleaved={is_interleaved})"
+        else:
+            act_type = "SiLU"
         quant_type = "Asymmetric" if self.use_asymmetric_quant else "Symmetric"
         block_type = f"Block({self.block_size})" if self.block_size > 0 else "Row"
 
@@ -1216,20 +1351,26 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         onnx_dtype=None,
         block_size: int = 0,
         use_asymmetric_quant: bool = False,
+        expert_cls=SwigluMlp,
+        use_geglu: bool = False,
     ):
         super().__init__(quant_bits, onnx_dtype=onnx_dtype, use_asymmetric_quant=use_asymmetric_quant)
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_token
-        self.use_swiglu = True
+        # SwiGLU and GeGLU share the fused/interleaved doubled-fc1 layout; only the gate
+        # nonlinearity differs. The subclass selects GeGLU via use_geglu + expert_cls so the
+        # gated attributes are configured once here rather than overwritten after super().__init__.
+        self.use_swiglu = not use_geglu
+        self.use_geglu = use_geglu
         self.swiglu_fusion = 1
         self.block_size = block_size
         use_quant = self.quant_bits > 0
 
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
 
-        self.experts = nn.ModuleList([SwigluMlp(config) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([expert_cls(config) for _ in range(self.num_experts)])
 
         fc1_w_list, fc2_w_list = [], []
         fc1_b_list, fc2_b_list = [], []
@@ -1305,6 +1446,68 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
 
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
         return final_hidden_states
+
+
+class GegluMoEBlock(SwigluMoEBlock):
+    """GeGLU (Gemma-style) MoE block. Identical fused/interleaved doubled-fc1 layout as
+    SwiGLU; only the gate nonlinearity differs (gelu-tanh instead of swish). Reuses the
+    SwigluMoEBlock forward/recreate machinery, swapping in GegluMlp experts and setting
+    use_geglu so the ONNX graph is emitted with activation_type='geglu'."""
+
+    def __init__(
+        self,
+        config: GegluMoeConfig,
+        batch_size: int,
+        sequence_length: int,
+        quant_bits: int = 0,
+        onnx_dtype=None,
+        block_size: int = 0,
+        use_asymmetric_quant: bool = False,
+    ):
+        super().__init__(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=onnx_dtype,
+            block_size=block_size,
+            use_asymmetric_quant=use_asymmetric_quant,
+            expert_cls=GegluMlp,
+            use_geglu=True,
+        )
+
+
+class FloatZpSwigluMoEBlock(SwigluMoEBlock):
+    """SwiGLU MoE block quantized with a constant *fractional* float zero-point.
+
+    Targets the Quark uint2 export path (e.g. gemma-4 with zp=1.5): the zero-point tensor is
+    emitted as unpacked float (one per group, scales layout) rather than packed uint8, so the
+    ONNX graph exercises the CPU kernel's float zero-point branch. Reuses SwigluMoEBlock's
+    forward/recreate machinery; recreate reads use_float_zp/float_zp_value to pick the float
+    quantizer. The final torch reference weights come from recreate_onnx_model, keeping parity
+    consistent between the torch reference and ORT."""
+
+    def __init__(
+        self,
+        config: SwigluMoeConfig,
+        batch_size: int,
+        sequence_length: int,
+        quant_bits: int = 2,
+        onnx_dtype=None,
+        block_size: int = 32,
+        float_zp_value: float = 1.5,
+    ):
+        super().__init__(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=onnx_dtype,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+        self.use_float_zp = True
+        self.float_zp_value = float_zp_value
 
 
 class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
@@ -1727,6 +1930,203 @@ class TestSwigluQMoECPU(unittest.TestCase):
             use_asymmetric_quant=True,
         )
         run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
+
+
+# GeGLU shares SwiGLU's test-case grid: (batch_size, sequence_length, quant_bits[, block_size]).
+geglu_test_cases = [
+    (1, 32, 2),
+    (1, 32, 4),
+    (1, 32, 8),
+    (2, 16, 2),
+    (2, 16, 4),
+    (2, 16, 8),
+]
+
+geglu_blockwise_test_cases = [
+    (1, 32, 2, 32),
+    (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
+    (1, 32, 8, 64),
+    (2, 16, 2, 32),
+    (2, 16, 4, 32),
+    (2, 16, 8, 64),
+]
+
+
+class TestGegluQMoECPU(unittest.TestCase):
+    @parameterized.expand(with_mlas_q4_mode(geglu_test_cases))
+    def test_geglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
+        base_seed = 1200  # Distinct base seed from SwiGLU/Phi3 tests
+        param_hash = hash((batch_size, sequence_length, quant_bits))
+        unique_seed = base_seed + abs(param_hash) % 1000
+
+        torch.manual_seed(unique_seed)
+        numpy.random.seed(unique_seed)
+
+        test_config = (
+            f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, seed={unique_seed}"
+        )
+        print(f"Running GeGLU test: {test_config}")
+
+        config = GegluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        geglu_moe = GegluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            use_asymmetric_quant=False,
+        )
+
+        hidden_states = torch.randn(batch_size, sequence_length, config.hidden_size).to(torch.float32)
+
+        torch_result = geglu_moe.forward(hidden_states)
+
+        expected_shape = (batch_size, sequence_length, config.hidden_size)
+        self.assertEqual(torch_result.shape, expected_shape)
+        self.assertFalse(torch.isnan(torch_result).any())
+        self.assertFalse(torch.isinf(torch_result).any())
+
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+
+    @parameterized.expand(with_mlas_q4_mode(geglu_test_cases))
+    def test_geglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
+        base_seed = 1300
+        param_hash = hash((batch_size, sequence_length, quant_bits))
+        unique_seed = base_seed + abs(param_hash) % 1000
+        torch.manual_seed(unique_seed)
+        numpy.random.seed(unique_seed)
+
+        test_config = (
+            f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, seed={unique_seed}"
+        )
+        print(f"Running GeGLU Asymmetric test: {test_config}")
+
+        config = GegluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        geglu_moe = GegluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            use_asymmetric_quant=True,
+        )
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+
+    @parameterized.expand(with_mlas_q4_mode(geglu_blockwise_test_cases))
+    def test_geglu_qmoe_blockwise_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
+        torch.manual_seed(44)
+        numpy.random.seed(44)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running GeGLU block-wise test: {test_config}")
+
+        config = GegluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        geglu_moe = GegluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+
+        hidden_states = torch.randn(batch_size, sequence_length, config.hidden_size).to(torch.float32)
+
+        torch_result = geglu_moe.forward(hidden_states)
+
+        expected_shape = (batch_size, sequence_length, config.hidden_size)
+        self.assertEqual(torch_result.shape, expected_shape)
+        self.assertFalse(torch.isnan(torch_result).any())
+        self.assertFalse(torch.isinf(torch_result).any())
+
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+
+    @parameterized.expand(with_mlas_q4_mode(geglu_blockwise_test_cases))
+    def test_geglu_qmoe_blockwise_asymmetric_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
+        torch.manual_seed(45)
+        numpy.random.seed(45)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running GeGLU block-wise Asymmetric test: {test_config}")
+
+        config = GegluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        geglu_moe = GegluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            block_size=block_size,
+            use_asymmetric_quant=True,
+        )
+        run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
+
+
+float_zp_blockwise_test_cases = [
+    (1, 32, 32),
+    (2, 16, 32),
+    (1, 32, 64),
+]
+
+
+class TestFloatZeroPointQMoECPU(unittest.TestCase):
+    """Parity tests for 2-bit block-wise QMoE with fractional float zero-points.
+
+    This is the feature this PR adds: unpacked float zero-points (constant 1.5, matching the
+    Quark uint2 gemma-4 export) that dequantize as (code - zp) * scale. The float zero-point is
+    unrepresentable on the integer code grid, so it exercises the dedicated float branch in
+    DequantizeBlockWithMlas rather than the integer/LUT fast paths."""
+
+    @parameterized.expand(float_zp_blockwise_test_cases)
+    def test_float_zp_qmoe_2bit_blockwise_parity_cpu(self, batch_size, sequence_length, block_size):
+        torch.manual_seed(1500)
+        numpy.random.seed(1500)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, block_size={block_size}"
+        print(f"Running 2-bit float zero-point block-wise test: {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        moe = FloatZpSwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=2,
+            onnx_dtype=TensorProto.FLOAT,
+            block_size=block_size,
+            float_zp_value=1.5,
+        )
+
+        # Full torch-vs-ORT parity. parity_check() builds the model/session (setting moe.ort_sess)
+        # and raises AssertionError if max_diff exceeds the FP32:2 tolerance. It returns early
+        # WITHOUT asserting when the session build fails, so we assert the session and a finite
+        # output explicitly afterwards to guarantee the test cannot silently pass on a build/type
+        # failure (e.g. the TZ constraint rejecting float zero-points).
+        moe.parity_check()
+
+        self.assertIsNotNone(moe.moe_onnx_graph, "float zero-point QMoE ONNX graph was not created.")
+        self.assertIsNotNone(
+            moe.ort_sess,
+            "Failed to create ORT session for the float zero-point QMoE model; the TZ type "
+            "constraint may not accept float zero-points, or the kernel rejected the config.",
+        )
+
+        # Drive the (already-built) session end-to-end and assert a finite output of expected shape.
+        hidden_states = torch.randn(batch_size, sequence_length, config.hidden_size).to(torch.float32)
+        ort_output = moe.ort_forward(hidden_states)
+        self.assertIsNotNone(ort_output, "ORT inference returned no output for the float zero-point QMoE model.")
+        self.assertEqual(tuple(ort_output.shape), (batch_size, sequence_length, config.hidden_size))
+        self.assertFalse(torch.isnan(ort_output).any(), "float zero-point QMoE output contains NaNs.")
+        self.assertFalse(torch.isinf(ort_output).any(), "float zero-point QMoE output contains Infs.")
 
 
 @unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
