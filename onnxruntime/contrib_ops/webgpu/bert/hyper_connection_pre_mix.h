@@ -28,7 +28,7 @@ class HyperConnectionPreMixProgram final : public Program<HyperConnectionPreMixP
 class HyperConnectionPreMix final : public WebGpuKernel {
  public:
   explicit HyperConnectionPreMix(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   int64_t num_branches_;

@@ -2502,9 +2502,9 @@ class SymbolicShapeInference:
         input_shape = self._get_sympy_shape(node, 0)
         branches = get_attribute(node, "num_branches", 0)
         if branches:
-            output_shape = input_shape[:-1] + [sympy.simplify(input_shape[-1] / branches)]
+            output_shape = [*input_shape[:-1], sympy.simplify(input_shape[-1] / branches)]
         else:
-            output_shape = input_shape[:-2] + [input_shape[-1]]
+            output_shape = [*input_shape[:-2], input_shape[-1]]
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(

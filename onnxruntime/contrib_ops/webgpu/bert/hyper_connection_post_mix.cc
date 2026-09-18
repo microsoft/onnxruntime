@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -70,7 +70,7 @@ Status HyperConnectionPostMixProgram::GenerateShaderCode(ShaderHelper& shader) c
 HyperConnectionPostMix::HyperConnectionPostMix(const OpKernelInfo& info)
     : WebGpuKernel(info), num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)) {}
 
-Status HyperConnectionPostMix::ComputeInternal(ComputeContext& context) const {
+Status HyperConnectionPostMix::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* streams = context.Input(0);
   const auto* branch_output = context.Input(1);
   const auto* post_mix = context.Input(2);

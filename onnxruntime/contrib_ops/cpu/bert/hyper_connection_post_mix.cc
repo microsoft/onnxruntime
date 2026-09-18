@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cpu/bert/hyper_connection_post_mix.h"
 
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime::contrib {

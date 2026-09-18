@@ -98,11 +98,17 @@ inline Status ResolveGateShape(const TensorShape& gate_shape,
     layout = GateLayout::Feature;
     return Status::OK();
   }
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, INVALID_ARGUMENT,
-      allow_flattened_feature && params.flattened
-          ? "gate must be scalar or have suffix (C), (C, 1), (C, H), or (C * H)"
-          : "gate must be scalar or have suffix (C), (C, 1), or (C, H)");
+  const char* expected_shapes;
+  if (allow_scalar) {
+    expected_shapes = allow_flattened_feature && params.flattened
+                          ? "gate must be scalar or have suffix (C), (C, 1), (C, H), or (C * H)"
+                          : "gate must be scalar or have suffix (C), (C, 1), or (C, H)";
+  } else {
+    expected_shapes = allow_flattened_feature && params.flattened
+                          ? "gate must have suffix (C), (C, 1), (C, H), or (C * H)"
+                          : "gate must have suffix (C), (C, 1), or (C, H)";
+  }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, expected_shapes);
 }
 
 inline Status ValidateScale(const TensorShape& scale_shape,

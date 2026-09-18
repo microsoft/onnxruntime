@@ -6,7 +6,7 @@
 #include <limits>
 
 #include "contrib_ops/cuda/bert/branchwise_rms_norm_impl.h"
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::contrib::cuda {

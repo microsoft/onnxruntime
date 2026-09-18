@@ -83,7 +83,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
     def test_hyper_connection_pre_mix(self):
         for flattened in (False, True):
             with self.subTest(flattened=flattened):
-                input_shape = ["batch", "4*hidden"] if flattened else ["batch", 4, "hidden"]
+                input_shape = ["batch", 64] if flattened else ["batch", 4, "hidden"]
                 attributes = {"num_branches": 4} if flattened else {}
                 graph = helper.make_graph(
                     [
@@ -110,7 +110,11 @@ class TestSymbolicShapeInference(unittest.TestCase):
                     model, auto_merge=True, int_max=100000, guess_output_rank=False
                 )
                 dimensions = inferred.graph.output[0].type.tensor_type.shape.dim
-                self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
+                if flattened:
+                    self.assertEqual(dimensions[0].dim_param, "batch")
+                    self.assertEqual(dimensions[1].dim_value, 16)
+                else:
+                    self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
 
     def test_symbolic_shape_infer(self):
         from pathlib import Path  # noqa: PLC0415

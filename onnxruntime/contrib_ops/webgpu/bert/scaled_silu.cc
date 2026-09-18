@@ -43,7 +43,7 @@ Status ScaledSiLUProgram::GenerateShaderCode(ShaderHelper& shader) const {
 ScaledSiLU::ScaledSiLU(const OpKernelInfo& info)
     : WebGpuKernel(info), alpha_(info.GetAttrOrDefault<float>("alpha", 1.0f)) {}
 
-Status ScaledSiLU::ComputeInternal(ComputeContext& context) const {
+Status ScaledSiLU::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* x = context.Input(0);
   const auto* scale = context.Input(1);
   ORT_RETURN_IF_NOT(scale == nullptr || scale->Shape().NumDimensions() == 0, "scale must be a scalar");
