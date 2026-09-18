@@ -202,6 +202,7 @@ class SymbolicShapeInference:
             "BiasAdd": self._infer_BiasAdd,
             "BiasGelu": self._infer_BiasGelu,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "BranchwiseRMSNorm": self._infer_BranchwiseRMSNorm,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "DequantizeLinear": self._infer_DequantizeLinear,
             "DynamicSparseAttention": self._infer_DynamicSparseAttention,
@@ -216,6 +217,8 @@ class SymbolicShapeInference:
             "GroupNorm": self._infer_GroupNorm,
             "GroupNormalization": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
+            "HyperConnectionPostMix": self._infer_HyperConnectionPostMix,
+            "HyperConnectionPreMix": self._infer_HyperConnectionPreMix,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "MatMulNBits": self._infer_MatMulNBits,
@@ -230,6 +233,7 @@ class SymbolicShapeInference:
             "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
+            "ScaledSiLU": self._infer_ScaledSiLU,
             "RelativePositionBias": self._infer_RelativePositionBias,
             "RemovePadding": self._infer_RemovePadding,
             "RestorePadding": self._infer_RestorePadding,
@@ -2486,6 +2490,28 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_BranchwiseRMSNorm(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_HyperConnectionPostMix(self, node):  # noqa: N802
+        self._propagate_shape_and_type(node)
+
+    def _infer_HyperConnectionPreMix(self, node):  # noqa: N802
+        input_shape = self._get_sympy_shape(node, 0)
+        branches = get_attribute(node, "num_branches", 0)
+        if branches:
+            output_shape = input_shape[:-1] + [sympy.simplify(input_shape[-1] / branches)]
+        else:
+            output_shape = input_shape[:-2] + [input_shape[-1]]
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], output_dtype, get_shape_from_sympy_shape(output_shape))
+        )
+
+    def _infer_ScaledSiLU(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
     def _infer_Gelu(self, node):  # noqa: N802

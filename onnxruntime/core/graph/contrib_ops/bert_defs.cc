@@ -5211,6 +5211,156 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }));
 
+constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(
+Applies RMS normalization independently to each branch. X may use grouped shape
+(..., C, H), or flattened shape (..., C * H) when num_branches is specified.
+The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
+performed in float32 and the result is converted to T.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BranchwiseRMSNorm, 1,
+    OpSchema()
+        .SetDoc(BranchwiseRMSNorm_ver1_doc)
+        .Attr("epsilon", "Epsilon added before reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("num_branches",
+              "Number of branches for flattened input. Omit or set to zero for grouped input.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
+        .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
+               "M", OpSchema::Optional)
+        .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+         .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* ScaledSiLU_ver1_doc = R"DOC(
+Computes SiLU after scaling, with explicit T rounding:
+Z_T = cast_T(effective_scale * X), S_T = cast_T(sigmoid(Z_T)), and
+Y = cast_T(Z_T * S_T). effective_scale is the scalar input when present,
+otherwise it is the alpha attribute.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ScaledSiLU, 1,
+    OpSchema()
+        .SetDoc(ScaledSiLU_ver1_doc)
+        .Attr("alpha", "Scale used when the optional scale input is absent.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "X", "Input tensor.", "T")
+        .Input(1, "scale", "Optional scalar scale that overrides alpha.", "M", OpSchema::Optional)
+        .Output(0, "Y", "Output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+         .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain the optional scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* HyperConnectionPreMix_ver1_doc = R"DOC(
+Reduces C streams to one feature tensor without applying an activation:
+Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
+pre_mix may have shape (..., C), (..., C, 1), or (..., C, H). X may be
+grouped (..., C, H), or flattened (..., C * H) when num_branches is specified.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionPreMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionPreMix_ver1_doc)
+        .Attr("num_branches",
+              "Number of branches for flattened streams. Omit or set to zero for grouped streams.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("reduction_scale", "Multiplier applied to the branch reduction.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "streams", "Grouped (..., C, H) or flattened (..., C * H) streams.", "T")
+        .Input(1, "pre_mix", "Branch or feature gates with shape (..., C), (..., C, 1), or (..., C, H).", "M")
+        .Output(0, "output", "Reduced feature tensor with shape (..., H).", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain streams and output to floating-point tensors.")
+         .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain mixing weights to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& input_shape = getInputShape(ctx, 0);
+          auto* output_shape = getOutputShape(ctx, 0);
+          const auto branches = getAttribute(ctx, "num_branches", 0);
+          const int rank = input_shape.dim_size();
+          if (branches == 0) {
+            if (rank < 2) {
+              fail_shape_inference("Grouped streams must have rank at least 2.");
+            }
+            for (int i = 0; i < rank - 2; ++i) {
+              *output_shape->add_dim() = input_shape.dim(i);
+            }
+            *output_shape->add_dim() = input_shape.dim(rank - 1);
+          } else {
+            if (branches < 1 || rank < 1) {
+              fail_shape_inference("num_branches must be positive for flattened streams.");
+            }
+            for (int i = 0; i < rank - 1; ++i) {
+              *output_shape->add_dim() = input_shape.dim(i);
+            }
+            auto* last = output_shape->add_dim();
+            const auto& input_last = input_shape.dim(rank - 1);
+            if (input_last.has_dim_value()) {
+              if (input_last.dim_value() % branches != 0) {
+                fail_shape_inference("The flattened stream width must be divisible by num_branches.");
+              }
+              last->set_dim_value(input_last.dim_value() / branches);
+            }
+          }
+        }));
+
+constexpr const char* HyperConnectionPostMix_ver1_doc = R"DOC(
+Mixes existing streams and injects one branch output:
+Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
+               + post_mix[..., k, h] * branch_output[..., h].
+stream_mix is optional and defaults to the identity. post_mix has shape
+(..., C), (..., C, 1), or (..., C, H). No activation is applied.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionPostMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionPostMix_ver1_doc)
+        .Attr("num_branches",
+              "Number of branches for flattened streams. Omit or set to zero for grouped streams.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "streams", "Grouped (..., C, H) or flattened (..., C * H) streams.", "T")
+        .Input(1, "block_output", "Feature tensor with shape (..., H).", "T")
+        .Input(2, "post_mix", "Branch or feature injection gates.", "M")
+        .Input(3, "stream_mix", "Optional stream matrix with shape (..., C, C).",
+               "M", OpSchema::Optional)
+        .Output(0, "output", "Mixed streams with the same shape as streams.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain streams, block output, and output to floating-point tensors.")
+         .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain mixing weights to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
 constexpr const char* GatedAdd_ver1_doc = R"DOC(
 Adds one tensor to another tensor scaled by a per-row gate:
 

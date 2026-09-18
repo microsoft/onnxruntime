@@ -14,6 +14,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.BitmaskBiasDropout">com.microsoft.BitmaskBiasDropout</a>
   * <a href="#com.microsoft.BitmaskDropout">com.microsoft.BitmaskDropout</a>
+  * <a href="#com.microsoft.BranchwiseRMSNorm">com.microsoft.BranchwiseRMSNorm</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
@@ -52,6 +53,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
+  * <a href="#com.microsoft.HyperConnectionPostMix">com.microsoft.HyperConnectionPostMix</a>
+  * <a href="#com.microsoft.HyperConnectionPreMix">com.microsoft.HyperConnectionPreMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
@@ -114,6 +117,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
+  * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -877,6 +881,52 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain 'training_mode' to boolean tensor.</dd>
 <dt><tt>T3</tt> : tensor(uint32)</dt>
 <dd>Constrain output 'mask' types to bit-packed uint32 tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BranchwiseRMSNorm"></a><a name="com.microsoft.branchwisermsnorm">**com.microsoft.BranchwiseRMSNorm**</a>
+
+  Applies RMS normalization independently to each branch. X may use grouped shape
+  (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
+  The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
+  performed in float32 and the result is converted to T.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float (default is 1e-05)</dt>
+<dd>Epsilon added before reciprocal square root.</dd>
+<dt><tt>num_branches</tt> : int (default is 0)</dt>
+<dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) input.</dd>
+<dt><tt>scale</tt> (optional) : M</dt>
+<dd>Optional scale with shape (C * H), (C, H), or (H).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>RMS-normalized output with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain scale to floating-point tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to floating-point tensors.</dd>
 </dl>
 
 
@@ -3081,6 +3131,101 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionPostMix"></a><a name="com.microsoft.hyperconnectionpostmix">**com.microsoft.HyperConnectionPostMix**</a>
+
+  Mixes existing streams and injects one branch output:
+  Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
+                 + post_mix[..., k, h] * block_output[..., h].
+  stream_mix is optional and defaults to the identity. post_mix has shape
+  (..., C), (..., C, 1), or (..., C, H). No activation is applied.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_branches</tt> : int (default is 0)</dt>
+<dd>Number of branches for flattened streams. Omit or set to zero for grouped streams.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) streams.</dd>
+<dt><tt>block_output</tt> : T</dt>
+<dd>Feature tensor with shape (..., H).</dd>
+<dt><tt>post_mix</tt> : M</dt>
+<dd>Branch or feature injection gates.</dd>
+<dt><tt>stream_mix</tt> (optional) : M</dt>
+<dd>Optional stream matrix with shape (..., C, C).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Mixed streams with the same shape as streams.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain mixing weights to floating-point tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain streams, block output, and output to floating-point tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionPreMix"></a><a name="com.microsoft.hyperconnectionpremix">**com.microsoft.HyperConnectionPreMix**</a>
+
+  Reduces C streams to one feature tensor without applying an activation:
+  Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
+  pre_mix may have shape (..., C), (..., C, 1), or (..., C, H). X may be
+  grouped (..., C, H), or flattened (..., C * H) when num_branches is specified.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_branches</tt> : int (default is 0)</dt>
+<dd>Number of branches for flattened streams. Omit or set to zero for grouped streams.</dd>
+<dt><tt>reduction_scale</tt> : float (default is 1)</dt>
+<dd>Multiplier applied to the branch reduction.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) streams.</dd>
+<dt><tt>pre_mix</tt> : M</dt>
+<dd>Branch or feature gates with shape (..., C), (..., C, 1), or (..., C, H).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Reduced feature tensor with shape (..., H).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain mixing weights to floating-point tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain streams and output to floating-point tensors.</dd>
 </dl>
 
 
@@ -6872,6 +7017,50 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>I</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.ScaledSiLU"></a><a name="com.microsoft.scaledsilu">**com.microsoft.ScaledSiLU**</a>
+
+  Computes SiLU after scaling, with explicit T rounding:
+  Z_T = cast_T(effective_scale * X), S_T = cast_T(sigmoid(Z_T)), and
+  Y = cast_T(Z_T * S_T). effective_scale is the scalar input when present,
+  otherwise it is the alpha attribute.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float (default is 1)</dt>
+<dd>Scale used when the optional scale input is absent.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor.</dd>
+<dt><tt>scale</tt> (optional) : M</dt>
+<dd>Optional scalar scale that overrides alpha.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the optional scale to floating-point tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to floating-point tensors.</dd>
 </dl>
 
 
