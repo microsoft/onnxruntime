@@ -4018,7 +4018,8 @@ Optional inputs add Qwen4-Exp-style n-gram embedding support:
 - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
   packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
   subsequent calls to preserve boundaries across chunked prefill and decode calls.
-- head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
+- head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
+  in the input id type on overflow.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -4072,7 +4073,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "head_offsets",
                "Optional per-output-head additive offset with shape "
-               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.",
+               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo with wrapping "
+               "arithmetic in the input id type.",
                "M",
                OpSchema::Optional)
         .Input(6,
