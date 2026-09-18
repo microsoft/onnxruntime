@@ -172,6 +172,18 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionPreMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionPreMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionPreMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionPostMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionPostMix);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionPostMix);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate);
@@ -508,6 +520,18 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, BranchwiseRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, ScaledSiLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, ScaledSiLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, ScaledSiLU)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionPreMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionPreMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionPreMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, HyperConnectionPostMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, HyperConnectionPostMix)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, HyperConnectionPostMix)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate)>,

@@ -39,6 +39,38 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_hyper_connection_pre_mix(self):
+        for flattened in (False, True):
+            with self.subTest(flattened=flattened):
+                input_shape = ["batch", "4*hidden"] if flattened else ["batch", 4, "hidden"]
+                attributes = {"num_branches": 4} if flattened else {}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionPreMix",
+                            ["streams", "pre_mix"],
+                            ["output"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "hyper_connection_pre_mix",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("pre_mix", TensorProto.FLOAT, ["batch", 4]),
+                    ],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                inferred = SymbolicShapeInference.infer_shapes(
+                    model, auto_merge=True, int_max=100000, guess_output_rank=False
+                )
+                dimensions = inferred.graph.output[0].type.tensor_type.shape.dim
+                self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
+
     def test_symbolic_shape_infer(self):
         from pathlib import Path  # noqa: PLC0415
 
