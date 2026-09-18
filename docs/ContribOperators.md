@@ -3178,8 +3178,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Reduces C streams to one feature tensor without applying an activation:
   Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
-  pre_mix may have shape (..., C), (..., C, 1), or (..., C, H). X may be
-  grouped (..., C, H), or flattened (..., C * H) when num_branches is specified.
+  pre_mix may have shape (..., C), (..., C, 1), (..., C, H), or (..., C * H)
+  for flattened X. X may be grouped (..., C, H), or flattened (..., C * H)
+  when num_branches is specified.
 
 #### Version
 
@@ -3200,7 +3201,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>streams</tt> : T</dt>
 <dd>Grouped (..., C, H) or flattened (..., C * H) streams.</dd>
 <dt><tt>pre_mix</tt> : M</dt>
-<dd>Branch or feature gates with shape (..., C), (..., C, 1), or (..., C, H).</dd>
+<dd>Branch or feature gates with shape (..., C), (..., C, 1), (..., C, H), or (..., C * H) for flattened streams.</dd>
 </dl>
 
 #### Outputs

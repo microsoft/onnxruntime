@@ -55,7 +55,7 @@ Status HyperConnectionPreMix<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(hyper_connection::ResolveStreamShape(streams->Shape(), num_branches_, params));
   hyper_connection::GateLayout gate_layout;
   ORT_RETURN_IF_ERROR(
-      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, gate_layout));
+      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, gate_layout, true));
 
   auto* y = context->Output(0, TensorShape(params.reduced_shape));
   const auto* x_data = streams->Data<T>();

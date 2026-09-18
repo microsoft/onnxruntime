@@ -69,7 +69,8 @@ enum class GateLayout {
 inline Status ResolveGateShape(const TensorShape& gate_shape,
                                const TensorShape& stream_shape,
                                const StreamShape& params, bool allow_scalar,
-                               GateLayout& layout) {
+                               GateLayout& layout,
+                               bool allow_flattened_feature = false) {
   if (allow_scalar && gate_shape.NumDimensions() == 0) {
     layout = GateLayout::Scalar;
     return Status::OK();
@@ -82,6 +83,11 @@ inline Status ResolveGateShape(const TensorShape& gate_shape,
     layout = GateLayout::Branch;
     return Status::OK();
   }
+  if (allow_flattened_feature && params.flattened && suffix_rank == 1 &&
+      gate_shape[params.prefix_rank] == params.branches * params.hidden) {
+    layout = GateLayout::Feature;
+    return Status::OK();
+  }
   if (suffix_rank == 2 && gate_shape[params.prefix_rank] == params.branches &&
       gate_shape[params.prefix_rank + 1] == 1) {
     layout = GateLayout::BranchSingleton;
@@ -92,8 +98,11 @@ inline Status ResolveGateShape(const TensorShape& gate_shape,
     layout = GateLayout::Feature;
     return Status::OK();
   }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "gate must be scalar or have suffix (C), (C, 1), or (C, H)");
+  return ORT_MAKE_STATUS(
+      ONNXRUNTIME, INVALID_ARGUMENT,
+      allow_flattened_feature && params.flattened
+          ? "gate must be scalar or have suffix (C), (C, 1), (C, H), or (C * H)"
+          : "gate must be scalar or have suffix (C), (C, 1), or (C, H)");
 }
 
 inline Status ValidateScale(const TensorShape& scale_shape,

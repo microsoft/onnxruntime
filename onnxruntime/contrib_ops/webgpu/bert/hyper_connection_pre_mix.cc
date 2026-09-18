@@ -66,7 +66,7 @@ Status HyperConnectionPreMix::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(hyper_connection::ResolveStreamShape(streams->Shape(), num_branches_, params));
   hyper_connection::GateLayout layout;
   ORT_RETURN_IF_ERROR(
-      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout));
+      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout, true));
   auto* y = context.Output(0, TensorShape(params.reduced_shape));
   const uint32_t count = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (count == 0) return Status::OK();
