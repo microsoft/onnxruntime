@@ -51,6 +51,7 @@
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #endif
 
 using namespace onnxruntime::common;
@@ -3594,9 +3595,8 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-      // PackedAttention and PackedMultiHeadAttention use the same Level-1
-      // log-only contract as MatMulNBits. Route-aware workspace is not added to
-      // the partition budget until the planner integration is available.
+      // PackedAttention and PackedMultiHeadAttention remain log-only. Their
+      // route-aware workspace is not added to the partition budget yet.
       if (node != nullptr &&
           (node->OpType() == "PackedAttention" ||
            node->OpType() == "PackedMultiHeadAttention") &&
@@ -3610,6 +3610,32 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         if (ws.has_value()) {
           LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name()
                              << ": " << ws->total_workspace_bytes << " bytes";
+        }
+      }
+
+      if (node != nullptr && node->OpType() == "GroupQueryAttention" &&
+          node->Domain() == kMSDomain) {
+        // Unlike PA/PMHA above, GQA participates in #31962 accounting. A
+        // successful estimate is supplied to ComputeResourceCount and can
+        // affect the CUDA partition acceptance decision.
+        const auto input_shapes = ResolveNodeInputShapes(
+            *node, &graph.GetGraph(),
+            resource_accountant->GetMaxShapeInferenceResult());
+        const auto& input_defs = node->InputDefs();
+        const bool head_sink_is_constant_initializer =
+            input_defs.size() > 11 && input_defs[11] != nullptr &&
+            input_defs[11]->Exists() &&
+            graph.IsConstantInitializer(input_defs[11]->Name(), true);
+        const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
+            *node, gsl::make_span(input_shapes), GetDeviceProp(),
+            *GetAttentionKernelOptions(), head_sink_is_constant_initializer);
+        if (ws.has_value()) {
+          Level1MemoryEstimate estimate;
+          contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);
+          level1_memory_estimate = estimate;
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << ws->total_workspace_bytes << " bytes";
         }
       }
 #endif
