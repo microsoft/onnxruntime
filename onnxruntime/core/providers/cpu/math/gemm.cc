@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <onnxruntime_config.h>
+#include <algorithm>
+
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -206,6 +208,100 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  using _mlas_fp16 = uint16_t;
+  // ---------------------------------------------------------------
+  // Path 1: New HGEMM kernel — handles TransB and NoTrans with
+  //         arbitrary alpha/beta. Requires MlasHGemmSupported check.
+  // ---------------------------------------------------------------
+  if (MlasHGemmSupported(trans_a, trans_b)) {
+    // C bias broadcasting: the new kernel does not handle broadcasting
+    // internally so we must pre-broadcast into y_data before calling.
+    // The kernel then uses beta to accumulate into y_data.
+    //
+    // Supported C shapes for pre-broadcast:
+    //   - nullptr (no bias)
+    //   - scalar or [1,1]
+    //   - [1, N] or [N] (row broadcast)
+    //   - [M, N] (already full shape, just copy)
+    //
+    // If c_shape is something we can't handle, fall through to the
+    // old path or Eigen.
+
+    bool bias_ok = false;
+    if (c_data == nullptr) {
+      bias_ok = true;
+    } else if (c_shape != nullptr) {
+      const auto ndim = c_shape->NumDimensions();
+      if (ndim == 0) {
+        bias_ok = true;  // scalar
+      } else if (ndim == 1 && (*c_shape)[0] == N) {
+        bias_ok = true;  // [N]
+      } else if (ndim == 2 &&
+                 (*c_shape)[0] == 1 && (*c_shape)[1] == N) {
+        bias_ok = true;  // [1, N]
+      } else if (ndim == 2 &&
+                 (*c_shape)[0] == M && (*c_shape)[1] == N) {
+        bias_ok = true;  // [M, N] — full match, no broadcast needed
+      }
+    } else {
+      bias_ok = true;  // c_shape == nullptr means no bias
+    }
+
+    if (bias_ok) {
+      // Seed y_data with the (broadcast) bias C, then let MLAS apply the real
+      // beta: the kernel computes alpha*A*B + beta*y. GemmBroadcastBias only
+      // copies C into y_data (it does NOT scale by beta), so we must pass the
+      // original beta through to MLAS rather than overriding it to 1.
+      if (c_data != nullptr && beta != onnxruntime::MLFloat16::Zero) {
+        GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+        // keep `beta` as-is; MLAS scales the seeded C by it.
+      } else {
+        // No bias contribution, so beta is 0. y_data must still be zeroed
+        // first: the MLAS FP16 kernels compute beta * C unconditionally for
+        // alpha != 1 rather than taking a beta == 0 shortcut, so leaving
+        // y_data uninitialized lets a stale NaN bit pattern propagate
+        // through 0 * NaN into the result.
+        beta = MLFloat16(0.0f);
+        std::fill_n(y_data, static_cast<size_t>(M) * static_cast<size_t>(N), MLFloat16::Zero);
+      }
+
+      // Determine ldb: for TransB, B is [K x N] stored col-major
+      // so ldb = K; for NoTrans, B is [K x N] row-major so ldb = N.
+      const size_t lda = (trans_a == CblasNoTrans)
+                             ? static_cast<size_t>(K)
+                             : static_cast<size_t>(M);
+      const size_t ldb = (trans_b == CblasTrans)
+                             ? static_cast<size_t>(K)
+                             : static_cast<size_t>(N);
+
+      MLAS_HGEMM_DATA_PARAMS data;
+      data.A = reinterpret_cast<const MLAS_FP16*>(a_data);
+      data.lda = lda;
+      data.B = reinterpret_cast<const MLAS_FP16*>(b_data);
+      data.ldb = ldb;
+      data.C = reinterpret_cast<MLAS_FP16*>(y_data);
+      data.ldc = static_cast<size_t>(N);
+      data.alpha = *reinterpret_cast<const _mlas_fp16*>(&alpha);
+      data.beta = *reinterpret_cast<const _mlas_fp16*>(&beta);
+
+      MlasGemmBatch(trans_a, trans_b,
+                    static_cast<size_t>(M),
+                    static_cast<size_t>(N),
+                    static_cast<size_t>(K),
+                    &data,
+                    /*BatchSize=*/1,
+                    thread_pool);
+      return;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // ---------------------------------------------------------------
+  // Path 2: legacy MlasHalfGemmBatch. Kept as upstream rewrote it -- it
+  //         gates on MlasHalfGemmAccelerationSupported(), accepts beta==0
+  //         as well as beta==1, and forwards the backend selector config.
+  // ---------------------------------------------------------------
   const bool has_accelerated_half_gemm =
       MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config);
   bool support_mlas_bias = false;
@@ -235,16 +331,27 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
-  // Fallback to Eigen
-  // Broadcast the bias as needed if bias is given
+
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+  // ---------------------------------------------------------------
+  // Path 3: Eigen fallback — handles everything else.
+  // ---------------------------------------------------------------
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
-  math::Gemm<Eigen::half>(trans_a, trans_b, M, N, K, *reinterpret_cast<Eigen::half*>(&alpha),
-                          reinterpret_cast<const Eigen::half*>(a_data), reinterpret_cast<const Eigen::half*>(b_data), *reinterpret_cast<Eigen::half*>(&beta),
-                          reinterpret_cast<Eigen::half*>(y_data), thread_pool, mlas_backend_kernel_selector_config);
+  math::Gemm<Eigen::half>(
+      trans_a, trans_b, M, N, K,
+      *reinterpret_cast<const Eigen::half*>(&alpha),
+      reinterpret_cast<const Eigen::half*>(a_data),
+      reinterpret_cast<const Eigen::half*>(b_data),
+      *reinterpret_cast<const Eigen::half*>(&beta),
+      reinterpret_cast<Eigen::half*>(y_data),
+      thread_pool,
+      mlas_backend_kernel_selector_config);
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

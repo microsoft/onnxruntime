@@ -492,7 +492,7 @@ class GemmOpTypedTests : public ::testing::Test {
 // On CPUs without fp16 instructions the tests will output a warning:
 // "registered execution providers CPUExecutionProvider were unable to run the model"
 // , then they will still pass.
-using GemmOpTypedTestsTypes = ::testing::Types<float, double>;
+using GemmOpTypedTestsTypes = ::testing::Types<float, double, MLFloat16>;
 TYPED_TEST_SUITE(GemmOpTypedTests, GemmOpTypedTestsTypes);
 
 TYPED_TEST(GemmOpTypedTests, TestGemmScalarBroadcast) {
@@ -783,7 +783,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
 
     // Fill A matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+      A_data[i] = static_cast<TypeParam>(static_cast<float>((i % 7) + 1));
     }
 
     // Fill B matrix with ones
@@ -793,18 +793,18 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
 
     // Fill C matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+      C_data[i] = static_cast<TypeParam>(static_cast<float>((i % 3) + 1));
     }
 
     // Calculate expected output: Y = alpha * A * B + beta * C
     // Since B is all ones, A * B results in row sums of A
     for (int i = 0; i < 64; ++i) {
-      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      float row_sum = 0.0f;
       for (int k = 0; k < 64; ++k) {
-        row_sum += A_data[i * 64 + k];
+        row_sum += static_cast<float>(A_data[i * 64 + k]);
       }
       for (int j = 0; j < 64; ++j) {
-        Y_data[i * 64 + j] = static_cast<TypeParam>(0.5f) * row_sum + static_cast<TypeParam>(1.0f) * C_data[i * 64 + j];
+        Y_data[i * 64 + j] = static_cast<TypeParam>(0.5f * row_sum + 1.0f * static_cast<float>(C_data[i * 64 + j]));
       }
     }
 
@@ -867,7 +867,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
 
     // Fill A matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+      A_data[i] = static_cast<TypeParam>(static_cast<float>((i % 7) + 1));
     }
 
     // Fill B matrix with ones
@@ -877,18 +877,18 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
 
     // Fill C matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+      C_data[i] = static_cast<TypeParam>(static_cast<float>((i % 3) + 1));
     }
 
     // Calculate expected output: Y = alpha * A * B + beta * C
     // Since B is all ones, A * B results in row sums of A
     for (int i = 0; i < 64; ++i) {
-      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      float row_sum = 0.0f;
       for (int k = 0; k < 64; ++k) {
-        row_sum += A_data[i * 64 + k];
+        row_sum += static_cast<float>(A_data[i * 64 + k]);
       }
       for (int j = 0; j < 64; ++j) {
-        Y_data[i * 64 + j] = static_cast<TypeParam>(1.0f) * row_sum + static_cast<TypeParam>(2.0f) * C_data[i * 64 + j];
+        Y_data[i * 64 + j] = static_cast<TypeParam>(1.0f * row_sum + 2.0f * static_cast<float>(C_data[i * 64 + j]));
       }
     }
 
@@ -951,7 +951,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlpha) {
 
     // Fill A matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+      A_data[i] = static_cast<TypeParam>(static_cast<float>((i % 7) + 1));
     }
 
     // Fill B matrix with ones
@@ -961,13 +961,13 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlpha) {
 
     // Fill C matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+      C_data[i] = static_cast<TypeParam>(static_cast<float>((i % 3) + 1));
     }
 
     // Calculate expected output: Y = alpha * A * B + beta * C
     // Since alpha=0, Y = beta * C = 2.0 * C
     for (int i = 0; i < 64 * 64; ++i) {
-      Y_data[i] = static_cast<TypeParam>(2.0f) * C_data[i];
+      Y_data[i] = static_cast<TypeParam>(2.0f * static_cast<float>(C_data[i]));
     }
 
     test.AddInput<TypeParam>("A", {64, 64}, A_data);
@@ -1029,7 +1029,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroBeta) {
 
     // Fill A matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+      A_data[i] = static_cast<TypeParam>(static_cast<float>((i % 7) + 1));
     }
 
     // Fill B matrix with ones
@@ -1039,19 +1039,19 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroBeta) {
 
     // Fill C matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+      C_data[i] = static_cast<TypeParam>(static_cast<float>((i % 3) + 1));
     }
 
     // Calculate expected output: Y = alpha * A * B + beta * C
     // Since beta=0, Y = alpha * A * B = 2.0 * A * B
     // Since B is all ones, A * B results in row sums of A
     for (int i = 0; i < 64; ++i) {
-      TypeParam row_sum = static_cast<TypeParam>(0.0f);
+      float row_sum = 0.0f;
       for (int k = 0; k < 64; ++k) {
-        row_sum += A_data[i * 64 + k];
+        row_sum += static_cast<float>(A_data[i * 64 + k]);
       }
       for (int j = 0; j < 64; ++j) {
-        Y_data[i * 64 + j] = static_cast<TypeParam>(2.0f) * row_sum;
+        Y_data[i * 64 + j] = static_cast<TypeParam>(2.0f * static_cast<float>(row_sum));
       }
     }
 
@@ -1112,7 +1112,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlphaBeta) {
 
     // Fill A matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      A_data[i] = static_cast<TypeParam>((i % 7) + 1);
+      A_data[i] = static_cast<TypeParam>(static_cast<float>((i % 7) + 1));
     }
 
     // Fill B matrix with ones
@@ -1122,7 +1122,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmZeroAlphaBeta) {
 
     // Fill C matrix with pattern
     for (int i = 0; i < 64 * 64; ++i) {
-      C_data[i] = static_cast<TypeParam>((i % 3) + 1);
+      C_data[i] = static_cast<TypeParam>(static_cast<float>((i % 3) + 1));
     }
 
     // Expected output: Y = alpha * A * B + beta * C = 0 * A * B + 0 * C = 0
