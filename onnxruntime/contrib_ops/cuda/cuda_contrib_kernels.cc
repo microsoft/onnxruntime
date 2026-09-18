@@ -39,6 +39,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, Gelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Gelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Gelu);
 class CUDA_MS_OP_CLASS_NAME(1, BiasGelu);
+class CUDA_MS_OP_CLASS_NAME(1, FusedHadamardTransform);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasSplitGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BiasSplitGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasAdd);
@@ -379,6 +380,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, Gelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, Gelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasGelu)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, FusedHadamardTransform)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasSplitGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BiasSplitGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, BiasAdd)>,
