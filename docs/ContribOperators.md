@@ -969,7 +969,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, state_length) where state_length = (k_1 - 1) * dilation. When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 </dl>
 
-#### Inputs (2 - 4)
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -1089,7 +1089,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd></dd>
 <dt><tt>W</tt> : T</dt>
 <dd></dd>
-<dt><tt>Pads</tt> (optional) : tensor(int64)</dt>
+<dt><tt>Pads</tt> : tensor(int64)</dt>
 <dd></dd>
 <dt><tt>B</tt> (optional) : T</dt>
 <dd></dd>
