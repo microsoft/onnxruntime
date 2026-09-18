@@ -73,7 +73,10 @@ static void RunGQASeqlensKTest(
     const std::string& expected_message,
     bool provide_past = false,
     int past_seq_len = 0,
-    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    const std::optional<std::vector<int64_t>>& total_seq_len_shape = std::nullopt,
+    const std::optional<std::vector<int32_t>>& total_seq_len_data = std::nullopt,
+    bool total_seq_len_is_initializer = false) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -107,7 +110,9 @@ static void RunGQASeqlensKTest(
                                    ? *seqlens_k_shape
                                    : std::vector<int64_t>{batch_size};
   tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
+  const std::vector<int64_t> ts_shape = total_seq_len_shape.value_or(std::vector<int64_t>{1});
+  const std::vector<int32_t> ts_data = total_seq_len_data.value_or(std::vector<int32_t>{total_seq_len});
+  tester.AddInput<int32_t>("total_sequence_length", ts_shape, ts_data, total_seq_len_is_initializer);
 
   tester.AddOptionalInputEdge<float>();    // cos_cache
   tester.AddOptionalInputEdge<float>();    // sin_cache
@@ -864,6 +869,23 @@ TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
       /*provide_past=*/false,
       /*past_seq_len=*/0,
       /*seqlens_k_shape=*/std::vector<int64_t>{});
+}
+
+// total_sequence_length constant must have a single element.
+TEST(GroupQueryAttentionTest, EmptyTotalSequenceLengthInitializerRejected) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length input must contain a single element",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::nullopt,
+      /*total_seq_len_shape=*/std::vector<int64_t>{0},
+      /*total_seq_len_data=*/std::vector<int32_t>{},
+      /*total_seq_len_is_initializer=*/true);
 }
 
 // Helper to compare two output vectors (non-zero check + element-wise tolerance).

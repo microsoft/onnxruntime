@@ -1100,6 +1100,63 @@ TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
 }
 
+// ndim outside [1, 3] range is rejected.
+TEST(CausalConvWithStateTest, NdimOutOfRangeIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("ndim", 4);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();  // bias
+  test.AddOptionalInputEdge<float>();  // past_state
+  test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "ndim must be 1, 2, or 3");
+}
+
+// With ndim=2 the channels-first input must have rank ndim + 2 == 4
+TEST(CausalConvWithStateTest, InputRankMismatchIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("ndim", 2);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});                    // rank 3: one short of ndim + 2
+  test.AddInput<float>("weight", {1, 1, 2, 2}, {0.5f, 0.25f, 0.5f, 0.25f});  // rank ndim + 2 == 4
+  test.AddOptionalInputEdge<float>();  // bias
+  test.AddOptionalInputEdge<float>();  // past_state
+  test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must have rank ndim + 2");
+}
+
+// The weight is always channels-first with rank ndim + 2.
+TEST(CausalConvWithStateTest, WeightRankMismatchIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("ndim", 1);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1}, {0.5f});
+  test.AddOptionalInputEdge<float>();  // bias
+  test.AddOptionalInputEdge<float>();  // past_state
+  test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "weight must have rank ndim + 2");
+}
+
+// channels_last requires ndim == 1 and lays the input out as (batch, length, ...channels).
+TEST(CausalConvWithStateTest, ChannelsLastInputRankBelowThreeIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("ndim", 1);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddInput<float>("input", {1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();  // bias
+  test.AddOptionalInputEdge<float>();  // past_state
+  test.AddOutput<float>("output", {1, 2}, {0.0f, 0.0f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "channels_last input must have rank >= 3");
+}
+
 #ifdef USE_CUDA
 TEST(CausalConvWithStateTest, StateWindowRejectsEmptySequence) {
   auto ep = DefaultCudaExecutionProvider();
