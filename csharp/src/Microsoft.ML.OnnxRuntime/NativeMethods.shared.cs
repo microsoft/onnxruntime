@@ -981,8 +981,8 @@ namespace Microsoft.ML.OnnxRuntime
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
         /// <summary>
         /// Custom DllImportResolver to handle platform-specific library loading.
-        /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
-        /// case-sensitive filesystems.
+        /// It handles the addition of "lib" prefix and file extensions (.so/.dylib) for Linux/macOS,
+        /// and .dll extension for Windows (handling case-sensitivity).
         /// </summary>
 #if NET5_0_OR_GREATER
         [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000:Avoid accessing Assembly file path when publishing as a single file", Justification = "We also check AppContext.BaseDirectory as a fallback")]
