@@ -460,7 +460,8 @@ DepthwiseConvKleidiAI(
     const void* packed_weights,
     float* out,
     float clamp_min,
-    float clamp_max
+    float clamp_max,
+    MLAS_THREADPOOL* thread_pool
     );
 
 size_t
