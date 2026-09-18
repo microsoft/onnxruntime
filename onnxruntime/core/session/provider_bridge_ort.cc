@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/make_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_helper.h"
 
@@ -2906,6 +2907,16 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
   API_IMPL_BEGIN
+  if (cuda_options->external_data_loader_reading_threads >
+      OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_reading_threads must be between 0 and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
