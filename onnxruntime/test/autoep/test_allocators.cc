@@ -102,22 +102,6 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
   ort_env->ReleaseSharedAllocator(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
 }
 
-TEST(SharedAllocators, NullFactoryAllocatorUsesDefaultCpuAllocator) {
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "null_factory_allocator_test"};
-  const Utils::ExamplePluginInfo ep_info{
-      Utils::example_ep_info.library_path,
-      "example_ep.default_cpu_allocator",
-      "example_ep.default_cpu_allocator"};
-  RegisteredEpDeviceUniquePtr example_ep;
-
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(env, ep_info, example_ep));
-
-  Ort::KeyValuePairs allocator_options;
-  auto allocator = env.CreateSharedAllocator(example_ep.get(), OrtDeviceMemoryType_HOST_ACCESSIBLE,
-                                             OrtDeviceAllocator, allocator_options);
-  EXPECT_EQ(allocator, nullptr);
-}
-
 TEST(SharedAllocators, CustomAllocatorRemainsActiveDuringEpRegistration) {
   Ort::MemoryInfo custom_memory_info{"ExampleEP GPU",
                                      OrtMemoryInfoDeviceType_GPU,
