@@ -32,21 +32,19 @@ runs:
         disable-terrapin: 'false'
 
     - name: Configure vcpkg binary cache
-      id: vcpkg-cache
       if: inputs.vcpkg_cache_key != ''
       shell: pwsh
       run: |
         $cachePath = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
         New-Item -ItemType Directory -Path $cachePath -Force | Out-Null
         "VCPKG_DEFAULT_BINARY_CACHE=$cachePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "path=$cachePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     - name: Setup VCPKG Cache
       if: inputs.vcpkg_cache_key != ''
       uses: ./.github/actions/setup-vcpkg-cache
       with:
         key: windows-${{ inputs.architecture }}-${{ inputs.vcpkg_cache_key }}
-        path: ${{ steps.vcpkg-cache.outputs.path }}
+        path: ${{ runner.temp }}/vcpkg-binary-cache
 
     - name: Verify vcpkg setup
       shell: pwsh # Use powershell to easily access env var
