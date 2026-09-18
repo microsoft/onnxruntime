@@ -184,4 +184,7 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length);
 
+// OrtGraph
+ORT_API_STATUS_IMPL(Graph_SaveToOnnx, _In_ const OrtGraph* graph, _In_ const ORTCHAR_T* model_path);
+
 }  // namespace OrtExecutionProviderApi

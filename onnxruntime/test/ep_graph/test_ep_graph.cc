@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
+#include <system_error>
 #include <vector>
 #include <fstream>
 
@@ -410,6 +411,37 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
 
   EXPECT_EQ(output_serialized, output_original);
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
+TEST(EpGraphTest, SaveToOnnx_Mnist) {
+  const ORTCHAR_T* original_path = ORT_TSTR("testdata/mnist.onnx");
+  const ORTCHAR_T* saved_path = ORT_TSTR("ep_graph_save_to_onnx_mnist_roundtrip.onnx");
+  struct SavedModelCleanup {
+    std::filesystem::path path;
+    ~SavedModelCleanup() noexcept {
+      std::error_code error;
+      std::filesystem::remove(path, error);
+    }
+  } cleanup{saved_path};
+
+  std::error_code error;
+  std::filesystem::remove(cleanup.path, error);
+  ASSERT_FALSE(error) << "Failed to remove stale output: " << error.message();
+
+  auto test_graph = TestGraph::Load(original_path);
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  ASSERT_ORTSTATUS_OK(Ort::GetEpApi().Graph_SaveToOnnx(&test_graph->GetOrtGraph(), saved_path));
+  ASSERT_TRUE(std::filesystem::exists(saved_path));
+  ASSERT_GT(std::filesystem::file_size(saved_path), 0u);
+
+  std::vector<float> output_original;
+  std::vector<float> output_saved;
+  ASSERT_NO_FATAL_FAILURE(RunMNISTModel(original_path, output_original));
+  ASSERT_NO_FATAL_FAILURE(RunMNISTModel(saved_path, output_saved));
+  EXPECT_EQ(output_saved, output_original);
+}
+#endif
 
 // Test serializing an OrtGraph (MNIST) to GraphProto. Initializers are configured as "external" but point to
 // existing data in memory (not standard ONNX).

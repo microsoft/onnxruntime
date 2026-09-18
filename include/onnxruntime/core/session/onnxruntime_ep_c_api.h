@@ -2103,6 +2103,22 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Save an execution provider graph as an ONNX model file.
+   *
+    * Serializes the graph, including nested subgraphs and initializer data. External data files are not written.
+    *
+    * \param[in] graph Graph provided to an execution provider. The caller retains ownership.
+    * \param[in] model_path Non-empty destination path. The parent directory must exist; existing files are overwritten.
+   *
+    * \note The EP API is unavailable in minimal builds: OrtApi::GetEpApi() returns NULL.
+    * In non-minimal builds with exceptions disabled, valid calls return ORT_NOT_IMPLEMENTED.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(Graph_SaveToOnnx, _In_ const OrtGraph* graph, _In_ const ORTCHAR_T* model_path);
 };
 
 /**

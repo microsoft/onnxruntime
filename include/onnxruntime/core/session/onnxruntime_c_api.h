@@ -7592,28 +7592,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
                   _Outptr_result_maybenull_ OrtValue** output);
-
-  /** \brief Save an execution provider graph as an ONNX model file.
-   *
-   * Serializes the graph (including nested subgraphs), its ONNX IR version, and operator sets.
-   * Initializer data is embedded in the model, including data loaded from external initializer files.
-   * No external data files are written. The serialized model must be smaller than 2 GB.
-   * This is a graph export, not a lossless copy of the original model's metadata.
-   *
-   * \param[in] graph Graph provided to an execution provider, or a view created by Graph_GetGraphView().
-   *                  The caller retains ownership and must keep the graph valid for the duration of this call.
-   *                  Graphs created by the model editor API are not supported.
-   * \param[in] model_path Non-empty, null-terminated destination path (UTF-16 on Windows, UTF-8 otherwise).
-   *                       The parent directory must already exist. An existing file is overwritten.
-   *                       A write failure may leave a partial file.
-   *
-   * Returns ORT_NOT_IMPLEMENTED in minimal builds or builds with exceptions disabled.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(Graph_SaveToOnnx, _In_ const OrtGraph* graph, _In_ const ORTCHAR_T* model_path);
 };
 
 /*
