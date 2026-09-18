@@ -10,8 +10,8 @@
 namespace onnxruntime {
 
 namespace {
-static int64_t GetGatherAxis(const Node& node, int64_t rank) {
-  int64_t axis = 0;
+static bool GetGatherAxis(const Node& node, int64_t rank, int64_t& axis) {
+  axis = 0;
   auto& attrs = node.GetAttributes();
   if (attrs.find("axis") != attrs.end()) {
     auto& axis_attr = attrs.at("axis");
@@ -20,7 +20,7 @@ static int64_t GetGatherAxis(const Node& node, int64_t rank) {
       if (axis < 0) axis += rank;
     }
   }
-  return axis;
+  return axis >= 0 && axis < rank;
 }
 
 static bool GetScalarInt64Initializer(const Graph& graph, const NodeArg& node_arg, int64_t& value, int64_t& rank) {
@@ -38,13 +38,12 @@ static bool GetSliceAxis(const Graph& graph, const Node& node, int64_t rank, int
   int64_t unused = 0;
   if (!GetScalarInt64Initializer(graph, *node.InputDefs()[3], axis, unused)) return false;
   if (axis < 0) axis += rank;
-  return true;
+  return axis >= 0 && axis < rank;
 }
 
 static bool GetAxis(const Graph& graph, const Node& node, int64_t rank, int64_t& axis) {
   if (node.OpType() == "Gather") {
-    axis = GetGatherAxis(node, rank);
-    return true;
+    return GetGatherAxis(node, rank, axis);
   }
   if (node.OpType() == "Slice") {
     return GetSliceAxis(graph, node, rank, axis);
@@ -62,7 +61,8 @@ bool GatherSliceToSplitFusion::IsSupportedGather(const Graph& graph, const Node&
     return false;
   }
 
-  if (GetGatherAxis(node, rank) != target_axis) return false;
+  int64_t gather_axis = 0;
+  if (!GetGatherAxis(node, rank, gather_axis) || gather_axis != target_axis) return false;
   // Require the indices input to be a scalar tensor for now. Normally if not, the exporter will choose Slice.
   // We can relax this later if needed.
   int64_t indices_n_dims = 0;
