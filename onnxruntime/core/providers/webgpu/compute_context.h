@@ -41,6 +41,7 @@ class ComputeContextBase {
 
    private:
     static const webgpu::BufferManager& Get(const ComputeContextBase& context);
+    static CommandRecordingState& GetRecording(const ComputeContextBase& context);
   };
 
   ComputeContextBase(WebGpuContext& webgpu_context,
@@ -216,12 +217,27 @@ class ComputeContext final : public ComputeContextBase {
   //
   // This method creates a tensor of the given data type and shape, using the WebGPU allocator.
   // The tensor owns the underlying WebGPU storage buffer.
+  // In the plugin, the temp-space allocator is the existing Session device allocator,
+  // not an Env shared allocator or a new allocator created for each tensor.
   //
   template <typename TensorShapeType>
   Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    TensorShape tensor_shape{std::forward<TensorShapeType>(shape)};
+    const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, tensor_shape);
+    // Tensor's allocating constructor would use plain Alloc and submit cached clears.
+    // The kernel's explicit stream keeps clears ordered without submitting each scratch allocation;
+    // a null stream still falls back to plain Alloc's immediate-submission policy.
+    auto buffer = IAllocator::MakeUniquePtr<void>(
+        allocator, bytes, false, reinterpret_cast<Stream*>(kernel_context_.GetSyncStream()));
+    Tensor tensor(data_type, tensor_shape, buffer.get(), allocator);
+    buffer.release();
+    return tensor;
+#else
     return {data_type, std::forward<TensorShapeType>(shape), allocator};
+#endif
   }
 
   //
@@ -237,9 +253,11 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
-    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches());
-    webgpu_context_.EndComputePass();
-    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    auto& recording = ep_.Recording();
+    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
+    webgpu_context_.EndComputePass(recording);
+    auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
     command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
   }
