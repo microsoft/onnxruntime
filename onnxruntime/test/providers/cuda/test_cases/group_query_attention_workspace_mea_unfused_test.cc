@@ -12,6 +12,7 @@ namespace onnxruntime {
 namespace test {
 
 using contrib::cuda::GetGQACompleteWorkspaceRecipe;
+using contrib::cuda::GetGQAFlashWorkspaceRecipe;
 using contrib::cuda::GetGQAMemoryEfficientWorkspaceRecipe;
 using contrib::cuda::GetGQAUnfusedWorkspaceRecipe;
 using contrib::cuda::GQABackend;
@@ -177,6 +178,61 @@ TEST(GroupQueryAttentionUnfusedWorkspaceTest, CompleteRootAlignsAndDoesNotOverla
   EXPECT_EQ(recipe.total_workspace_bytes,
             recipe.backend_offset_bytes + recipe.unfused.total_backend_bytes);
   EXPECT_TRUE(ValidateGQACompleteWorkspaceRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionCompleteWorkspaceTest, WindowedRoutesUseRuntimeEffectiveKvLength) {
+  const auto expect_route_parity = [](const GQAWorkspaceProblem& problem,
+                                      int64_t total_sequence_length,
+                                      int64_t expected_kv_length) {
+    GQAConcreteRoute flash_route;
+    flash_route.backend = GQABackend::Flash;
+    flash_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+    flash_route.flash.total_sequence_length = total_sequence_length;
+    flash_route.flash.multi_processor_count = 108;
+    const auto flash = GetGQACompleteWorkspaceRecipe(problem, flash_route);
+    ASSERT_TRUE(flash.status.IsOK()) << flash.status.message;
+    EXPECT_EQ(flash.recipe.flash.split_heuristic_kv_length,
+              static_cast<size_t>(expected_kv_length));
+
+    auto expected_flash_config = flash_route.flash;
+    expected_flash_config.total_sequence_length = expected_kv_length;
+    const auto expected_flash =
+        GetGQAFlashWorkspaceRecipe(problem, expected_flash_config);
+    ASSERT_TRUE(expected_flash.status.IsOK()) << expected_flash.status.message;
+    EXPECT_EQ(flash.recipe.flash.total_backend_bytes,
+              expected_flash.recipe.total_backend_bytes);
+
+    GQAConcreteRoute unfused_route;
+    unfused_route.backend = GQABackend::Unfused;
+    unfused_route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+    unfused_route.unfused.total_sequence_length = total_sequence_length;
+    const auto unfused = GetGQACompleteWorkspaceRecipe(problem, unfused_route);
+    ASSERT_TRUE(unfused.status.IsOK()) << unfused.status.message;
+
+    const auto expected_unfused =
+        GetGQAUnfusedWorkspaceRecipe(problem, expected_kv_length);
+    ASSERT_TRUE(expected_unfused.status.IsOK()) << expected_unfused.status.message;
+    EXPECT_EQ(unfused.recipe.unfused.qk_bytes,
+              expected_unfused.recipe.qk_bytes);
+    EXPECT_EQ(unfused.recipe.unfused.softmax_bytes,
+              expected_unfused.recipe.softmax_bytes);
+    EXPECT_EQ(unfused.recipe.unfused.total_backend_bytes,
+              expected_unfused.recipe.total_backend_bytes);
+  };
+
+  auto problem = Problem();
+  problem.present_kv_cache_capacity = 8;
+  problem.is_windowed_kv_cache = true;
+  expect_route_parity(problem, 257, 11);
+
+  problem.sequence_length = 1;
+  expect_route_parity(problem, 257, 8);
+
+  problem.sequence_length = 3;
+  expect_route_parity(problem, 5, 5);
+
+  problem.is_windowed_kv_cache = false;
+  expect_route_parity(problem, 257, 257);
 }
 
 TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsMeaCapacityMismatch) {

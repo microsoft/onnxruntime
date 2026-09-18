@@ -207,6 +207,62 @@ alias fact and the past-cache capacity, and the preparation recipe includes the
 checked preservation region. Windowed execution, XQA, and Flash fast decode
 require both K/V pairs to alias and reject this state.
 
+### GroupQueryAttention bounded estimator and framework adapters
+
+The GQA framework follow-up translates positional inputs and immutable kernel
+attributes into a graph-free bounded domain. It covers packed and separate
+Q/K/V, optional past-cache pairs, cache quantization, prompt and decode states,
+windowed staging and compaction, XQA (including unresolved shared-memory
+fallback), regular and fast-decode Flash, MEA, unfused, and cuDNN reachability.
+Head geometry derived from `WorkspaceInputShape` is an upper bound: route
+reachability searches supported smaller head sizes instead of testing only the
+componentwise maximum.
+
+Flash split selection is not monotonic in KV length. The bounded estimator uses
+the runtime block size (`256` for head size at most 64, `128` through 128, and
+`64` above 128) and bounds the selected split count by:
+
+```text
+min(128, SM count, ceil(KV length bound / block size))
+```
+
+It then sizes the split accumulators at that envelope. Complete routes are
+mutually exclusive and are aggregated with `max`, not sum. The resulting
+nonzero estimate is one operator-owned slot-0 root with 256-byte alignment.
+Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares one root from
+the same estimator. Level 1 conservatively includes dynamic head-sink conversion
+because prepack state is unavailable during capability analysis. For a constant
+head sink, it separately charges the possible session-lived FP32 copy and the
+initialization-only device staging copy, even when session configuration later
+disables prepacking. Level 2 can omit the transient conversion region when the
+constructed kernel has a prepacked head sink, so its root can be smaller.
+Neither adapter changes runtime
+`GetScratchBuffer()` calls or allocation topology.
+
+The CPU `total_sequence_length` scalar and past/present aliasing are not
+available through `WorkspaceInputShape`. For non-windowed GQA, the scalar can
+exceed the past-cache sequence dimension and directly scale Flash, MEA, and
+unfused workspace. Non-windowed execution can also preserve one full past
+tensor when exactly one past/present pair aliases. The current adapter therefore
+reports non-windowed GQA as unavailable rather than treating the past shape as
+a total-KV bound or omitting alias-preservation scratch.
+
+Successful estimates are currently limited to sliding-window cache nodes.
+Their final cache capacity remains `C`, while a multi-token step uses a
+transient staged/effective attention extent of `C + S`; a single-token step
+uses `C`. This shape-only bound remains sound even when the scalar
+`total_sequence_length` is much larger. Runtime requires both past/present
+pairs to alias before staging or compaction, excluding the partial-alias
+preservation path. Sliding-window attention bias remains
+unsupported by runtime and is also unavailable to the estimator. If cuDNN can
+be reached anywhere in a graph-free bounded domain, aggregation remains
+unavailable because cuDNN's allocator-based workspace has no sound graph-free
+oracle. Level 1 then uses the generic fallback and Level 2 emits no requirement.
+
+Unlike the log-only PA/PMHA Level-1 probe, a successful GQA Level-1 estimate is
+passed to the #31962 resource accountant as `runtime_workspace_bytes` and can
+affect CUDA partition acceptance.
+
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
 unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have

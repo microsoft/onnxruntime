@@ -5,6 +5,8 @@
 
 #include <cstddef>
 
+#include "core/providers/webgpu/compute_context.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
