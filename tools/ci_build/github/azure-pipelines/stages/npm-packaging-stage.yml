@@ -28,8 +28,8 @@ stages:
     UseWebPoolName: true
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: onnxruntime-Win2022-A10
-    WebCpuPoolName: onnxruntime-Win2022-A10
+    WebGpuPoolName: onnxruntime-Win2022-GPU-A10
+    WebCpuPoolName: onnxruntime-Win2022-GPU-A10
     is1ES: true
 
 - ${{ if eq(parameters.EnableReactNative, true) }}:
