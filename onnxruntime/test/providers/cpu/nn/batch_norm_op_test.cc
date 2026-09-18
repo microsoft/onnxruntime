@@ -6,6 +6,9 @@
 #include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
 #include "gtest/gtest.h"
@@ -986,6 +989,31 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
             kWebGpuExecutionProvider});
+}
+
+// Y must not depend on momentum when an initializer feeds both scale/B and mean/var.
+TEST(BatchNormTest, ForwardTrainingSharedInitializerDoesNotClobberScaleAndBias) {
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Default;  // test the kernel, not ConstantSharing
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/batchnorm_training_shared_initializer.onnx")));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       std::vector<int64_t>{2, 1, 2}, std::vector<float>{-1.0f, 0.0f, 1.0f, 2.0f}, &input);
+
+  // scale is 1 and B is 0, so Y is just X normalized by the batch statistics
+  const std::vector<float> expected{-1.341635f, -0.447212f, 0.447212f, 1.341635f};
+  // run twice: the second run catches the running stats being written into scale/B
+  for (int run = 0; run < 2; ++run) {
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"X", input}},
+                                 std::vector<std::string>{"Y"}, &fetches));
+    EXPECT_THAT(fetches[0].Get<Tensor>().DataAsSpan<float>(),
+                ::testing::Pointwise(::testing::FloatNear(1e-4f), expected))
+        << "run " << run;
+  }
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
