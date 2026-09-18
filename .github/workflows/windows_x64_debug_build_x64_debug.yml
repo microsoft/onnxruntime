@@ -36,6 +36,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+          vcpkg_cache_key: build-debug
 
       - name: Install Visual Studio Spectre-mitigated libs
         uses: ./.github/actions/install-vs-spectre-libs

@@ -55,6 +55,9 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          vcpkg_cache_key: >-
+            ${{ matrix.vcpkg_option == 'vcpkg' &&
+                format('webgpu-{0}-relwithdebinfo', matrix.wgsl_template) || '' }}
 
       - name: Install Visual Studio Spectre-mitigated libs
         uses: ./.github/actions/install-vs-spectre-libs
@@ -175,6 +178,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          vcpkg_cache_key: webgpu-plugin-relwithdebinfo
 
       - name: Install Visual Studio Spectre-mitigated libs
         uses: ./.github/actions/install-vs-spectre-libs

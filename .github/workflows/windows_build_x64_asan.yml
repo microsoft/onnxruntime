@@ -42,6 +42,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+          vcpkg_cache_key: build-asan-debug
 
       - name: Write shared build options
         shell: pwsh
