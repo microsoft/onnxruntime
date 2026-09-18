@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/make_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_helper.h"
 
@@ -23,6 +24,7 @@
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/framework/random_generator.h"
@@ -1615,6 +1617,47 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
+  const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+      const OpKernelContext* p) override {
+    return p->GetRunInstrumentationContext();
+  }
+  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) override {
+    return p->RequestId();
+  }
+  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) override {
+    return p->StartProfiling();
+  }
+  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) override {
+    return p->ProfilerStartTimeNs();
+  }
+  void RunInstrumentationContext__AddDeferredRecord(
+      const RunInstrumentationContext* p,
+      std::unique_ptr<DeferredRunInstrumentationRecord> record) override {
+    p->AddDeferredRecord(std::move(record));
+  }
+  bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
+      const RunInstrumentationContext* p, size_t element_count) override {
+    return p->TryReserveMoeRoutingRecord(element_count);
+  }
+  void RunInstrumentationContext__RecordMoeRoutingEvent(
+      const RunInstrumentationContext* p,
+      const TimePoint& start_time,
+      const TimePoint& end_time,
+      const std::string& node_name,
+      NodeIndex node_index,
+      const std::string& node_type,
+      std::string expert_ids_json,
+      std::string router_weights_json,
+      int64_t num_rows,
+      int64_t top_k,
+      int execution_device_id,
+      int64_t completion_ns,
+      const std::string& completion_timestamp_source) override {
+    p->RecordMoeRoutingEvent(
+        start_time, end_time, node_name, node_index, node_type,
+        std::move(expert_ids_json), std::move(router_weights_json),
+        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+  }
 
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
@@ -2143,14 +2186,6 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
   return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
 } catch (const std::exception& exception) {
   // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
-}
-
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options) try {
-  return GetProviderInfo_CUDA().CreateExecutionProviderFactory(provider_options);
-} catch (const std::exception& exception) {
   LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
@@ -2914,6 +2949,16 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
   API_IMPL_BEGIN
+  if (cuda_options->external_data_loader_reading_threads >
+      OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_reading_threads must be between 0 and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");

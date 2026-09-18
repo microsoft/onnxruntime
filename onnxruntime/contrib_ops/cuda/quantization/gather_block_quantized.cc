@@ -153,6 +153,10 @@ Status GatherBlockQuantized<T1, T2, Tind>::PrePack(
     return Status::OK();
   }
 
+  if (!direct_host_data_ && tensor.Location().device.Type() != OrtDevice::CPU) {
+    return Status::OK();
+  }
+
   std::lock_guard<std::mutex> lock(device_data_mutex_);
   if (direct_host_data_) {
     ORT_RETURN_IF_NOT(tensor.Location().device.Type() == OrtDevice::CPU,
