@@ -19,7 +19,7 @@ stages:
         os: windows
         hostArchitecture: Arm64
       ${{ else }}:
-        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        name: onnxruntime-Win2022-A10
         os: windows
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
@@ -68,7 +68,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        name: onnxruntime-Win2022-A10
         os: windows
       variables:
         WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'
