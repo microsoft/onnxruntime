@@ -16,9 +16,9 @@ void ComputeSliceOffsetsImpl(
     const size_t num_slices_per_batch,
     const size_t input_batch_stride,
     const size_t num_slice_dims,
-    const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
-    const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data);         // num_slices elements
+    const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
+    const TIndex* const indices_data,             // num_slices * num_slice_dims elements
+    int64_t* const input_slice_offsets_data);     // num_slices elements
 
 template <typename T>
 void GatherNDImpl(

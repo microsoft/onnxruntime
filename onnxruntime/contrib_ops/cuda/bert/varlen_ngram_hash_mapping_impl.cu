@@ -112,8 +112,6 @@ __global__ void VarlenNGramHashMappingKernel(
     const int32_t* __restrict__ segment_ids,
     const int32_t* __restrict__ past_segment_ids,
     T* output,
-    T* present_ids,
-    int32_t* present_segment_ids,
     int batch_size,
     int total_tokens,
     int64_t max_ngram_size,
@@ -196,30 +194,60 @@ __global__ void VarlenNGramHashMappingKernel(
     }
     output[(start + t) * num_heads + out_h] = result;
   }
+}
 
-  __syncthreads();
-
-  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
-  // is well defined even when this call is shorter than the window. Write it after hash computation
-  // because past_ids may alias present_ids.
-  if (present_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_ids[b * state_length + j] =
-          source_t >= 0 ? input_ids[start + source_t]
-                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
-    }
+template <typename T>
+__global__ void VarlenNGramPresentIdsKernel(
+    const T* __restrict__ input_ids,
+    const int32_t* __restrict__ cu_seqlens,
+    const T* __restrict__ past_ids,
+    const T* __restrict__ eos_token_id,
+    const int32_t* __restrict__ segment_ids,
+    const int32_t* __restrict__ past_segment_ids,
+    T* __restrict__ present_ids,
+    int32_t* __restrict__ present_segment_ids,
+    int batch_size,
+    int64_t max_ngram_size,
+    T pad_id,
+    const int32_t* __restrict__ is_valid) {
+  if (!(*is_valid)) {
+    return;
   }
-  if (present_segment_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_segment_ids[b * state_length + j] =
-          source_t >= 0
-              ? segment_ids[start + source_t]
-              : (past_segment_ids != nullptr
-                     ? past_segment_ids[b * state_length + state_length + source_t]
-                     : segment_ids[start]);
+  const int b = blockIdx.x;
+  if (b >= batch_size) {
+    return;
+  }
+  const int32_t start = cu_seqlens[b];
+  const int32_t end = cu_seqlens[b + 1];
+  const int64_t state_length = max_ngram_size - 1;
+  const T missing_history_value = eos_token_id == nullptr ? pad_id : eos_token_id[0];
+  for (int64_t chunk = 0; chunk < state_length; chunk += blockDim.x) {
+    const int64_t j = chunk + threadIdx.x;
+    T token = missing_history_value;
+    int32_t segment = 0;
+    if (j < state_length) {
+      const int64_t source_t = static_cast<int64_t>(end - start) - state_length + j;
+      token = source_t >= 0
+                  ? input_ids[start + source_t]
+                  : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
+      if (present_segment_ids != nullptr) {
+        segment = source_t >= 0
+                      ? segment_ids[start + source_t]
+                      : (past_segment_ids != nullptr
+                             ? past_segment_ids[b * state_length + state_length + source_t]
+                             : segment_ids[start]);
+      }
     }
+    __syncthreads();
+    if (j < state_length) {
+      if (present_ids != nullptr) {
+        present_ids[b * state_length + j] = token;
+      }
+      if (present_segment_ids != nullptr) {
+        present_segment_ids[b * state_length + j] = segment;
+      }
+    }
+    __syncthreads();
   }
 }
 
@@ -294,10 +322,17 @@ Status LaunchVarlenNGramHashMappingKernel(
   const int threads = std::min(256, max_threads_per_block);
   VarlenNGramHashMappingKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, head_offsets, eos_token_id, segment_ids,
-      past_segment_ids, output, present_ids, present_segment_ids,
+      past_segment_ids, output,
       static_cast<int>(batch_size), static_cast<int>(total_tokens), max_ngram_size, n_head_per_ngram,
       pad_id, reset_on_eos, is_valid_scratch);
-  return CUDA_CALL(cudaGetLastError());
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  if (present_ids != nullptr || present_segment_ids != nullptr) {
+    VarlenNGramPresentIdsKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
+        input_ids, cu_seqlens, past_ids, eos_token_id, segment_ids, past_segment_ids, present_ids,
+        present_segment_ids, static_cast<int>(batch_size), max_ngram_size, pad_id, is_valid_scratch);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(T)                                                \

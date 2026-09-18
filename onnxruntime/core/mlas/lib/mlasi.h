@@ -659,6 +659,21 @@ void
     size_t N
     );
 
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+constexpr size_t kDepthwiseGeneralMaxKernelWidth = 16;
+#endif
+
+typedef
+bool
+(MLASCALL MLAS_ACTIVATION_ROUTINE)(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    );
+
 typedef
 void
 (MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
@@ -1467,6 +1482,7 @@ MlasReorderOutputNchwBlock16Avx512F(
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelRvv;
+    MLAS_ACTIVATION_ROUTINE MlasActivationRvv;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
@@ -1893,6 +1909,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
+    MLAS_ACTIVATION_ROUTINE* ActivationRoutine;
 #endif
 
 MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
