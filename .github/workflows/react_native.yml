@@ -79,7 +79,7 @@ jobs:
         ]
     timeout-minutes: 90
     env:
-      NPM_CONFIG_REPLACE_REGISTRY_HOST: never
+      NPM_CONFIG_REPLACE_REGISTRY_HOST: npmjs
     steps:
       - name: Set ANDROID_AVD_HOME environment variable
         run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
