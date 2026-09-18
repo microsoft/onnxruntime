@@ -19,7 +19,6 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                           \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
           .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
-          .TypeConstraint("T_AUX", DataTypeImpl::GetTensorType<T>())          \
           .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())        \
           .InputMemoryType(OrtMemTypeCPUInput, 21),                           \

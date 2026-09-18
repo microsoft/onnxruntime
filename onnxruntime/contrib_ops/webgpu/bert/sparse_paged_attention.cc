@@ -108,7 +108,6 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("T_AUX", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 21)

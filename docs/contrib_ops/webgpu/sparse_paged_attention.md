@@ -82,7 +82,7 @@ Configure IO-binding to alias the cache buffers in production.
 |---|---|
 | Activation (`T`) | FP16 |
 | Main cache (`T_CACHE`) | FP16 |
-| Auxiliary cache (`T_AUX`) | Contiguous FP16 |
+| Auxiliary cache (`T`) | Contiguous FP16 |
 | Index/length type (`S`) | INT32 |
 | `attention_mode` | `selected_only`, `local_plus_selected` |
 | `selected_kv_source` | `main`, `auxiliary` |
