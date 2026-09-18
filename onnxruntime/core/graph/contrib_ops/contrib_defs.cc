@@ -615,6 +615,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+constexpr const char* FusedHadamardTransform_ver1_doc = R"DOC(
+Multiplies X by a 1-D sign tensor broadcast over the last dimension, then applies an
+independent normalized Sylvester-Walsh-Hadamard transform to each contiguous block.
+The output has the same shape as X.)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+  FusedHadamardTransform, 1,
+  OpSchema()
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetDoc(FusedHadamardTransform_ver1_doc)
+    .Attr("block_size", "Size of each contiguous Hadamard block.", AttributeProto::INT, int64_t{1024})
+    .Input(0, "X", "Input tensor with rank at least one.", "T")
+    .Input(1, "sign", "1-D tensor whose length equals the last dimension of X.", "T")
+    .Output(0, "Y", "Signed blockwise normalized Hadamard transform of X.", "T")
+    .TypeConstraint("T", {"tensor(float16)"}, "Constrain input, sign, and output to float16 tensors.")
+    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 constexpr const char* QuickGelu_ver1_doc = R"DOC(Compute x * Sigmoid(alpha * x).)DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QuickGelu, 1,
