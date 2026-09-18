@@ -5,6 +5,10 @@
 
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -42,6 +46,88 @@ static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::v
   }
 }
 
+#if defined(_WIN32) && defined(DAWN_ENABLE_VULKAN)
+static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
+    const IExecutionProvider& ep,
+    webgpu::MatMulAlgorithm algorithm) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  ORT_UNUSED_PARAMETER(ep);
+  switch (algorithm) {
+    case webgpu::MatMulAlgorithm::IntelSubgroup:
+    case webgpu::MatMulAlgorithm::PackedSplitK:
+    case webgpu::MatMulAlgorithm::SubgroupMatrix:
+      return "hardware-specific forced MatMul tests require direct adapter capability inspection.";
+    case webgpu::MatMulAlgorithm::Naive:
+    case webgpu::MatMulAlgorithm::Packed:
+      return std::nullopt;
+  }
+  return std::nullopt;
+#else
+  auto& context = webgpu::WebGpuContextFactory::GetContext(ep.GetDeviceId());
+
+  switch (algorithm) {
+    case webgpu::MatMulAlgorithm::IntelSubgroup:
+      if (context.AdapterInfo().vendor != std::string_view{"intel"}) {
+        return "intel_subgroup requires an Intel adapter.";
+      }
+      if (!context.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
+        return "intel_subgroup requires the WebGPU Subgroups feature.";
+      }
+      break;
+    case webgpu::MatMulAlgorithm::PackedSplitK:
+      if (context.GetSplitKConfig().GetSplitDimInner() == 0) {
+        return "packed_split_k is not configured for the selected adapter.";
+      }
+      break;
+    case webgpu::MatMulAlgorithm::SubgroupMatrix: {
+      if (!context.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+        return "subgroup_matrix requires the WebGPU subgroup-matrix feature.";
+      }
+
+      const auto& adapter_info = context.AdapterInfo();
+      const auto& device_configs = context.SubgroupMatrixConfigs();
+      bool has_required_config = false;
+      for (const auto& required_config : webgpu::supported_subgroup_matrix_configs) {
+        if (!required_config.Is(8, 16, 16) ||
+            required_config.componentType != wgpu::SubgroupMatrixComponentType::F16 ||
+            required_config.resultComponentType != wgpu::SubgroupMatrixComponentType::F16) {
+          continue;
+        }
+        for (size_t i = 0; i < device_configs.configCount; ++i) {
+          const auto& device_config = device_configs.configs[i];
+          if (device_config.componentType == required_config.componentType &&
+              device_config.resultComponentType == required_config.resultComponentType &&
+              device_config.M == required_config.M &&
+              device_config.N == required_config.N &&
+              device_config.K == required_config.K &&
+              adapter_info.subgroupMinSize == required_config.subgroupMinSize &&
+              adapter_info.subgroupMaxSize == required_config.subgroupMaxSize) {
+            has_required_config = true;
+            break;
+          }
+        }
+        if (has_required_config) {
+          break;
+        }
+      }
+      if (!has_required_config) {
+        return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup range 16-32.";
+      }
+      if (!context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+        return "subgroup_matrix requires the WebGPU SubgroupSizeControl feature.";
+      }
+      break;
+    }
+    case webgpu::MatMulAlgorithm::Naive:
+    case webgpu::MatMulAlgorithm::Packed:
+      break;
+  }
+
+  return std::nullopt;
+#endif
+}
+#endif
+
 template <typename T, int version = 13>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims,
                   bool b_is_constant = false,
@@ -66,6 +152,14 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
+#if defined(_WIN32) && defined(DAWN_ENABLE_VULKAN)
+  if (forced_algorithm.has_value()) {
+    if (const auto reason = GetForcedAlgorithmUnsupportedReason(*webgpu_ep, *forced_algorithm);
+        reason.has_value()) {
+      GTEST_SKIP() << *reason;
+    }
+  }
+#endif
 
   TensorShape a_shape(a_dims);
   TensorShape b_shape(b_dims);
