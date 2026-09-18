@@ -3,10 +3,13 @@
 
 #pragma once
 
+#include <condition_variable>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -15,6 +18,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
@@ -22,15 +26,21 @@
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include <d3d12.h>
+#include <wrl/client.h>
+#endif
+
 namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+
+inline constexpr int kDeviceFreeDefaultContextId = -1;
 class WebGpuContext;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
-
 // PendingKernelInfo stores profiling information for a kernel execution
 struct PendingKernelInfo {
   PendingKernelInfo(std::string_view kernel_name,
@@ -144,6 +154,8 @@ struct WebGpuContextConfig {
   };
   bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  WeightLoadAccelerationMode weight_load_acceleration_mode{
+      WeightLoadAccelerationMode::Off};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
@@ -224,14 +236,28 @@ class WebGpuContext final {
   static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
       128ULL * 1024 * 1024;
 
+  ~WebGpuContext();
+
   Status Wait(wgpu::Future f);
 
   const wgpu::Instance& Instance() const { return instance_; }
-  const wgpu::Device& Device() const { return device_; }
+  const wgpu::Device& Device() const {
+    WaitForInitializeComplete();
+    return device_;
+  }
 
-  const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
-  const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
+  const wgpu::AdapterInfo& AdapterInfo() const {
+    WaitForInitializeComplete();
+    return adapter_info_;
+  }
+  const wgpu::Limits& DeviceLimits() const {
+    WaitForInitializeComplete();
+    return device_limits_;
+  }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const {
+    WaitForInitializeComplete();
+    return device_features_.contains(feature);
+  }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
@@ -277,14 +303,20 @@ class WebGpuContext final {
   /**
    * Get the buffer manager.
    */
-  webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
+  webgpu::BufferManager& BufferManager() const {
+    WaitForInitializeComplete();
+    return *buffer_mgr_;
+  }
 
   /**
    * Get the initializer buffer manager.
    *
    * This buffer manager is used for read-only buffers (e.g. initializers).
    */
-  webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
+  webgpu::BufferManager& InitializerBufferManager() const {
+    WaitForInitializeComplete();
+    return *initializer_buffer_mgr_;
+  }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -292,7 +324,24 @@ class WebGpuContext final {
 
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
-  inline bool HasDevice() const { return device_ != nullptr; }
+  inline bool HasDevice() const {
+    WaitForInitializeComplete();
+    return device_ != nullptr;
+  }
+  inline bool IsDeviceFree() const { return device_free_; }
+  void WaitForStartInitializeComplete() const;
+  void ContinueInitialize();
+  void WaitForInitializeComplete() const;
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  ID3D12Device* DirectStorageD3D12Device();
+  bool PipelinedWeightLoadingEnabled() const { return pipelined_weight_loading_; }
+  bool DirectStorageSharedResourceFeaturesAvailable() const {
+    return direct_storage_shared_resource_features_available_;
+  }
+  wgpu::BackendType RequestedBackendType() const {
+    return requested_backend_type_;
+  }
+#endif
 
   //
   // Get Split-K configuration.
@@ -374,7 +423,9 @@ class WebGpuContext final {
             max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
+  void StartInitialize(const WebGpuContextConfig& config);
   void Initialize(const WebGpuContextConfig& config);
+  void SignalStartInitializeComplete(std::exception_ptr error = nullptr);
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,
@@ -411,6 +462,14 @@ class WebGpuContext final {
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
+  mutable std::shared_future<void> initialize_future_;
+  std::thread::id initialize_thread_id_;
+  mutable std::mutex initialize_mutex_;
+  mutable std::condition_variable initialize_condition_;
+  bool start_initialize_complete_ = false;
+  bool continue_initialize_ = false;
+  std::exception_ptr start_initialize_error_;
+  bool device_free_ = false;
 
   wgpu::Instance instance_;
   wgpu::Device device_;
@@ -461,6 +520,15 @@ class WebGpuContext final {
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
   bool preserve_device_;
+  WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      WeightLoadAccelerationMode::Off};
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  wgpu::Adapter direct_storage_adapter_;
+  Microsoft::WRL::ComPtr<ID3D12Device> direct_storage_d3d12_device_;
+  bool direct_storage_shared_resource_features_available_ = false;
+  bool pipelined_weight_loading_ = false;
+  wgpu::BackendType requested_backend_type_ = wgpu::BackendType::Undefined;
+#endif
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 

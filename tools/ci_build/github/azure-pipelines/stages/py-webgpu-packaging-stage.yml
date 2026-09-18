@@ -31,6 +31,8 @@ stages:
         parameters:
           PYTHON_VERSION: ${{ python_version }}
           EP_BUILD_FLAGS: --enable_lto --use_webgpu
+          ${{ if eq(python_version, '3.11') }}:
+            RUN_DIRECT_STORAGE_TESTS: true
 
     - ${{ each python_version in parameters.PythonVersions }}:
       - stage:  MacOS_py_webgpu_Wheels_${{ replace(python_version,'.','_') }}_Build
