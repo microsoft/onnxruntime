@@ -222,6 +222,10 @@ static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
   return axis >= 0 && axis < rank_int;
 }
 
+static bool IsAxisInRangeForPerm(int64_t axis, gsl::span<const int64_t> perm) {
+  return axis >= 0 && gsl::narrow_cast<size_t>(axis) < perm.size();
+}
+
 /// <summary>
 /// Check if an output value has a single consumer that is a node.
 /// </summary>
@@ -345,6 +349,11 @@ class DQToLookPast {
     return dq_node_->Outputs()[0];
   }
 
+  bool CanSetTransposedInput(gsl::span<const int64_t> perm_inv) const {
+    return quant_info_.mode != QuantizationMode::kPerAxis ||
+           IsAxisInRangeForPerm(quant_info_.norm_axis, perm_inv);
+  }
+
   /// <summary>
   /// Sets the DQ's new transposed input[0]. The DQ's axis and output shape are updated.
   /// </summary>
@@ -352,6 +361,7 @@ class DQToLookPast {
   /// <param name="new_input">name of new transposed input[0]</param>
   /// <param name="perm_inv">inverse transpose permutation used to update the DQ's axis</param>
   void SetTransposedInput(api::GraphRef& graph, std::string_view new_input, gsl::span<const int64_t> perm_inv) {
+    assert(CanSetTransposedInput(perm_inv));
     if (quant_info_.mode == QuantizationMode::kPerAxis) {
       quant_info_.norm_axis = perm_inv[gsl::narrow_cast<size_t>(quant_info_.norm_axis)];
     }
@@ -405,6 +415,18 @@ class DQToLookPast {
   std::unique_ptr<api::NodeRef> dq_node_;
   QuantizationInfo quant_info_;
 };
+
+static bool CanTransposeInputWithQDQ(const api::GraphRef& graph, std::string_view input,
+                                     gsl::span<const int64_t> perm) {
+  auto producer = graph.GetNodeProducingOutput(input);
+  if (!producer || producer->OpType() != "DequantizeLinear") {
+    return true;
+  }
+
+  auto quant_info = GetQuantizationInfo(graph, *producer);
+  return !quant_info || quant_info->mode != QuantizationMode::kPerAxis ||
+         IsAxisInRangeForPerm(quant_info->norm_axis, perm);
+}
 
 /// <summary>
 /// Return a DequantizeLinear node if it's input is a constant initializer and it has a single consumer.
@@ -513,7 +535,9 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   if (dq_quant_info->mode == QuantizationMode::kPerAxis) {
     if (is_transpose) {
       auto perm = GetPermAttrIfValid(next_node);
-      assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
+      if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
+        return false;
+      }
       axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
     } else if (is_unsqueeze) {
       auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
@@ -1182,8 +1206,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // look past a DQ node for a constant initializer. essentially we pretend the DQ node doesn't exist
     // to enable directly making changes to the initializer. any nodes added for other consumers of the initializer
     // in 'Case 1' are prior to the DQ so we don't break up any QDQ node units.
-    dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, input);
-    if (dq_to_look_past) {
+    auto dq_candidate = GetDQWithConstInitializerInputAndSingleConsumer(graph, input);
+    if (dq_candidate && dq_candidate->CanSetTransposedInput(perm_inv)) {
+      dq_to_look_past = std::move(dq_candidate);
       // underlying string for the input name is in the Node so it's safe to store in string_view constant_dq_input
       constant_dq_input = dq_to_look_past->GetInput0();
       constant = graph.GetLocalConstant(constant_dq_input);
@@ -1269,7 +1294,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(graph, *inp_node);
 
-    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode)) {
+    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode) &&
+        (dq_quant_info->mode != QuantizationMode::kPerAxis ||
+         IsAxisInRangeForPerm(dq_quant_info->norm_axis, perm_inv))) {
       dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info);
       std::string_view dq_input = dq_to_look_past->GetInput0();
       inp_node = graph.GetNodeProducingOutput(dq_input);
@@ -2975,6 +3002,13 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   std::vector<int64_t> perm_inv = InvertPerm(perm);
+  const auto inputs = node.Inputs();
+  for (size_t input_index : input_indices) {
+    if (!CanTransposeInputWithQDQ(ctx.graph, inputs[input_index], perm_inv)) {
+      return false;
+    }
+  }
+
   HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, outputs_leading_to_transpose};
   return info->handler_fn(args);
 }
@@ -3228,7 +3262,9 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   if (q_quant_info->mode == QuantizationMode::kPerAxis) {
     // Have to update the axis for newly inserted Q/DQ before a Transpose if using per-channel quantization.
     auto perm = GetPermAttrIfValid(transpose_node);
-    assert(perm.has_value());                        // onnx shape inferencing checks that `perm` is valid
+    if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
+      return false;
+    }
     axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
   }
 
