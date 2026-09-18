@@ -140,7 +140,6 @@ __global__ void VarlenNGramHashMappingKernel(
       output[(start + t) * num_heads + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
     }
   }
-
 }
 
 template <typename T>
