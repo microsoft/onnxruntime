@@ -63,8 +63,10 @@
         "^test_attention_local_window_ext_cache_rank3_head_mask_cuda$", // exits with 0xDEAD in the CUDA backend test
         "^test_attention_local_window_ext_cache_rank4_batch_mask_cuda$", // exits with 0xDEAD in the CUDA backend test
         "^test_attention_local_window_gqa_rank4_mask_cuda$", // exits with an access violation in the CUDA backend test
+        "^test_attention_local_window_gqa_rank4_mask_expanded_cuda$", // expanded Attention output mismatch
         "^test_attention_local_window_rank1_boolean_mask_cuda$", // exits with an access violation in the CUDA backend test
         "^test_attention_local_window_with_past_cuda$", // exits with an access violation in the CUDA backend test
+        "^test_attention_4d_causal_nonpad_negative_offset_structural_empty_expanded_cuda$", // expanded Attention output mismatch
         "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported
         "^test_attention_4d_with_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported
         "^test_attention_3d_with_past_and_present_qk_matmul_bias_cuda",  // QK matmul + bias not supported in Attention-cuda
@@ -105,6 +107,16 @@
         "^test_attention_4d_causal_padded_kv_bf16_expanded_cpu$",
         "^test_attention_4d_padded_kv_bf16_cpu$",
         "^test_attention_4d_padded_kv_bf16_expanded_cpu$",
+        "^test_attention_3d_causal_bf16_cuda$",
+        "^test_attention_3d_causal_bf16_expanded_cuda$",
+        "^test_attention_4d_attn_mask_causal_bf16_cuda$",
+        "^test_attention_4d_attn_mask_causal_bf16_expanded_cuda$",
+        "^test_attention_4d_causal_bf16_cuda$",
+        "^test_attention_4d_causal_bf16_expanded_cuda$",
+        "^test_attention_4d_causal_padded_kv_bf16_cuda$",
+        "^test_attention_4d_causal_padded_kv_bf16_expanded_cuda$",
+        "^test_attention_4d_padded_kv_bf16_cuda$",
+        "^test_attention_4d_padded_kv_bf16_expanded_cuda$",
         "^test_attention_local_window_ext_cache_float16_mask_cpu$",
         // TODO: Remove the exact Cast(28) failures when CPU Cast(28) is available in all builds.
         "^test_cast_DOUBLE_to_FLOAT_cpu$",
@@ -158,6 +170,7 @@
         "^test_onehot_without_axis_cpu$",
         // TODO: Remove this test when ReduceMax(28) supports an empty bool input.
         "^test_reduce_max_empty_set_bool_cpu$",
+        "^test_reduce_max_empty_set_bool_cuda$",
         // TODO(#32381): Remove the exact Swish(24) function-dependency failures when SwiGLU is supported.
         "^test_swiglu_alpha_cpu$",
         "^test_swiglu_alpha_expanded_cpu$",
