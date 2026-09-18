@@ -177,7 +177,8 @@ void RunDepthwiseConvCase(size_t channels, size_t in_height, size_t in_width, si
                                                          nullptr,
                                                          output.data(),
                                                          clamp_min,
-                                                         clamp_max);
+                                                         clamp_max,
+                                                         nullptr);
   ASSERT_TRUE(status);
 
   for (size_t i = 0; i < output_size; ++i) {
@@ -189,7 +190,8 @@ void RunMlasConvChannelsLastCase(size_t channels,
                                  size_t in_height,
                                  size_t in_width,
                                  size_t padding,
-                                 bool use_prepacked_weights = false) {
+                                 bool use_prepacked_weights = false,
+                                 MLAS_THREADPOOL* thread_pool = nullptr) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
     GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
   }
@@ -271,7 +273,7 @@ void RunMlasConvChannelsLastCase(size_t channels,
                   &working_buffer_size,
                   true,
                   0.0f,
-                  nullptr);
+                  thread_pool);
   std::vector<float> working_buffer(working_buffer_size);
   std::vector<std::byte> packed_weights;
   if (use_prepacked_weights) {
@@ -294,7 +296,7 @@ void RunMlasConvChannelsLastCase(size_t channels,
            bias.data(),
            working_buffer.data(),
            output.data(),
-           nullptr);
+           thread_pool);
 
   for (size_t i = 0; i < output_size; ++i) {
     EXPECT_NEAR(expected_nhwc[i], output[i], 1e-4f) << "Mismatch at element " << i;
@@ -325,6 +327,12 @@ TEST(MlasKleidiDepthwiseTest, LargeChannelCountNhwc) {
 
 TEST(MlasKleidiDepthwiseTest, ChannelTailNhwc) {
   RunDepthwiseConvCase(/*channels=*/129, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*channels_last=*/true);
+}
+
+TEST(MlasKleidiDepthwiseTest, ThreadedRowTilesWithTailNhwc) {
+  ASSERT_NE(GetMlasThreadPool(), nullptr);
+  RunMlasConvChannelsLastCase(/*channels=*/129, /*in_height=*/17, /*in_width=*/17, /*padding=*/1,
+                              /*use_prepacked_weights=*/true, GetMlasThreadPool());
 }
 
 TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLast) {
@@ -449,12 +457,12 @@ TEST(MlasKleidiDepthwiseTest, RejectsNon3x3Filters) {
       batches, in_height, in_width, channels, /*filter_height=*/2, /*filter_width=*/3,
       /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
       input.data(), weights.data(), bias.data(), nullptr, output.data(),
-      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), nullptr));
   EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAI(
       batches, in_height, in_width, channels, /*filter_height=*/3, /*filter_width=*/2,
       /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
       input.data(), weights.data(), bias.data(), nullptr, output.data(),
-      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), nullptr));
 }
 
 #endif  // defined(USE_KLEIDIAI) && !defined(_MSC_VER)

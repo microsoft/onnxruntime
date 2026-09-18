@@ -7,6 +7,7 @@
 #include "mlasi_kleidiai.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -277,7 +278,8 @@ DepthwiseConvKleidiAI(size_t batches,
                       const void* packed_weights,
                       float* out,
                       float clamp_min,
-                      float clamp_max) {
+                      float clamp_max,
+                      MLAS_THREADPOOL* thread_pool) {
     if (!UseSME2 || feature_map == nullptr || (weights == nullptr && packed_weights == nullptr) || out == nullptr) {
         return false;
     }
@@ -306,6 +308,9 @@ DepthwiseConvKleidiAI(size_t batches,
         return false;
     }
 
+    const uint64_t expected_streaming_vector_length = kai_get_sme_vector_length_u8();
+    const size_t expected_packed_vector_length = expected_streaming_vector_length / sizeof(float);
+
     auto& tls = g_dwconv_tls;
     ScopedKaiDwconvTlsCleanup cleanup{tls};
 
@@ -321,7 +326,7 @@ DepthwiseConvKleidiAI(size_t batches,
     if (packed_weights != nullptr) {
         size_t packed_vector_length = 0;
         std::memcpy(&packed_vector_length, packed_weights, sizeof(packed_vector_length));
-        if (packed_vector_length == kai_get_sme_vector_length_u8() / sizeof(float)) {
+        if (packed_vector_length == expected_packed_vector_length) {
             packed_rhs = reinterpret_cast<const std::byte*>(packed_weights) + sizeof(packed_vector_length);
         }
     }
@@ -367,40 +372,78 @@ DepthwiseConvKleidiAI(size_t batches,
 
     const size_t in_row_stride_elements = in_width * channels;
     const size_t out_row_stride_elements = out_width * channels;
-    for (size_t out_row = 0; out_row < out_height; out_row += rows_handled) {
-        const ptrdiff_t start_in_row = static_cast<ptrdiff_t>(out_row) - static_cast<ptrdiff_t>(pad_top);
-        const size_t kernel_pad_top = start_in_row < 0 ? static_cast<size_t>(-start_in_row) : 0;
-        const size_t in_row = start_in_row < 0 ? 0 : static_cast<size_t>(start_in_row);
+    const size_t row_tile_count = MlasDivRoundup(out_height, rows_handled);
+    const auto run_row_tiles = [&](size_t first_tile, size_t tile_count) {
+        for (size_t tile = first_tile; tile < first_tile + tile_count; ++tile) {
+            const size_t out_row = tile * rows_handled;
+            const ptrdiff_t start_in_row = static_cast<ptrdiff_t>(out_row) - static_cast<ptrdiff_t>(pad_top);
+            const size_t kernel_pad_top = start_in_row < 0 ? static_cast<size_t>(-start_in_row) : 0;
+            const size_t in_row = start_in_row < 0 ? 0 : static_cast<size_t>(start_in_row);
 
-        const size_t rows_to_process = std::min(rows_handled, out_height - out_row);
-        size_t valid_input_rows = 0;
-        if (in_row < in_height) {
-            const size_t max_rows_available = in_height - in_row;
-            const size_t needed_rows = filter_height + rows_to_process - 1;
-            valid_input_rows = std::min(max_rows_available, needed_rows);
+            const size_t rows_to_process = std::min(rows_handled, out_height - out_row);
+            size_t valid_input_rows = 0;
+            if (in_row < in_height) {
+                const size_t max_rows_available = in_height - in_row;
+                const size_t needed_rows = filter_height + rows_to_process - 1;
+                valid_input_rows = std::min(max_rows_available, needed_rows);
+            }
+
+            const float* inptr = feature_map_nhwc + in_row * in_row_stride_elements;
+            float* outptr = nhwc_out + out_row * out_row_stride_elements;
+
+            KLEIDIAI_KERNEL_LOG(dwconv.name
+                                << " valid_input_rows=" << valid_input_rows
+                                << " valid_dst_rows=" << rows_to_process
+                                << " pad_left=" << pad_left << " pad_top=" << kernel_pad_top);
+            dwconv.ukernel.run_dwconv(inptr,
+                                      packed_rhs,
+                                      outptr,
+                                      in_row_stride_elements * sizeof(float),
+                                      channels * sizeof(float),
+                                      out_row_stride_elements * sizeof(float),
+                                      channels * sizeof(float),
+                                      valid_input_rows,
+                                      rows_to_process,
+                                      pad_left,
+                                      kernel_pad_top,
+                                      0.0f,
+                                      clamp_min,
+                                      clamp_max);
         }
+    };
 
-        const float* inptr = feature_map_nhwc + in_row * in_row_stride_elements;
-        float* outptr = nhwc_out + out_row * out_row_stride_elements;
+    const size_t maximum_thread_count =
+        static_cast<size_t>(std::max<ptrdiff_t>(1, MlasGetMaximumThreadCount(thread_pool)));
+    const double complexity = static_cast<double>(out_height) * static_cast<double>(out_width) *
+                              static_cast<double>(channels) * static_cast<double>(filter_height * filter_width);
+    const double maximum_threaded_complexity =
+        static_cast<double>(maximum_thread_count) * static_cast<double>(MLAS_SGEMM_THREAD_COMPLEXITY);
+    const size_t complexity_thread_count =
+        complexity >= maximum_threaded_complexity
+            ? maximum_thread_count
+            : static_cast<size_t>(complexity / static_cast<double>(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
+    const size_t thread_count = std::min({row_tile_count, maximum_thread_count, complexity_thread_count});
 
-        KLEIDIAI_KERNEL_LOG(dwconv.name
-                            << " valid_input_rows=" << valid_input_rows
-                            << " valid_dst_rows=" << rows_to_process
-                            << " pad_left=" << pad_left << " pad_top=" << kernel_pad_top);
-        dwconv.ukernel.run_dwconv(inptr,
-                                  packed_rhs,
-                                  outptr,
-                                  in_row_stride_elements * sizeof(float),
-                                  channels * sizeof(float),
-                                  out_row_stride_elements * sizeof(float),
-                                  channels * sizeof(float),
-                                  valid_input_rows,
-                                  rows_to_process,
-                                  pad_left,
-                                  kernel_pad_top,
-                                  0.0f,
-                                  clamp_min,
-                                  clamp_max);
+    if (thread_count == 1) {
+        run_row_tiles(0, row_tile_count);
+    } else {
+        std::atomic<bool> vector_length_mismatch{false};
+        MlasTrySimpleParallel(thread_pool, static_cast<ptrdiff_t>(thread_count), [&](ptrdiff_t thread_id) {
+            if (kai_get_sme_vector_length_u8() != expected_streaming_vector_length) {
+                vector_length_mismatch.store(true, std::memory_order_relaxed);
+                return;
+            }
+
+            size_t first_tile = 0;
+            size_t tile_count = 0;
+            MlasPartitionWork(thread_id, static_cast<ptrdiff_t>(thread_count), row_tile_count, &first_tile, &tile_count);
+            run_row_tiles(first_tile, tile_count);
+        });
+
+        if (vector_length_mismatch.load(std::memory_order_relaxed)) {
+            // Matching workers may have written disjoint rows, so overwrite the complete output on the caller thread.
+            run_row_tiles(0, row_tile_count);
+        }
     }
 
     if (!channels_last) {
