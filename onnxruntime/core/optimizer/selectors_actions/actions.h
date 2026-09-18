@@ -109,8 +109,6 @@ struct MergeIntoTarget : public Action {
  private:
   // specifies how the inputs and outputs from the nodes to be merged are moved to the target node
   virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
-
-  RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
 };
 
 // merge into target with value moves specified at construction time
@@ -163,8 +161,6 @@ struct ReplaceWithNew : public Action {
   // the second weight of MatMul ops and create new node args.
   // Note: This method is only used in Run(), but not in RunForSave().
   virtual Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const { return Status::OK(); }
-
-  RemoveNodes node_remover_;
 };
 
 // replace with a new node that is specified at construction time

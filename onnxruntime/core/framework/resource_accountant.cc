@@ -23,10 +23,70 @@
 
 namespace onnxruntime {
 
+void ConsolidateWorkspaceReservations(
+    NodeWorkspaceReservationMap& reservations,
+    gsl::span<const size_t> source_node_indices,
+    size_t destination_node_index) {
+  WorkspaceEstimateSelection aggregate;
+  bool has_reservation = false;
+  InlinedHashSet<size_t> matched_node_indices;
+  const auto accumulate_reservation = [&aggregate, &has_reservation](
+                                          const WorkspaceEstimateSelection& reservation) {
+    aggregate.bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.bytes) + reservation.bytes);
+    aggregate.profiled_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.profiled_bytes) + reservation.profiled_bytes);
+    aggregate.level1_estimated_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.level1_estimated_bytes) +
+                            reservation.level1_estimated_bytes);
+    aggregate.persistent_prepack_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.persistent_prepack_bytes) +
+                            reservation.persistent_prepack_bytes);
+    aggregate.initialization_scratch_bytes =
+        std::max(aggregate.initialization_scratch_bytes, reservation.initialization_scratch_bytes);
+    aggregate.source =
+        !has_reservation || aggregate.source == reservation.source
+            ? reservation.source
+            : WorkspaceEstimateSource::kNone;
+    has_reservation = true;
+  };
+
+  for (size_t node_index : source_node_indices) {
+    const auto reservation_it = reservations.find(node_index);
+    if (reservation_it == reservations.end() ||
+        !matched_node_indices.insert(node_index).second) {
+      continue;
+    }
+
+    accumulate_reservation(reservation_it->second);
+  }
+
+  if (!has_reservation) {
+    return;
+  }
+
+  if (matched_node_indices.find(destination_node_index) == matched_node_indices.end()) {
+    const auto destination_reservation_it = reservations.find(destination_node_index);
+    if (destination_reservation_it != reservations.end()) {
+      accumulate_reservation(destination_reservation_it->second);
+    }
+  }
+
+  for (size_t node_index : matched_node_indices) {
+    reservations.erase(node_index);
+  }
+  reservations.insert_or_assign(destination_node_index, aggregate);
+}
+
 // Accounts for resources represented as byte counts. Per-node costs can come from
 // profiling statistics, ad-hoc fallback estimation, or an operator-specific estimator.
 // This is currently used by CUDA EP.
 class SizeBasedResourceAccountant : public IResourceAccountant {
+  struct PendingWorkspaceEstimate {
+    const void* graph_identity;
+    WorkspaceEstimateSelection selection;
+  };
+
  public:
   SizeBasedResourceAccountant() = default;
   ~SizeBasedResourceAccountant() = default;
@@ -104,14 +164,16 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
         pending_workspace_selection_by_node_.insert_or_assign(
             node.Index(),
-            WorkspaceEstimateSelection{
-                selected_workspace,
-                has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
-                              : WorkspaceEstimateSource::kProfile,
-                stats.total_temp_allocations,
-                level1_workspace_bytes,
-                persistent_prepack_bytes,
-                initialization_scratch_bytes});
+            PendingWorkspaceEstimate{
+                node.GetContainingGraph(),
+                WorkspaceEstimateSelection{
+                    selected_workspace,
+                    has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
+                                  : WorkspaceEstimateSource::kProfile,
+                    stats.total_temp_allocations,
+                    level1_workspace_bytes,
+                    persistent_prepack_bytes,
+                    initialization_scratch_bytes}});
         const SafeInt<size_t> resource_count =
             SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
             stats.total_dynamic_sizes + selected_workspace +
@@ -222,14 +284,16 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
     pending_workspace_selection_by_node_.insert_or_assign(
         node.Index(),
-        WorkspaceEstimateSelection{
-            selected_workspace,
-            has_estimator ? WorkspaceEstimateSource::kEstimator
-                          : WorkspaceEstimateSource::kFallback,
-            0,
-            level1_workspace_bytes,
-            persistent_prepack_bytes,
-            initialization_scratch_bytes});
+        PendingWorkspaceEstimate{
+            node.GetContainingGraph(),
+            WorkspaceEstimateSelection{
+                selected_workspace,
+                has_estimator ? WorkspaceEstimateSource::kEstimator
+                              : WorkspaceEstimateSource::kFallback,
+                0,
+                level1_workspace_bytes,
+                persistent_prepack_bytes,
+                initialization_scratch_bytes}});
     return static_cast<size_t>(estimated + selected_workspace +
                                persistent_prepack_bytes);
   }
@@ -252,7 +316,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
 
     auto workspace_it = pending_workspace_selection_by_node_.find(node_index);
     if (workspace_it != pending_workspace_selection_by_node_.end()) {
-      CommitWorkspaceEstimate(workspace_it->second);
+      CommitWorkspaceEstimate(
+          workspace_it->second.graph_identity, node_index, workspace_it->second.selection);
       pending_workspace_selection_by_node_.erase(workspace_it);
     }
   }
@@ -260,11 +325,24 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   WorkspaceEstimateSelection GetPendingWorkspaceEstimateSelection(
       NodeIndex node_index) const override {
     auto it = pending_workspace_selection_by_node_.find(node_index);
-    return it == pending_workspace_selection_by_node_.end() ? WorkspaceEstimateSelection{} : it->second;
+    return it == pending_workspace_selection_by_node_.end() ? WorkspaceEstimateSelection{} : it->second.selection;
   }
 
-  void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection selection) override {
-    CommitWorkspaceEstimate(selection);
+  void AddCommittedWorkspaceEstimate(
+      const void* graph_identity, size_t node_index,
+      WorkspaceEstimateSelection selection) override {
+    CommitWorkspaceEstimate(graph_identity, node_index, selection);
+  }
+
+  void ConsolidateCommittedWorkspaceReservations(
+      const void* graph_identity, gsl::span<const size_t> source_node_indices,
+      size_t destination_node_index) override {
+    auto graph_it = committed_workspace_reservations_.find(graph_identity);
+    if (graph_it == committed_workspace_reservations_.end()) {
+      return;
+    }
+
+    ConsolidateWorkspaceReservations(graph_it->second, source_node_indices, destination_node_index);
   }
 
   WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
@@ -273,6 +351,10 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
 
   WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const override {
     return workspace_estimate_comparison_;
+  }
+
+  WorkspaceReservationMap GetCommittedWorkspaceReservations() const override {
+    return committed_workspace_reservations_;
   }
 
   size_t GetCommittedWorkspaceEstimate() const override {
@@ -288,7 +370,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   }
 
  private:
-  void CommitWorkspaceEstimate(WorkspaceEstimateSelection selection) {
+  void CommitWorkspaceEstimate(
+      const void* graph_identity, size_t node_index, WorkspaceEstimateSelection selection) {
     const size_t new_workspace_estimate =
         static_cast<size_t>(SafeInt<size_t>(committed_workspace_estimate_) + selection.bytes);
     const size_t new_persistent_prepack_estimate =
@@ -302,6 +385,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     committed_workspace_estimate_ = new_workspace_estimate;
     committed_persistent_prepack_estimate_ = new_persistent_prepack_estimate;
     committed_initialization_scratch_estimate_ = new_initialization_scratch_estimate;
+    committed_workspace_reservations_[graph_identity].insert_or_assign(node_index, selection);
     switch (selection.source) {
       case WorkspaceEstimateSource::kFallback:
         ++workspace_source_counts_.fallback;
@@ -350,7 +434,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
 
   // Selected workspace bytes and source for each probed node. Keeping them in
   // one value prevents the reported source from diverging from the selected size.
-  InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pending_workspace_selection_by_node_;
+  InlinedHashMap<NodeIndex, PendingWorkspaceEstimate> pending_workspace_selection_by_node_;
 
   // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;
@@ -358,6 +442,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   size_t committed_initialization_scratch_estimate_ = 0;
   WorkspaceEstimateSourceCounts workspace_source_counts_;
   WorkspaceEstimateComparisonSummary workspace_estimate_comparison_;
+  WorkspaceReservationMap committed_workspace_reservations_;
 };
 
 struct NodeStatsRecorder::Impl {

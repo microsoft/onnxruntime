@@ -29,6 +29,11 @@
 #include <cuda_runtime_api.h>
 #endif
 
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/bert/gated_delta_net.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -247,7 +252,9 @@ std::vector<float> RoundToTensorType(const std::vector<float>& data) {
 // the buffers are byte-identical, only the declared shapes differ.
 template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
-                  float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
+                  float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
+                  bool use_webgpu = false, bool omit_final_state = false,
+                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -300,21 +307,27 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   if (o.gate_activation == "qwen") {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
-  } else if (o.state_update_capacity > 0) {
+  } else {
     test.AddOptionalInputEdge<float>();
     test.AddOptionalInputEdge<float>();
   }
   if (o.state_update_capacity > 0) {
     test.AddInput<int32_t>("capture_count", {g.batch}, in.capture_count);
-    if (!in.state_update_active.empty()) {
-      test.AddInput<int32_t>("state_update_active", {1}, in.state_update_active);
-    }
+  } else if (!in.state_update_active.empty()) {
+    test.AddOptionalInputEdge<int32_t>();
+  }
+  if (!in.state_update_active.empty()) {
+    test.AddInput<int32_t>("state_update_active", {1}, in.state_update_active);
   }
 
   test.AddOutput<T>("output", shaped({out_heads, g.dv}), ToTensorType<T>(ref_out),
                     false, out_tol, out_tol);
-  test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
-                        state_tol);
+  if (omit_final_state) {
+    test.AddOptionalOutputEdge<float>();
+  } else {
+    test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
+                          state_tol);
+  }
   if (o.state_update_capacity > 0) {
     const int64_t width = static_cast<int64_t>(o.state_update_capacity) *
                           (g.hv + g.hq * g.dk + g.hv * g.dv);
@@ -326,14 +339,27 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  if (use_webgpu) {
+#ifdef USE_WEBGPU
+    eps.push_back(webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
+                                           : DefaultWebGpuExecutionProvider());
+#else
+    eps.push_back(DefaultWebGpuExecutionProvider());
+#endif
+  } else {
+    eps.push_back(DefaultCudaExecutionProvider());
+  }
+  const bool webgpu_compact_update = use_webgpu && o.state_update_capacity > 0;
+  test.Run(webgpu_compact_update ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+           webgpu_compact_update ? "WebGPU GatedDeltaNet does not support state_update_capacity > 0" : "",
+           {}, nullptr, &eps);
   if (fetches != nullptr) *fetches = test.GetFetches();
 }
 
 void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
-             float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
-  RunTypedCase<MLFloat16>(g, o, in, out_tol, state_tol, rank4, fetches);
+             float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
+             bool use_webgpu = false) {
+  RunTypedCase<MLFloat16>(g, o, in, out_tol, state_tol, rank4, fetches, use_webgpu);
 }
 
 constexpr int kDim = 128;  // the chunked engine is specialised for head_size 128
@@ -372,7 +398,170 @@ bool NeedSkipGatedDeltaNetSplitTest() {
 #endif
 }
 
+bool NeedSkipGatedDeltaNetWebGpuTest() {
+  return DefaultWebGpuExecutionProvider() == nullptr;
+}
+
 }  // namespace
+
+TEST(GatedDeltaNetWebGpuTest, Rank4AllRulesAndInverseGqa) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{6, 2, 2, 6, 8, 5};  // Hv/Hq == 3
+  for (const char* rule : {"linear", "gated", "delta", "gated_delta"}) {
+    SCOPED_TRACE(rule);
+    Options options;
+    options.update_rule = rule;
+    options.gate_activation = "qwen";
+    options.beta_activation = "sigmoid";
+    options.qk_l2_norm = 1;
+    RunCase(g, options, MakeInputs(g, 201), 3e-3f, 3e-4f, /*rank4=*/true,
+            /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, Rank3UniformFloat32) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{8, 2, 1, 3, 7, 4};
+  RunTypedCase<float>(g, Options{}, MakeInputs(g, 211), 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{128, 2, 2, 6, 8, 5};
+  const Inputs inputs = MakeInputs(g, 213);
+  Options options;
+  options.update_rule = "linear";
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
+}
+
+#ifdef USE_WEBGPU
+TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  // A 128 MiB binding limit forces Q and K into two storage-buffer segments. The
+  // last token crosses that boundary, exercising the shader helper accessors.
+  Geometry g{131073, 1, 1, 1, 256, 1};
+  Options options;
+  options.update_rule = "linear";
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(
+      config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728"));
+  RunTypedCase<float>(g, options, MakeInputs(g, 227), 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true, &config_options);
+}
+#endif
+
+TEST(GatedDeltaNetWebGpuTest, LongUniformNonLinearRulesUseRecurrentFallback) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{128, 2, 2, 6, 8, 5};
+  const Inputs inputs = MakeInputs(g, 217);
+  for (const char* rule : {"gated", "delta", "gated_delta"}) {
+    SCOPED_TRACE(rule);
+    Options options;
+    options.update_rule = rule;
+    RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                        /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+#ifdef USE_WEBGPU
+TEST(GatedDeltaNetWebGpuPlanTest, ParallelPrefillWorkspaceIsBounded) {
+  using onnxruntime::contrib::webgpu::SelectGatedDeltaNetParallelPrefillPlan;
+
+  const auto short_plan = SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 4);
+  const auto long_plan = SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 4096);
+  ASSERT_TRUE(short_plan.has_value());
+  ASSERT_TRUE(long_plan.has_value());
+  EXPECT_LE(short_plan->workspace_bytes, 64ull << 20);
+  EXPECT_LE(long_plan->workspace_bytes, 64ull << 20);
+  EXPECT_LT(long_plan->chunks_per_pass, 4096u);
+  EXPECT_LT(long_plan->workspace_bytes, 16 * short_plan->workspace_bytes);
+  EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(32ull << 20, 2).has_value());
+}
+#endif
+
+TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 3, 1, 3, 8, 4};
+  Inputs inputs = MakeInputs(g, 223, /*with_state=*/false);
+  inputs.cu_seqlens = {0, 1, 5, 7};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.scale = 0.37f;
+  RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 3, 1, 3, 8, 5};
+  Inputs inputs = MakeInputs(g, 225);
+  inputs.cu_seqlens = {0, 1, 5, 7};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  Inputs inputs = MakeInputs(g, 227);
+  inputs.capture_count = {1};
+  Options options;
+  options.state_update_capacity = 1;
+  RunTypedCase<float>(g, options, inputs, 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, IgnoresStateUpdateActiveWithoutCapture) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  Inputs inputs = MakeInputs(g, 228);
+  inputs.state_update_active = {0};
+  RunTypedCase<float>(g, Options{}, inputs, 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, FinalStateIsOptional) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  RunTypedCase<float>(g, Options{}, MakeInputs(g, 229), 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
+}
 
 // ---------------------------------------------------------------------------
 // Chunked engine (prefill): T well above the 32-token plan threshold.
@@ -795,18 +984,18 @@ TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
   RunCase(g2, Options{}, in2, 3e-2f, 3e-2f);
 }
 
-void RunAliasedStateIoBindingCase(int total_tokens) {
-  auto ep = DefaultCudaExecutionProvider();
+void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionProvider> ep,
+                                  const char* execution_provider_type, const Options& options = Options{}) {
   ASSERT_NE(ep, nullptr);
 
   Geometry geometry{total_tokens, 1, 1, 2, kDim, kDim};
   Inputs inputs = MakeInputs(geometry, static_cast<uint32_t>(total_tokens) + 163);
   std::vector<float> first_output, first_state;
-  Reference(geometry, Options{}, inputs, &first_output, &first_state);
+  Reference(geometry, options, inputs, &first_output, &first_state);
   Inputs second_inputs = inputs;
   second_inputs.state0 = first_state;
   std::vector<float> expected_output, expected_state;
-  Reference(geometry, Options{}, second_inputs, &expected_output, &expected_state);
+  Reference(geometry, options, second_inputs, &expected_output, &expected_state);
 
   std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> functions;
@@ -851,12 +1040,16 @@ void RunAliasedStateIoBindingCase(int total_tokens) {
   auto& final_state_arg = graph.GetOrCreateNodeArg(
       "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                  {1, geometry.hv, geometry.dv, geometry.dk}));
+  const bool needs_decay = options.update_rule == "gated" || options.update_rule == "gated_delta";
+  const bool needs_beta = options.update_rule == "delta" || options.update_rule == "gated_delta";
   std::vector<NodeArg*> node_inputs = {
-      &query_arg, &key_arg, &value_arg, &empty, &decay_arg, &beta_arg, &state_arg};
+      &query_arg, &key_arg, &value_arg, &empty, needs_decay ? &decay_arg : &empty,
+      needs_beta ? &beta_arg : &empty, &state_arg};
   std::vector<NodeArg*> node_outputs = {&output_arg, &final_state_arg};
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
-  node.SetExecutionProviderType(kCudaExecutionProvider);
+  node.AddAttribute("update_rule", options.update_rule);
+  node.SetExecutionProviderType(execution_provider_type);
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::string serialized;
@@ -913,8 +1106,12 @@ void RunAliasedStateIoBindingCase(int total_tokens) {
   ASSERT_STATUS_OK(binding->BindInput("query", query_value));
   ASSERT_STATUS_OK(binding->BindInput("key", key_value));
   ASSERT_STATUS_OK(binding->BindInput("value", value_value));
-  ASSERT_STATUS_OK(binding->BindInput("decay", decay_value));
-  ASSERT_STATUS_OK(binding->BindInput("beta", beta_value));
+  if (needs_decay) {
+    ASSERT_STATUS_OK(binding->BindInput("decay", decay_value));
+  }
+  if (needs_beta) {
+    ASSERT_STATUS_OK(binding->BindInput("beta", beta_value));
+  }
   ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
   ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
   ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
@@ -946,8 +1143,18 @@ void RunAliasedStateIoBindingCase(int total_tokens) {
 
 TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
   if (NeedSkipGatedDeltaNetTest()) return;
-  RunAliasedStateIoBindingCase(/*total_tokens=*/4);
-  RunAliasedStateIoBindingCase(/*total_tokens=*/64);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/4, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/64, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
+}
+
+TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Options options;
+  options.update_rule = "linear";
+  RunAliasedStateIoBindingCase(/*total_tokens=*/64, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
 }
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.
