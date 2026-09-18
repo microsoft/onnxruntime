@@ -2570,10 +2570,15 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     const size_t element_size = ml_data->Size();
+    const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
+    ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
+                      "Sparse tensor: ", name, " dense data size of ", dense_data_size,
+                      " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                      " byte limit for embedded initializer data.");
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
+    std::string dense_data_storage(dense_data_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;
