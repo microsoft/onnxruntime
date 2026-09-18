@@ -22,11 +22,15 @@ and policy-incompatible inputs or attributes are rejected.
 ## Execution
 
 State concatenation, visible-token grouping, QSA pooling, CSA overlap
-compression, RMS normalization, rotary embedding, scoring, selection, and
+compression, query/key RMS normalization, rotary embedding, scoring, selection, and
 output padding execute in WGSL. The implementation does not map GPU buffers,
 read selected values back to the host, or retain state in the kernel object.
 All reductions and softmax calculations accumulate in FP32, including for
 FP16 inputs.
+
+The rank-3 query projection is logically reshaped into heads inside the shader. Query and key
+projections therefore both connect directly to the operator; their consecutive norm-weight inputs
+are applied internally before rotary embedding.
 
 The initial implementation prioritizes correctness and uses one independently
 writable workgroup per query or completed CSA window. Candidate scoring during

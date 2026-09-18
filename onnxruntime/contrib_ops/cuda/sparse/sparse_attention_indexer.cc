@@ -159,6 +159,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
 
   const Tensor* query = context->Input<Tensor>(sai::kQuery);
   const Tensor* key = context->Input<Tensor>(sai::kKey);
+  const Tensor* query_norm_weight = context->Input<Tensor>(sai::kQueryNormWeight);
   const Tensor* key_norm_weight = context->Input<Tensor>(sai::kKeyNormWeight);
   const Tensor* cos_cache = context->Input<Tensor>(sai::kCosCache);
   const Tensor* sin_cache = context->Input<Tensor>(sai::kSinCache);
@@ -166,14 +167,20 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(sai::kPastKey);
 
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4,
-                    "SparseAttentionIndexer: query must have shape (batch_size, sequence_length, num_heads, head_size)"
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3,
+                    "SparseAttentionIndexer: query must have shape "
+                    "(batch_size, sequence_length, num_heads * head_size)"
                     ", got ",
                     query_shape.ToString());
   const int64_t batch_size = query_shape[0];
   const int64_t sequence_length = query_shape[1];
-  const int64_t num_heads = query_shape[2];
-  const int64_t head_size = query_shape[3];
+  const auto& query_norm_shape = query_norm_weight->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0,
+                    "SparseAttentionIndexer: query_norm_weight must have a non-empty rank-1 shape");
+  const int64_t head_size = query_norm_shape[0];
+  ORT_RETURN_IF_NOT(query_shape[2] > 0 && query_shape[2] % head_size == 0,
+                    "SparseAttentionIndexer: query width must be positive and divisible by head_size");
+  const int64_t num_heads = query_shape[2] / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
   ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
@@ -207,6 +214,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                 "past_sequence_length is provided");
 
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
 
   const auto& mask_shape = mask->Shape();
@@ -263,6 +271,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
+      reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
@@ -280,6 +289,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
 
   const Tensor* query = context->Input<Tensor>(sai::kQuery);
   const Tensor* key = context->Input<Tensor>(sai::kKey);
+  const Tensor* query_norm_weight = context->Input<Tensor>(sai::kQueryNormWeight);
   const Tensor* key_norm_weight = context->Input<Tensor>(sai::kKeyNormWeight);
   const Tensor* cos_cache = context->Input<Tensor>(sai::kCosCache);
   const Tensor* sin_cache = context->Input<Tensor>(sai::kSinCache);
@@ -291,14 +301,20 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   const Tensor* past_proj_buffer = context->Input<Tensor>(sai::kPastProjBuffer);
 
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4,
-                    "SparseAttentionIndexer: query must have shape (batch_size, sequence_length, num_heads, head_size)"
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3,
+                    "SparseAttentionIndexer: query must have shape "
+                    "(batch_size, sequence_length, num_heads * head_size)"
                     ", got ",
                     query_shape.ToString());
   const int64_t batch_size = query_shape[0];
   const int64_t sequence_length = query_shape[1];
-  const int64_t num_heads = query_shape[2];
-  const int64_t head_size = query_shape[3];
+  const auto& query_norm_shape = query_norm_weight->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0,
+                    "SparseAttentionIndexer: query_norm_weight must have a non-empty rank-1 shape");
+  const int64_t head_size = query_norm_shape[0];
+  ORT_RETURN_IF_NOT(query_shape[2] > 0 && query_shape[2] % head_size == 0,
+                    "SparseAttentionIndexer: query width must be positive and divisible by head_size");
+  const int64_t num_heads = query_shape[2] / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
   ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
@@ -338,6 +354,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckIntDimension("past_buffer_length", past_buffer_length));
 
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, width}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(gate, "gate", {batch_size, sequence_length, width}));
   ORT_RETURN_IF_ERROR(CheckShape(position_bias, "position_bias", {compress_ratio_, width}));
@@ -414,6 +431,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
+      reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),

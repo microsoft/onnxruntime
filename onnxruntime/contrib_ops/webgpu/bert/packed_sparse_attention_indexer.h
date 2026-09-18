@@ -23,7 +23,8 @@ class PackedSparseAttentionIndexerCopyProgram final
   PackedSparseAttentionIndexerCopyProgram() : Program{"PackedSparseAttentionIndexerCopy"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"total", ProgramUniformVariableDataType::Uint32});
+      {"total", ProgramUniformVariableDataType::Uint32},
+      {"dst_offset", ProgramUniformVariableDataType::Uint32});
 };
 
 // One invocation per request: forms every newly-closed compress_ratio block (mean-pool ->
@@ -31,12 +32,9 @@ class PackedSparseAttentionIndexerCopyProgram final
 class PackedSparseAttentionIndexerQsaUpdateProgram final
     : public Program<PackedSparseAttentionIndexerQsaUpdateProgram> {
  public:
-  PackedSparseAttentionIndexerQsaUpdateProgram(bool cos_cache_batched, bool kv_buffer_aliases,
-                                               bool state_lengths_aliases)
+  explicit PackedSparseAttentionIndexerQsaUpdateProgram(bool cos_cache_batched)
       : Program{"PackedSparseAttentionIndexerQsaUpdate"},
-        cos_cache_batched_{cos_cache_batched},
-        kv_buffer_aliases_{kv_buffer_aliases},
-        state_lengths_aliases_{state_lengths_aliases} {}
+        cos_cache_batched_{cos_cache_batched} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -51,8 +49,6 @@ class PackedSparseAttentionIndexerQsaUpdateProgram final
 
  private:
   bool cos_cache_batched_;
-  bool kv_buffer_aliases_;
-  bool state_lengths_aliases_;
 };
 
 // One invocation per query token: rotates the query, scores it against every causally visible
@@ -90,13 +86,9 @@ class PackedSparseAttentionIndexerQsaSelectProgram final
 class PackedSparseAttentionIndexerCsaUpdateProgram final
     : public Program<PackedSparseAttentionIndexerCsaUpdateProgram> {
  public:
-  PackedSparseAttentionIndexerCsaUpdateProgram(bool cos_cache_batched, bool kv_buffer_aliases,
-                                               bool gate_buffer_aliases, bool state_lengths_aliases)
+  explicit PackedSparseAttentionIndexerCsaUpdateProgram(bool cos_cache_batched)
       : Program{"PackedSparseAttentionIndexerCsaUpdate"},
-        cos_cache_batched_{cos_cache_batched},
-        kv_buffer_aliases_{kv_buffer_aliases},
-        gate_buffer_aliases_{gate_buffer_aliases},
-        state_lengths_aliases_{state_lengths_aliases} {}
+        cos_cache_batched_{cos_cache_batched} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -111,9 +103,6 @@ class PackedSparseAttentionIndexerCsaUpdateProgram final
 
  private:
   bool cos_cache_batched_;
-  bool kv_buffer_aliases_;
-  bool gate_buffer_aliases_;
-  bool state_lengths_aliases_;
 };
 
 // One invocation per query token: rotates the query, scores it against every causally visible
