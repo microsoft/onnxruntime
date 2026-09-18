@@ -32,7 +32,7 @@ $MAIN {
 
   // Calculate position_id (needed for rotary embedding)
   let seqlen_i = seqlens.getByOffset(batch_idx);
-  let raw_total_seqlen = u32(seqlen_i) + 1u;
+  let raw_total_seqlen = u32(max(seqlen_i, 0)) + 1u;
   let total_seqlen = min(raw_total_seqlen, uniforms.present_sequence_length);
 
   // Right-padded batches with prompt shorter than sequence_length would underflow u32; clamp to 0.
