@@ -29,7 +29,7 @@ class BranchwiseRMSNormProgram final : public Program<BranchwiseRMSNormProgram> 
 class BranchwiseRMSNorm final : public WebGpuKernel {
  public:
   explicit BranchwiseRMSNorm(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   float epsilon_;

@@ -683,4 +683,14 @@ Status LayerNormImpl::ComputeWithoutContext(
   return Status::OK();
 }
 
+template Status LayerNormImpl::ComputeWithoutContext<float, float>(
+    const float*, const TensorShape&, const float*, const TensorShape&, const float*, const TensorShape&,
+    float*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
+template Status LayerNormImpl::ComputeWithoutContext<MLFloat16, float>(
+    const MLFloat16*, const TensorShape&, const MLFloat16*, const TensorShape&, const MLFloat16*, const TensorShape&,
+    MLFloat16*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
+template Status LayerNormImpl::ComputeWithoutContext<BFloat16, float>(
+    const BFloat16*, const TensorShape&, const BFloat16*, const TensorShape&, const BFloat16*, const TensorShape&,
+    BFloat16*, float*, float*, concurrency::ThreadPool*, int64_t, float, bool, AllocatorPtr) const;
+
 }  // namespace onnxruntime

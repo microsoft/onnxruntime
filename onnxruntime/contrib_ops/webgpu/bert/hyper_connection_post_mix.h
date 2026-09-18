@@ -30,7 +30,7 @@ class HyperConnectionPostMixProgram final : public Program<HyperConnectionPostMi
 class HyperConnectionPostMix final : public WebGpuKernel {
  public:
   explicit HyperConnectionPostMix(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   int64_t num_branches_;

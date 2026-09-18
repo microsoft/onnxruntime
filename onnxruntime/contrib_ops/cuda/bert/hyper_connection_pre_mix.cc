@@ -6,7 +6,7 @@
 #include <limits>
 
 #include "contrib_ops/cuda/bert/hyper_connection_pre_mix_impl.h"
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
 namespace onnxruntime::contrib::cuda {

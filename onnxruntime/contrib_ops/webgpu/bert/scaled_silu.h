@@ -26,7 +26,7 @@ class ScaledSiLUProgram final : public Program<ScaledSiLUProgram> {
 class ScaledSiLU final : public WebGpuKernel {
  public:
   explicit ScaledSiLU(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   float alpha_;

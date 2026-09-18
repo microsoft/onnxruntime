@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -59,7 +59,7 @@ HyperConnectionPreMix::HyperConnectionPreMix(const OpKernelInfo& info)
       num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)),
       reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)) {}
 
-Status HyperConnectionPreMix::ComputeInternal(ComputeContext& context) const {
+Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* streams = context.Input(0);
   const auto* pre_mix = context.Input(1);
   hyper_connection::StreamShape params;

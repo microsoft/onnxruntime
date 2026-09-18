@@ -77,6 +77,35 @@ TEST(HyperConnectionOpsTest, BranchwiseRMSNormFlattenedWithoutScale) {
   });
 }
 
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormGroupedBranchScale) {
+  const std::vector<float> x = {3.0f, 4.0f, 0.0f, 2.0f};
+  const float inv_first = 1.0f / std::sqrt(12.5f + 1e-5f);
+  const float inv_second = 1.0f / std::sqrt(2.0f + 1e-5f);
+  RunOnAvailableProviders("BranchwiseRMSNorm", [&](OpTester& tester) {
+    tester.AddInput<float>("X", {1, 2, 2}, x);
+    tester.AddInput<float>("scale", {2, 2}, {2.0f, 0.5f, 0.25f, 3.0f});
+    tester.AddOutput<float>(
+        "Y", {1, 2, 2},
+        {3.0f * inv_first * 2.0f, 4.0f * inv_first * 0.5f,
+         0.0f, 2.0f * inv_second * 3.0f},
+        false, 1e-5f, 1e-5f);
+  });
+}
+
+TEST(HyperConnectionOpsTest, BranchwiseRMSNormMixedScaleType) {
+  const std::vector<float> x = {3.0f, 4.0f, 0.0f, 2.0f};
+  const float inv_first = 1.0f / std::sqrt(12.5f + 1e-5f);
+  const float inv_second = 1.0f / std::sqrt(2.0f + 1e-5f);
+  RunOnAvailableProviders("BranchwiseRMSNorm", [&](OpTester& tester) {
+    tester.AddInput<MLFloat16>("X", {1, 2, 2}, ToFloat16(x));
+    tester.AddInput<float>("scale", {4}, {2.0f, 0.5f, 0.25f, 3.0f});
+    tester.AddOutput<MLFloat16>(
+        "Y", {1, 2, 2},
+        ToFloat16({3.0f * inv_first * 2.0f, 4.0f * inv_first * 0.5f,
+                   0.0f, 2.0f * inv_second * 3.0f}));
+  });
+}
+
 TEST(HyperConnectionOpsTest, ScaledSiLU) {
   RunOnAvailableProviders("ScaledSiLU", [&](OpTester& tester) {
     tester.AddAttribute<float>("alpha", 0.5f);

@@ -3,7 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/branchwise_rms_norm.h"
 
-#include "contrib_ops/hyper_connection_helper.h"
+#include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -63,7 +63,7 @@ BranchwiseRMSNorm::BranchwiseRMSNorm(const OpKernelInfo& info)
       epsilon_(info.GetAttrOrDefault<float>("epsilon", 1e-5f)),
       num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)) {}
 
-Status BranchwiseRMSNorm::ComputeInternal(ComputeContext& context) const {
+Status BranchwiseRMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* x = context.Input(0);
   const auto* scale = context.Input(1);
   hyper_connection::StreamShape params;
