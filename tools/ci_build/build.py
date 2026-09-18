@@ -149,10 +149,7 @@ def run_subprocess(
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
-def get_onnx_backend_test_environment(use_cuda):
-    if use_cuda:
-        return {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}
-
+def get_onnx_backend_test_environment(_use_cuda):
     return {
         "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
         "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
