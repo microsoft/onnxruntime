@@ -3543,6 +3543,8 @@ struct ConstGraphImpl : Base<T> {
   Graph GetGraphView(const std::vector<ConstNode>& nodes) const;
   // <Wraps OrtApi::Graph_GetModelMetadata
   ModelMetadata GetModelMetadata() const;  ///< Wraps OrtApi::Graph_GetModelMetadata
+  /// Saves the graph as an ONNX model. Wraps OrtEpApi::Graph_SaveToOnnx.
+  void SaveToOnnx(const ORTCHAR_T* model_path) const;
 };
 
 template <typename T>
