@@ -29,9 +29,9 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejected) {
               DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
-  TypeProto tensor_type;
+  ONNX_NAMESPACE::TypeProto tensor_type;
   auto* tensor = tensor_type.mutable_tensor_type();
-  tensor->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   tensor->mutable_shape()->add_dim()->set_dim_value(1);
   tensor->mutable_shape()->add_dim()->set_dim_value(1);
   tensor->mutable_shape()->add_dim()->set_dim_value(1);
