@@ -514,6 +514,14 @@ LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
 
+LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, int64_t axis, float epsilon, bool simplified)
+    : OpKernel(op_kernel_info),
+      axis_{axis},
+      epsilon_{epsilon},
+      simplified_{simplified},
+      prepacked_scale_fp32_data_(nullptr),
+      prepacked_bias_fp32_data_(nullptr) {}
+
 template <typename T, typename U>
 Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, bool simplified) const {
   // Currently only instantiated for T in {float, double, MLFloat16, BFloat16}. Integer types would
@@ -612,6 +620,7 @@ Status LayerNormImpl::ComputeWithoutContext(
     float epsilon,
     bool simplified,
     AllocatorPtr alloc) const {
+  axis = HandleNegativeAxis(axis, x_shape.NumDimensions());
   LayerNormParams params;
   const bool has_bias =
       !simplified &&
