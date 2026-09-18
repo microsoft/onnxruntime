@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("TB", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("TB", {DataTypeImpl::GetTensorType<bool>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     SparseAttentionIndexer);
@@ -123,10 +123,20 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
+  shader.AdditionalImplementation() << "fn visible(row: u32, token: u32) -> bool {\n";
+  if (mask_is_2d_) {
+    shader.AdditionalImplementation()
+        << "  let batch = row / uniforms.sequence_length;\n"
+        << "  let query = row % uniforms.sequence_length;\n"
+        << "  let offset = batch * uniforms.total_sequence_length + token;\n"
+        << "  return token <= uniforms.past_sequence_length + query && "
+        << mask.GetByOffset("offset") << " != 0;\n";
+  } else {
+    shader.AdditionalImplementation()
+        << "  let offset = row * uniforms.total_sequence_length + token;\n"
+        << "  return " << mask.GetByOffset("offset / 4u") << "[offset % 4u];\n";
+  }
   shader.AdditionalImplementation()
-      << "fn visible(row: u32, token: u32) -> bool {\n"
-      << "  let offset = row * uniforms.total_sequence_length + token;\n"
-      << "  return " << mask.GetByOffset("offset / 4u") << "[offset % 4u];\n"
       << "}\n"
       << "fn visible_at(row: u32, ordinal: u32) -> u32 {\n"
       << "  var seen = 0u;\n"
@@ -602,11 +612,15 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   ORT_RETURN_IF_NOT(rotary_width > 0 && rotary_width % 2 == 0 && rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid qsa rotary cache shape");
   const auto& mask_shape = mask->Shape();
+  const bool mask_is_2d = mask_shape.NumDimensions() == 2;
   ORT_RETURN_IF_NOT(
-      (mask_shape.NumDimensions() == 4 && mask_shape[0] == batch_size && mask_shape[1] == 1 &&
-       mask_shape[2] == sequence_length && mask_shape[3] == total_length) ||
-          (mask_shape.NumDimensions() == 3 && mask_shape[0] == batch_size &&
-           mask_shape[1] == sequence_length && mask_shape[2] == total_length),
+      (mask_is_2d && mask->DataType() == DataTypeImpl::GetType<int64_t>() && mask_shape[0] == batch_size &&
+       mask_shape[1] == total_length) ||
+          (mask_shape.NumDimensions() == 4 && mask->DataType() == DataTypeImpl::GetType<bool>() &&
+           mask_shape[0] == batch_size && mask_shape[1] == 1 && mask_shape[2] == sequence_length &&
+           mask_shape[3] == total_length) ||
+          (mask_shape.NumDimensions() == 3 && mask->DataType() == DataTypeImpl::GetType<bool>() &&
+           mask_shape[0] == batch_size && mask_shape[1] == sequence_length && mask_shape[2] == total_length),
       "SparseAttentionIndexer: invalid qsa mask shape");
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
@@ -639,15 +653,19 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   if (rows == 0) {
     return Status::OK();
   }
-  SparseAttentionIndexerQsaSelectProgram select;
-  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity)
+  SparseAttentionIndexerQsaSelectProgram select{mask_is_2d};
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity, mask_is_2d)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
                   {present, ProgramTensorMetadataDependency::Type},
                   {norm, ProgramTensorMetadataDependency::Type},
                   {cos_cache, ProgramTensorMetadataDependency::Type},
-                  {sin_cache, ProgramTensorMetadataDependency::Type}})
-      .AddInput({mask, ProgramTensorMetadataDependency::Type, {(mask->Shape().Size() + 3) / 4}, 4})
-      .AddOutput({selected, ProgramTensorMetadataDependency::Type})
+                  {sin_cache, ProgramTensorMetadataDependency::Type}});
+  if (mask_is_2d) {
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1});
+  } else {
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {(mask->Shape().Size() + 3) / 4}, 4});
+  }
+  select.AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},

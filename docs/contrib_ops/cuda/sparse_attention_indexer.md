@@ -85,7 +85,7 @@ for a runtime:
 | 2 | `key_norm_weight` | both | `T` | `(D)` |
 | 3 | `cos_cache` | both | `T` | `(max_rotary_sequence_length, R)` when shared across the batch, or `(B, max_rotary_sequence_length, R)` |
 | 4 | `sin_cache` | both | `T` | same as `cos_cache` |
-| 5 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
+| 5 | `mask` | `qsa` | `TB` | INT64 padding mask `(B, T)`, or BOOL explicit visibility `(B, 1, S, T)` / `(B, S, T)` |
 | 6 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
 | 7 | `gate` | `csa` | `T` | `(B, S, 2D)` |
 | 8 | `position_bias` | `csa` | `T` | `(r, 2D)` |
@@ -150,7 +150,10 @@ its ordinary bounded state contract and stays below `2r` positions.
 
 For every `(b, s)`:
 
-1. **Visible set.** `visible = [t for t in range(T) if mask[b, s, t]]`, in ascending `t`.
+1. **Visible set.** For an INT64 rank-2 padding mask,
+   `visible = [t for t in range(T) if mask[b, t] != 0 and t <= P + s]`. For a BOOL rank-3/4
+   explicit mask, `visible = [t for t in range(T) if mask[b, s, t]]`. Positions remain in
+   ascending `t` order.
 2. **Complete blocks.** `nblocks = len(visible) // r`. Block `j` covers
    `visible[j*r : (j+1)*r]`.
 3. **Pooled key.** `k_j = mean` of the `r` raw `present_key` rows of block `j`, then

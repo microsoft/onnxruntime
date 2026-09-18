@@ -7264,7 +7264,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>sin_cache</tt> : T</dt>
 <dd>Sine rotary table with the same shape as cos_cache.</dd>
 <dt><tt>mask</tt> (optional) : TB</dt>
-<dd>Only for policy_mode 'qsa': tokens visible to each query, with shape (batch_size, 1, sequence_length, total_sequence_length) or (batch_size, sequence_length, total_sequence_length). total_sequence_length is past_sequence_length + sequence_length.</dd>
+<dd>Only for policy_mode 'qsa': an INT64 padding mask with shape (batch_size, total_sequence_length), for which causal visibility is derived internally, or a BOOL explicit visibility mask with shape (batch_size, 1, sequence_length, total_sequence_length) or (batch_size, sequence_length, total_sequence_length). total_sequence_length is past_sequence_length + sequence_length.</dd>
 <dt><tt>past_key</tt> : T</dt>
 <dd>Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed keys. Shape is (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>
@@ -7297,8 +7297,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain floating point tensors to float, float16 and bfloat16.</dd>
-<dt><tt>TB</tt> : tensor(bool)</dt>
-<dd>Constrain the visibility mask to boolean tensors.</dd>
+<dt><tt>TB</tt> : tensor(bool), tensor(int64)</dt>
+<dd>Constrain the mask to boolean or int64 tensors.</dd>
 <dt><tt>I</tt> : tensor(int64)</dt>
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
