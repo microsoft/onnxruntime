@@ -13,6 +13,16 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Configure Windows vcpkg binary cache
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VCPKG_CACHE_PATH: ${{ inputs.path }}
+      run: |
+        New-Item -ItemType Directory -Path $env:VCPKG_CACHE_PATH -Force | Out-Null
+        "VCPKG_DEFAULT_BINARY_CACHE=$env:VCPKG_CACHE_PATH" |
+          Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Restore and save vcpkg cache
       if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0

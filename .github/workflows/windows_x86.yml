@@ -36,7 +36,12 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x86 # x86 architecture for vcvarsall
-          vcpkg_cache_key: build-relwithdebinfo
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x86-build-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install Visual Studio Spectre-mitigated libs
         uses: ./.github/actions/install-vs-spectre-libs
