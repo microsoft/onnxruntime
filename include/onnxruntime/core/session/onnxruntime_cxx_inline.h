@@ -3810,7 +3810,7 @@ inline bool ConstValueInfoImpl<T>::IsFromOuterScope() const {
 
 template <typename T>
 inline void ConstGraphImpl<T>::SaveToOnnx(const ORTCHAR_T* model_path) const {
-  ThrowOnError(GetApi().Graph_SaveToOnnx(this->p_, model_path));
+  ThrowOnError(GetEpApi().Graph_SaveToOnnx(this->p_, model_path));
 }
 
 template <typename T>
