@@ -31,6 +31,9 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.machine_pool }}
+      ${{ if eq(parameters.machine_pool, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
       os: linux
     templateContext:
       outputs:

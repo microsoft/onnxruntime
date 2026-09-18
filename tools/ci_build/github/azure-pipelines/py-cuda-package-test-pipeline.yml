@@ -25,7 +25,10 @@ stages:
     dependsOn:
     jobs:
     - job: Python_Publishing_GPU
-      pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+      pool:
+        name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
       steps:
       - checkout: none
       - download: build
