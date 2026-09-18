@@ -5272,8 +5272,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* HyperConnectionPreMix_ver1_doc = R"DOC(
 Reduces C streams to one feature tensor without applying an activation:
 Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
-pre_mix may have shape (..., C), (..., C, 1), or (..., C, H). X may be
-grouped (..., C, H), or flattened (..., C * H) when num_branches is specified.
+pre_mix may have shape (..., C), (..., C, 1), (..., C, H), or (..., C * H)
+for flattened X. X may be grouped (..., C, H), or flattened (..., C * H)
+when num_branches is specified.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -5286,7 +5287,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("reduction_scale", "Multiplier applied to the branch reduction.",
               AttributeProto::FLOAT, 1.0f)
         .Input(0, "streams", "Grouped (..., C, H) or flattened (..., C * H) streams.", "T")
-        .Input(1, "pre_mix", "Branch or feature gates with shape (..., C), (..., C, 1), or (..., C, H).", "M")
+        .Input(1, "pre_mix", "Branch or feature gates with shape (..., C), (..., C, 1), (..., C, H), or (..., C * H) for flattened streams.", "M")
         .Output(0, "output", "Reduced feature tensor with shape (..., H).", "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},

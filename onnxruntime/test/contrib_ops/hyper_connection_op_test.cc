@@ -138,7 +138,7 @@ TEST(HyperConnectionOpsTest, PreMixFlattenedFeatureGates) {
     tester.AddAttribute<int64_t>("num_branches", 2);
     tester.AddInput<float>("streams", {1, 4},
                            {1.0f, 2.0f, 3.0f, 4.0f});
-    tester.AddInput<float>("pre_mix", {1, 2, 2},
+    tester.AddInput<float>("pre_mix", {1, 4},
                            {1.0f, 0.5f, -1.0f, 2.0f});
     tester.AddOutput<float>("output", {1, 2}, {-2.0f, 9.0f});
   });

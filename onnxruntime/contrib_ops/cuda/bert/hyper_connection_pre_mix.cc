@@ -45,7 +45,7 @@ Status HyperConnectionPreMix<T>::ComputeInternal(OpKernelContext* context) const
                     "branch or hidden dimension is too large for CUDA");
   hyper_connection::GateLayout layout;
   ORT_RETURN_IF_ERROR(
-      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout));
+      hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout, true));
   auto* y = context->Output(0, TensorShape(params.reduced_shape));
   return LaunchHyperConnectionPreMix<CudaT>(
       Stream(context), reinterpret_cast<const CudaT*>(streams->Data<T>()),
