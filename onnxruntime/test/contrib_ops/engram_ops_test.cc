@@ -943,7 +943,9 @@ std::vector<T> VarlenNGramHashMappingQwenReference(
           if (value < 0) {
             value = static_cast<T>(value + vocab_sizes[static_cast<size_t>(out_h)]);
           }
-          output.push_back(static_cast<T>(value + head_offsets[static_cast<size_t>(out_h)]));
+          using U = std::make_unsigned_t<T>;
+          output.push_back(static_cast<T>(
+              static_cast<U>(value) + static_cast<U>(head_offsets[static_cast<size_t>(out_h)])));
         }
       }
     }
@@ -1025,6 +1027,35 @@ void RunVarlenNGramHashMappingEosPaddingTest() {
   test.AddInput<T>("eos_token_id", {}, {eos_token_id});
   test.AddOutput<T>("hash_ids", {1, 4}, expected_hash);
   test.AddOutput<T>("present_ids", {1, 2}, {eos_token_id, 4});
+  test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingHeadOffsetsOverflowTest() {
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<std::vector<T>> sequences{{3}};
+  const std::vector<std::vector<T>> histories{
+      {static_cast<T>(kPadId), static_cast<T>(kPadId)}};
+  const std::vector<std::vector<int32_t>> segments{{0}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets(static_cast<size_t>(num_heads), std::numeric_limits<T>::max());
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, histories, segments, multipliers, vocab_sizes, head_offsets, T{});
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1}, sequences[0]);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {num_heads}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("head_offsets", {num_heads}, head_offsets);
+  test.AddOutput<T>("hash_ids", {1, num_heads}, expected_hash);
+  test.AddOutput<T>("present_ids", {1, state_length}, {static_cast<T>(kPadId), 3});
   test.Run();
 }
 
@@ -1644,6 +1675,14 @@ TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt64) {
 
 TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt32) {
   RunVarlenNGramHashMappingEosPaddingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingHeadOffsetsOverflowInt64) {
+  RunVarlenNGramHashMappingHeadOffsetsOverflowTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingHeadOffsetsOverflowInt32) {
+  RunVarlenNGramHashMappingHeadOffsetsOverflowTest<int32_t>();
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingNoCrossSequenceLeakageInt64) {

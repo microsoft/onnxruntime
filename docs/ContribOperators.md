@@ -7495,7 +7495,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
     packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
     subsequent calls to preserve boundaries across chunked prefill and decode calls.
-  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
+    in the input id type on overflow.
 
 #### Version
 
@@ -7528,7 +7529,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>past_ids</tt> (optional) : M</dt>
 <dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id, or eos_token_id when provided.</dd>
 <dt><tt>head_offsets</tt> (optional) : M</dt>
-<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo with wrapping arithmetic in the input id type.</dd>
 <dt><tt>eos_token_id</tt> (optional) : M</dt>
 <dd>Optional scalar end-of-sequence token id. When provided it replaces pad_id for missing history and enables reset_on_eos.</dd>
 <dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>

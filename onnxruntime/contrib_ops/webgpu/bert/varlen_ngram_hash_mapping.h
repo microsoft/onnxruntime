@@ -59,9 +59,31 @@ class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaul
 // across into an adjacent packed request.
 class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappingProgram> {
  public:
-  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id, bool has_segment_ids,
-                                bool has_past_segment_ids, bool reset_on_eos)
+  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id, bool has_nearest_reset)
       : Program{"VarlenNGramHashMapping"},
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id),
+        has_nearest_reset_(has_nearest_reset) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
+                                          {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool has_past_ids_;
+  bool has_eos_token_id_;
+  bool has_nearest_reset_;
+};
+
+class VarlenNGramPrepareNearestResetProgram final
+    : public Program<VarlenNGramPrepareNearestResetProgram> {
+ public:
+  VarlenNGramPrepareNearestResetProgram(bool has_past_ids, bool has_eos_token_id,
+                                        bool has_segment_ids, bool has_past_segment_ids,
+                                        bool reset_on_eos)
+      : Program{"VarlenNGramPrepareNearestReset"},
         has_past_ids_(has_past_ids),
         has_eos_token_id_(has_eos_token_id),
         has_segment_ids_(has_segment_ids),
@@ -71,7 +93,6 @@ class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappin
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_tokens", ProgramUniformVariableDataType::Uint32},
                                           {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
-                                          {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:

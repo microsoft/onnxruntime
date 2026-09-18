@@ -38,7 +38,8 @@ Status LaunchVarlenNGramHashMappingKernel(
     T pad_id,
     bool reset_on_eos,
     int max_threads_per_block,
-    int32_t* is_valid_scratch);
+    int32_t* is_valid_scratch,
+    int64_t* nearest_reset_scratch);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -119,6 +119,11 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   // on-device before any output-producing kernel runs (see the impl file for why per-block local
   // checks alone are not sufficient).
   auto is_valid_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+  IAllocatorUniquePtr<int64_t> nearest_reset_buffer;
+  if ((reset_on_eos_ && eos_token_id != nullptr) || segment_ids != nullptr) {
+    nearest_reset_buffer = GetScratchBuffer<int64_t>(
+        static_cast<size_t>(total_tokens), GetComputeStream(context));
+  }
 
   return LaunchVarlenNGramHashMappingKernel<T>(
       Stream(context),
@@ -141,7 +146,8 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
       pad_id_,
       reset_on_eos_,
       GetDeviceProp().maxThreadsPerBlock,
-      is_valid_buffer.get());
+      is_valid_buffer.get(),
+      nearest_reset_buffer.get());
 }
 
 template class VarlenNGramHashMapping<int32_t>;

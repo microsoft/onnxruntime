@@ -8,6 +8,7 @@
 #include <limits>
 
 #include "contrib_ops/cpu/bert/engram_helper.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -158,6 +159,45 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
       present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>();
   T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
 
+  const bool has_boundaries = do_reset || segment_data != nullptr;
+  InlinedVector<int64_t> nearest_reset;
+  if (has_boundaries) {
+    nearest_reset.reserve(static_cast<size_t>(total_tokens));
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      int64_t last_reset = -1;
+      if (do_reset) {
+        for (int64_t i = 0; i < state_length; ++i) {
+          if (HistoryId(past_data, b, i, state_length, eos_value) == eos_value) {
+            last_reset = i;
+          }
+        }
+      }
+      if (past_segment_data != nullptr) {
+        for (int64_t i = 1; i < state_length; ++i) {
+          if (past_segment_data[b * state_length + i] !=
+              past_segment_data[b * state_length + i - 1]) {
+            last_reset = std::max(last_reset, i - 1);
+          }
+        }
+        if (segment_data[start] != past_segment_data[(b + 1) * state_length - 1]) {
+          last_reset = std::max(last_reset, state_length - 1);
+        }
+      }
+      nearest_reset.push_back(last_reset);
+      for (int64_t t = 1; t < local_length; ++t) {
+        const bool boundary =
+            (do_reset && input_data[start + t - 1] == eos_value) ||
+            (segment_data != nullptr && segment_data[start + t] != segment_data[start + t - 1]);
+        if (boundary) {
+          last_reset = state_length + t - 1;
+        }
+        nearest_reset.push_back(last_reset);
+      }
+    }
+  }
+
   ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total_tokens),
       static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
@@ -170,35 +210,8 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
           const int64_t start = cu_data[b];
           const int64_t t = linear - start;
           const int64_t idx = state_length + t;
-          int64_t last_reset = -1;
-          if (do_reset) {
-            for (int64_t i = 0; i < state_length; ++i) {
-              if (HistoryId(past_data, b, i, state_length, eos_value) == eos_value) {
-                last_reset = i;
-              }
-            }
-          }
-          if (segment_data != nullptr && past_segment_data != nullptr) {
-            for (int64_t i = 1; i < state_length; ++i) {
-              if (past_segment_data[b * state_length + i] !=
-                  past_segment_data[b * state_length + i - 1]) {
-                last_reset = std::max(last_reset, i - 1);
-              }
-            }
-            if (segment_data[start] != past_segment_data[(b + 1) * state_length - 1]) {
-              last_reset = std::max(last_reset, state_length - 1);
-            }
-          }
-          for (int64_t current_t = 1; current_t <= t; ++current_t) {
-            bool boundary = do_reset && input_data[start + current_t - 1] == eos_value;
-            if (segment_data != nullptr &&
-                segment_data[start + current_t] != segment_data[start + current_t - 1]) {
-              boundary = true;
-            }
-            if (boundary) {
-              last_reset = state_length + current_t - 1;
-            }
-          }
+          const int64_t last_reset =
+              has_boundaries ? nearest_reset[static_cast<size_t>(linear)] : -1;
           const int64_t output_base = linear * num_heads;
           for (int64_t n = 2; n <= max_ngram_size_; ++n) {
             T mix = 0;
@@ -221,7 +234,7 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
               // vocab_sizes was validated to be positive above, so the modulo is always well defined.
               T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
               if (offset_data != nullptr) {
-                result = static_cast<T>(result + offset_data[out_h]);
+                result = engram_helper::WrappedAdd(result, offset_data[out_h]);
               }
               output_data[output_base + out_h] = result;
             }
