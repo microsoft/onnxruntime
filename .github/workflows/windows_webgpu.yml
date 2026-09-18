@@ -226,7 +226,6 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.dll
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.pdb
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
-            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [

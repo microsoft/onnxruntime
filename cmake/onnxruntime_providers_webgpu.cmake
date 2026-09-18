@@ -241,6 +241,7 @@
     endif()
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      # Ensure dxcompiler.dll exists in the output directory $<TARGET_FILE_DIR:dxcompiler>
       # TODO: the following code is used to disable building Dawn using vcpkg temporarily
       # until we figure out how to resolve the packaging pipeline failures
       #
