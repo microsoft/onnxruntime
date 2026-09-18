@@ -1580,24 +1580,38 @@ class Cos final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).cos();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).cos();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cos,
-    7,
-    21,
+    7, 21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
 
-// Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Cos,
+    7, 21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Cos,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cos,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
 
 template <typename T>
 class Tan final : public OpKernel {

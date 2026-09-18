@@ -57,6 +57,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
     const bool sync_needed = GraphProtoSyncNeeded(); \
@@ -1113,6 +1114,16 @@ Status Node::UpdateInputArgCount() {
   // Verify size of node arg count is same as input number in
   // operator definition.
   if (op.inputs().size() != definitions_.input_arg_count.size()) {
+    // A node cannot feed actual inputs to an operator/function whose schema
+    // declares no formal input parameters.
+    if (op.inputs().empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This is an invalid model. Node (", name_,
+                             ") has ", total_arg_count,
+                             " input(s) but its operator schema (", op.Name(),
+                             ") declares no inputs.");
+    }
+
     // Adjust input arg count array with op definition
     // The adjustment will work as below,
     // In total, there're <total_arg_count> inputs, which
@@ -1126,21 +1137,16 @@ Status Node::UpdateInputArgCount() {
     size_t m = 0;
     auto arg_count_left = total_arg_count;
 
-    if (!op.inputs().empty()) {
-      for (; m < op.inputs().size() - 1; ++m) {
-        if (arg_count_left > 0) {
-          input_arg_count.push_back(1);
-          arg_count_left--;
-        } else {
-          input_arg_count.push_back(0);
-        }
+    for (; m < op.inputs().size() - 1; ++m) {
+      if (arg_count_left > 0) {
+        input_arg_count.push_back(1);
+        arg_count_left--;
+      } else {
+        input_arg_count.push_back(0);
       }
     }
 
     // Set the arg count for the last input formal parameter.
-    // NOTE: in the case that there's no .input(...) defined
-    // in op schema, all input args will be fed as one input
-    // of the operator.
     input_arg_count.push_back(arg_count_left);
 
     graph_->SetGraphResolveNeeded();
@@ -3179,6 +3185,15 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
 
+  // Record that this subgraph had type/shape inferencing (and thus node/op verification via
+  // VerifyNodeAndOpMatch) performed here through the containing op's inference function
+  // (Scan/If/Loop and similar). The parent's "verify subgraphs" loop uses this to skip a redundant
+  // VerifyNodeAndOpMatch on the same subgraph, avoiding exponential re-traversal of deeply nested
+  // subgraphs.
+  if (subgraph.parent_graph_ != nullptr) {
+    subgraph.parent_graph_->resolve_context_.inferred_subgraphs.insert(&subgraph);
+  }
+
   auto& subgraph_outputs = subgraph.GetOutputs();
   for (const auto* output : subgraph_outputs) {
     output_types.push_back(output->TypeAsProto());
@@ -3672,7 +3687,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
       }
 
-      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      // Skip verification if this subgraph already had type/shape inferencing (and node/op
+      // verification) performed via the containing op's inference function (e.g. Scan/If/Loop).
+      // This avoids exponential re-traversal of deeply nested subgraphs. Ops whose inference
+      // function does not descend into subgraphs (e.g. BeamSearch) are not recorded, so their
+      // subgraphs are still verified here.
+      if (!resolve_context_.inferred_subgraphs.contains(subgraph)) {
+        ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      }
     }
   }
 
@@ -3978,6 +4000,30 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   };
 
   return ForThisAndAllSubgraphs(all_subgraphs, inline_external_attr_tensors_func);
+}
+
+Status Graph::ValidateInMemoryInitializers() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  auto validate_graph = [](Graph& graph) -> Status {
+    for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
+      if (!utils::HasExternalDataInMemory(*tensor_proto)) {
+        continue;
+      }
+
+      OrtValue ort_value;
+      ORT_RETURN_IF_NOT(graph.GetOrtValueInitializer(name, ort_value),
+                        "The model contains initializers with arbitrary in-memory references. ",
+                        "This is an invalid model.");
+      ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(*tensor_proto, ort_value.Get<Tensor>()),
+                        "In-memory data mismatch for initializer: ", name, ". This is an invalid model.");
+    }
+
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, validate_graph);
 }
 
 void Graph::SetName(const std::string& name) {
@@ -4939,6 +4985,64 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+
+void Graph::SetNodeReplacementCallback(NodeReplacementCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_replacement_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeReplacement(
+    gsl::span<const NodeIndex> source_node_indices,
+    NodeIndex destination_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_replacement_callback_) {
+    root_graph->node_replacement_callback_(*this, source_node_indices, destination_node_index);
+  }
+}
+
+void Graph::SetNodeRemovalCallback(NodeRemovalCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_removal_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_removal_callback_) {
+    root_graph->node_removal_callback_(*this, node_indices);
+  }
+}
+
+#ifdef ENABLE_TRAINING
+void Graph::SetNodeCloneCallback(NodeCloneCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_clone_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_clone_callback_) {
+    root_graph->node_clone_callback_(*this, source_node_index, cloned_node_index);
+  }
+}
+#endif
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -5459,10 +5563,10 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
+  graph_proto.clear_node();
+  graph_proto.clear_input();
+  graph_proto.clear_output();
+  graph_proto.clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 
@@ -6014,6 +6118,8 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 
     RemoveNode(node_index);
   }
+
+  NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -1,9 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <chrono>
+#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <optional>
+#include <thread>
 #include <absl/base/config.h>
 
 #include "asserts.h"
@@ -17,6 +22,7 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -32,6 +38,8 @@
 #include "test/util/include/file_util.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/graph_optimizer_registry.h"
+#include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/selectors_actions/helpers.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -139,6 +147,263 @@ class TestOpKernel : public OpKernel {
     return Status::OK();
   }
 };
+
+ONNX_OPERATOR_SCHEMA(WorkspaceVerificationTestOp)
+    .SetDoc("Test operator for Level-2 workspace verification.")
+    .Output(0, "output", "Test output.", "tensor(int32)");
+
+class WorkspaceVerificationTestKernel final : public OpKernel {
+ public:
+  explicit WorkspaceVerificationTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> input_shapes,
+      InlinedVector<WorkspaceRequirement>& requirements) const override {
+    ORT_UNUSED_PARAMETER(input_shapes);
+    requirements.clear();
+    requirements.push_back(WorkspaceRequirement{128, /*slot_id=*/0, /*alignment_bytes=*/0});
+    return Status::OK();
+  }
+};
+
+enum class WorkspaceVerificationMutation {
+  kNone,
+  kReplaceWithNew,
+  kFinalizeNodeFusionPair,
+  kFinalizeNodeFusionSpan,
+};
+
+static Status FinalizeWorkspaceVerificationTestSession(
+    std::optional<size_t> reservation_bytes, bool strict_verification = true,
+    WorkspaceVerificationMutation mutation = WorkspaceVerificationMutation::kNone,
+    bool track_replacement_reservation = true,
+    std::optional<size_t> orphaned_reservation_bytes = std::nullopt,
+    bool discard_orphaned_reservation = false) {
+  Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  NodeArg output_arg("output", &output_type);
+  Node& node = graph.AddNode("workspace_node", "WorkspaceVerificationTestOp", "", {}, {&output_arg});
+
+  WorkspaceReservationMap reservations;
+  if (reservation_bytes.has_value()) {
+    reservations[&graph].insert_or_assign(
+        node.Index(),
+        WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
+  }
+  if (orphaned_reservation_bytes.has_value()) {
+    Node& removed_node =
+        graph.AddNode("removed_workspace_node", "WorkspaceVerificationTestOp", "", {}, {});
+    const NodeIndex removed_node_index = removed_node.Index();
+    reservations[&graph].insert_or_assign(
+        removed_node_index,
+        WorkspaceEstimateSelection{*orphaned_reservation_bytes, WorkspaceEstimateSource::kEstimator});
+    if (discard_orphaned_reservation) {
+      graph.SetNodeRemovalCallback(
+          [&reservations](const Graph& modified_graph,
+                          gsl::span<const NodeIndex> node_indices) {
+            auto graph_it = reservations.find(&modified_graph);
+            if (graph_it == reservations.end()) {
+              return;
+            }
+            for (const NodeIndex node_index : node_indices) {
+              graph_it->second.erase(node_index);
+            }
+          });
+    }
+    graph.RemoveNode(removed_node_index);
+    if (discard_orphaned_reservation) {
+      graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&removed_node_index, 1});
+      graph.SetNodeRemovalCallback({});
+    }
+  }
+
+  if (mutation != WorkspaceVerificationMutation::kNone) {
+    if (track_replacement_reservation) {
+      graph.SetNodeReplacementCallback(
+          [&reservations](const Graph& modified_graph,
+                          gsl::span<const NodeIndex> source_node_indices,
+                          NodeIndex destination_node_index) {
+            auto graph_it = reservations.find(&modified_graph);
+            if (graph_it != reservations.end()) {
+              ConsolidateWorkspaceReservations(
+                  graph_it->second, source_node_indices, destination_node_index);
+            }
+          });
+    }
+
+    if (mutation == WorkspaceVerificationMutation::kReplaceWithNew) {
+      NodesToOptimize selected_nodes{
+          gsl::span<Node* const>{}, node, gsl::span<Node* const>{}};
+      const NodesToOptimize::NodeLocation target{
+          NodesToOptimize::NodeType::kTarget, 0};
+      ReplaceWithNewFixed replacement{
+          kOnnxDomain, "WorkspaceVerificationTestOp", {MoveAll(target, ArgType::kOutput)}};
+      ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes));
+    } else {
+      Node& replacement_node =
+          graph.AddNode("workspace_fused", "WorkspaceVerificationTestOp", "", {}, {});
+      if (mutation == WorkspaceVerificationMutation::kFinalizeNodeFusionPair) {
+        graph_utils::FinalizeNodeFusion(graph, replacement_node, node);
+      } else {
+        const std::array<std::reference_wrapper<Node>, 1> nodes_to_fuse{node};
+        graph_utils::FinalizeNodeFusion(
+            graph, nodes_to_fuse, replacement_node, replacement_node);
+      }
+    }
+    graph.SetNodeReplacementCallback({});
+  }
+
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  for (auto& final_node : graph.Nodes()) {
+    final_node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+
+  ExecutionProviders execution_providers;
+  ORT_RETURN_IF_ERROR(execution_providers.Add(
+      kCpuExecutionProvider,
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false))));
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  if (strict_verification) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  }
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+
+  if (!reservations.empty()) {
+    session_state.SetWorkspaceReservations(std::move(reservations));
+  }
+
+  KernelRegistryManager kernel_registry_manager;
+  ORT_RETURN_IF_ERROR(kernel_registry_manager.RegisterKernels(execution_providers));
+  auto kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("WorkspaceVerificationTestOp")
+                        .Provider(kCpuExecutionProvider)
+                        .SinceVersion(1)
+                        .Build();
+  ORT_RETURN_IF_ERROR(kernel_registry->Register(
+      KernelCreateInfo(std::move(kernel_def),
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                         out = std::make_unique<WorkspaceVerificationTestKernel>(info);
+                         return Status::OK();
+                       })));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+
+  return session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager);
+}
+
+TEST(OpKernelTest, DefaultDeclareWorkspaceRequirementsClearsOutput) {
+  Model model("default_workspace_declaration", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  NodeArg input_arg("input", &tensor_type);
+  NodeArg output_arg("output", &tensor_type);
+  Node& node = graph.AddNode("identity", "Identity", "", {&input_arg}, {&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  CPUExecutionProvider* cpu_execution_provider_ptr = cpu_execution_provider.get();
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("Identity")
+                        .Provider(kCpuExecutionProvider)
+                        .SinceVersion(1)
+                        .Build();
+  OpKernelInfo kernel_info(node, *kernel_def, *cpu_execution_provider_ptr,
+                           session_state.GetConstantInitializedTensors(),
+                           session_state.GetOrtValueNameIdxMap(), session_state.GetDataTransferMgr(),
+                           session_state.GetAllocators(), session_state.GetSessionOptions().config_options);
+  TestOpKernel kernel(kernel_info);
+
+  InlinedVector<WorkspaceInputShape> input_shapes;
+  input_shapes.push_back(WorkspaceInputShape::PresentWithoutShape());
+  InlinedVector<WorkspaceRequirement> requirements;
+  requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment_bytes=*/0});
+  ASSERT_STATUS_OK(kernel.DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+  EXPECT_TRUE(requirements.empty());
+}
+
+TEST(SessionStateTest, WorkspaceVerificationAllowsOverrunByDefault) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{64}, false));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(std::nullopt));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{128}));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{256}));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(size_t{64}),
+      "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationTracksReplacementNode) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kReplaceWithNew));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{64}, true, WorkspaceVerificationMutation::kReplaceWithNew),
+      "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationTracksFinalizeNodeFusion) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionPair));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionSpan));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRejectsUntrackedReplacement) {
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{128}, true, WorkspaceVerificationMutation::kReplaceWithNew, false),
+      "post-partition graph transformation");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRejectsOrphanedReservationWithoutMissingReservation) {
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{1}),
+      "post-partition graph transformation");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationAllowsOrphanedZeroByteReservation) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{0}));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationAllowsIntentionalReservationRemoval) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{128}, true));
+}
+
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};
 
 TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
@@ -700,7 +965,221 @@ class PrePackingTestOpKernel : public OpKernel {
   IAllocatorUniquePtr<void> weight_packed_;
 };
 
-static void CreateSimpleGraph(Graph& graph) {
+class BrokenPrePackingTestOpKernel : public OpKernel {
+ public:
+  BrokenPrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    is_packed = true;
+    return Status::OK();
+  }
+};
+
+class ParallelPrepackTestState {
+ public:
+  void EnterPrePack(bool outer_parallelism_enabled) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ++prepack_calls_;
+    outer_parallelism_observed_ = outer_parallelism_observed_ || outer_parallelism_enabled;
+    if (!outer_parallelism_enabled) {
+      return;
+    }
+
+    ++active_calls_;
+    if (active_calls_ > 1) {
+      overlap_observed_ = true;
+      condition_.notify_all();
+    } else if (!wait_attempted_) {
+      wait_attempted_ = true;
+      condition_.wait_for(lock, std::chrono::seconds(5), [this]() { return overlap_observed_; });
+    }
+    --active_calls_;
+  }
+
+  bool OverlapObserved() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return overlap_observed_;
+  }
+
+  bool OuterParallelismObserved() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return outer_parallelism_observed_;
+  }
+
+  size_t PrePackCallCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return prepack_calls_;
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  size_t active_calls_{0};
+  bool wait_attempted_{false};
+  bool overlap_observed_{false};
+  bool outer_parallelism_observed_{false};
+  size_t prepack_calls_{0};
+};
+
+class ConcurrentPrePackingTestOpKernel : public OpKernel {
+ public:
+  ConcurrentPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<ParallelPrepackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->EnterPrePack(IsOuterPrePackParallelismEnabled());
+    is_packed = true;
+    return Status::OK();
+  }
+
+ private:
+  std::shared_ptr<ParallelPrepackTestState> state_;
+};
+
+class FailingPrePackTestState {
+ public:
+  void RecordPrePackCall() {
+    ++prepack_calls_;
+  }
+
+  size_t PrePackCallCount() const {
+    return prepack_calls_;
+  }
+
+ private:
+  std::atomic<size_t> prepack_calls_{0};
+};
+
+class FailingPrePackingTestOpKernel : public OpKernel {
+ public:
+  FailingPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<FailingPrePackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(is_packed);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->RecordPrePackCall();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parallel prepack failure");
+  }
+
+ private:
+  std::shared_ptr<FailingPrePackTestState> state_;
+};
+
+// Coordinates a blocking PrePack() call with a test thread that raises the load-cancellation
+// flag while workers are still inside PrePack(), then releases them. This exercises the
+// post-join recheck in SessionState::PrepackConstantInitializedTensors, which is needed
+// because a worker's initial cancellation check can pass before the flag is set.
+class BlockingPrePackTestState {
+ public:
+  void EnterPrePack() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ++entered_count_;
+    entered_condition_.notify_all();
+    release_condition_.wait(lock, [this]() { return released_; });
+  }
+
+  bool WaitForEntered(size_t count) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return entered_condition_.wait_for(lock, std::chrono::seconds(5),
+                                       [this, count]() { return entered_count_ >= count; });
+  }
+
+  void Release() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    released_ = true;
+    release_condition_.notify_all();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable entered_condition_;
+  std::condition_variable release_condition_;
+  size_t entered_count_{0};
+  bool released_{false};
+};
+
+class BlockingPrePackingTestOpKernel : public OpKernel {
+ public:
+  BlockingPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<BlockingPrePackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->EnterPrePack();
+    is_packed = true;
+    return Status::OK();
+  }
+
+ private:
+  std::shared_ptr<BlockingPrePackTestState> state_;
+};
+
+#if !defined(ORT_NO_EXCEPTIONS)
+class ThrowingPrePackingTestOpKernel : public OpKernel {
+ public:
+  ThrowingPrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(is_packed);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+    ORT_THROW("parallel prepack failure");
+  }
+};
+#endif
+
+static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePackingTest") {
   // node creation and placement
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -716,7 +1195,7 @@ static void CreateSimpleGraph(Graph& graph) {
   onnxruntime::NodeArg output_arg("node_0_output_0", &type);
   outputs.push_back(&output_arg);
 
-  graph.AddNode("node_0", "PrePackingTest", "node 0", inputs, outputs);
+  graph.AddNode("node_0", op_type, "node 0", inputs, outputs);
 
   // add an initializer
   ONNX_NAMESPACE::TensorProto tensor;
@@ -728,6 +1207,29 @@ static void CreateSimpleGraph(Graph& graph) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
+}
+
+static void CreateMultiNodePrepackGraph(Graph& graph, const std::string& op_type, int node_count = 4) {
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  for (int i = 0; i < node_count; ++i) {
+    const std::string prefix = "prepack_node_" + std::to_string(i);
+    NodeArg& input = graph.GetOrCreateNodeArg(prefix + "_input", &type);
+    NodeArg& initializer = graph.GetOrCreateNodeArg(prefix + "_initializer", &type);
+    NodeArg& output = graph.GetOrCreateNodeArg(prefix + "_output", &type);
+    graph.AddNode(prefix, op_type, "parallel prepack test node",
+                  {&input, &initializer}, {&output});
+
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.add_dims(1);
+    tensor.add_float_data(1.0f);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.set_name(initializer.Name());
+    graph.AddInitializedTensor(tensor);
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
 }
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch) {
@@ -845,6 +1347,33 @@ void RegisterPrePackingTestSchemaOnce() {
         .Input(0, "Input_0", "input 0", "tensor(float)")
         .Input(1, "Input_1", "input 1", "tensor(float)")
         .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(BrokenPrePackingTest)
+        .SetDoc("Faking broken Node for PrePacking")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(ConcurrentPrePackingTest)
+        .SetDoc("Faking nodes that detect concurrent PrePack calls")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(FailingPrePackingTest)
+        .SetDoc("Faking nodes that fail during parallel PrePack")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(BlockingPrePackingTest)
+        .SetDoc("Faking a node whose PrePack blocks until released by the test")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+#if !defined(ORT_NO_EXCEPTIONS)
+    ONNX_OPERATOR_SCHEMA(ThrowingPrePackingTest)
+        .SetDoc("Faking a throwing node for parallel PrePack")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+#endif
   });
 }
 }  // namespace
@@ -930,12 +1459,18 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   profiling::Profiler profiler;
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
+  std::shared_ptr<ParallelPrepackTestState> parallel_prepack_test_state;
+  std::shared_ptr<FailingPrePackTestState> failing_prepack_test_state;
+  std::shared_ptr<BlockingPrePackTestState> blocking_prepack_test_state;
 
   void SetUp() override {
     OrtThreadPoolParams to{};
     // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan).
     to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+    parallel_prepack_test_state = std::make_shared<ParallelPrepackTestState>();
+    failing_prepack_test_state = std::make_shared<FailingPrePackTestState>();
+    blocking_prepack_test_state = std::make_shared<BlockingPrePackTestState>();
     RegisterPrePackingTestSchemaOnce();
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
@@ -956,9 +1491,262 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
         KernelCreateInfo(std::move(kernel_def),
                          [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out =  std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
 
+    auto broken_kernel_def = KernelDefBuilder()
+                                 .SetName("BrokenPrePackingTest")
+                                 .Provider(kCpuExecutionProvider)
+                                 .SinceVersion(1)
+                                 .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(broken_kernel_def),
+                         [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<BrokenPrePackingTestOpKernel>(info);
+                           return Status::OK();
+                         })));
+
+    auto concurrent_kernel_def = KernelDefBuilder()
+                                     .SetName("ConcurrentPrePackingTest")
+                                     .Provider(kCpuExecutionProvider)
+                                     .SinceVersion(1)
+                                     .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(concurrent_kernel_def),
+                         [state = parallel_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<ConcurrentPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
+    auto failing_kernel_def = KernelDefBuilder()
+                                  .SetName("FailingPrePackingTest")
+                                  .Provider(kCpuExecutionProvider)
+                                  .SinceVersion(1)
+                                  .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(failing_kernel_def),
+                         [state = failing_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<FailingPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
+    auto blocking_kernel_def = KernelDefBuilder()
+                                   .SetName("BlockingPrePackingTest")
+                                   .Provider(kCpuExecutionProvider)
+                                   .SinceVersion(1)
+                                   .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(blocking_kernel_def),
+                         [state = blocking_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<BlockingPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
+#if !defined(ORT_NO_EXCEPTIONS)
+    auto throwing_kernel_def = KernelDefBuilder()
+                                   .SetName("ThrowingPrePackingTest")
+                                   .Provider(kCpuExecutionProvider)
+                                   .SinceVersion(1)
+                                   .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(throwing_kernel_def),
+                         [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<ThrowingPrePackingTestOpKernel>(info);
+                           return Status::OK();
+                         })));
+#endif
+
     kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   }
 };
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Exceptions are disabled.";
+#else
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_exception", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ThrowingPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "parallel prepack failure");
+#endif
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCallsOverlap) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_overlap", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_TRUE(parallel_prepack_test_state->OverlapObserved());
+  EXPECT_TRUE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackFailureStopsPendingWork) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_failure", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "FailingPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "parallel prepack failure");
+  EXPECT_LT(failing_prepack_test_state->PrePackCallCount(), 4U);
+}
+
+// Regression test for the post-join recheck in SessionState::PrepackConstantInitializedTensors:
+// a worker's initial cancellation check can pass before the flag is set, letting it spend time
+// inside PrePack() while cancellation_requested stays false. Sets the flag while workers are
+// blocked inside PrePack(), releases them, and asserts the load is reported as canceled.
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCancellationDuringPrePackReturnsCanceled) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_cancel_mid_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "BlockingPrePackingTest", 2);
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  bool workers_entered = false;
+  std::thread canceller([&]() {
+    // Wait until both workers are blocked inside PrePack() before requesting cancellation,
+    // then release them so FinalizeSessionState can join and recheck the flag.
+    workers_entered = blocking_prepack_test_state->WaitForEntered(2);
+    if (workers_entered) {
+      sess_options.SetLoadCancellationFlag(true);
+    }
+    blocking_prepack_test_state->Release();
+  });
+
+  Status status = session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager);
+  canceller.join();
+
+  ASSERT_TRUE(workers_entered);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Category(), common::ONNXRUNTIME);
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, SingleNodePrepackDoesNotUseOuterParallelism) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("single_node_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest", 1);
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_FALSE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 1U);
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, OuterParallelPrepackIsDisabledByDefault) {
+  SessionOptions sess_options;
+
+  Model model("default_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_FALSE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
 
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs
 // in a session_state container for ownership.
@@ -1186,6 +1974,46 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   // from another instance of the same op_type consuming the same constant initializer.
   // Assert this.
   ASSERT_EQ(session_state_2.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(1));
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, BrokenKernelWithoutCacheableBuffersFails) {
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+  OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+  std::vector<float> float_data(1, 1);
+  auto value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                       reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+
+  ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
+
+  PrepackedWeightsContainer prepacked_weights_container;
+
+  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+
+  CreateSimpleGraph(model.MainGraph(), "BrokenPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options,
+                             &prepacked_weights_container);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "doesn't have an implementation that can cache computed pre-packed weights");
 }
 
 // Pre-packing enabled + shared initializers +

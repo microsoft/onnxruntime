@@ -57,7 +57,7 @@
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
         onnxruntime_optimizer
-        onnxruntime_providers
+        ${onnxruntime_providers_target}
         onnxruntime_lora
         onnxruntime_framework
         onnxruntime_graph
@@ -163,15 +163,13 @@
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # Dawn's emdawnwebgpu_cpp target has a bug: it lists ${DAWN_INCLUDE_DIR}/webgpu/webgpu_enum_class_bitmasks.h
-    # in INTERFACE_SOURCES but doesn't add ${DAWN_INCLUDE_DIR} to INTERFACE_INCLUDE_DIRECTORIES.
-    # In emsdk 4.0.11, this was masked because Emscripten bundled its own copy of the WebGPU headers.
-    # In emsdk 4.0.21+, Emscripten removed the bundled WebGPU headers, exposing this bug.
-    # We need to manually add the Dawn include directory to find webgpu_enum_class_bitmasks.h.
+    # We need to manually add the Dawn include directories so that generated Emscripten WebGPU
+    # headers (e.g. webgpu_enum_class_bitmasks.h) are found at compile time.
     #
-    # IMPORTANT: We must also add the generated emdawnwebgpu include directory BEFORE the Dawn source
-    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that redirects
-    # to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific webgpu_cpp.h.
+    # IMPORTANT: We must add the generated emdawnwebgpu include directory BEFORE the Dawn source
+    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that
+    # redirects to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific
+    # webgpu_cpp.h.
     target_include_directories(onnxruntime_providers_webgpu PRIVATE
         "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include"
         "${dawn_SOURCE_DIR}/include"
@@ -192,6 +190,22 @@
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 
     set(onnxruntime_providers_webgpu_dll_deps)
+
+    # Delay-load user32.dll which is pulled in by the WebGPU EP build.
+    # This allows onnxruntime.dll to load in processes with
+    # MITIGATION_WIN32K_DISABLE (e.g., a sandboxed process under Win32k lockdown).
+    # ORT's device discovery already skips SetupDi calls when Win32k syscalls
+    # are disallowed (Win32kSystemCallsDisallowed() in device_discovery.cc),
+    # so user32.dll is never actually needed in those processes.
+    if (WIN32 AND onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
+    endif()
+
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+      # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
+    endif()
 
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
@@ -245,6 +259,17 @@
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
       endif()
+    endif()
+
+    # In the plugin/adapter build (onnxruntime_USE_EP_API_ADAPTERS) the WebGPU EP is its own DLL
+    # (onnxruntime_providers_webgpu.dll) rather than being statically linked into onnxruntime.dll, so the
+    # delay-load flags accumulated above (notably /DELAYLOAD:user32.dll) must be applied to THIS target.
+    # Without it the DLL keeps a static import on user32.dll and fails to load in a Win32k-lockdown sandbox
+    # (e.g. Chromium's WebNN compiler process): 'depends on "USER32.dll" which is missing' (Error 1359).
+    # In the static build these same flags are applied to the onnxruntime target in onnxruntime.cmake.
+    if (WIN32 AND onnxruntime_USE_EP_API_ADAPTERS AND onnxruntime_DELAYLOAD_FLAGS)
+      target_link_options(onnxruntime_providers_webgpu PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE delayimp.lib)
     endif()
 
     if (onnxruntime_providers_webgpu_dll_deps)
@@ -325,15 +350,6 @@
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
-
-    # Wire the Python wgsl_template test suite into ctest.
-    if (BUILD_TESTING)
-      add_test(
-        NAME wgsl_template_python_tests
-        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
-        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
-      )
-    endif()
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)

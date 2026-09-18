@@ -54,8 +54,7 @@ TestHalfGemmBatchOverride(
     size_t,
     size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL*,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*) {
+    MLAS_THREADPOOL*) {
   g_test_halfgemm_override_called = true;
 
   for (size_t batch = 0; batch < BatchN; ++batch) {
@@ -799,7 +798,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasIsRejected) {
   data.ldc = N;
   data.BIsBackendNativePacked = true;
 
-  ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr));
+  ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
 #if !defined(ORT_NO_EXCEPTIONS)
   EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr), std::runtime_error);
 #endif
@@ -846,7 +845,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorIsRejected) {
   data.BIsBackendNativePacked = true;
   data.OutputProcessor = &output_processor;
 
-  ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr));
+  ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
 #if !defined(ORT_NO_EXCEPTIONS)
   EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr), std::runtime_error);
 #endif
@@ -871,7 +870,7 @@ TEST(HalfGemmKleidiAIPath, ZeroKIsNotHandledByKleidiAIOverride) {
   data.C = reinterpret_cast<MLAS_FP16*>(C.data());
   data.ldc = N;
 
-  const bool handled = ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr);
+  const bool handled = ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr);
   ASSERT_FALSE(handled);
 }
 

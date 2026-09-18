@@ -136,7 +136,12 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
                    return ep_device.EpName() == selected_ep_name;
                  });
 
-    if (config.selected_ep_name == kCudaExecutionProviderPluginName && selected_c_ep_devices.size() > 1) {
+    // Some EP factories create a provider for a single device at a time yet can surface more than one
+    // OrtEpDevice under the same EP name (e.g. multiple CUDA GPUs, or WebGPU's real + virtual GPU when
+    // virtual devices are enabled). Keep the first match for those.
+    if ((config.selected_ep_name == kCudaExecutionProviderPluginName ||
+         config.selected_ep_name == kWebGpuExecutionProviderPluginName) &&
+        selected_c_ep_devices.size() > 1) {
       selected_c_ep_devices.resize(1);
     }
   }

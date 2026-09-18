@@ -34,15 +34,15 @@ class MoeGemmId {
   MoeGemmId(int n_, int k_, nvinfer::DataType dtype_, GemmType gemm_type_)
       : n(n_), k(k_), dtype(dtype_), wtype(dtype_), gemm_type(gemm_type_) {}
 
-  bool operator==(MoeGemmId const& id) const {
+  bool operator==(const MoeGemmId& id) const {
     return n == id.n && k == id.k && dtype == id.dtype && wtype == id.wtype && gemm_type == id.gemm_type;
   }
 
-  bool operator!=(MoeGemmId const& id) const {
+  bool operator!=(const MoeGemmId& id) const {
     return !(*this == id);
   }
 
-  friend std::ostream& operator<<(std::ostream& out, MoeGemmId const& id) {
+  friend std::ostream& operator<<(std::ostream& out, const MoeGemmId& id) {
     out << "(N;K)=(" << id.n << ";" << id.k << "),";
     out << " dtype=" << static_cast<int>(id.dtype);
     out << " wtype=" << static_cast<int>(id.wtype);
@@ -52,7 +52,7 @@ class MoeGemmId {
 };
 
 struct MoeGemmIdHash {
-  std::size_t operator()(MoeGemmId const& id) const {
+  std::size_t operator()(const MoeGemmId& id) const {
     auto h1 = std::hash<int>{}(id.n);
     auto h2 = std::hash<int>{}(id.k);
     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
@@ -99,12 +99,12 @@ class MoeGemmProfiler {
   // arena, avoiding the cross-stream scratch race that a private side stream would introduce.
   // Must not be called while `timing_stream` is being captured into a CUDA graph.
   void profileTactics(CutlassMoeFCRunnerInterface* runner,
-                      weight_only::GemmDims const& dims, MoeGemmId const& gemmId,
+                      const weight_only::GemmDims& dims, const MoeGemmId& gemmId,
                       cudaStream_t timing_stream);
 
   // Get best config for a given M and GemmId. Selects the config profiled for the M bucket that
   // contains m, so small-M (decode) GEMMs use a decode-tuned tile instead of a prefill-tuned one.
-  std::optional<Config> getBestConfig(int m, MoeGemmId const& id) const;
+  std::optional<Config> getBestConfig(int m, const MoeGemmId& id) const;
 
   // Snap a row count M to a representative profiling bucket. Decode (small M) and prefill
   // (large M) favor very different CUTLASS tile shapes, so we keep a separate best config per
@@ -113,10 +113,10 @@ class MoeGemmProfiler {
 
  private:
   // Initialize backend for profiling
-  void initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId const& gemmId);
+  void initBackend(CutlassMoeFCRunnerInterface* runner, const MoeGemmId& gemmId);
 
   // Run profiling for all tactics
-  std::optional<Config> runProfiling(int maxM, MoeGemmId const& gemmId, cudaStream_t timing_stream);
+  std::optional<Config> runProfiling(int maxM, const MoeGemmId& gemmId, cudaStream_t timing_stream);
 
   AllocatorPtr allocator_;
   GemmProfilerBackend backend_;

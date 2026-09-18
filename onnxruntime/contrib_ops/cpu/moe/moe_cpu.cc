@@ -4,6 +4,9 @@
 #include "contrib_ops/cpu/moe/moe_cpu.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/moe_profiler.h"
+#endif
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/gemm_helper.h"
@@ -13,6 +16,7 @@
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 
 #include <algorithm>
 #include <vector>
@@ -76,6 +80,22 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t num_tokens = input_shape.Size() / input_shape[input_shape.NumDimensions() - 1];
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
+#if !defined(ORT_MINIMAL_BUILD)
+  const size_t routing_element_count =
+      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
+  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  const TimePoint instrumentation_start =
+      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+#endif
+
+  ORT_RETURN_IF_NOT(k_ <= num_experts,
+                    "MoE attribute 'k' must be <= num_experts; got k=", k_,
+                    ", num_experts=", num_experts);
   const int64_t inter_size = (fc2_shape[1] * fc2_shape[2]) / hidden_size;
   const bool is_swiglu = activation_type_ == ActivationType::SwiGLU;
   const int64_t fc1_output_size = is_swiglu ? (inter_size * 2) : inter_size;
@@ -424,6 +444,14 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     float* out_ptr = reinterpret_cast<float*>(output->MutableData<T>());
     memcpy(out_ptr, final_output_float, output_buffer_size * sizeof(float));
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  if (instrumentation != nullptr) {
+    RecordMoeRoutingEvent(*instrumentation, Node(),
+                          gsl::make_span(route_expert, routing_element_count),
+                          gsl::make_span(route_scale, routing_element_count),
+                          num_tokens, k_, instrumentation_start);
+  }
+#endif
   return Status::OK();
 }
 template <typename T>
@@ -536,7 +564,7 @@ Status MoE<float>::ComputeGEMM(const float* A, const float* B, float* C,
 template <>
 Status MoE<MLFloat16>::ComputeGEMM(const MLFloat16* A, const MLFloat16* B, MLFloat16* C,
                                    int64_t M, int64_t K, int64_t N, bool transpose_B) const {
-  MLAS_HALF_GEMM_DATA_PARAMS params;
+  MLAS_HALF_GEMM_DATA_PARAMS params{};
   params.A = A;
   params.lda = static_cast<size_t>(K);
   params.C = C;

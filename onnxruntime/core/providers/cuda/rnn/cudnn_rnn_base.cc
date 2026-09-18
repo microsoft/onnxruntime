@@ -110,6 +110,19 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // LSTM R[num_directions_, 4*hidden_size_, hidden_size_]
   // LSTM B[num_directions_, 8*hidden_size_]
   size_t number = W_lin_layer_id_.size();
+  // Validate that the W and R gate dimension (number * hidden_size_) and R's hidden dimension are
+  // consistent with the hidden_size attribute. ONNX shape inference does not verify this relationship,
+  // so an inconsistent model (e.g. a bogus hidden_size) would otherwise be used to size the reorganized
+  // weight buffer below and cause an out-of-bounds read from the W/R data.
+  ORT_RETURN_IF(W->Shape()[0] != num_directions_ ||
+                    W->Shape()[1] != SafeInt<int64_t>(number) * hidden_size_,
+                "Input W must have shape {", num_directions_, ", ", number, "*", hidden_size_,
+                ", input_size}. Actual: ", W->Shape());
+  ORT_RETURN_IF(R->Shape()[0] != num_directions_ ||
+                    R->Shape()[1] != SafeInt<int64_t>(number) * hidden_size_ ||
+                    R->Shape()[2] != hidden_size_,
+                "Input R must have shape {", num_directions_, ", ", number, "*", hidden_size_,
+                ", ", hidden_size_, "}. Actual: ", R->Shape());
   int64_t w_size = SafeInt<int64_t>(num_directions_) * number * hidden_size_ * (input_size + hidden_size_ + 2);
   TensorShapeVector dims_w({w_size, 1, 1});
   ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));

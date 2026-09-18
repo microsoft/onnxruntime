@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include <string>
 
 #if !defined(SHARED_PROVIDER) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
@@ -52,6 +53,10 @@ inline Status InputValidationsAndOutputDimsCalc(int64_t blocksize,
                            input_shape.NumDimensions());
   }
 
+  if (blocksize <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SpaceDepth ops require blocksize to be greater than 0.");
+  }
+
   batch = input_shape[0];
   if constexpr (IsNHWC) {
     input_depth = input_shape[3];
@@ -72,14 +77,24 @@ inline Status InputValidationsAndOutputDimsCalc(int64_t blocksize,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SpaceToDepth requires input width to be a multiple of block_size");
     }
 
+    const auto int64_max = std::numeric_limits<int64_t>::max();
+    if (input_depth > int64_max / blocksize || input_depth * blocksize > int64_max / blocksize) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SpaceToDepth output depth exceeds int64_t limits");
+    }
+
     output_depth = input_depth * blocksize * blocksize;
     output_height = input_height / blocksize;
     output_width = input_width / blocksize;
 
   } else {  // DepthToSpace op
-    if ((input_depth % (blocksize * blocksize) != 0)) {
+    if (input_depth % blocksize != 0 || (input_depth / blocksize) % blocksize != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "DepthToSpace requires input depth to be a multiple of (block_size * block_size)");
+    }
+
+    const auto int64_max = std::numeric_limits<int64_t>::max();
+    if (input_height > int64_max / blocksize || input_width > int64_max / blocksize) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DepthToSpace output dimensions exceed int64_t limits");
     }
 
     output_depth = input_depth / blocksize / blocksize;

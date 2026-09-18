@@ -309,6 +309,9 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
       (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW, CtaK / Details::kElemsPerByteW,
       interleaved_k / Details::kElemsPerByteW);
 
+  // Kept as CtaN scalar loads rather than the vectorized ScalesAccess/load_scales form used by
+  // the FP4 MoE GEMV: that form needs kInterleave == 1 to make the CtaN scales contiguous, and
+  // every layout reaching this dense kernel is ColumnMajorInterleaved (kInterleave 2 or 4).
   GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
       scales,
       (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
@@ -430,6 +433,11 @@ void check_pointer(Params& params, cudaStream_t s) {
   assert(!params.act_scale);               // act_scale is not supported for now.
   assert(!params.apply_alpha_in_advance);  // apply_alpha_in_advance is not supported for now.
 
+#if USE_COMPACT_FPA_INTB_GEMM
+  ORT_ENFORCE(!params.zeros && !params.bias,
+              "Compact fpA_intB GEMV does not support zero points or bias");
+  dispatcher<Details, GroupSize, false, false, false, false>(params, s);
+#else
   if (params.zeros && params.bias) {
     dispatcher<Details, GroupSize, false, true, true, false>(params, s);
   } else if (!params.zeros && params.bias) {
@@ -439,6 +447,7 @@ void check_pointer(Params& params, cudaStream_t s) {
   } else {
     dispatcher<Details, GroupSize, false, false, false, false>(params, s);
   }
+#endif
 }
 
 template <bool isGroupwise, typename Details>
@@ -447,12 +456,14 @@ void select_gs(Params& params, cudaStream_t s) {
     if (params.groupsize == 32) {
       check_pointer<Details, 32>(params, s);
       return;
+#if !USE_COMPACT_FPA_INTB_GEMM
     } else if (params.groupsize == 64) {
       check_pointer<Details, 64>(params, s);
       return;
     } else if (params.groupsize == 128) {
       check_pointer<Details, 128>(params, s);
       return;
+#endif
     }
   }
 

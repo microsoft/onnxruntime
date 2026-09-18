@@ -430,7 +430,13 @@ __device__ __inline__ BFloat16 _Max(BFloat16 a, BFloat16 b) {
 #undef NAN_BFLOAT16
 
 template <typename T>
-__device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
+__device__ __inline__ T _Abs(T a) {
+  if (a == (T)0) {
+    return (T)0;
+  }
+
+  return a > (T)0 ? a : -a;
+}
 
 template <typename T>
 __device__ __inline__ T _Signum(T a, std::false_type /* is_signed */) { return T(0) < a; }

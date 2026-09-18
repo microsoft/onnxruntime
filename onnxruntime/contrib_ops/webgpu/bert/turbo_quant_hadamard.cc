@@ -17,23 +17,22 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
-  // present_key/present_value are u32 arrays (packed 4-bit quantized data)
+  // present_key/present_value are u32 arrays containing one scale and packed values.
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
+  // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
   if (prepare_indirect_dispatch_) {
+    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   // Past KV cache is already u32-packed — add as uniform only (no type aliases needed).
-  // The variable bindings are always passed to the template; when has_past_ is false the
-  // template never references them (guarded by #if has_past), so binding them to placeholder
-  // variables (key/value) is harmless and avoids passing a null variable pointer.
-  const ShaderVariableHelper* past_key = &key;
-  const ShaderVariableHelper* past_value = &value;
+  const ShaderVariableHelper* past_key = nullptr;
+  const ShaderVariableHelper* past_value = nullptr;
   if (has_past_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -49,8 +48,8 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_VARIABLE(past_key, *past_key),
-                             WGSL_TEMPLATE_VARIABLE(past_value, *past_value),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
                              WGSL_TEMPLATE_VARIABLE(value, value));
@@ -60,7 +59,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                                         const Tensor* K, const Tensor* past_key, Tensor* present_key,
                                         const Tensor* V, const Tensor* past_value, Tensor* present_value,
                                         uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
-                                        uint32_t num_q_tiles) {
+                                        uint32_t num_q_tiles, const Tensor* total_seqlen) {
   const int head_size = parameters.head_size_;
   const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
@@ -68,8 +67,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   const int head_size_log2 = Log2OfPowerOfTwo(head_size);
 
-  // Compressed KV cache: 1 u32 for norm + head_size/8 u32s for packed 4-bit indices.
-  const int compressed_head_size_u32 = head_size / 8 + 1;
+  ORT_ENFORCE(context.KvCacheQuantizationBits() == 4,
+              "Q4 TurboQuant requires a 4-bit KV cache.");
+  const int compressed_head_size_u32 = KvCacheQuantizedHeadSizeU32(head_size, 4);
 
   bool has_past = !parameters.past_present_share_buffer_ && past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0;
   int kv_num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
@@ -81,13 +81,6 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
 
   TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
@@ -113,6 +106,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
+  if (prepare_indirect_dispatch) {
+    program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
+  }
 
   // Past KV cache is already u32-packed (no vectorization).
   if (has_past) {
@@ -120,7 +116,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
   }
 
-  // Output: present KV cache as u32 (packed 4-bit quantized).
+  // Output: present KV cache as u32 (one fp32 scale followed by packed values).
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
                       {present_value, ProgramTensorMetadataDependency::Rank}});
 
@@ -128,20 +124,24 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
   }
 
+  const uint32_t past_input_seq_length = has_past ? static_cast<uint32_t>(past_key->Shape()[2]) : 0u;
   // present_key has shape (batch, kv_num_heads, present_seq_length, compressed_head_size_u32)
   uint32_t present_seq_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
-                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
+                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components,
+                 compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
+                            {static_cast<uint32_t>(copy_sequence_length)},
                             {static_cast<uint32_t>(kv_num_heads)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {num_q_tiles},
                             {num_slices_per_kv},
+                            {past_input_seq_length},
                             {present_seq_length},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)}});
@@ -157,9 +157,13 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
+  // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
+  if (prepare_indirect_dispatch_) {
+    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+  }
 
   const auto& query = shader.AddOutput("query", ShaderUsage::UseUniform);
-  // present_key/present_value are u32 arrays (packed 4-bit quantized data)
+  // present_key/present_value are u32 arrays containing one scale and packed values.
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
@@ -195,14 +199,17 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                                       Tensor* present_value,
                                                       Tensor* indirect_buffer,
                                                       uint32_t tile_size,
-                                                      uint32_t num_q_tiles) {
+                                                      uint32_t num_q_tiles,
+                                                      const Tensor* total_seqlen) {
   const int head_size = parameters.head_size_;
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
               "head_size must be a power of 2 >= 8 for TurboQuant fused rotary, got ", head_size);
 
   const int head_size_log2 = Log2OfPowerOfTwo(head_size);
 
-  const int compressed_head_size_u32 = head_size / 8 + 1;
+  ORT_ENFORCE(context.KvCacheQuantizationBits() == 4,
+              "Q4 TurboQuant requires a 4-bit KV cache.");
+  const int compressed_head_size_u32 = KvCacheQuantizedHeadSizeU32(head_size, 4);
   const int kv_num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   const int half_rotary_dim = static_cast<int>(cos_cache->Shape()[1]);
 
@@ -215,13 +222,6 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
 
   TurboQuantFusedRotaryProgram program{"TurboQuantFusedRotary", head_size_log2,
@@ -240,6 +240,9 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
+  if (prepare_indirect_dispatch) {
+    program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
+  }
 
   program.AddOutputs({{query, ProgramTensorMetadataDependency::None},
                       {present_key, ProgramTensorMetadataDependency::Rank},
@@ -255,7 +258,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(parameters.past_present_share_buffer_,
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2,
-                 half_rotary_dim, compressed_head_size_u32, multi_rotary_cache_concat_offset)
+                 half_rotary_dim, compressed_head_size_u32,
+                 multi_rotary_cache_concat_offset)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(parameters.hidden_size_)},

@@ -38,6 +38,8 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
     return ncclInt64;
   } else if (type == DataTypeImpl::GetType<MLFloat16>()) {
     return ncclFloat16;
+  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    return ncclBfloat16;
   } else if (type == DataTypeImpl::GetType<float>()) {
     return ncclFloat32;
   } else if (type == DataTypeImpl::GetType<double>()) {
@@ -382,7 +384,10 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<BFloat16>()}),
     AllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(

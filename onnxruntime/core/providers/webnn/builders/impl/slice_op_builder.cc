@@ -182,7 +182,7 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, con
       return false;
     if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
       if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger) ||
-          !IsInputRankSupported(wnn_limits, "reverse", "input", input_shape.size(), node.Name(), logger)) {
+          !IsRankSupportedByWebNNOp(wnn_limits, "reverse", "input", input_shape.size(), node.Name(), logger)) {
         return false;
       }
     }

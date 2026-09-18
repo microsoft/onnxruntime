@@ -102,6 +102,22 @@ const std::string& NodeAttrHelper::Get(const std::string& key, const std::string
   return def_val;
 }
 
+std::string NodeAttrHelper::Get(const std::string& key, std::string&& def_val) const {
+  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
+    return NODE_ATTR_ITER_VAL(entry).s();
+  }
+
+  return std::move(def_val);
+}
+
+std::string NodeAttrHelper::Get(const std::string& key, const char* def_val) const {
+  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
+    return NODE_ATTR_ITER_VAL(entry).s();
+  }
+
+  return def_val;
+}
+
 std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     std::vector<std::string> res;

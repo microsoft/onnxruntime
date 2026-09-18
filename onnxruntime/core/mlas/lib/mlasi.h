@@ -36,6 +36,7 @@ Abstract:
 #endif  // MLAS_NO_EXCEPTION
 
 #include "core/mlas/inc/mlas.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -450,7 +451,7 @@ size_t
 
 #else
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
     const float* A,
     const bfloat16_t* B,
@@ -658,6 +659,21 @@ void
     size_t N
     );
 
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+constexpr size_t kDepthwiseGeneralMaxKernelWidth = 16;
+#endif
+
+typedef
+bool
+(MLASCALL MLAS_ACTIVATION_ROUTINE)(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    );
+
 typedef
 void
 (MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
@@ -856,6 +872,15 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL)(
+    float* Output,
+    const uint8_t* PackedData,
+    size_t N,
+    float Scale,
+    float ZeroPointAdjust);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -1005,7 +1030,67 @@ void
     const float* Bias,
     void* PackedB);
 
-#if defined(__aarch64__) && defined(__linux__)
+typedef bool(MLASCALL MLAS_QNBIT_GEMM_IS_SUPPORTED_OVERRIDE)(
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef size_t(MLASCALL MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_SIZE_OVERRIDE)(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef void(MLASCALL MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_OVERRIDE)(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const void* QuantBData,
+    void* PackedQuantBData,
+    const void* QuantBScale,
+    bool HasZeroPoint,
+    const void* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef size_t(MLASCALL MLAS_QNBIT_GEMM_BATCH_WORKSPACE_SIZE_OVERRIDE)(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+typedef void(MLASCALL MLAS_QNBIT_GEMM_BATCH_OVERRIDE)(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* DataParams,
+    void* Workspace,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 typedef
 bool
 (MLASCALL MLAS_SBGEMM_BATCH_OVERRIDE)(
@@ -1046,8 +1131,7 @@ bool
     size_t K,
     size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+    MLAS_THREADPOOL* ThreadPool);
 
 typedef
 size_t
@@ -1209,7 +1293,7 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
@@ -1332,10 +1416,12 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+    MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL MlasDequantizeBlockwise2BitsKernel;
 
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
+    MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL MlasDequantizeBlockwise2BitsKernelAvx2;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
@@ -1350,7 +1436,30 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+//
+// AVX-512 accelerated NCHW<->NCHWc reorder block helpers (block size 16).
+// Declared unconditionally for AMD64; only invoked when NchwcBlockSize == 16.
+//
+void
+MLASCALL
+MlasReorderInputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderOutputNchwBlock16Avx512F(
+    const float* S,
+    float* D,
+    size_t OutputSize
+    );
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -1373,6 +1482,7 @@ extern "C" {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelRvv;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelRvv;
+    MLAS_ACTIVATION_ROUTINE MlasActivationRvv;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
@@ -1399,6 +1509,10 @@ extern "C" {
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelRvv;
+#endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+    MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelAvx2;
 #endif
 }
 
@@ -1429,7 +1543,7 @@ extern "C" {
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 #define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
 #endif
 
@@ -1477,6 +1591,10 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
+#if defined(MLAS_USE_SVE)
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmlaSve;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmlaSve;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
@@ -1548,6 +1666,8 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchLasx;
 
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchRvv;
+
 struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
 
 extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
@@ -1584,6 +1704,15 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
+
+//
+// Linear (recurrent) attention dispatch structure.
+//
+struct MLAS_LINEAR_ATTENTION_DISPATCH;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchSve;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1650,6 +1779,7 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool KVQuantGemmFp16Supported_ = false;
     bool ArmNeonIsQuantActivationsUnsigned = false;
 
     // MLAS SGemm overrides
@@ -1660,6 +1790,12 @@ struct MLAS_PLATFORM {
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE* MlasDynamicQGemmPackBOverride = nullptr;
+    // MLAS QNBitGemm overrides
+    MLAS_QNBIT_GEMM_IS_SUPPORTED_OVERRIDE* MlasQNBitGemmIsSupportedOverride = nullptr;
+    MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_SIZE_OVERRIDE* MlasQNBitGemmPackQuantBDataSizeOverride = nullptr;
+    MLAS_QNBIT_GEMM_PACK_QUANT_B_DATA_OVERRIDE* MlasQNBitGemmPackQuantBDataOverride = nullptr;
+    MLAS_QNBIT_GEMM_BATCH_WORKSPACE_SIZE_OVERRIDE* MlasQNBitGemmBatchWorkspaceSizeOverride = nullptr;
+    MLAS_QNBIT_GEMM_BATCH_OVERRIDE* MlasQNBitGemmBatchOverride = nullptr;
     // MLAS HalfGemm overrides
     MLAS_HALF_GEMM_BATCH_OVERRIDE* MlasHalfGemmBatchOverride = nullptr;
     MLAS_HALF_GEMM_PACK_B_SIZE_OVERRIDE* MlasHalfGemmPackBSizeOverride = nullptr;
@@ -1673,7 +1809,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
     MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
     MLAS_SBGEMM_PACK_B_SIZE_OVERRIDE* MlasSBGemmPackBSizeOverride = nullptr;
@@ -1711,6 +1847,7 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8U8Dispatch;
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
@@ -1753,6 +1890,9 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL* ComputeSumExpF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
 #endif
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
@@ -1760,8 +1900,6 @@ struct MLAS_PLATFORM {
     // assigns these fields independently in platform.cpp.
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
 #endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
@@ -1771,6 +1909,7 @@ struct MLAS_PLATFORM {
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
+    MLAS_ACTIVATION_ROUTINE* ActivationRoutine;
 #endif
 
 MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
@@ -1796,7 +1935,6 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
@@ -1805,6 +1943,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL* DequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL* DequantizeLinearU8Kernel;
+    MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL* DequantizeBlockwise2BitsKernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
@@ -1830,6 +1969,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
+    const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
 };
 
 inline
@@ -1929,6 +2069,70 @@ MlasPartitionWork(
         *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
         *WorkRemaining = WorkPerThread;
     }
+}
+
+//
+// Map a cost boundary to a work item index for the NCHWc grouped convolution
+// algorithms.
+//
+// Work items are output rows of a filter set, indexed row-fastest as
+// ((BatchGroup * FilterSetCount) + FilterSet) * OutputHeight + Row. Cost is
+// measured in block-rows: one NCHWc output block of one output row. Items in a
+// full filter set cost FilterSetSize block-rows; items in the ragged last set
+// cost LastSetFilterCount. Returns the index of the first work item whose
+// starting cumulative cost is greater than or equal to Cost, so partitioning a
+// cost interval and converting both endpoints yields work ranges that tile
+// [0, TotalWork) with no gap and no overlap.
+//
+// Worked example, OutputChannels = 96 with BlockSize = 16 and FilterSetSize = 4:
+// TotalBlockedFilters = 96 / 16 = 6 blocked filters, so FilterSetCount = 2 and
+// LastSetFilterCount = 6 - 1 * 4 = 2. Per (batch, group) segment the two sets
+// cost 4 * OutputHeight and 2 * OutputHeight block-rows respectively — the
+// imbalance a uniform split by item index would ignore, since both sets contain
+// OutputHeight items while the first does twice the work.
+//
+
+inline
+size_t
+MlasNchwcCostToWorkIndex(
+    size_t Cost,
+    size_t OutputHeight,
+    size_t FilterSetCount,
+    size_t FilterSetSize,
+    size_t TotalBlockedFilters,
+    size_t LastSetFilterCount
+    )
+{
+    const size_t CostPerBatchGroup = TotalBlockedFilters * OutputHeight;
+
+    size_t BatchGroup = Cost / CostPerBatchGroup;
+    const size_t Remainder = Cost - BatchGroup * CostPerBatchGroup;
+
+    const size_t FullSetCost = FilterSetSize * OutputHeight;
+
+    size_t Set = Remainder / FullSetCost;
+    size_t SetFilterCount = FilterSetSize;
+
+    if (Set >= FilterSetCount - 1) {
+        Set = FilterSetCount - 1;
+        SetFilterCount = LastSetFilterCount;
+    }
+
+    const size_t SetRemainder = Remainder - Set * FullSetCost;
+
+    size_t Row = (SetRemainder + SetFilterCount - 1) / SetFilterCount;
+
+    if (Row >= OutputHeight) {
+
+        Row = 0;
+
+        if (++Set == FilterSetCount) {
+            Set = 0;
+            BatchGroup += 1;
+        }
+    }
+
+    return (BatchGroup * FilterSetCount + Set) * OutputHeight + Row;
 }
 
 //

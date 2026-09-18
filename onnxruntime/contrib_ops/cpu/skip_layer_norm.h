@@ -21,7 +21,14 @@ class SkipLayerNorm final : public OpKernel {
 
  private:
   float epsilon_;
-  int64_t prepacked_skip_fp32_size_;
+  TensorShape prepacked_skip_shape_;
+  TensorShape prepacked_gamma_shape_;
+  TensorShape prepacked_beta_shape_;
+  TensorShape prepacked_bias_shape_;
+  bool has_prepacked_skip_;
+  bool has_prepacked_gamma_;
+  bool has_prepacked_beta_;
+  bool has_prepacked_bias_;
   IAllocatorUniquePtr<float> prepacked_skip_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_gamma_fp32_data_;
   IAllocatorUniquePtr<float> prepacked_beta_fp32_data_;

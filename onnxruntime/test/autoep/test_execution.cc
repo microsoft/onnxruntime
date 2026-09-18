@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -51,7 +53,7 @@ void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, Or
 }
 
 void LoadModelProtoFromFile(const ORTCHAR_T* model_file, ONNX_NAMESPACE::ModelProto& model_proto) {
-  std::ifstream model_stream{std::filesystem::path(model_file), std::ios::binary};
+  std::ifstream model_stream{std::basic_string<ORTCHAR_T>{model_file}, std::ios::binary};
   ASSERT_TRUE(model_stream.is_open());
   ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
 }
@@ -377,6 +379,41 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+enum class PreallocatedOutputBinding { kRunFetches,
+                                       kIoBinding };
+
+// Runs mul_1.onnx with a caller-allocated output buffer, supplied either directly to Run() or via
+// IoBinding. Both paths must land the result in `output_data` itself, not a copy.
+void RunMulModelWithPluginEpUsingPreallocatedOutput(const Ort::SessionOptions& session_options,
+                                                    PreallocatedOutputBinding binding) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const auto output_memory_info = session.GetEpDeviceForOutputs().at(0).GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<float> output_data(6, -1.0f);
+  Ort::Value input = Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size());
+  Ort::Value output = Ort::Value::CreateTensor<float>(
+      output_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+
+  if (binding == PreallocatedOutputBinding::kRunFetches) {
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, &output, 1);
+  } else {
+    Ort::IoBinding io_binding(session);
+    io_binding.BindInput("X", input);
+    io_binding.BindOutput("Y", output);
+    session.Run(Ort::RunOptions{nullptr}, io_binding);
+  }
+
+  // The EP wrote through the caller's buffer rather than into an ORT-allocated one.
+  EXPECT_EQ(output.GetTensorMutableData<float>(), output_data.data());
+  EXPECT_THAT(output_data, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
 // Builds a minimal ONNX model bytes with a single FP16 HardSigmoid node.
 // Graph: X[1,4 float16] -> HardSigmoid -> Y[1,4 float16]
 // HardSigmoid is used because it has NO MLFloat16 CPU kernel on any build config,
@@ -417,6 +454,63 @@ std::string BuildFp16HardSigmoidModelBytes() {
   return bytes;
 }
 
+// Builds a minimal ONNX model with zero graph inputs: two float initializers fed into a single Mul node.
+// Graph: A[3,2 float] * B[3,2 float] -> Y[3,2 float]
+// Used to test EPContext generation for models with no external inputs.
+std::string BuildZeroInputMulModelBytes() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(18);
+
+  ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
+  graph->set_name("zero_input_mul");
+
+  // No graph inputs.
+
+  // Graph output: Y [3, 2] float
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  auto* out_type = output->mutable_type()->mutable_tensor_type();
+  out_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  out_type->mutable_shape()->add_dim()->set_dim_value(3);
+  out_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Initializer A: [3, 2] float, values = {1, 2, 3, 4, 5, 6}
+  auto* init_a = graph->add_initializer();
+  init_a->set_name("A");
+  init_a->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_a->add_dims(3);
+  init_a->add_dims(2);
+  for (float v : {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}) {
+    init_a->add_float_data(v);
+  }
+
+  // Initializer B: [3, 2] float, values = {2, 3, 4, 5, 6, 7}
+  auto* init_b = graph->add_initializer();
+  init_b->set_name("B");
+  init_b->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init_b->add_dims(3);
+  init_b->add_dims(2);
+  for (float v : {2.f, 3.f, 4.f, 5.f, 6.f, 7.f}) {
+    init_b->add_float_data(v);
+  }
+
+  // Mul node: Y = A * B
+  auto* node = graph->add_node();
+  node->set_name("mul_0");
+  node->set_op_type("Mul");
+  node->set_domain("");
+  node->add_input("A");
+  node->add_input("B");
+  node->add_output("Y");
+
+  std::string bytes;
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize zero-input Mul ONNX model";
+  return bytes;
+}
+
 }  // namespace
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -432,6 +526,62 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunMulModelWithPluginEp(session_options);
+}
+
+// Registers the example EP, appends it to session options, and loads its test hooks.
+static void SetUpPreallocatedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
+                                        Ort::SessionOptions& session_options,
+                                        Utils::LoadExampleEpHooksPtr& example_ep_hooks) {
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_preallocated_output_query, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_query_result, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_bad_index_rejected, nullptr);
+  example_ep_hooks->reset_preallocated_output_query();
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_Run) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kRunFetches));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  // Out-of-range output index rejected without disturbing the out parameter.
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_IoBinding) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kIoBinding));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_NotPreallocated) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
+
+  example_ep_hooks->reset_preallocated_output_query();
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEpUsingIOBinding(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -818,6 +968,107 @@ TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {
   }
 }
 
+// Test weightless EP context model generation using the new ep.enable_weightless session option
+// and ModelCompilationOptions_SetWeightlessEnabled API.
+TEST(OrtEpLibrary, PluginEp_WeightlessAllInitializers_CompileApi) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+    const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_all_init_ctx.onnx");
+    std::filesystem::remove(output_model_file);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+
+    // Use the new unified weightless option (ep.enable_weightless) instead of the deprecated one.
+    session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Create model compilation options and enable weightless cache via the CompileApi.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetWeightlessEnabled(true);
+
+    // Compile the model.
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+
+    // Clean up.
+    std::filesystem::remove(output_model_file);
+  }
+}
+
+// Test SessionOptionsSetWeightlessSourceModelBuffer with valid and invalid inputs.
+TEST(OrtEpLibrary, PluginEp_WeightlessSourceModelBuffer_Validation) {
+  Ort::SessionOptions session_options;
+  const auto& api = Ort::GetApi();
+
+  // Valid buffer.
+  {
+    const char dummy_data[] = "dummy model bytes";
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, dummy_data, sizeof(dummy_data));
+    ASSERT_EQ(status, nullptr);
+  }
+
+  // Null buffer should fail.
+  {
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, nullptr, 100);
+    ASSERT_NE(status, nullptr);
+    ASSERT_EQ(api.GetErrorCode(status), ORT_INVALID_ARGUMENT);
+    api.ReleaseStatus(status);
+  }
+
+  // Zero-length buffer should fail.
+  {
+    const char dummy_data[] = "data";
+    OrtStatus* status = api.SessionOptionsSetWeightlessSourceModelBuffer(
+        session_options, dummy_data, 0);
+    ASSERT_NE(status, nullptr);
+    ASSERT_EQ(api.GetErrorCode(status), ORT_INVALID_ARGUMENT);
+    api.ReleaseStatus(status);
+  }
+}
+
+// Test that weightless mode returns an error when the EP does not implement GetWeightlessSupport.
+// The virtual GPU EP is compiled with ORT_API_VERSION >= 29 but does not set GetWeightlessSupport,
+// so the validation in Compile() should return EP_FAIL.
+TEST(OrtEpLibrary, PluginEp_WeightlessMode_ErrorWhenEpDoesNotSupport) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/add_mul_add.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_weightless_error_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  std::unordered_map<std::string, std::string> ep_options;
+  Ort::SessionOptions session_options;
+
+  // Request weightless mode.
+  session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1");
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetWeightlessEnabled(true);
+
+  // CompileModel should fail because the virtual GPU EP does not implement GetWeightlessSupport.
+  auto status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("does not implement GetWeightlessSupport"));
+
+  // Clean up.
+  std::filesystem::remove(output_model_file);
+}
+
 // Test loading a compiled model without registering the required EP with the session.
 // We expect to get an explicit error that says that an EPContext node generated by "example_ep"
 // was not assigned to the appropriate EP.
@@ -1174,7 +1425,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
 
       ASSERT_TRUE(std::filesystem::exists(expected_output_model_file));
       auto modify_time_2 = std::filesystem::last_write_time(expected_output_model_file);
-      ASSERT_EQ(modify_time_2, modify_time_1);  // Check that file was not modified
+      ASSERT_TRUE(modify_time_2 == modify_time_1);  // Check that file was not modified
     }
   }
 
@@ -1220,6 +1471,58 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
 
     Ort::Session session(*ort_env, input_model.c_str(), session_options);
     ASSERT_TRUE(fs::exists(output_model)) << "EPContext not created at: " << utf8_output_path;
+  }
+}
+
+// Test that a model with zero graph inputs can be compiled into an EPContext model and reloaded.
+// The compiled EPContext node will have 0 inputs, exercising the EPContext schema change
+// that allows min_input=0.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ZeroInputModel) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_zero_input_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  // Build a model with 0 graph inputs.
+  const std::string model_bytes = BuildZeroInputMulModelBytes();
+
+  // Compile the model with the example EP.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(model_bytes.data(), model_bytes.size());
+    compile_options.SetOutputModelPath(output_model_file);
+    compile_options.SetEpContextEmbedMode(true);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Verify the compiled model has an EPContext node with 0 inputs.
+  ONNX_NAMESPACE::ModelProto compiled_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelProtoFromFile(output_model_file, compiled_model));
+
+  auto ep_context_nodes = GetEpContextNodes(compiled_model);
+  ASSERT_GE(ep_context_nodes.size(), 1u);
+
+  // The EPContext node replacing the Mul (whose inputs were both initializers) should have 0 inputs.
+  EXPECT_EQ(ep_context_nodes[0]->input_size(), 0)
+      << "EPContext node from a zero-input model should have 0 inputs";
+
+  // Reload the compiled model into a session to verify graph validation passes.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    ASSERT_NO_THROW(Ort::Session session(*ort_env, output_model_file, session_options))
+        << "Loading a compiled model with a 0-input EPContext node should succeed";
   }
 }
 
@@ -1732,6 +2035,26 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   RunMulModelWithPluginEpUsingIOBinding(session_options);
 
   ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
+}
+
+TEST(OrtApi, KernelContextGetPreallocatedOutputContract) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api->KernelContext_GetPreallocatedOutput, nullptr);
+
+  auto expect_rejected = [&](OrtStatus* status) {
+    ASSERT_NE(status, nullptr);
+    const OrtErrorCode code = api->GetErrorCode(status);
+    EXPECT_TRUE(code == ORT_INVALID_ARGUMENT) << code;
+    api->ReleaseStatus(status);
+  };
+
+  // Null arguments are rejected, and a failed call leaves the out parameter untouched.
+  OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+  OrtValue* sentinel = sentinel_value;
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, &sentinel));
+  EXPECT_EQ(sentinel, sentinel_value);
+
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, nullptr));
 }
 }  // namespace test
 }  // namespace onnxruntime

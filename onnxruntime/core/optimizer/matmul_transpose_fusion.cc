@@ -180,16 +180,28 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   new_transpose.SetExecutionProviderType(transpose->GetExecutionProviderType());
 
   size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
+  const NodeIndex cast_index = cast->Index();
+  const NodeIndex transpose_index = transpose->Index();
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
-  graph.RemoveNode(cast->Index());
+  graph.RemoveNode(cast_index);
+  graph.NotifyNodeReplacement(
+      gsl::span<const NodeIndex>{&cast_index, 1}, new_cast.Index());
   if (consumers == 0) {
-    removed_nodes.push_front(transpose->Index());
+    graph.NotifyNodeReplacement(
+        gsl::span<const NodeIndex>{&transpose_index, 1}, new_transpose.Index());
+    removed_nodes.push_front(transpose_index);
   }
   return &new_transpose;
 }
 
-// Check whether the element_type is an allowed FusedMatMul data type or not.
-constexpr static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type) {
+// Check whether the element_type is supported by FusedMatMul for the assigned EP.
+static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type,
+                                         std::string_view execution_provider_type) {
+  if (execution_provider_type == kCpuExecutionProvider) {
+    return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+           element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  }
+
   return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
@@ -306,13 +318,15 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
 
     NodeArg* left_input = node.MutableInputDefs()[0];
     auto left_type = left_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type))) {
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type),
+                                      node.GetExecutionProviderType())) {
       continue;
     }
 
     NodeArg* right_input = node.MutableInputDefs()[1];
     auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
-    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type),
+                                      node.GetExecutionProviderType())) {
       continue;
     }
 
@@ -375,17 +389,23 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
+    bool remove_left = false;
     if (left) {
       size_t left_consumers = UpdateConsumerCount(graph, left_input, consumer_count);
-      if (left_consumers == 0)
+      if (left_consumers == 0) {
         removed_nodes.push_front(left->Index());
+        remove_left = true;
+      }
       left_input = left->MutableInputDefs()[0];
     }
 
+    bool remove_right = false;
     if (right) {
       size_t right_consumers = UpdateConsumerCount(graph, right_input, consumer_count);
-      if (right_consumers == 0)
+      if (right_consumers == 0) {
         removed_nodes.push_front(right->Index());
+        remove_right = true;
+      }
       right_input = right->MutableInputDefs()[0];
     }
 
@@ -414,6 +434,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
+    InlinedVector<NodeIndex> transpose_node_indices;
+    if (remove_left) {
+      transpose_node_indices.push_back(left->Index());
+    }
+    if (remove_right) {
+      transpose_node_indices.push_back(right->Index());
+    }
+    graph.NotifyNodeReplacement(transpose_node_indices, matmul_node.Index());
 
     modified = true;
   }
