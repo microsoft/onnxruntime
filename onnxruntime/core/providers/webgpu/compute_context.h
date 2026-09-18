@@ -220,25 +220,7 @@ class ComputeContext final : public ComputeContextBase {
   // In the plugin, the temp-space allocator is the existing Session device allocator,
   // not an Env shared allocator or a new allocator created for each tensor.
   //
-  template <typename TensorShapeType>
-  Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {
-    AllocatorPtr allocator;
-    ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
-#if defined(ORT_USE_EP_API_ADAPTERS)
-    TensorShape tensor_shape{std::forward<TensorShapeType>(shape)};
-    const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, tensor_shape);
-    // Tensor's allocating constructor would use plain Alloc and submit cached clears.
-    // The kernel's explicit stream keeps clears ordered without submitting each scratch allocation;
-    // a null stream still falls back to plain Alloc's immediate-submission policy.
-    auto buffer = IAllocator::MakeUniquePtr<void>(
-        allocator, bytes, false, reinterpret_cast<Stream*>(kernel_context_.GetSyncStream()));
-    Tensor tensor(data_type, tensor_shape, buffer.get(), allocator);
-    buffer.release();
-    return tensor;
-#else
-    return {data_type, std::forward<TensorShapeType>(shape), allocator};
-#endif
-  }
+  Tensor CreateGPUTensor(MLDataType data_type, const TensorShape& shape);
 
   //
   // Copy data from a tensor to another tensor.
