@@ -711,8 +711,8 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
       /*past_seq_len=*/4);
 }
 
-// Non-first-prompt: seqlens_k valid for KV cache but too small for sequence_length.
-// past_seqlen = total_seqlen - sequence_length underflows size_t, causing memcpy OOB.
+// Non-first-prompt: seqlens_k is valid for the KV cache but implies fewer total tokens
+// than sequence_length, which would underflow the derived past sequence length.
 TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{1},
@@ -722,34 +722,30 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       OpTester::ExpectResult::kExpectFailure,
       "is too small for sequence_length",
       /*provide_past=*/true,
-      /*past_seq_len=*/4);
+      /*past_seq_len=*/2);
 }
 
-// Regression: present buffer large enough (total_seq_len passes the present-buffer check),
-// but the past buffer is much smaller. ConcatStateChunkGQA would copy
-// (seqlens_k + 1 - sequence_length) rows out of the small past buffer, reading past its end.
-TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
-  // present_kv_seqlen = max(total_seq_len=100, past_seq_len=2) = 100, so seqlens_k=50 passes the
-  // present-buffer check, but past_seqlen = 51 - 1 = 50 rows >> past buffer (2 rows) => OOB read.
+// Reject a total sequence length that describes neither a dynamic nor a static cache.
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayout) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/2);
 }
 
-TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayoutWithEmptyPast) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/0);
 }
@@ -813,6 +809,18 @@ TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
       "total_sequence_length must be positive");
+}
+
+TEST(GroupQueryAttentionTest, TotalSeqLenLessThanKvSequenceLength) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/2,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length must be at least kv_sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
 }
 
 // Backward compat: seqlens_k shape {1, 1} accepted for batch_size=1.
@@ -3914,20 +3922,22 @@ struct WebGpuEpForGqaOptions {
 
 static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options);
 
-struct MalformedSeqlensKTestOptions {
+struct SeparateQkvCacheBoundsTestOptions {
   int32_t seqlens_k = 0;
   uint32_t kv_cache_quant_bits = 0;
   bool smooth_softmax = false;
   int sequence_length = 2;
   int past_seq_len = 4;
   int present_seq_len = -1;
-  std::optional<float> expected_output_value;
+  std::optional<float> expected_output_value = std::nullopt;
+  OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess;
+  std::string expected_failure_string = {};
 };
 
-static void RunMalformedSeqlensKTest(const MalformedSeqlensKTestOptions& options) {
+static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOptions& options) {
   const auto& [seqlens_k, kv_cache_quant_bits, smooth_softmax,
                sequence_length, past_seq_len, configured_present_seq_len,
-               expected_output_value] = options;
+               expected_output_value, expected_result, expected_failure_string] = options;
   const int present_seq_len = configured_present_seq_len < 0
                                   ? past_seq_len + sequence_length
                                   : configured_present_seq_len;
@@ -3995,17 +4005,18 @@ static void RunMalformedSeqlensKTest(const MalformedSeqlensKTestOptions& options
     }
   });
 
+  tester.Config(expected_result, expected_failure_string);
   RunOnWebGpu(tester, std::move(webgpu_ep));
 }
 
-struct PackedRotaryTestOptions {
+struct PackedQkvRotaryCacheBoundsTestOptions {
   int32_t seqlens_k = 2;
   int cos_cache_length = 4;
   int sin_cache_length = 2;
   bool verify_first_present_row = false;
 };
 
-static void RunPackedRotaryTest(const PackedRotaryTestOptions& options) {
+static void RunPackedQkvRotaryCacheBoundsTest(const PackedQkvRotaryCacheBoundsTestOptions& options) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
@@ -4071,55 +4082,58 @@ static void RunPackedRotaryTest(const PackedRotaryTestOptions& options) {
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU) {
-  RunMalformedSeqlensKTest({.seqlens_k = 106});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU) {
-  RunMalformedSeqlensKTest({.seqlens_k = -1});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_FlashAttention_WebGPU) {
-  RunMalformedSeqlensKTest({.seqlens_k = -5,
-                            .sequence_length = 1,
-                            .expected_output_value = 0.3f});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -5,
+                                 .sequence_length = 1,
+                                 .expected_output_value = 0.3f});
 }
 
-TEST(GroupQueryAttentionTest, OversizedSeqlensK_ShortPastLargePresent_NoOOB_WebGPU) {
-  RunMalformedSeqlensKTest({.seqlens_k = 50,
-                            .sequence_length = 1,
-                            .past_seq_len = 2,
-                            .present_seq_len = 100});
+TEST(GroupQueryAttentionTest, ShortPastLargeTotal_InvalidCacheLayout_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 50,
+                                 .sequence_length = 1,
+                                 .past_seq_len = 2,
+                                 .present_seq_len = 100,
+                                 .expected_result = OpTester::ExpectResult::kExpectFailure,
+                                 .expected_failure_string =
+                                     "must equal past_sequence_length + kv_sequence_length"});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
-  RunMalformedSeqlensKTest({.seqlens_k = 106, .kv_cache_quant_bits = 4});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
-  RunMalformedSeqlensKTest({.seqlens_k = 106, .kv_cache_quant_bits = 8});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
-  RunMalformedSeqlensKTest({.seqlens_k = -1, .kv_cache_quant_bits = 4});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
-  RunMalformedSeqlensKTest({.seqlens_k = -1, .kv_cache_quant_bits = 8});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
-  RunMalformedSeqlensKTest({.seqlens_k = 106, .smooth_softmax = true});
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .smooth_softmax = true});
 }
 
 TEST(GroupQueryAttentionTest, PackedRotaryAsymmetricCaches_NoOOB_WebGPU) {
-  RunPackedRotaryTest({});
+  RunPackedQkvRotaryCacheBoundsTest({});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_PackedRotary_WebGPU) {
-  RunPackedRotaryTest({.seqlens_k = -5,
-                       .cos_cache_length = 2,
-                       .sin_cache_length = 2,
-                       .verify_first_present_row = true});
+  RunPackedQkvRotaryCacheBoundsTest({.seqlens_k = -5,
+                                     .cos_cache_length = 2,
+                                     .sin_cache_length = 2,
+                                     .verify_first_present_row = true});
 }
 
 static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options) {

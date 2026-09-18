@@ -40,13 +40,7 @@ $MAIN {
 
 #if use_seqlen_k
   let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
-#if past_present_share_buffer
-  let source_sequence_length = uniforms.present_seq_length;
-#else
-  let source_sequence_length = uniforms.past_input_seq_length + uniforms.kv_sequence_length;
-#endif
-  let per_batch_total_seq_length =
-      min(raw_total_seq_length, min(source_sequence_length, uniforms.present_seq_length));
+  let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif

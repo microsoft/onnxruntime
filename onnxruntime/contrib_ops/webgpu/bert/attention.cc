@@ -119,8 +119,7 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   if (has_seqlen_k) {
     ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
-    ss << "let source_sequence_length = uniforms.past_sequence_length + uniforms.kv_sequence_length;\n";
-    ss << "total_sequence_length = min(raw_total_sequence_length, min(source_sequence_length, uniforms.present_sequence_length));\n";
+    ss << "total_sequence_length = min(raw_total_sequence_length, uniforms.present_sequence_length);\n";
     ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
