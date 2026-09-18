@@ -55,12 +55,22 @@ parameters:
   values:
   - 13.0
 
+- name: EnableReactNative
+  displayName: Whether to build React Native packages
+  type: boolean
+  default: false
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
     type: github
     endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
   - repository: 1esPipelines
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
@@ -68,6 +78,8 @@ resources:
 
 variables:
 - template: templates/common-variables.yml
+- name: ComponentDetection.Timeout
+  value: 1800
 - name: win_trt_home
   value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
 - name: win_cuda_home
@@ -77,6 +89,13 @@ variables:
 # Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
   value: '75-real;80-real;86-real;89-real;120-real'
+- name: NpmPackagingMode
+  ${{ if and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'none')) }}:
+    value: release
+  ${{ elseif and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'rc')) }}:
+    value: rc
+  ${{ else }}:
+    value: dev
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -189,7 +208,9 @@ extends:
         DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
 
-    - template: stages/nodejs-npm-packaging-stage.yml
+    - template: stages/npm-packaging-stage.yml
       parameters:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+        EnableReactNative: ${{ parameters.EnableReactNative }}

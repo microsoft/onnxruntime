@@ -2995,29 +2995,29 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
-  
+
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
-  
+
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
-  
+
   After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
-  
+
   ```
   G = C - W + 1
   L(T) = T                            if T <= C
   L(T) = T - G * ceil((T - C) / G)    otherwise
   ```
-  
+
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
-  
+
     Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
-  
+
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
-  
+
   To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
-  
+
   **Quantization:**
   When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
   The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
@@ -3631,7 +3631,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
 
   Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
-  
+
   The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
   (`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
   `B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
@@ -4483,6 +4483,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
   
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries: any shifted position at or before the most recent EOS strictly before the current
+    position is replaced with eos_token_id instead of the real token.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+    are not checked against past_ids history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
+
+  Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.
