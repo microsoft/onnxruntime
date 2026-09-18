@@ -116,15 +116,24 @@ class ComputeContextBase {
   }
 
   //
+  // Get whether MatMulNBits dot products accumulate in f32 rather than in the output element type.
+  //
+  inline bool EnableMatmulFp32Accumulation() const {
+    return ep_.EnableMatmulFp32Accumulation();
+  }
+
+  //
   // Get the logger.
   //
-  inline const logging::Logger& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  inline const onnxruntime::ep::adapter::Logger& Logger() const {
     return ep_.GetEpLogger();
-#else
-    return *ep_.GetLogger();
-#endif
   }
+#else
+  inline const logging::Logger& Logger() const {
+    return *ep_.GetLogger();
+  }
+#endif
 
   //
   // Run a compute shader program.

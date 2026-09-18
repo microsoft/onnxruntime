@@ -1747,6 +1747,31 @@ Return Value:
             return;
         }
 
+    #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+
+        // The riscv64 depthwise kernel covers kernel shapes beyond 3x3 and any
+        // stride; the alternative for those is im2col and a GEMM per channel.
+        // Routing widens only where the vector kernels are installed, since
+        // MlasConvDepthwiseFloat_CHW runs vector instructions and a build for the
+        // vector extension can still run on a part that does not implement it.
+
+        if (GetMlasPlatform().ConvNchwFloatKernel != nullptr
+                && Dimensions == 2
+                && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
+                && Parameters->KernelShape[1] <= kDepthwiseGeneralMaxKernelWidth
+                && Parameters->Padding[0] < Parameters->KernelShape[0]
+                && Parameters->Padding[1] < Parameters->KernelShape[1]
+                && Parameters->Padding[2] < Parameters->KernelShape[0]
+                && Parameters->Padding[3] < Parameters->KernelShape[1]
+                && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
+
+            *WorkingBufferSize = Parameters->InputShape[1] + 2;
+            Parameters->Algorithm = MlasConvAlgorithmDepthwise;
+            return;
+        }
+
+    #endif
+
 #endif
 
         //

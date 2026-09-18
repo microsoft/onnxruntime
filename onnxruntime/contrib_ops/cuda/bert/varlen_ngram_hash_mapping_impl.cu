@@ -100,7 +100,6 @@ __global__ void VarlenNGramHashMappingKernel(
     const int32_t* __restrict__ cu_seqlens,
     const T* __restrict__ past_ids,
     T* output,
-    T* present_ids,
     int batch_size,
     int total_tokens,
     int64_t max_ngram_size,
@@ -142,16 +141,42 @@ __global__ void VarlenNGramHashMappingKernel(
     }
   }
 
-  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
-  // is well defined even when this call is shorter than the window. Write it after hash computation
-  // because past_ids may alias present_ids.
-  if (present_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_ids[b * state_length + j] =
-          source_t >= 0 ? input_ids[start + source_t]
-                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
+}
+
+template <typename T>
+__global__ void VarlenNGramPresentIdsKernel(
+    const T* __restrict__ input_ids,
+    const int32_t* __restrict__ cu_seqlens,
+    const T* __restrict__ past_ids,
+    T* __restrict__ present_ids,
+    int batch_size,
+    int64_t max_ngram_size,
+    T pad_id,
+    const int32_t* __restrict__ is_valid) {
+  if (!(*is_valid)) {
+    return;
+  }
+  const int b = blockIdx.x;
+  if (b >= batch_size) {
+    return;
+  }
+  const int32_t start = cu_seqlens[b];
+  const int32_t end = cu_seqlens[b + 1];
+  const int64_t state_length = max_ngram_size - 1;
+  for (int64_t chunk = 0; chunk < state_length; chunk += blockDim.x) {
+    const int64_t j = chunk + threadIdx.x;
+    T token = pad_id;
+    if (j < state_length) {
+      const int64_t source_t = static_cast<int64_t>(end - start) - state_length + j;
+      token = source_t >= 0
+                  ? input_ids[start + source_t]
+                  : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
     }
+    __syncthreads();
+    if (j < state_length) {
+      present_ids[b * state_length + j] = token;
+    }
+    __syncthreads();
   }
 }
 
@@ -217,10 +242,17 @@ Status LaunchVarlenNGramHashMappingKernel(
   // 3) Compute real values if (and only if) the array is valid.
   const int threads = std::min(256, max_threads_per_block);
   VarlenNGramHashMappingKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
-      input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, output, present_ids,
+      input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, output,
       static_cast<int>(batch_size), static_cast<int>(total_tokens), max_ngram_size, n_head_per_ngram,
       pad_id, is_valid_scratch);
-  return CUDA_CALL(cudaGetLastError());
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  if (present_ids != nullptr) {
+    VarlenNGramPresentIdsKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
+        input_ids, cu_seqlens, past_ids, present_ids, static_cast<int>(batch_size), max_ngram_size,
+        pad_id, is_valid_scratch);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(T)                                                      \
