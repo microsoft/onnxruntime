@@ -89,12 +89,6 @@ Use these instead of `std::vector` / `std::unordered_map`:
 
 Use `reserve()` not `resize()`. Do not use `absl::` directly — use the ORT typedefs.
 
-### Function parameter options structs
-
-For functions with parameters that are easy to pass in the wrong order, prefer an options struct passed by `const&`
-and use C++20 designated initializers at call sites. Give every field an explicit default value. Keep positional
-parameters when their order is clear and unambiguous.
-
 ### Other conventions
 
 - `#pragma once` for header guards
