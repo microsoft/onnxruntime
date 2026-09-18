@@ -31,6 +31,9 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
+struct OrtEpDevice;
+using ort_ep_device_handle_t = const OrtEpDevice*;
+
 #ifdef ENABLE_TRAINING_APIS
 struct OrtTrainingSession;
 using ort_training_session_handle_t = OrtTrainingSession*;
@@ -93,6 +96,44 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
                                                     const char* const* provider_options_keys,
                                                     const char* const* provider_options_values,
                                                     size_t num_keys);
+
+/**
+ * get the execution provider devices registered with the environment.
+ *
+ * The array is owned by the environment and remains valid for its lifetime. The caller must not free it.
+ *
+ * @param ep_devices receives a pointer to the array of ort_ep_device_handle_t
+ * @param num_ep_devices receives the number of entries in the array
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtGetEpDevices(const ort_ep_device_handle_t** ep_devices, size_t* num_ep_devices);
+
+/**
+ * get the execution provider name that an execution provider device is registered under.
+ *
+ * More than one device may share an EP name, e.g. when an EP reports one device per GPU.
+ *
+ * @returns the name, owned by the environment. It remains valid for the lifetime of the environment.
+ */
+const char* EMSCRIPTEN_KEEPALIVE OrtEpDevice_EpName(ort_ep_device_handle_t ep_device);
+
+/**
+ * append an execution provider for a session, selecting it by execution provider device.
+ *
+ * Unlike OrtAppendExecutionProvider, which resolves an EP name against ORT's built-in EP table, this selects
+ * from the devices registered with the environment, which is how a plugin EP is selected. Use OrtGetEpDevices
+ * and OrtEpDevice_EpName to choose the devices to pass in.
+ *
+ * @param ep_devices the devices to select, all of which must belong to the same execution provider
+ * @param num_ep_devices the number of entries in ep_devices
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
+                                                      ort_ep_device_handle_t* ep_devices,
+                                                      size_t num_ep_devices,
+                                                      const char* const* provider_options_keys,
+                                                      const char* const* provider_options_values,
+                                                      size_t num_keys);
 
 /**
  * add a free dimension override for one dimension of a session's input.
