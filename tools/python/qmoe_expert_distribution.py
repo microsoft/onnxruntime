@@ -3,7 +3,9 @@ import argparse
 import csv
 import json
 import math
+import os
 import re
+import stat
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -128,11 +130,12 @@ def _validate_routing_event(event, line_number):
         raise ValueError(f"Line {line_number}: router_weights must contain finite numbers.")
 
 
-def parse_routing_trace(log_path):
+def parse_routing_trace(log_path, on_event=None):
     active_prompt = None
     completed_prompts = 0
     expected_prompts = None
-    routing_events = []
+    routing_events = [] if on_event is None else None
+    routing_event_count = 0
     completion = None
 
     with log_path.open(encoding="utf-8", errors="replace") as stream:
@@ -195,7 +198,11 @@ def parse_routing_trace(log_path):
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Invalid routing JSON at line {line_number}: {exc}") from exc
             _validate_routing_event(event, line_number)
-            routing_events.append((active_prompt, event))
+            if on_event is None:
+                routing_events.append((active_prompt, event))
+            else:
+                on_event(active_prompt, event)
+            routing_event_count += 1
 
     if active_prompt is not None:
         raise ValueError(f"Incomplete routing trace: prompt {active_prompt} has no prompt_end marker.")
@@ -214,7 +221,7 @@ def parse_routing_trace(log_path):
     expected_completion = {
         "prompts": expected_prompts,
         "prompt_runs": completed_prompts,
-        "routing_records": len(routing_events),
+        "routing_records": routing_event_count,
     }
     if completion != expected_completion:
         raise ValueError(f"Routing completion footer mismatch: expected {expected_completion}, got {completion}.")
@@ -226,13 +233,14 @@ def iter_routing_events(log_path):
     yield from routing_events
 
 
-def read_distributions(log_path, num_experts):
+def analyze_routing_trace(log_path, num_experts):
     by_prompt_qmoe = defaultdict(Counter)
     by_qmoe = defaultdict(Counter)
     global_counts = Counter()
     event_count = 0
 
-    for prompt_index, event in iter_routing_events(log_path):
+    def update_distributions(prompt_index, event):
+        nonlocal event_count
         identity = node_identity(event)
         expert_ids = event["expert_ids"]
         for expert_id in expert_ids:
@@ -244,10 +252,15 @@ def read_distributions(log_path, num_experts):
         global_counts.update(counts)
         event_count += 1
 
+    _, completion = parse_routing_trace(log_path, update_distributions)
     if event_count == 0:
         raise ValueError(f"No '{ROUTING_MARKER.strip()}' records found in {log_path}.")
 
-    return by_prompt_qmoe, by_qmoe, global_counts, event_count
+    return by_prompt_qmoe, by_qmoe, global_counts, event_count, completion
+
+
+def read_distributions(log_path, num_experts):
+    return analyze_routing_trace(log_path, num_experts)[:4]
 
 
 def distribution_rows(counts, num_experts):
@@ -428,6 +441,21 @@ def _external_data_integer(external_data, key, initializer_name):
     return value
 
 
+def _external_data_file_size(external_path, initializer_name):
+    try:
+        with external_path.open("rb") as stream:
+            file_info = os.fstat(stream.fileno())
+    except OSError as exc:
+        raise ValueError(
+            f"External data file for initializer {initializer_name} is not a readable regular file: {external_path}."
+        ) from exc
+    if not stat.S_ISREG(file_info.st_mode):
+        raise ValueError(
+            f"External data file for initializer {initializer_name} is not a readable regular file: {external_path}."
+        )
+    return file_info.st_size
+
+
 def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_experts, model_path=None):
     expert_bytes = {}
     for identity in node_identities:
@@ -453,15 +481,19 @@ def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_e
             tensor_bytes = declared_length or expected_tensor_bytes
 
             location = external_data.get("location")
-            if model_path is not None and location:
+            if initializer.data_location == onnx.TensorProto.EXTERNAL:
+                if not location:
+                    raise ValueError(f"External initializer {input_name} has no non-empty location.")
+                if model_path is None:
+                    raise ValueError(f"Model path is required to validate external initializer {input_name}.")
                 external_path = Path(model_path).parent / location
-                if external_path.is_file():
-                    offset = _external_data_integer(external_data, "offset", input_name)
-                    if offset + tensor_bytes > external_path.stat().st_size:
-                        raise ValueError(
-                            f"External data range for initializer {input_name} exceeds {external_path}: "
-                            f"offset {offset}, length {tensor_bytes}, file size {external_path.stat().st_size}."
-                        )
+                file_size = _external_data_file_size(external_path, input_name)
+                offset = _external_data_integer(external_data, "offset", input_name)
+                if offset + tensor_bytes > file_size:
+                    raise ValueError(
+                        f"External data range for initializer {input_name} exceeds {external_path}: "
+                        f"offset {offset}, length {tensor_bytes}, file size {file_size}."
+                    )
             if tensor_bytes % num_experts:
                 raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
             total_bytes += tensor_bytes // num_experts
@@ -645,16 +677,15 @@ def main():
     output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-distribution")
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    _, completion = parse_routing_trace(args.log)
     prompt_labels = load_prompt_labels(benchmark_json)
+    model_path = resolve_model_path(args.log, args.model)
+    initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
+    by_prompt_qmoe, by_qmoe, global_counts, event_count, completion = analyze_routing_trace(args.log, num_experts)
     if len(prompt_labels) != completion["prompts"]:
         raise ValueError(
             f"Benchmark JSON contains {len(prompt_labels)} prompts, "
             f"but the routing trace completed {completion['prompts']} prompts."
         )
-    model_path = resolve_model_path(args.log, args.model)
-    initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
-    by_prompt_qmoe, by_qmoe, global_counts, event_count = read_distributions(args.log, num_experts)
     expert_bytes = calculate_qmoe_expert_bytes(
         initializers, qmoe_nodes, by_qmoe.keys(), num_experts, model_path=model_path
     )

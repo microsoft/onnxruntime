@@ -17,6 +17,7 @@ if _TOOLS_PYTHON not in sys.path:
 
 from qmoe_expert_distribution import (  # noqa: E402
     aggregate_rank_thresholds_by_qmoe,
+    analyze_routing_trace,
     calculate_qmoe_expert_bytes,
     inference_expert_ids,
     iter_routing_events,
@@ -140,10 +141,12 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text(_complete_trace([[first_event, second_event]]), encoding="utf-8")
 
-            _, by_qmoe, _, _ = read_distributions(log_path, num_experts=2)
+            _, by_qmoe, _, event_count, completion = analyze_routing_trace(log_path, num_experts=2)
 
         self.assertEqual(by_qmoe[(3, "QMoE", "")], {0: 1})
         self.assertEqual(by_qmoe[(4, "QMoE", "")], {1: 1})
+        self.assertEqual(event_count, 2)
+        self.assertEqual(completion["routing_records"], 2)
 
     def test_router_weight_count_is_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -247,6 +250,36 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     {weight.name: weight},
                     {(0, node.op_type, node.name): node},
                     [(0, node.op_type, node.name)],
+                    2,
+                    model_path=model_path,
+                )
+
+    def test_external_data_location_and_file_are_required(self):
+        weight = onnx.helper.make_tensor("weight", onnx.TensorProto.FLOAT16, [2, 4], [0.0] * 8)
+        node = onnx.helper.make_node("QMoE", ["input", "router", "weight"], ["output"], name="/layers.0/qmoe")
+        initializers = {weight.name: weight}
+        qmoe_nodes = {(0, node.op_type, node.name): node}
+        node_identities = [(0, node.op_type, node.name)]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "model.onnx"
+
+            _set_external_data(weight, length=16)
+            with self.assertRaisesRegex(ValueError, "has no non-empty location"):
+                calculate_qmoe_expert_bytes(
+                    initializers,
+                    qmoe_nodes,
+                    node_identities,
+                    2,
+                    model_path=model_path,
+                )
+
+            _set_external_data(weight, location="missing.bin", length=16)
+            with self.assertRaisesRegex(ValueError, "is not a readable regular file"):
+                calculate_qmoe_expert_bytes(
+                    initializers,
+                    qmoe_nodes,
+                    node_identities,
                     2,
                     model_path=model_path,
                 )

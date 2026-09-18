@@ -160,6 +160,8 @@ def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
+    if args.output.resolve() == args.routing_log.resolve():
+        raise ValueError("--output and --routing-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 

@@ -159,9 +159,12 @@ is a standalone JSON object.
 
 Each current routing record contains `request_id`, `node_index`, `node_type`, `node_name`, `expert_ids`,
 `router_weights`, `num_rows`, `top_k`, and `execution_device_id`. The three node fields form the routing record's node
-identity; `node_name` may be empty. CUDA routing buffers are copied asynchronously and retained until the normal
-end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound
-pinned host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
+identity; `node_name` may be empty. ORT initially assigns node indices in raw `GraphProto.node` order and does not
+renumber surviving nodes when graph optimization removes other nodes. The analyzer also requires the recorded operator
+type and name to match, so a transformation that replaces a QMoE node fails validation instead of attributing its
+records to another raw node. CUDA routing buffers are copied asynchronously and retained until the normal end-of-run
+execution-provider synchronization, then serialized. Per-run record and routing-element limits bound pinned host
+memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
 
 The runner surrounds every prompt with ordered `prompt_start` and `prompt_end` markers and writes a final
 `moe_routing_complete` footer containing the prompt, prompt-run, and routing-record counts. The analyzer requires all
@@ -221,12 +224,13 @@ Use `--prompt` repeatedly instead of `--prompts-file` for small manual runs. The
 chat template by default; `--raw-prompts` disables that behavior.
 
 `tools/python/qmoe_expert_distribution.py` validates and streams the routing records, computes prompt, layer, and global
-expert distributions, ranks experts by frequency, maps every selected top-k expert to its zero-based frequency rank,
-generates threshold aggregates, derives expert bytes from the ONNX external initializers, and writes the result plots.
-Logs containing a `moe_routing_truncated` warning, incomplete prompt boundaries, an absent or inconsistent completion
-footer, or malformed routing and external-data metadata are rejected before generating analysis artifacts. The
-benchmark JSON is required, and its prompt count and indices must match the completed trace. Matplotlib is required for
-plotting, but not for importing the analysis helpers.
+expert distributions across every routing row, ranks experts by frequency, and maps the final row's selected top-k
+experts to their zero-based frequency ranks for the current decode-token view. It also generates threshold aggregates,
+derives expert bytes from the ONNX external initializers, and writes the result plots. Logs containing a
+`moe_routing_truncated` warning, incomplete prompt boundaries, an absent or inconsistent completion footer, or
+malformed routing and external-data metadata are rejected before generating analysis artifacts. The benchmark JSON is
+required, and its prompt count and indices must match the completed trace. Matplotlib is required for plotting, but not
+for importing the analysis helpers.
 
 ```bash
 python tools/python/qmoe_expert_distribution.py qmoe-routing.log --benchmark-json qmoe-prompt-results.json --model /path/to/model/model.onnx --output-prefix qmoe-routing-analysis
