@@ -163,21 +163,15 @@ __global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttention
 // Encodes a prefix-visible row as -count-1. QSA can then index that row directly without
 // materializing its visible positions. Non-prefix rows keep a nonnegative count and are compacted
 // by CompactNonPrefixVisibleKernel.
-template <typename MaskT, bool IsPaddingMask>
-__device__ __forceinline__ bool IsVisible(const MaskT* mask, int64_t row, int position,
+__device__ __forceinline__ bool IsVisible(const int64_t* mask, int64_t row, int position,
                                           const SparseAttentionIndexerParams& params) {
-  if constexpr (IsPaddingMask) {
-    const int batch = static_cast<int>(row / params.sequence_length);
-    const int query = static_cast<int>(row % params.sequence_length);
-    return mask[static_cast<int64_t>(batch) * params.total_sequence_length + position] != 0 &&
-           position <= params.past_sequence_length + query;
-  } else {
-    return mask[row * params.total_sequence_length + position];
-  }
+  const int batch = static_cast<int>(row / params.sequence_length);
+  const int query = static_cast<int>(row % params.sequence_length);
+  return mask[static_cast<int64_t>(batch) * params.total_sequence_length + position] != 0 &&
+         position <= params.past_sequence_length + query;
 }
 
-template <typename MaskT, bool IsPaddingMask>
-__global__ void AnalyzeVisibleKernel(const MaskT* mask, int32_t* visible_count,
+__global__ void AnalyzeVisibleKernel(const int64_t* mask, int32_t* visible_count,
                                      SparseAttentionIndexerParams params) {
   __shared__ int32_t counts[kThreads];
   __shared__ int32_t maxima[kThreads];
@@ -186,7 +180,7 @@ __global__ void AnalyzeVisibleKernel(const MaskT* mask, int32_t* visible_count,
     int32_t count = 0;
     int32_t maximum = -1;
     for (int position = threadIdx.x; position < params.total_sequence_length; position += blockDim.x) {
-      if (IsVisible<MaskT, IsPaddingMask>(mask, row, position, params)) {
+      if (IsVisible(mask, row, position, params)) {
         ++count;
         maximum = position;
       }
@@ -210,8 +204,7 @@ __global__ void AnalyzeVisibleKernel(const MaskT* mask, int32_t* visible_count,
 }
 
 // One block per non-prefix query row; compacts visible key positions into visible_indices.
-template <typename MaskT, bool IsPaddingMask>
-__global__ void CompactNonPrefixVisibleKernel(const MaskT* mask, int32_t* visible_indices,
+__global__ void CompactNonPrefixVisibleKernel(const int64_t* mask, int32_t* visible_indices,
                                               const int32_t* visible_count,
                                               SparseAttentionIndexerParams params) {
   __shared__ int32_t warp_offsets[kThreads / kWarpSize + 1];
@@ -225,7 +218,7 @@ __global__ void CompactNonPrefixVisibleKernel(const MaskT* mask, int32_t* visibl
     for (int base = 0; base < params.total_sequence_length; base += blockDim.x) {
       const int position = base + static_cast<int>(threadIdx.x);
       const bool visible = position < params.total_sequence_length &&
-                           IsVisible<MaskT, IsPaddingMask>(mask, row, position, params);
+                           IsVisible(mask, row, position, params);
       const unsigned int warp_mask = __ballot_sync(0xffffffffu, visible);
       const int lane = threadIdx.x % kWarpSize;
       const int warp = threadIdx.x / kWarpSize;
@@ -804,7 +797,7 @@ Status LaunchQsaSparseAttentionIndexer(const onnxruntime::cuda::CudaKernel* kern
                                        const SparseAttentionIndexerParams& params,
                                        const T* query, const T* key, const T* query_norm_weight,
                                        const T* key_norm_weight,
-                                       const T* cos_cache, const T* sin_cache, const void* mask,
+                                       const T* cos_cache, const T* sin_cache, const int64_t* mask,
                                        const T* past_key, int32_t* selected_indices, T* present_key,
                                        float* float_workspace, int32_t* int_workspace) {
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
@@ -834,19 +827,9 @@ Status LaunchQsaSparseAttentionIndexer(const onnxruntime::cuda::CudaKernel* kern
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
 
   const int row_blocks = static_cast<int>(std::min<int64_t>(rows, kMaxGridDimX));
-  if (params.mask_is_2d) {
-    const int64_t* padding_mask = static_cast<const int64_t*>(mask);
-    AnalyzeVisibleKernel<int64_t, true><<<row_blocks, kThreads, 0, stream>>>(
-        padding_mask, visible_count, params);
-    CompactNonPrefixVisibleKernel<int64_t, true><<<row_blocks, kThreads, 0, stream>>>(
-        padding_mask, visible_indices, visible_count, params);
-  } else {
-    const bool* visibility_mask = static_cast<const bool*>(mask);
-    AnalyzeVisibleKernel<bool, false><<<row_blocks, kThreads, 0, stream>>>(
-        visibility_mask, visible_count, params);
-    CompactNonPrefixVisibleKernel<bool, false><<<row_blocks, kThreads, 0, stream>>>(
-        visibility_mask, visible_indices, visible_count, params);
-  }
+  AnalyzeVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(mask, visible_count, params);
+  CompactNonPrefixVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(
+      mask, visible_indices, visible_count, params);
 
   if (params.max_block_count > 0) {
     const int64_t block_work = rows * params.max_block_count;
@@ -960,7 +943,7 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   template Status LaunchQsaSparseAttentionIndexer<T>(const onnxruntime::cuda::CudaKernel*, cudaStream_t, void*,      \
                                                      const SparseAttentionIndexerParams&,                            \
                                                      const T*, const T*, const T*, const T*, const T*, const T*,     \
-                                                     const void*, const T*, int32_t*, T*, float*, int32_t*);         \
+                                                     const int64_t*, const T*, int32_t*, T*, float*, int32_t*);      \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                                \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*, const T*, \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);

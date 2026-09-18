@@ -22,7 +22,6 @@ struct SparseAttentionIndexerParams {
   int rotary_width = 0;
   int max_rotary_length = 0;
   int rotary_cache_batch_stride = 0;
-  bool mask_is_2d = false;
   int compress_ratio = 0;
   int capacity = 0;  // selected_indices.shape[2]
   float epsilon = 1e-6f;
@@ -67,7 +66,7 @@ Status LaunchQsaSparseAttentionIndexer(
     const T* key_norm_weight,
     const T* cos_cache,
     const T* sin_cache,
-    const void* mask,
+    const int64_t* mask,
     const T* past_key,
     int32_t* selected_indices,
     T* present_key,

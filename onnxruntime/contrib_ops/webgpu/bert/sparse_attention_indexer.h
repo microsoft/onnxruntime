@@ -42,8 +42,7 @@ class SparseAttentionIndexerQsaConcatProgram final
 class SparseAttentionIndexerQsaSelectProgram final
     : public Program<SparseAttentionIndexerQsaSelectProgram> {
  public:
-  explicit SparseAttentionIndexerQsaSelectProgram(bool mask_is_2d)
-      : Program{"SparseAttentionIndexerQsaSelect"}, mask_is_2d_{mask_is_2d} {}
+  SparseAttentionIndexerQsaSelectProgram() : Program{"SparseAttentionIndexerQsaSelect"} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"rows", ProgramUniformVariableDataType::Uint32},
@@ -60,9 +59,6 @@ class SparseAttentionIndexerQsaSelectProgram final
       {"block_topk", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32},
       {"scale", ProgramUniformVariableDataType::Float32});
-
- private:
-  bool mask_is_2d_;
 };
 
 class SparseAttentionIndexerCsaCopyCompressedProgram final

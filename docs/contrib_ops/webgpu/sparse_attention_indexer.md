@@ -12,7 +12,6 @@ the provider-neutral schema and state ABI described in the
 - `float32` and `float16`;
 - explicit graph-visible key and packed projection-buffer state;
 - rank-2 INT64 QSA padding masks with internally derived causal visibility;
-- arbitrary boolean rank-3/4 QSA visibility masks;
 - deterministic score-descending, index-ascending TopK ties.
 
 BF16, packed/variable-length inputs, and fixed-capacity caches using
