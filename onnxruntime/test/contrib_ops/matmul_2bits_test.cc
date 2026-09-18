@@ -56,6 +56,9 @@ struct TestOptions2Bits {
   bool has_g_idx{false};
   bool has_bias{false};
 
+  // Run the node on the CUDA EP instead of the default (CPU / WebGPU) set.
+  bool use_cuda{false};
+
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
 };
@@ -66,7 +69,8 @@ struct TestOptions2Bits {
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
             << ", has_g_idx:" << opts.has_g_idx
-            << ", has_bias:" << opts.has_bias;
+            << ", has_bias:" << opts.has_bias
+            << ", use_cuda:" << opts.use_cuda;
 }
 
 template <typename T1>
@@ -205,6 +209,15 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (opts.use_cuda) {
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+#endif
+    return;
+  }
+
   if constexpr (std::is_same<T1, float>::value) {
 #ifdef USE_WEBGPU
     execution_providers.push_back(DefaultWebGpuExecutionProvider());
@@ -1622,6 +1635,266 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
 }
 
 #endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+
+#ifdef USE_CUDA
+
+namespace {
+
+// The 2-bit CUDA kernels need at least Pascal-era half support; the GEMV path uses half2 FMA.
+bool SkipIfNo2BitCudaDevice() {
+  return !HasCudaEnvironment(530);
+}
+
+template <typename T1>
+void RunCuda2BitsShapes(int64_t block_size, float abs_error, float rel_error) {
+  // M = 1 exercises the GEMV kernel, 3 the register-tiled small-M kernel with a partially filled
+  // row tile, 8 a full row tile, and 128 the dequantize + cuBLAS fallback. N = 24 is not a multiple
+  // of two warp tiles so it also covers the CtaN = 1 dispatch.
+  constexpr int64_t kRows[] = {1, 3, 8, 128};
+  constexpr int64_t kShapes[][2] = {{32, 256}, {64, 512}, {24, 1024}};
+  for (int64_t m : kRows) {
+    for (bool has_zero_point : {false, true}) {
+      for (const auto& nk : kShapes) {
+        TestOptions2Bits opts{};
+        opts.M = m;
+        opts.N = nk[0];
+        opts.K = nk[1];
+        opts.block_size = block_size;
+        opts.has_zero_point = has_zero_point;
+        opts.use_cuda = true;
+        opts.output_abs_error = abs_error;
+        opts.output_rel_error = rel_error;
+        RunTest2Bits<T1>(opts);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+TEST(MatMul2BitsCuda, Float16_BlkLen16) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<MLFloat16>(16, 0.1f, 0.02f);
+}
+
+TEST(MatMul2BitsCuda, Float16_BlkLen32) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<MLFloat16>(32, 0.1f, 0.02f);
+}
+
+TEST(MatMul2BitsCuda, Float16_BlkLen64) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<MLFloat16>(64, 0.1f, 0.02f);
+}
+
+TEST(MatMul2BitsCuda, Float16_BlkLen128) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<MLFloat16>(128, 0.1f, 0.02f);
+}
+
+TEST(MatMul2BitsCuda, Float32_BlkLen32) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<float>(32, 0.05f, 0.01f);
+}
+
+TEST(MatMul2BitsCuda, Float32_BlkLen128) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<float>(128, 0.05f, 0.01f);
+}
+
+TEST(MatMul2BitsCuda, BFloat16_BlkLen128) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16";
+  RunCuda2BitsShapes<BFloat16>(128, 0.3f, 0.05f);
+}
+
+// A K that is not a multiple of block_size forces the GEMV kernels to decline and the
+// dequantize + cuBLAS fallback to handle the padded trailing block.
+TEST(MatMul2BitsCuda, Float16_UnalignedK) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  for (int64_t m : {int64_t{1}, int64_t{4}, int64_t{64}}) {
+    for (bool has_zero_point : {false, true}) {
+      TestOptions2Bits opts{};
+      opts.M = m;
+      opts.N = 32;
+      opts.K = 320;  // 2.5 blocks of 128
+      opts.block_size = 128;
+      opts.has_zero_point = has_zero_point;
+      opts.use_cuda = true;
+      opts.output_abs_error = 0.1f;
+      opts.output_rel_error = 0.02f;
+      RunTest2Bits<MLFloat16>(opts);
+    }
+  }
+}
+
+TEST(MatMul2BitsCuda, Float16_Bias) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  for (int64_t m : {int64_t{1}, int64_t{4}, int64_t{64}}) {
+    TestOptions2Bits opts{};
+    opts.M = m;
+    opts.N = 32;
+    opts.K = 512;
+    opts.block_size = 128;
+    opts.has_zero_point = true;
+    opts.has_bias = true;
+    opts.use_cuda = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    RunTest2Bits<MLFloat16>(opts);
+  }
+}
+
+namespace {
+
+// Ternary weights {-1, 0, +1} map exactly onto the affine 2-bit ABI as codes {0, 1, 2} with a
+// uniform zero point of 1. MlasQuantizeBlockwise never emits that subset, so the node is built by
+// hand here and checked against an exact float reference; every quantity is chosen to be
+// representable in fp16 so the only error left is accumulation order.
+void RunTernary2BitsCudaTest(int64_t M, int64_t N, int64_t K, int64_t block_size,
+                             float abs_error = 0.05f, float rel_error = 0.01f) {
+  SCOPED_TRACE("ternary M:" + std::to_string(M) + " N:" + std::to_string(N) +
+               " K:" + std::to_string(K) + " block_size:" + std::to_string(block_size));
+  ASSERT_EQ(K % block_size, 0) << "this helper assumes an aligned K";
+
+  const int64_t k_blocks = K / block_size;
+  const int64_t blob_size = block_size / 4;
+  const int64_t zp_bytes = (k_blocks * 2 + 7) / 8;
+
+  // Codes cycle through {0, 1, 2} with a stride that is co-prime with the block size so every
+  // block sees all three symbols; code 3 never appears, as in a real ternary checkpoint.
+  std::vector<uint8_t> b_packed(static_cast<size_t>(N * k_blocks * blob_size), 0);
+  std::vector<int8_t> ternary(static_cast<size_t>(N * K));
+  for (int64_t n = 0; n < N; ++n) {
+    for (int64_t k = 0; k < K; ++k) {
+      const uint8_t code = static_cast<uint8_t>((7 * n + 3 * k + (k / 5)) % 3);
+      ternary[static_cast<size_t>(n * K + k)] = static_cast<int8_t>(static_cast<int>(code) - 1);
+      const size_t byte_index = static_cast<size_t>(n * K + k) / 4;
+      b_packed[byte_index] |= static_cast<uint8_t>(code << (2 * (k % 4)));
+    }
+  }
+
+  // Powers of two are exact in fp16, so dequantization introduces no error at all.
+  constexpr float kScaleTable[] = {0.0625f, 0.03125f, 0.015625f};
+  std::vector<float> scales(static_cast<size_t>(N * k_blocks));
+  for (size_t i = 0; i < scales.size(); ++i) {
+    scales[i] = kScaleTable[i % 3];
+  }
+
+  // Every 2-bit crumb is 1: 0b01010101.
+  std::vector<uint8_t> zp(static_cast<size_t>(N * zp_bytes), 0x55);
+
+  // Multiples of 1/64 in [-1, 1) are exact in fp16. The values are zero-mean so the running dot
+  // product stays small and fp16 accumulation error cannot masquerade as a kernel bug.
+  uint32_t rng = 0x9E3779B9u;
+  std::vector<float> a_vals(static_cast<size_t>(M * K));
+  for (size_t i = 0; i < a_vals.size(); ++i) {
+    rng = rng * 1664525u + 1013904223u;
+    a_vals[i] = static_cast<float>(static_cast<int>((rng >> 16) & 0x7F) - 64) / 64.0f;
+  }
+
+  // Dequantize one output channel at a time and reuse it across all M rows: the naive
+  // m/n/k triple loop costs an integer division per element and is unusably slow at the
+  // 27B prefill shape (N = 10240, K = 5120).
+  std::vector<float> expected(static_cast<size_t>(M * N));
+  std::vector<float> w_row(static_cast<size_t>(K));
+  for (int64_t n = 0; n < N; ++n) {
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      const float s = scales[static_cast<size_t>(n * k_blocks + kb)];
+      for (int64_t j = 0; j < block_size; ++j) {
+        const int64_t k = kb * block_size + j;
+        w_row[static_cast<size_t>(k)] = static_cast<float>(ternary[static_cast<size_t>(n * K + k)]) * s;
+      }
+    }
+    for (int64_t m = 0; m < M; ++m) {
+      const float* a_row = a_vals.data() + static_cast<size_t>(m * K);
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; ++k) {
+        sum += a_row[k] * w_row[static_cast<size_t>(k)];
+      }
+      expected[static_cast<size_t>(m * N + n)] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(a_vals), false);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_packed, true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
+  test.AddInput<uint8_t>("zero_points", {N, zp_bytes}, zp, true);
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(expected));
+  test.SetOutputAbsErr("Y", abs_error);
+  test.SetOutputRelErr("Y", rel_error);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.ConfigEps(std::move(execution_providers));
+  test.RunWithConfig();
+}
+
+}  // namespace
+
+TEST(MatMul2BitsCuda, TernaryZeroPointOne) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  for (int64_t block_size : {int64_t{16}, int64_t{32}, int64_t{64}, int64_t{128}}) {
+    for (int64_t m : {int64_t{1}, int64_t{2}, int64_t{8}, int64_t{96}}) {
+      RunTernary2BitsCudaTest(m, 32, 512, block_size);
+    }
+  }
+  // The shape the ternary 27B model actually runs at decode time, trimmed to keep the test fast.
+  RunTernary2BitsCudaTest(1, 512, 5120, 128, 0.2f, 0.02f);
+}
+
+// The qkv_proj of the ternary 27B model: N = 10240, K = 5120, block_size = 128. M >= 32 is
+// past the small-M kernels and therefore exercises the dequantize-to-fp16 + cuBLAS fallback;
+// M = 512 matches the model's prefill chunk, while M = 1 covers GEMV at the same shape.
+TEST(MatMul2BitsCuda, TernaryPrefillQkvProjShape) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  for (int64_t m : {int64_t{1}, int64_t{32}, int64_t{256}, int64_t{512}}) {
+    RunTernary2BitsCudaTest(m, 10240, 5120, 128, 0.2f, 0.02f);
+  }
+}
+
+// Regression guard for the silent-corruption bug this support was built on top of: an
+// unimplemented weight width used to be accepted by the shared validator, fall through to the
+// 4-bit dequantize path, and return garbage. It must fail at session initialization instead.
+TEST(MatMul2BitsCuda, UnsupportedBitWidthFailsLoudly) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+
+  constexpr int64_t M = 1, N = 32, K = 256, block_size = 128;
+  constexpr int64_t k_blocks = K / block_size;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", static_cast<int64_t>(3));
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(std::vector<float>(M * K, 0.5f)), false);
+  test.AddInput<uint8_t>("B", {N, k_blocks, block_size * 3 / 8},
+                         std::vector<uint8_t>(static_cast<size_t>(N * k_blocks * block_size * 3 / 8), 0x55), true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks},
+                           FloatsToMLFloat16s(std::vector<float>(static_cast<size_t>(N * k_blocks), 0.25f)), true);
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(std::vector<float>(M * N, 0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Config(OpTester::ExpectResult::kExpectFailure, "bits")
+      .ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime

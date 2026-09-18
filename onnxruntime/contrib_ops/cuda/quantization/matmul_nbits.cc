@@ -1041,7 +1041,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
-  // Column-wise dequant helper: dispatches 8-bit / 4-bit × typed / uint8 zero-points.
+  // Column-wise dequant helper: dispatches 8/4/2-bit × typed / uint8 zero-points.
   // Used by both the full-N and chunked paths so the offset math stays in one place.
   const int64_t blocks_per_col = K_padded / block_size_;
   auto dequant_column_wise = [&](const uint8_t* chunk_blob,
@@ -1049,8 +1049,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                  const void* chunk_zp,
                                  const int32_t* chunk_reorder_idx,
                                  int n_rows) -> Status {
+    const bool typed_zero_points = zero_points && zero_points->IsDataType<T>();
     if (nbits_ == 8) {
-      if (zero_points && zero_points->IsDataType<T>()) {
+      if (typed_zero_points) {
         return Dequantize8Bits(
             reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
             static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
@@ -1061,8 +1062,21 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
             SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
       }
+    } else if (nbits_ == 2) {
+      if (typed_zero_points) {
+        return Dequantize2Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      } else {
+        return Dequantize2Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      }
     } else {
-      if (zero_points && zero_points->IsDataType<T>()) {
+      ORT_RETURN_IF_NOT(nbits_ == 4, "CUDA MatMulNBits dequantization supports bits = 2, 4 or 8, but got bits = ", nbits_);
+      if (typed_zero_points) {
         return Dequantize4Bits(
             reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
             static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
@@ -1102,6 +1116,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           stream));
     } else {
       // row-wise block (4-bit)
+      ORT_RETURN_IF_NOT(nbits_ == 4,
+                        "CUDA MatMulNBits row-wise quantization blocks are only implemented for bits = 4 or 8, but got bits = ",
+                        nbits_);
       K_padded = K_;
       ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
           reinterpret_cast<CudaT*>(b_data),
@@ -1141,17 +1158,17 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         ORT_ENFORCE(column_wise_quant_blk_, "Chunked path requires column-wise quantization blocks");
 
         // Compute per-chunk pointers into the column-wise-packed weight, scale, and ZP arrays.
-        const uint8_t* chunk_blob = blob_data + n_start * (nbits_ == 8 ? K_padded : K_padded / 2);
+        const int64_t elements_per_byte = 8 / nbits_;
+        const uint8_t* chunk_blob = blob_data + n_start * (K_padded / elements_per_byte);
         const auto* chunk_scales = reinterpret_cast<const CudaT*>(scales_data) + n_start * blocks_per_col;
         const void* chunk_zp = nullptr;
         if (zero_points_data) {
           if (zero_points && zero_points->IsDataType<T>()) {
             chunk_zp = reinterpret_cast<const CudaT*>(zero_points_data) + n_start * blocks_per_col;
-          } else if (nbits_ == 8) {
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * blocks_per_col;
           } else {
-            // 4-bit ZP: packed, offset by n_start * ceil(blocks_per_col / 2)
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * ((blocks_per_col + 1) / 2);
+            // uint8 ZP rows are bit-packed: ceil(blocks_per_col / elements_per_byte) bytes per output channel.
+            chunk_zp = static_cast<const uint8_t*>(zero_points_data) +
+                       n_start * ((blocks_per_col + elements_per_byte - 1) / elements_per_byte);
           }
         }
         ORT_RETURN_IF_ERROR(dequant_column_wise(
