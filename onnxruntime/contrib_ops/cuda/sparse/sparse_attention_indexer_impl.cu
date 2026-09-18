@@ -233,9 +233,6 @@ __global__ void CompactNonPrefixVisibleKernel(const MaskT* mask, int32_t* visibl
       }
       offset += tile_total;
     }
-    if (threadIdx.x == 0) {
-      visible_count[row] = offset;
-    }
     __syncthreads();
   }
 }
