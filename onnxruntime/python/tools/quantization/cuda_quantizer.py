@@ -297,34 +297,35 @@ class CudaQuantizer:
 
         weights = weights.detach().cpu().to(torch.float32).contiguous()
         bits = int(bits)
-        if bits not in (4, 8):
-            raise ValueError(f"QMoE per-channel quantization only supports 4 or 8 bits, got {bits}.")
+        if bits not in (2, 4, 8):
+            raise ValueError(f"QMoE per-channel quantization only supports 2, 4, or 8 bits, got {bits}.")
 
         n, k = weights.shape
         pack = 8 // bits
         if k % pack != 0:
             raise ValueError(f"K ({k}) must be divisible by {pack} for QMoE per-channel quantization.")
 
-        if bits == 4:
-            if unsigned_full_range:
-                qmin, qmax, scale_divisor, zero_point = -8, 7, 8, 8
-            else:
-                qmin, qmax, scale_divisor, zero_point = -7, 7, 7, 8
-        else:  # bits == 8, already validated above
-            if unsigned_full_range:
-                qmin, qmax, scale_divisor, zero_point = -128, 127, 128, 128
-            else:
-                qmin, qmax, scale_divisor, zero_point = -127, 127, 127, 128
+        # Symmetric range centred on the offset-binary zero point 2^(bits-1) (2 / 8 / 128).
+        zero_point = 1 << (bits - 1)
+        if unsigned_full_range:
+            qmin, qmax, scale_divisor = -zero_point, zero_point - 1, zero_point
+        else:
+            qmin, qmax, scale_divisor = -(zero_point - 1), zero_point - 1, zero_point - 1
         scales = weights.abs().amax(dim=1, keepdim=True) / float(scale_divisor)
         scales = torch.clamp(scales, min=torch.finfo(torch.float32).eps)
         quantized = torch.clamp(torch.round(weights / scales), qmin, qmax).to(torch.int16).contiguous()
         quantized = (quantized + zero_point).to(torch.uint8)
 
-        if bits == 4:
-            qweight = (quantized[:, 0::2] & 0xF) | ((quantized[:, 1::2] & 0xF) << 4)
-            qweight = qweight.to(torch.uint8)
-        else:
+        if bits == 8:
             qweight = quantized
+        else:
+            # Little-endian packing: pack consecutive K values LSB-first into each byte. Matches the
+            # ORT QMoE storage contract (CPU DequantizeBlockWithMlas and the CUDA int2 dequant kernel).
+            value_mask = (1 << bits) - 1
+            qweight = torch.zeros((n, k // pack), dtype=torch.uint8)
+            for lane in range(pack):
+                qweight |= (quantized[:, lane::pack] & value_mask) << (lane * bits)
+            qweight = qweight.to(torch.uint8)
 
         return qweight.contiguous(), scales.squeeze(-1).contiguous()
 
@@ -353,6 +354,12 @@ class CudaQuantizer:
         if not prepack:
             return qweight, scales
 
+        if int(bits) == 2:
+            # This offline packer has no 2-bit CUTLASS layout implementation; the CUDA QMoE kernel
+            # consumes the raw [N, K/4] storage and performs the fused int2 mixed-input GEMM's layout
+            # transform in its own PrePack, so offline prepacking here is unsupported.
+            raise ValueError("QMoE 2-bit weights cannot be CUTLASS-prepacked; use prepack=False (raw storage).")
+
         n, k = weights.shape
         pack = 8 // int(bits)
         if n % pack != 0:
@@ -379,8 +386,12 @@ class CudaQuantizer:
         block_size = int(block_size)
         w = weights.detach().cpu().to(torch.float32).contiguous().numpy()
         n, k = w.shape
-        if bits not in (4, 8):
-            raise ValueError(f"Blockwise quantization only supports 4 or 8 bits, got {bits}.")
+        # 2-bit uses the pure-numpy symmetric path below (the MatMulNBits pybind kernels only cover
+        # 4 and 8 bits); asymmetric 2-bit is not supported.
+        if bits not in (2, 4, 8):
+            raise ValueError(f"Blockwise quantization only supports 2, 4, or 8 bits, got {bits}.")
+        if bits == 2 and not symmetric:
+            raise ValueError("2-bit blockwise quantization only supports symmetric mode.")
         if block_size <= 0:
             raise ValueError(f"Blockwise quantization requires a positive block_size, got {block_size}.")
 
@@ -389,12 +400,12 @@ class CudaQuantizer:
         blob_size = (block_size + pack - 1) // pack
 
         if symmetric:
-            if bits == 4:
-                qmin, qmax, scale_divisor, zero_point = (-8, 7, 8, 8) if unsigned_full_range else (-7, 7, 7, 8)
+            # Symmetric range centred on the offset-binary zero point 2^(bits-1) (2 / 8 / 128).
+            zero_point = 1 << (bits - 1)
+            if unsigned_full_range:
+                qmin, qmax, scale_divisor = -zero_point, zero_point - 1, zero_point
             else:
-                qmin, qmax, scale_divisor, zero_point = (
-                    (-128, 127, 128, 128) if unsigned_full_range else (-127, 127, 127, 128)
-                )
+                qmin, qmax, scale_divisor = -(zero_point - 1), zero_point - 1, zero_point - 1
 
             padded_k = num_blocks * block_size
             if padded_k != k:
@@ -406,14 +417,20 @@ class CudaQuantizer:
             quantized = np.clip(np.rint(blocked / scales[:, :, np.newaxis]), qmin, qmax).astype(np.int16)
             quantized = (quantized + zero_point).astype(np.uint8)
 
-            if bits == 4:
-                qweight = np.zeros((n, num_blocks, blob_size), dtype=np.uint8)
-                qweight[:, :, : quantized[:, :, 0::2].shape[2]] = quantized[:, :, 0::2] & 0xF
-                qweight[:, :, : quantized[:, :, 1::2].shape[2]] |= (quantized[:, :, 1::2] & 0xF) << 4
-            else:
+            if bits == 8:
                 qweight = quantized
+            else:
+                # Little-endian packing: pack consecutive K values LSB-first into each byte, matching
+                # the ORT QMoE storage contract used by the CPU/CUDA dequant paths.
+                value_mask = (1 << bits) - 1
+                qweight = np.zeros((n, num_blocks, blob_size), dtype=np.uint8)
+                for lane in range(pack):
+                    lane_vals = quantized[:, :, lane::pack] & value_mask
+                    qweight[:, :, : lane_vals.shape[2]] |= (lane_vals << (lane * bits)).astype(np.uint8)
 
-            zero_points = np.zeros((n, (num_blocks + 1) // 2 if bits == 4 else num_blocks), dtype=np.uint8)
+            # Symmetric quantization carries no explicit zero-points; the offset is baked into storage.
+            zp_blocks = (num_blocks + pack - 1) // pack
+            zero_points = np.zeros((n, zp_blocks), dtype=np.uint8)
             return torch.from_numpy(qweight), torch.from_numpy(scales), torch.from_numpy(zero_points)
 
         w_t = np.ascontiguousarray(w.T)
@@ -551,6 +568,11 @@ class CudaQuantizer:
         """
         bits = int(bits)
         block_size = int(block_size)
+        if bits == 2:
+            # This offline packer has no 2-bit CUTLASS layout implementation; the CUDA QMoE kernel
+            # consumes the raw [N, K/4] storage and performs the fused int2 mixed-input GEMM's layout
+            # transform in its own PrePack, so offline prepacking here is unsupported.
+            raise ValueError("QMoE 2-bit weights cannot be CUTLASS-prepacked; use the raw blockwise quantizer.")
         n, k = weights.shape
         pack = 8 // bits
         if k % block_size != 0:

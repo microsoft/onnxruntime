@@ -508,6 +508,11 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
     int smem_write_stage_idx = Base::kStages - 1;
     int smem_read_stage_idx = 0;
 
+    // Persistent parity for the warp_frag_B double buffer. Must carry across CTA-K stages
+    // (see the note at the B prefetch below); deriving it from the per-stage load offset
+    // silently breaks when kWarpGemmIterationsForB is odd (int2).
+    int warp_frag_B_read_idx = 0;
+
     //
     // Mainloop
     //
@@ -534,7 +539,8 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
         if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
           this->warp_tile_iterator_B_.set_kgroup_index(
               (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
-          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
+          this->warp_tile_iterator_B_.load(
+              warp_frag_B[(warp_frag_B_read_idx + warp_tileB_k_load_offset + 1) % 2]);
           ++this->warp_tile_iterator_B_;
         }
 
@@ -544,7 +550,8 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
           advance_dequantizer_after_load(scale_row);
         }
 
-        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
+        typename TransformBAfterLDS::result_type converted_frag_B =
+            lds_converter(warp_frag_B[(warp_frag_B_read_idx + warp_tileB_k_load_offset) % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales, warp_frag_zeros);
 
         using FragmentOperandB = cutlass::Array<ElementA, Operator::FragmentB::kElements>;
@@ -623,6 +630,11 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
           iterator_scale.clear_mask(gemm_k_iterations == 0);
         }
       }
+
+      // Advance the warp_frag_B double-buffer parity by the number of B loads consumed this
+      // stage. Even kWarpGemmIterationsForB (int4/int8) is a no-op; odd (int2) flips, so the
+      // buffer prefetched during this stage is the one read next stage.
+      warp_frag_B_read_idx = (warp_frag_B_read_idx + Base::kWarpGemmIterationsForB) % 2;
 
       // Load the scale needed for the next tile iteration.
       warp_dequantizer_.load(warp_frag_scales, warp_frag_zeros);

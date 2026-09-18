@@ -394,6 +394,189 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint4b_t, N> {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+// uint2b_t (2-bit integer) -> half/bf16 fast converters.
+//
+// These mirror the uint4b_t specializations above so the SM80 fused-dequant grouped GEMM
+// (DqMmaMultistage) can target INT2 weights, exactly as it does INT4 weights today. The layout
+// is the natural 2-bit analog of the 4-bit path:
+//   * 16 two-bit codes pack into one 32-bit word (vs 8 nibbles for int4), so VEC_WIDTH = 16.
+//   * Symmetric storage uses an offset-binary zero point of 2 (= 2^(bits-1)); the raw code v in
+//     [0,3] represents the signed value v - 2. The matching weight pre-pack
+//     (add_bias_and_interleave_int2s_inplace_kernel) adds that +2 bias, which the converter
+//     subtracts here.
+//   * The magic-add trick reuses the fp16 constant 1024.0 (0x6400): OR-ing a 2-bit code into the
+//     low mantissa bits yields the half value 1024 + v, and subtracting 1026 (= 1024 + zero_point)
+//     leaves v - 2. bf16 uses 128.0 (0x4300) and an fma bias of -130 = -(128 + 2).
+//
+// De-interleave order: iteration ii reads codes ii and ii+8 (low/high 16-bit halves of the word),
+// so result = [c0,c8,c1,c9,...,c7,c15]. add_bias_and_interleave_int2s_inplace_kernel places source
+// element i at physical slot (i even ? i/2 : (i-1)/2 + 8) -- the exact inverse -- and kPerm_W2_A16
+// counteracts the LDSM data movement, identical in structure to the int4 path with 4 -> 8.
+template <>
+struct FastInterleavedAndBiasedNumericArrayConverter<half_t, cutlass::uint2b_t, 16> {
+  using result_type = Array<half_t, 16>;
+  using source_type = Array<cutlass::uint2b_t, 16>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+
+    uint32_t* h = reinterpret_cast<uint32_t*>(&result);
+    uint32_t const source_i2s = reinterpret_cast<uint32_t const&>(source);
+
+    static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;       // (a & b) | c
+    static constexpr uint32_t MASK = 0x00030003;                   // low 2 bits of each 16-bit half
+    static constexpr uint32_t I2s_TO_F16s_MAGIC_NUM = 0x64006400;  // half2 {1024, 1024}
+
+    // Each iteration extracts codes ii (low half) and ii+8 (high half) into the low mantissa bits
+    // of 1024.0. Shifting the whole word right by 2 each step keeps both halves aligned; the bleed
+    // from the high half into the low half's upper bits is discarded by MASK.
+    uint32_t i2s = source_i2s;
+    CUTLASS_PRAGMA_UNROLL
+    for (int ii = 0; ii < result_type::kElements / 2; ++ii) {
+      asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                   : "=r"(h[ii])
+                   : "r"(i2s), "n"(MASK), "n"(I2s_TO_F16s_MAGIC_NUM), "n"(immLut));
+      i2s >>= sizeof_bits<typename source_type::Element>::value;  // >>= 2
+    }
+
+    // half2 {1026, 1026}: 1024 offset from the magic number + zero point 2. Subtracting maps the
+    // stored code v in [0,3] to the signed value v - 2.
+    static constexpr uint32_t FP16_BIAS = 0x64026402;
+    CUTLASS_PRAGMA_UNROLL
+    for (int ii = 0; ii < result_type::kElements / 2; ++ii) {
+      asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[ii]) : "r"(h[ii]), "r"(FP16_BIAS));
+    }
+
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<half_t, cutlass::uint2b_t, N> {
+  static constexpr int VEC_WIDTH = 16;
+  static_assert(!(N % VEC_WIDTH), "N must be multiple of 16.");
+
+  using result_type = Array<half_t, N>;
+  using source_type = Array<cutlass::uint2b_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    using scalar_result_type = typename result_type::Element;
+    using scalar_source_type = typename source_type::Element;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
+        convert_vector_;
+
+    result_type result;
+    using vec_result = Array<scalar_result_type, VEC_WIDTH>;
+    using vec_source = Array<scalar_source_type, VEC_WIDTH>;
+
+    vec_result* result_ptr = reinterpret_cast<vec_result*>(&result);
+    vec_source const* source_ptr = reinterpret_cast<vec_source const*>(&source);
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / VEC_WIDTH; ++i) {
+      result_ptr[i] = convert_vector_(source_ptr[i]);
+    }
+
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <>
+struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, cutlass::uint2b_t, 16> {
+  using result_type = Array<bfloat16_t, 16>;
+  using source_type = Array<cutlass::uint2b_t, 16>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+
+    uint32_t* h = reinterpret_cast<uint32_t*>(&result);
+    uint32_t const source_i2s = reinterpret_cast<uint32_t const&>(source);
+
+    static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;
+    static constexpr uint32_t MASK = 0x00030003;
+    static constexpr uint32_t I2s_TO_BF16s_MAGIC_NUM = 0x43004300;  // bf16 {128, 128}
+
+    uint32_t i2s = source_i2s;
+    CUTLASS_PRAGMA_UNROLL
+    for (int ii = 0; ii < result_type::kElements / 2; ++ii) {
+      asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                   : "=r"(h[ii])
+                   : "r"(i2s), "n"(MASK), "n"(I2s_TO_BF16s_MAGIC_NUM), "n"(immLut));
+      i2s >>= sizeof_bits<typename source_type::Element>::value;  // >>= 2
+    }
+
+    // bf16 {-130, -130} = -(128 + zero point 2), and bf16 {1, 1}. fma: (128 + v) * 1 - 130 = v - 2.
+    static constexpr uint32_t BF16_BIAS = 0xC302C302;
+    static constexpr uint32_t BF16_ONE = 0x3F803F80;
+    CUTLASS_PRAGMA_UNROLL
+    for (int ii = 0; ii < result_type::kElements / 2; ++ii) {
+      asm("fma.rn.bf16x2 %0, %1, %2, %3;\n" : "=r"(h[ii]) : "r"(h[ii]), "r"(BF16_ONE), "r"(BF16_BIAS));
+    }
+#else
+    arch::device_breakpoint();
+    result.clear();
+#endif
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, cutlass::uint2b_t, N> {
+  static constexpr int VEC_WIDTH = 16;
+  static_assert(!(N % VEC_WIDTH), "N must be multiple of 16.");
+
+  using result_type = Array<bfloat16_t, N>;
+  using source_type = Array<cutlass::uint2b_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    using scalar_result_type = typename result_type::Element;
+    using scalar_source_type = typename source_type::Element;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
+        convert_vector_;
+
+    result_type result;
+    using vec_result = Array<scalar_result_type, VEC_WIDTH>;
+    using vec_source = Array<scalar_source_type, VEC_WIDTH>;
+
+    vec_result* result_ptr = reinterpret_cast<vec_result*>(&result);
+    vec_source const* source_ptr = reinterpret_cast<vec_source const*>(&source);
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / VEC_WIDTH; ++i) {
+      result_ptr[i] = convert_vector_(source_ptr[i]);
+    }
+
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
 // FP4 (e2m1) -> half/bf16 fast converters.
 //
 // These mirror the uint4b_t specializations above so the SM80 fused-dequant grouped GEMM

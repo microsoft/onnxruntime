@@ -160,11 +160,19 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
     )
 
 
-def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True, asymmetric: bool = False):
-    bits = 4 if is_4_bit_quantization else 8
+def _resolve_quant_bits(bits_or_flag) -> int:
+    """Accept either an int bit-width (2/4/8) or the legacy is_4_bit boolean."""
+    if isinstance(bits_or_flag, bool):
+        return 4 if bits_or_flag else 8
+    return int(bits_or_flag)
+
+
+def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization=True, asymmetric: bool = False):
+    bits = _resolve_quant_bits(is_4_bit_quantization)
     n, k = weights.shape
     block_per_k = (k + block_size - 1) // block_size
     is_symmetric = not asymmetric
+    pack = 8 // bits
 
     q_weight, scale, zero_point = CudaQuantizer.matmulnbits_blockwise_quantize(
         weights,
@@ -175,38 +183,44 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
         abs_scales=is_symmetric,
         flatten_qweight=False,
     )
-    processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(
-        weights,
-        bits,
-        block_size,
-        symmetric=is_symmetric,
-        abs_scales=is_symmetric,
-    )
+    if bits == 2:
+        # 2-bit has no CUTLASS mixed-input GEMM; the CUDA QMoE kernel consumes raw [N, K/4] storage
+        # via its dequant fallback, so feed the flattened raw quantized weights (no prepack).
+        processed_q_weight = q_weight.reshape(n, -1).contiguous()
+    else:
+        processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(
+            weights,
+            bits,
+            block_size,
+            symmetric=is_symmetric,
+            abs_scales=is_symmetric,
+        )
 
     scale_torch = scale.to(weights.device).unsqueeze(-1)
     q_weight_torch = q_weight.to(weights.device)
 
-    if is_4_bit_quantization:
-        q_low = q_weight_torch & 0x0F
-        q_high = (q_weight_torch >> 4) & 0x0F
-        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
-        q_unpacked = q_unpacked.to(weights.dtype)
-        if is_symmetric:
-            dequantized = (q_unpacked - 8.0) * scale_torch
-        else:
-            zp_torch = zero_point.to(weights.device)
-            zp_low = zp_torch & 0x0F
-            zp_high = (zp_torch >> 4) & 0x0F
-            zp_unpacked = torch.stack((zp_low, zp_high), dim=-1).flatten(1, 2)[:, :block_per_k]
-            zp_unpacked = zp_unpacked.contiguous().view(n, block_per_k, 1).to(weights.dtype)
-            dequantized = (q_unpacked - zp_unpacked) * scale_torch
-    else:
+    if bits == 8:
         q_unpacked = q_weight_torch.to(weights.dtype)
         if is_symmetric:
             dequantized = (q_unpacked - 128.0) * scale_torch
         else:
             zp_torch = zero_point.to(weights.device).to(weights.dtype).unsqueeze(-1)
             dequantized = (q_unpacked - zp_torch) * scale_torch
+    else:
+        # Little-endian sub-byte storage: pack values are laid out LSB-first within each byte.
+        value_mask = (1 << bits) - 1
+        default_zp = float(1 << (bits - 1))
+        lanes = [(q_weight_torch >> (lane * bits)) & value_mask for lane in range(pack)]
+        q_unpacked = torch.stack(lanes, dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
+        q_unpacked = q_unpacked.to(weights.dtype)
+        if is_symmetric:
+            dequantized = (q_unpacked - default_zp) * scale_torch
+        else:
+            zp_torch = zero_point.to(weights.device)
+            zp_lanes = [(zp_torch >> (lane * bits)) & value_mask for lane in range(pack)]
+            zp_unpacked = torch.stack(zp_lanes, dim=-1).flatten(1, 2)[:, :block_per_k]
+            zp_unpacked = zp_unpacked.contiguous().view(n, block_per_k, 1).to(weights.dtype)
+            dequantized = (q_unpacked - zp_unpacked) * scale_torch
 
     scale_torch_out = scale.to(weights.device).to(torch.float16)
     processed_q_weight_torch = processed_q_weight.to(weights.device).view(torch.uint8)
@@ -227,19 +241,20 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
 
 def _dequantize_unsigned_per_channel_storage(qweight, scales, weights, bits: int):
     n, k = weights.shape
-    if bits == 4:
-        q_low = qweight & 0x0F
-        q_high = (qweight >> 4) & 0x0F
-        quantized = torch.stack((q_low, q_high), dim=-1).view(n, -1)[:, :k].to(torch.int16)
-        quantized = quantized - 8
+    if bits == 8:
+        quantized = qweight.view(n, k).to(torch.int16) - 128
     else:
-        quantized = qweight.view(n, k).to(torch.int16)
-        quantized = quantized - 128
+        # Little-endian sub-byte storage: LSB-first within each byte.
+        pack = 8 // bits
+        value_mask = (1 << bits) - 1
+        default_zp = 1 << (bits - 1)
+        lanes = [(qweight >> (lane * bits)) & value_mask for lane in range(pack)]
+        quantized = torch.stack(lanes, dim=-1).view(n, -1)[:, :k].to(torch.int16) - default_zp
 
     return quantized.to(weights.device).to(weights.dtype) * scales.to(weights.device).to(weights.dtype).unsqueeze(-1)
 
 
-def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool = False):
+def quant_dequant(weights, is_4_bit_quantization=True, asymmetric: bool = False):
     """
     Quantize and dequantize weights for testing purposes.
     Supports symmetric (default) and asymmetric quantization.
@@ -247,23 +262,28 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
     Returns:
         scale, quantized_storage, dequantized, zero_point_storage
     """
+    bits = _resolve_quant_bits(is_4_bit_quantization)
     block_size = weights.shape[1]
     if not asymmetric and block_size > 256:
-        bits = 4 if is_4_bit_quantization else 8
         qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
             weights,
             bits,
         )
-        processed_q_weight, _ = CudaQuantizer.qmoe_per_channel_quantize(
-            weights,
-            bits,
-            True,
-        )
+        if bits == 2:
+            # 2-bit has no CUTLASS prepacked layout; feed the raw [N, K/4] storage the dequant
+            # fallback consumes.
+            processed_q_weight = qweight
+        else:
+            processed_q_weight, _ = CudaQuantizer.qmoe_per_channel_quantize(
+                weights,
+                bits,
+                True,
+            )
         dequantized = _dequantize_unsigned_per_channel_storage(qweight, scales, weights, bits)
         scales = scales.to(weights.device).to(torch.float16).unsqueeze(-1)
         return scales, processed_q_weight.to(weights.device), dequantized, None
 
-    return quant_dequant_blockwise(weights, block_size, is_4_bit_quantization, asymmetric)
+    return quant_dequant_blockwise(weights, block_size, bits, asymmetric)
 
 
 def create_moe_onnx_graph(
@@ -287,6 +307,7 @@ def create_moe_onnx_graph(
     quant_bits=4,
     swiglu_fusion=0,
     block_size=0,
+    zero_point_offset=None,
 ):
     if not has_onnx:
         return None
@@ -378,6 +399,10 @@ def create_moe_onnx_graph(
     # Add block_size attribute for block-wise quantization
     if block_size > 0:
         nodes[0].attribute.extend([helper.make_attribute("block_size", block_size)])
+
+    # Optional fractional zero-point center (e.g. 1.5 for a balanced 2-bit checkpoint).
+    if zero_point_offset is not None:
+        nodes[0].attribute.extend([helper.make_attribute("zero_point_offset", float(zero_point_offset))])
 
     # Weights are store in column major order. Need pack 2 int4 values into uint8.
     # Use the actual tensor shapes instead of calculating them to avoid size mismatches
@@ -865,7 +890,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         w1_scale_list, w2_scale_list = [], []
         w1_zp_list, w2_zp_list = [], []
 
-        is_4_bit = self.quant_bits == 4
+        # Pass the actual bit-width; quant_dequant helpers accept an int (2/4/8) or the legacy bool.
+        is_4_bit = self.quant_bits
 
         # Row-wise QMoE (block_size <= 0) does not support zero-points in CUDA kernel path.
         use_effective_asymmetric_quant = self.use_asymmetric_quant and self.block_size > 0
@@ -1137,6 +1163,12 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
+            # 2-bit has only 4 quantization levels, so the reconstruction error (and hence the
+            # ORT-vs-reference max diff) is much larger than 4/8-bit; both sides dequantize the same
+            # storage, so the residual is dominated by fp16/bf16 accumulation, not quant error.
+            "FP16:2": (0.35, 0.05),
+            "FP32:2": (0.35, 0.05),
+            "BF16:2": (0.5, 0.05),
             "FP16:4": (0.1, 0.01),
             "FP16:8": (0.1, 0.01),
             "FP32:4": (0.1, 0.01),
@@ -1300,7 +1332,8 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 scale_1_list.append(torch.tensor(1.0))
                 scale_2_list.append(torch.tensor(1.0))
             else:
-                is_4_bit = self.quant_bits == 4
+                # Pass the actual bit-width; quant_dequant helpers accept an int (2/4/8) or a bool.
+                is_4_bit = self.quant_bits
 
                 if self.block_size > 0:
                     scale1, pre_qweight1, w1_qdq, zp1 = quant_dequant_blockwise(
@@ -1435,6 +1468,9 @@ phi3_test_cases = [
     (1, 32, 8),
     (2, 16, 4),
     (2, 16, 8),
+    # 2-bit per-channel (symmetric only) runs the dense dequant fallback.
+    (1, 32, 2),
+    (2, 16, 2),
 ]
 
 # Define test cases for block-wise quantization
@@ -1450,6 +1486,10 @@ phi3_blockwise_test_cases = [
     (2, 16, 4, 32),
     (2, 16, 8, 32),
     (2, 16, 8, 64),
+    # 2-bit block-wise (symmetric only) runs the dense dequant fallback.
+    (1, 32, 2, 32),
+    (1, 32, 2, 64),
+    (2, 16, 2, 32),
 ]
 phi3_blockwise_asymmetric_test_cases = [
     (1, 1, 4, 32),
@@ -3182,6 +3222,280 @@ class TestQMoECudaGraph(unittest.TestCase):
         out_updated = y_ort.numpy().copy()
         self.assertFalse(numpy.isnan(out_updated).any(), "QMoE CUDA graph updated-input output has NaN")
         self.assertFalse(numpy.isinf(out_updated).any(), "QMoE CUDA graph updated-input output has Inf")
+
+
+@unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE GeGLU test since it requires CUDA.")
+class TestQMoEGeGLU(unittest.TestCase):
+    """GeGLU (gelu-gated GLU) activation for QMoE, as used by Gemma4 MoE.
+
+    Validates the CUDA kernel computes down(gelu_tanh(gate) * up) with interleaved gate|up fc1,
+    matching the HuggingFace Gemma4 reference (gelu_pytorch_tanh gate, no clamp, alpha=1, beta=0).
+    Covers the fused int2/int4/int8 GEMM path.
+    """
+
+    @staticmethod
+    def _gelu_tanh(x):
+        return 0.5 * x * (1.0 + numpy.tanh(0.7978845608028654 * (x + 0.044715 * x * x * x)))
+
+    def _run_case(self, bits, hidden=256, inter=256, block=64):
+        if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+            self.skipTest("CUDA EP not available")
+        zp = 1 << (bits - 1)
+        pack = 8 // bits
+        rng = numpy.random.default_rng(0)
+
+        def pack_w(codes):  # [rows, K] uint8 codes -> [rows, K/pack] little-endian
+            r, k = codes.shape
+            o = numpy.zeros((r, k // pack), numpy.uint8)
+            for lane in range(pack):
+                o |= (codes[:, lane::pack] & ((1 << bits) - 1)) << (lane * bits)
+            return o
+
+        def quant_blockwise(w):  # symmetric blockwise; returns codes[N,K], scale[N,K/block], deq[N,K]
+            n, k = w.shape
+            nb = k // block
+            blk = w.reshape(n, nb, block)
+            smax = numpy.maximum(numpy.abs(blk).max(2) / float(zp), 1e-8).astype(numpy.float32)
+            q = numpy.clip(numpy.rint(blk / smax[:, :, None]) + zp, 0, (1 << bits) - 1).astype(numpy.uint8)
+            deq = (q.astype(numpy.float32) - zp) * smax[:, :, None]
+            return q.reshape(n, k), smax, deq.reshape(n, k)
+
+        w1 = (rng.standard_normal((2 * inter, hidden)) * 0.1).astype(numpy.float32)  # interleaved gate|up
+        w2 = (rng.standard_normal((hidden, inter)) * 0.1).astype(numpy.float32)
+        c1, s1, dq1 = quant_blockwise(w1)
+        c2, s2, dq2 = quant_blockwise(w2)
+        inp = (rng.standard_normal((1, hidden)) * 0.5).astype(numpy.float32)
+
+        h = inp @ dq1.T
+        act = self._gelu_tanh(h[:, 0::2]) * h[:, 1::2]
+        ref = (act @ dq2.T)[0]
+
+        f1p = pack_w(c1)[None]
+        f2p = pack_w(c2)[None]
+        # This test ships raw [N, K/pack] little-endian weights. 2-bit always runs the op's PrePack;
+        # 4/8-bit default to weights_prepacked=-1 (expects offline CUTLASS-prepacked bytes), so request
+        # weights_prepacked=0 to have the op prepack the raw layout for the fused int4/int8 GEMM.
+        node = helper.make_node(
+            "QMoE",
+            [
+                "input",
+                "router_probs",
+                "fc1_experts_weights",
+                "fc1_scales",
+                "",
+                "fc2_experts_weights",
+                "fc2_scales",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ],
+            ["output"],
+            "m",
+            k=1,
+            normalize_routing_weights=1,
+            activation_type="geglu",
+            swiglu_fusion=1,
+            expert_weight_bits=bits,
+            block_size=block,
+            weights_prepacked=0,
+            domain="com.microsoft",
+        )
+        graph = helper.make_graph(
+            [node],
+            "g",
+            [
+                helper.make_tensor_value_info("input", TensorProto.FLOAT16, [1, hidden]),
+                helper.make_tensor_value_info("router_probs", TensorProto.FLOAT16, [1, 1]),
+            ],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, hidden])],
+            [
+                helper.make_tensor("fc1_experts_weights", TensorProto.UINT8, list(f1p.shape), f1p.tobytes(), raw=True),
+                helper.make_tensor("fc2_experts_weights", TensorProto.UINT8, list(f2p.shape), f2p.tobytes(), raw=True),
+                helper.make_tensor(
+                    "fc1_scales",
+                    TensorProto.FLOAT16,
+                    [1, 2 * inter, hidden // block],
+                    s1.astype(numpy.float16).tobytes(),
+                    raw=True,
+                ),
+                helper.make_tensor(
+                    "fc2_scales",
+                    TensorProto.FLOAT16,
+                    [1, hidden, inter // block],
+                    s2.astype(numpy.float16).tobytes(),
+                    raw=True,
+                ),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+        )
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+        out = sess.run(None, {"input": inp.astype(numpy.float16), "router_probs": numpy.ones((1, 1), numpy.float16)})[
+            0
+        ][0].astype(numpy.float32)
+        tol = {2: 0.35, 4: 0.1, 8: 0.1}[bits]
+        max_diff = float(numpy.abs(out - ref).max())
+        self.assertLess(max_diff, tol, f"GeGLU {bits}-bit max_diff {max_diff:.4f} exceeds {tol}")
+
+    def test_geglu_2bit(self):
+        self._run_case(2)
+
+    def test_geglu_4bit(self):
+        self._run_case(4)
+
+    def test_geglu_8bit(self):
+        self._run_case(8)
+
+
+@unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE fractional-zp test since it requires CUDA.")
+class TestQMoEFractionalZeroPoint(unittest.TestCase):
+    """2-bit QMoE with a fractional zero-point center that uint8 zero_points cannot represent.
+
+    A balanced 2-bit checkpoint quantizes around the midpoint 1.5, so codes {0,1,2,3} dequantize
+    to {-1.5,-0.5,0.5,1.5}*scale. The fused int2 GEMM's weight converter bakes the symmetric
+    center 2; the ``zero_point_offset`` attribute adds a constant bias = (2 - 1.5)*scale so the
+    effective dequant is (code - 1.5)*scale, matching the checkpoint. No uint8 zero_points tensor
+    is provided (it could not carry 1.5).
+    """
+
+    @staticmethod
+    def _silu(x):
+        return x / (1.0 + numpy.exp(-x))
+
+    def _run_case(self, offset=1.5, hidden=256, inter=256, block=64, live_scales=False):
+        if "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+            self.skipTest("CUDA EP not available")
+        bits = 2
+        pack = 8 // bits
+        vmax = (1 << bits) - 1  # 3
+        rng = numpy.random.default_rng(0)
+
+        def pack_w(codes):  # [rows, K] uint8 codes -> [rows, K/pack] little-endian
+            r, k = codes.shape
+            o = numpy.zeros((r, k // pack), numpy.uint8)
+            for lane in range(pack):
+                o |= (codes[:, lane::pack] & vmax) << (lane * bits)
+            return o
+
+        def quant_blockwise(w):
+            # Asymmetric balanced quant around ``offset``: q = round(w/scale) + offset, clamped to
+            # [0, vmax]; dequant = (q - offset) * scale. scale sized so +/- range reaches the ends.
+            n, k = w.shape
+            nb = k // block
+            blk = w.reshape(n, nb, block)
+            pos = max(vmax - offset, offset)  # symmetric headroom around the fractional center
+            smax = numpy.maximum(numpy.abs(blk).max(2) / float(pos), 1e-8).astype(numpy.float32)
+            q = numpy.clip(numpy.rint(blk / smax[:, :, None] + offset), 0, vmax).astype(numpy.uint8)
+            deq = (q.astype(numpy.float32) - offset) * smax[:, :, None]
+            return q.reshape(n, k), smax, deq.reshape(n, k)
+
+        # Non-gated SiLU MLP: fc1 [inter, hidden] then fc2 [hidden, inter].
+        w1 = (rng.standard_normal((inter, hidden)) * 0.1).astype(numpy.float32)
+        w2 = (rng.standard_normal((hidden, inter)) * 0.1).astype(numpy.float32)
+        c1, s1, dq1 = quant_blockwise(w1)
+        c2, s2, dq2 = quant_blockwise(w2)
+        inp = (rng.standard_normal((1, hidden)) * 0.5).astype(numpy.float32)
+
+        h = inp @ dq1.T
+        act = self._silu(h)
+        ref = (act @ dq2.T)[0]
+
+        f1p = pack_w(c1)[None]
+        f2p = pack_w(c2)[None]
+        node = helper.make_node(
+            "QMoE",
+            [
+                "input",
+                "router_probs",
+                "fc1_experts_weights",
+                "fc1_scales",
+                "",
+                "fc2_experts_weights",
+                "fc2_scales",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ],
+            ["output"],
+            "m",
+            k=1,
+            normalize_routing_weights=1,
+            activation_type="silu",
+            expert_weight_bits=bits,
+            block_size=block,
+            zero_point_offset=float(offset),
+            domain="com.microsoft",
+        )
+        s1_fp16 = s1.astype(numpy.float16).reshape(1, inter, hidden // block)
+        s2_fp16 = s2.astype(numpy.float16).reshape(1, hidden, inter // block)
+        # When ``live_scales`` is set, fc*_scales are runtime graph inputs instead of constant
+        # initializers. Weights stay initializers, so int2 PrePack still runs (int2 mandates the
+        # CUTLASS layout transform), but PrePackConstantBiasFromScales cannot consume live scales --
+        # forcing ComputeInternal to build the fractional-center bias on the fly from the live
+        # fc*_scales. Global session.disable_prepacking is NOT usable here: it would also skip the
+        # mandatory weight prepack and the kernel rejects int2 with weights_prepacked=0.
+        graph_inputs = [
+            helper.make_tensor_value_info("input", TensorProto.FLOAT16, [1, hidden]),
+            helper.make_tensor_value_info("router_probs", TensorProto.FLOAT16, [1, 1]),
+        ]
+        initializers = [
+            helper.make_tensor("fc1_experts_weights", TensorProto.UINT8, list(f1p.shape), f1p.tobytes(), raw=True),
+            helper.make_tensor("fc2_experts_weights", TensorProto.UINT8, list(f2p.shape), f2p.tobytes(), raw=True),
+        ]
+        if live_scales:
+            graph_inputs.append(
+                helper.make_tensor_value_info("fc1_scales", TensorProto.FLOAT16, [1, inter, hidden // block])
+            )
+            graph_inputs.append(
+                helper.make_tensor_value_info("fc2_scales", TensorProto.FLOAT16, [1, hidden, inter // block])
+            )
+        else:
+            initializers.append(
+                helper.make_tensor(
+                    "fc1_scales", TensorProto.FLOAT16, [1, inter, hidden // block], s1_fp16.tobytes(), raw=True
+                )
+            )
+            initializers.append(
+                helper.make_tensor(
+                    "fc2_scales", TensorProto.FLOAT16, [1, hidden, inter // block], s2_fp16.tobytes(), raw=True
+                )
+            )
+        graph = helper.make_graph(
+            [node],
+            "g",
+            graph_inputs,
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, hidden])],
+            initializers,
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+        )
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
+        feeds = {"input": inp.astype(numpy.float16), "router_probs": numpy.ones((1, 1), numpy.float16)}
+        if live_scales:
+            feeds["fc1_scales"] = s1_fp16
+            feeds["fc2_scales"] = s2_fp16
+        out = sess.run(None, feeds)[0][0].astype(numpy.float32)
+        max_diff = float(numpy.abs(out - ref).max())
+        self.assertLess(max_diff, 0.35, f"fractional-zp 2-bit max_diff {max_diff:.4f} exceeds 0.35")
+
+    def test_fractional_zp_1p5(self):
+        self._run_case(1.5)
+
+    def test_fractional_zp_1p5_live_scales(self):
+        # Same fractional-center reference, but fc*_scales are live runtime inputs (not consumed by
+        # PrePack), exercising the on-the-fly (live-scale) constant-bias branch in ComputeInternal
+        # instead of the PrePack path. Weights remain initializers so int2 weight PrePack still runs.
+        self._run_case(1.5, live_scales=True)
 
 
 if __name__ == "__main__":
