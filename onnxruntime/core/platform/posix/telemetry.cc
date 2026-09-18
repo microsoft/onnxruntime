@@ -539,6 +539,10 @@ void PosixTelemetry::Initialize() {
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
+#ifdef _WIN32
+  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
+  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
+#endif
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
