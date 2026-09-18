@@ -133,6 +133,7 @@ TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
   EXPECT_THROW(WebGpuExecutionProviderWithOptions(config_options), OnnxRuntimeException);
 }
 
+#if defined(DAWN_ENABLE_VULKAN)
 TEST(WebGpuMatMulAlgorithmTest, ForcedNaive) {
   RunTestTyped<float>({8, 8}, {8, 8}, false, webgpu::MatMulAlgorithm::Naive);
 }
@@ -158,6 +159,7 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrixRejectsFloatInputs) {
                       OpTester::ExpectResult::kExpectFailure,
                       "MatMul algorithm subgroup_matrix");
 }
+#endif  // defined(DAWN_ENABLE_VULKAN)
 #endif
 
 // 2D aligned baseline shapes.
