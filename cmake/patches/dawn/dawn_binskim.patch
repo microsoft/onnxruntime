@@ -1,9 +1,9 @@
 diff --git a/src/tint/CMakeLists.txt b/src/tint/CMakeLists.txt
-index 825ae33c4a..3d314cf389 100644
+index 3042c516e4..81c776fecd 100644
 --- a/src/tint/CMakeLists.txt
 +++ b/src/tint/CMakeLists.txt
-@@ -150,9 +150,7 @@ function(tint_default_compile_options TARGET)
-       /W4
+@@ -152,10 +152,8 @@ function(tint_default_compile_options TARGET)
+       /wd4018 # '>=': signed/unsigned mismatch (Comes from protobuf library)
        /wd4068 # unknown pragma
        /wd4127 # conditional expression is constant
        /wd4201 # nonstandard extension used: nameless struct/union (Comes from protobuf library)
