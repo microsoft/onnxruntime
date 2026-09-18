@@ -2734,14 +2734,25 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           },
           R"pbdoc(Specify the path to the shared library containing the custom op kernels required to run a model.)pbdoc")
       .def(
-          "add_initializer", [](PySessionOptions* options, const char* name, py::object& ml_value_pyobject) -> void {
+          "add_initializer",
+          [](PySessionOptions* options, const char* name, py::object& ml_value_pyobject) -> void {
             ORT_ENFORCE(strcmp(Py_TYPE(ml_value_pyobject.ptr())->tp_name, PYTHON_ORTVALUE_OBJECT_NAME) == 0, "The provided Python object must be an OrtValue");
             // The user needs to ensure that the python OrtValue being provided as an overriding initializer
             // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->value.AddInitializer(name, ml_value));
-          })
+          },
+          R"pbdoc(
+Add a pre-constructed OrtValue as an initializer for the session.
+
+Args:
+  name: initializer name. This must match the initializer name in the model graph.
+  ml_value: OrtValue that supplies the initializer tensor.
+
+Call once for each initializer that should be supplied. The provided OrtValue must remain alive for as long
+as any session created with these SessionOptions is still in scope.
+)pbdoc")
       .def("add_external_initializers", [](PySessionOptions* options, py::list& names, const py::list& ort_values) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
         const auto init_num = ort_values.size();
