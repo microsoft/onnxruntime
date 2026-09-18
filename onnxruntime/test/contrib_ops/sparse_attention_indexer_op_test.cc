@@ -94,6 +94,7 @@ struct QsaGraphOptions {
   int64_t token_budget = 4;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
+  bool use_boolean_mask = false;
   bool share_cache = false;
   std::string policy_mode = sai::kPolicyModeQsa;
 };
@@ -111,7 +112,9 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      builder.MakeInput<bool>(std::vector<int64_t>{options.batch_size, 1, options.sequence_length, total}),
+      options.use_boolean_mask
+          ? builder.MakeInput<bool>(std::vector<int64_t>{options.batch_size, total})
+          : builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
   if (options.add_csa_inputs) {
@@ -305,7 +308,7 @@ struct QsaProblem {
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;
   std::vector<float> sin_cache;
-  std::vector<uint8_t> mask;
+  std::vector<int64_t> mask;
   std::vector<float> past_key;
 
   int TotalSequenceLength() const { return past_sequence_length + sequence_length; }
@@ -364,7 +367,7 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
 
       std::vector<int> visible;
       for (int t = 0; t < total; ++t) {
-        if (problem.mask[row * total + t] != 0) {
+        if (t <= problem.past_sequence_length + s && problem.mask[static_cast<size_t>(b) * total + t] != 0) {
           visible.push_back(t);
         }
       }
@@ -649,14 +652,10 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
       static_cast<size_t>(problem.batch_size) * problem.PastKeyCapacity() * problem.head_size, 0.05f, 0.23f);
 
   // Row 0 sees four tokens (two complete blocks, no tail); row 1 sees five (two blocks plus a tail).
-  problem.mask.assign(static_cast<size_t>(problem.batch_size) * problem.sequence_length * total, 0);
+  problem.mask.assign(static_cast<size_t>(problem.batch_size) * total, 1);
   for (int b = 0; b < problem.batch_size; ++b) {
-    for (int s = 0; s < problem.sequence_length; ++s) {
-      const size_t row = static_cast<size_t>(b) * problem.sequence_length + s;
-      const int visible = problem.past_sequence_length + s + 1;
-      for (int t = 0; t < visible; ++t) {
-        problem.mask[row * total + t] = 1;
-      }
+    for (int t = 0; t <= b && t < problem.past_sequence_length; ++t) {
+      problem.mask[static_cast<size_t>(b) * total + t] = 0;
     }
   }
   return problem;
@@ -688,11 +687,6 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
   const int64_t total = problem.TotalSequenceLength();
   const int64_t head_size = problem.head_size;
 
-  std::unique_ptr<bool[]> mask(new bool[problem.mask.size()]);
-  for (size_t i = 0; i < problem.mask.size(); ++i) {
-    mask[i] = problem.mask[i] != 0;
-  }
-
   OpTester test("SparseAttentionIndexer", 1, onnxruntime::kMSDomain);
   test.AddAttribute("policy_mode", std::string(sai::kPolicyModeQsa));
   test.AddAttribute("compress_ratio", static_cast<int64_t>(problem.compress_ratio));
@@ -707,7 +701,7 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
-  test.AddInput<bool>("mask", {batch_size, 1, sequence_length, total}, mask.get(), problem.mask.size());
+  test.AddInput<int64_t>("mask", {batch_size, total}, problem.mask);
   test.AddInput<T>("past_key", {batch_size, problem.PastKeyCapacity(), head_size},
                    ToElementType<T>(problem.past_key));
   for (int slot = sai::kGate; slot < sai::kPastSequenceLength; ++slot) {
@@ -814,7 +808,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance,
                    ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
                    ToElementType<T>(problem.sin_cache));
-  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<int64_t>();
   test.AddInput<T>("past_key", {batch_size, problem.PastCompressedCapacity(), head_size},
                    ToElementType<T>(problem.past_compressed_key));
   test.AddInput<T>("gate", {batch_size, sequence_length, width}, ToElementType<T>(problem.gate));
@@ -899,6 +893,16 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndPresentK
               {options.batch_size, options.sequence_length, capacity});
   ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.past_sequence_length + options.sequence_length, options.head_size});
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsBooleanMask) {
+  QsaGraphOptions options;
+  options.use_boolean_mask = true;
+  std::unique_ptr<Model> model;
+  const Status status = BuildAndResolve([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Type parameter (TB)"), std::string::npos)
+      << "actual message: " << status.ErrorMessage();
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
