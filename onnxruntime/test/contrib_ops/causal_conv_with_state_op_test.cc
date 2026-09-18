@@ -1119,8 +1119,8 @@ TEST(CausalConvWithStateTest, InputRankMismatchIsRejected) {
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
   test.AddAttribute<std::string>("activation", "none");
   test.AddAttribute<int64_t>("ndim", 2);
-  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});                    // rank 3: one short of ndim + 2
-  test.AddInput<float>("weight", {1, 1, 2, 2}, {0.5f, 0.25f, 0.5f, 0.25f});  // rank ndim + 2 == 4
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2, 2}, {0.5f, 0.25f, 0.5f, 0.25f});
   test.AddOptionalInputEdge<float>();  // bias
   test.AddOptionalInputEdge<float>();  // past_state
   test.AddOutput<float>("output", {1, 1, 2}, {0.0f, 0.0f});
