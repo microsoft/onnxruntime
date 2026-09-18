@@ -20,6 +20,11 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
+// Log MoE expert-routing decisions at INFO severity.
+// "0": disable (default); "1": enable.
+static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
+    "session.enable_moe_expert_statistics";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

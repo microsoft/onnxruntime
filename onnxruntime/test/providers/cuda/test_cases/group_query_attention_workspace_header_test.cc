@@ -5,6 +5,7 @@
 // test-framework headers. Both the in-tree CUDA target and the plugin-internal
 // target compile it.
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_bounds.h"
 
 #include <type_traits>
 
@@ -19,6 +20,8 @@ using contrib::cuda::GQAMemoryEfficientWorkspaceRecipe;
 using contrib::cuda::GQAPreparationRecipe;
 using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAUnfusedWorkspaceRecipe;
+using contrib::cuda::GQAWorkspaceAggregate;
+using contrib::cuda::GQAWorkspaceBounds;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAWorkspaceStatus;
 using contrib::cuda::GQAXqaWorkspaceRecipe;
@@ -26,6 +29,8 @@ using contrib::cuda::IsSupportedGQAXqaGroupSize;
 using contrib::cuda::IsSupportedGQAXqaHeadSize;
 
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceProblem>);
+static_assert(std::is_trivially_copyable_v<GQAWorkspaceBounds>);
+static_assert(std::is_trivially_copyable_v<GQAWorkspaceAggregate>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRoute>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAConcreteRoute>);
@@ -45,11 +50,15 @@ static_assert(GetGQAEffectiveWorkspaceKvLength(257, 8, false) == 257);
 
 void CompileGroupQueryAttentionWorkspaceHeaderInIsolation() {
   GQAWorkspaceProblem problem;
+  problem.requires_separate_past_buffer = true;
+  problem.past_kv_cache_capacity = 1;
+  GQAWorkspaceBounds bounds;
   GQAPreparationRoute route;
   GQAPreparationRecipe recipe;
   GQAConcreteRoute concrete_route;
   GQACompleteWorkspaceRecipe complete_recipe;
   (void)problem;
+  (void)bounds;
   (void)route;
   (void)recipe;
   (void)concrete_route;
