@@ -31,27 +31,41 @@ Each latency value is the median of six fresh-process 10% trimmed means. Peak
 VRAM is the median device-wide `nvidia-smi memory.used` value from six
 fresh-process runs.
 
-### Legacy `MatMulNBits`
+Terminology:
 
-| Model | Configuration | TTFT | Scenario | TPOT | Peak VRAM |
-|---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Scratch | 61.535 ms | 854.730 ms | 5.979 ms | 4,197 MiB |
-| Qwen 2.5 1.5B | MatMulNBits planned | 61.526 ms | 871.920 ms | 6.024 ms | 4,008 MiB |
-| Qwen 2.5 1.5B | Combined planned | 61.766 ms | 858.416 ms | 5.961 ms | 4,006 MiB |
-| Qwen 2.5 7B | Scratch | 275.790 ms | 1,584.195 ms | 10.283 ms | 8,169 MiB |
-| Qwen 2.5 7B | MatMulNBits planned | 276.062 ms | 1,583.405 ms | 10.260 ms | 8,172 MiB |
-| Qwen 2.5 7B | Combined planned | 276.140 ms | 1,589.409 ms | 10.320 ms | 8,168 MiB |
+- **Legacy** is the existing `MatMulNBits` path that dequantizes the integer
+  weights into a temporary floating-point buffer and then uses cuBLAS.
+- **fpA-intB** uses floating-point activations and integer weights directly.
+  Runtime profiling selects between eligible fpA-intB GEMV and CUTLASS GEMM
+  tactics; only the CUTLASS tactic requires workspace.
+- **TTFT** is the end-to-end time to the first generated token, including
+  generator setup, prompt prefill, and first-token sampling.
+- **Scenario** is the end-to-end request time for the 1,024-token prompt and
+  all 128 generated tokens.
+- **TPOT** is the trimmed mean time for each of the 127 decode model
+  evaluations after the first token. It excludes prompt prefill and is not
+  calculated by dividing scenario time by 128.
+- **Scratch** disables static workspace preallocation for both operators.
+- **MatMulNBits planned** enables static workspace preallocation for
+  `MatMulNBits` only; GQA continues to use scratch allocations.
+- **Combined planned** enables static workspace preallocation for both
+  `MatMulNBits` and GQA.
 
-### fpA-intB
+### Qwen 2.5 1.5B
 
-| Model | Configuration | TTFT | Scenario | TPOT | Peak VRAM |
-|---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Scratch | 58.512 ms | 1,477.123 ms | 10.589 ms | 4,942 MiB |
-| Qwen 2.5 1.5B | MatMulNBits planned | 58.540 ms | 1,359.249 ms | 9.790 ms | 4,961 MiB |
-| Qwen 2.5 1.5B | Combined planned | 58.174 ms | 1,660.078 ms | 11.903 ms | 4,944 MiB |
-| Qwen 2.5 7B | Scratch | 240.198 ms | 1,546.984 ms | 10.333 ms | 11,093 MiB |
-| Qwen 2.5 7B | MatMulNBits planned | 241.984 ms | 1,588.049 ms | 10.528 ms | 11,460 MiB |
-| Qwen 2.5 7B | Combined planned | 240.006 ms | 1,554.085 ms | 10.367 ms | 12,108 MiB |
+| Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Scratch | 61.535 ms | 854.730 ms | 5.979 ms | 4,197 MiB | 58.512 ms | 1,477.123 ms | 10.589 ms | 4,942 MiB |
+| MatMulNBits planned | 61.526 ms | 871.920 ms | 6.024 ms | 4,008 MiB | 58.540 ms | 1,359.249 ms | 9.790 ms | 4,961 MiB |
+| Combined planned | 61.766 ms | 858.416 ms | 5.961 ms | 4,006 MiB | 58.174 ms | 1,660.078 ms | 11.903 ms | 4,944 MiB |
+
+### Qwen 2.5 7B
+
+| Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Scratch | 275.790 ms | 1,584.195 ms | 10.283 ms | 8,169 MiB | 240.198 ms | 1,546.984 ms | 10.333 ms | 11,093 MiB |
+| MatMulNBits planned | 276.062 ms | 1,583.405 ms | 10.260 ms | 8,172 MiB | 241.984 ms | 1,588.049 ms | 10.528 ms | 11,460 MiB |
+| Combined planned | 276.140 ms | 1,589.409 ms | 10.320 ms | 8,168 MiB | 240.006 ms | 1,554.085 ms | 10.367 ms | 12,108 MiB |
 
 ## Benchmark design
 
