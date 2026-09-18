@@ -3,6 +3,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
@@ -186,6 +187,104 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_STATUS_OK(frame.ReleaseMLValue(1));
   // Calling the method with in-correct shape. It should work but this time it should display a warning message.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node));
+}
+
+// Directly exercises the runtime capacity guard in ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer.
+//
+// A packed sub-byte tensor (uint4[N]) has the same logical element count and the same one-byte C++ carrier size as
+// a full-byte tensor (uint8[N]), but only needs ceil(N/2) storage bytes instead of N. Reusing the smaller uint4
+// buffer for the uint8 tensor would overflow it on the first write, so the reuse must be rejected. The opposite
+// direction (a uint8 buffer reused by a uint4 tensor) is safe and must still be allowed.
+//
+// An odd dimension is used on purpose so the ceiling division in the storage size calculation is covered.
+TEST_F(ExecutionFrameTest, PreAllocatedBufferTooSmallForSubByteTypeTest) {
+  constexpr int64_t kDim = 1023;
+
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+
+  onnxruntime::Node* node = &graph.AddNode("node1", "Relu", "Relu operator", ArgMap{&input_def}, ArgMap{&output_def});
+  node->SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto cpu_xp = CreateCPUExecutionProvider();
+  auto xp_typ = cpu_xp->Type();
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+
+  node->SetExecutionProviderType(xp_typ);
+
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  const auto& memory_info = execution_providers.Get(xp_typ)->GetOrtDeviceByMemType(OrtMemTypeDefault);
+  const TensorShape shape(std::vector<int64_t>{kDim});
+  MLDataType uint4_type = DataTypeImpl::GetType<UInt4x2>();
+  MLDataType uint8_type = DataTypeImpl::GetType<uint8_t>();
+
+  ASSERT_EQ(Tensor::CalculateTensorStorageSize(uint4_type, shape), static_cast<size_t>((kDim + 1) / 2));
+  ASSERT_EQ(Tensor::CalculateTensorStorageSize(uint8_type, shape), static_cast<size_t>(kDim));
+
+  // A uint8 tensor must not re-use a uint4 buffer of the same logical shape: the buffer is only half the size.
+  {
+    vector<OrtValue> outputs;
+    ExecutionFrame frame({}, {}, {}, outputs, {},
+#ifdef ORT_ENABLE_STREAM
+                         {},
+#endif
+                         state);
+
+    int start_index = frame.GetNodeOffset(node->Index());
+    ASSERT_EQ(start_index, 0);
+
+    OrtValue& uint4_value = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
+    ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(uint4_value, start_index, uint4_type, memory_info, shape));
+
+    OrtValue& uint8_value = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
+    const Status status = frame.AllocateMLValueTensorPreAllocateBuffer(uint8_value, start_index, uint8_type,
+                                                                       memory_info, shape);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Cannot re-use buffer"));
+    EXPECT_FALSE(uint8_value.IsAllocated());
+  }
+
+  // The reverse direction is safe: a uint4 tensor fits in a uint8 buffer of the same logical shape.
+  {
+    vector<OrtValue> outputs;
+    ExecutionFrame frame({}, {}, {}, outputs, {},
+#ifdef ORT_ENABLE_STREAM
+                         {},
+#endif
+                         state);
+
+    int start_index = frame.GetNodeOffset(node->Index());
+
+    OrtValue& uint8_value = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
+    ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(uint8_value, start_index, uint8_type, memory_info, shape));
+
+    OrtValue& uint4_value = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
+    ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(uint4_value, start_index, uint4_type,
+                                                                 memory_info, shape));
+    EXPECT_EQ(uint4_value.Get<Tensor>().DataRaw(), uint8_value.Get<Tensor>().DataRaw());
+  }
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {

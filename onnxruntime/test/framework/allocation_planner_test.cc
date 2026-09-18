@@ -2153,9 +2153,12 @@ TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
 //
 // Graph (opset 21):  X(float) -Cast-> A(uint4) -Cast-> B(float) -Cast-> C(uint8) -Cast-> Y(float)
 // A is fully consumed by the second Cast and freed, so before the fix the planner reused A's 512-byte buffer for
-// the 1024-byte uint8 tensor C.
+// the 1023-byte uint8 tensor C.
+//
+// The dimension is deliberately odd so the ceiling division in the packed storage size (ceil(1023 / 2) = 512, not
+// 1023 / 2 = 511) is covered as well.
 TEST(AllocationPlannerTest, AvoidReuseOfPackedSubByteBufferForFullByteTensor) {
-  constexpr int64_t kDim = 1024;
+  constexpr int64_t kDim = 1023;
 
   auto make_tensor_type = [](TensorProto_DataType elem_type) {
     TypeProto t;
@@ -2175,9 +2178,9 @@ TEST(AllocationPlannerTest, AvoidReuseOfPackedSubByteBufferForFullByteTensor) {
     TypeProto uint8_type = make_tensor_type(TensorProto_DataType_UINT8);
 
     auto& X = graph.GetOrCreateNodeArg("X", &float_type);
-    auto& A = graph.GetOrCreateNodeArg("A", &uint4_type);  // packed sub-byte buffer: ceil(1024/2) = 512 bytes
+    auto& A = graph.GetOrCreateNodeArg("A", &uint4_type);  // packed sub-byte buffer: ceil(1023/2) = 512 bytes
     auto& B = graph.GetOrCreateNodeArg("B", &float_type);  // consumes A -> A becomes dead here
-    auto& C = graph.GetOrCreateNodeArg("C", &uint8_type);  // full-byte buffer: 1024 bytes
+    auto& C = graph.GetOrCreateNodeArg("C", &uint8_type);  // full-byte buffer: 1023 bytes
     auto& Y = graph.GetOrCreateNodeArg("Y", &float_type);
 
     auto add_cast = [&graph](const std::string& name, NodeArg& in, NodeArg& out, TensorProto_DataType to) {
