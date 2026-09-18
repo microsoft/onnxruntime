@@ -17,6 +17,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/framework/workspace_requirement.h"
 
 #include "node.h"
@@ -62,12 +63,21 @@ struct OpKernel {
     return Status::OK();
   }
 
-  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Mirrors the in-tree
-  // onnxruntime::OpKernel::DeclareWorkspaceRequirements default no-op so that kernels compiled into
-  // the plugin (BUILD_CUDA_EP_AS_PLUGIN) hierarchy still build. See
-  // core/framework/workspace_requirement.h.
+  // Mirrors the in-tree per-kernel prepack execution state for shared kernel source compatibility.
+  void SetOuterPrePackParallelism(bool enabled) noexcept {
+    outer_prepack_parallelism_enabled_ = enabled;
+  }
+
+  bool IsOuterPrePackParallelismEnabled() const noexcept {
+    return outer_prepack_parallelism_enabled_;
+  }
+
+  // Mirrors the in-tree OpKernel default so shared kernel source compiled for the plugin hierarchy
+  // continues to build. The plugin host does not bridge or invoke this virtual; plugin/C-ABI
+  // forwarding is deferred, so this adapter declaration remains a default no-op. See the core
+  // framework OpKernel header for the in-tree FinalizeSessionState contract.
   [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
-      gsl::span<const TensorShape> /*input_shapes*/,
+      gsl::span<const WorkspaceInputShape> /*input_shapes*/,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
     requirements.clear();
     return Status::OK();
@@ -75,6 +85,7 @@ struct OpKernel {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
+  bool outer_prepack_parallelism_enabled_{false};
 };
 
 /// <summary>

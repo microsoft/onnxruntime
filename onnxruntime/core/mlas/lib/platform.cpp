@@ -346,6 +346,7 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
 
 #if defined(MLAS_USE_RVV)
+    this->ActivationRoutine = nullptr;
     bool has_rvv = true;
 #if defined(__linux__)
     has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
@@ -364,6 +365,7 @@ Return Value:
         this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
         this->SiluKernelRoutine = MlasSiluKernelRvv;
         this->TanhKernelRoutine = MlasTanhKernelRvv;
+        this->ActivationRoutine = MlasActivationRvv;
         this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
@@ -570,6 +572,7 @@ Return Value:
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -701,6 +704,23 @@ Return Value:
 
 #endif // MLAS_TARGET_AMD64
 
+#if defined(MLAS_TARGET_IX86)
+            //
+            // The LayerNorm kernel is the only AVX2/FMA3 kernel compiled for
+            // 32-bit x86, so keep its feature dispatch separate from AMD64.
+            //
+            unsigned Cpuid7[4];
+#if defined(_WIN32)
+            __cpuidex((int*)Cpuid7, 7, 0);
+#else
+            __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
+#endif
+
+            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+            }
+#endif  // MLAS_TARGET_IX86
+
         }
     }
 
@@ -790,7 +810,7 @@ Return Value:
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){
             this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
@@ -819,6 +839,12 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        //
+        // Overrides the NEON LinearAttention dispatch registered above. The SVE
+        // driver hands anything outside its envelope straight back to
+        // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
+        //
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;

@@ -1638,6 +1638,10 @@ Status UpdateDecoderCrossQK(
     float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   if (qk_layer_pointers.get() == nullptr) {
@@ -1690,6 +1694,10 @@ Status FinalizeDecoderCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     gsl::span<const int32_t> beam_indices_gpu) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(

@@ -105,8 +105,22 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.kv_cache_quantization_bits = 0;
     } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
       webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_8Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 8;
     } else {
-      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str,
+                ". Must be \"0\", \"4\", or \"8\".");
+    }
+  }
+
+  std::string enable_matmul_fp32_accumulation_str;
+  if (config_options.TryGetConfigEntry(kEnableMatmulFp32Accumulation, enable_matmul_fp32_accumulation_str)) {
+    if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_ON) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = true;
+    } else if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_OFF) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = false;
+    } else {
+      ORT_THROW("Invalid enableMatmulFp32Accumulation value: ", enable_matmul_fp32_accumulation_str, ". Must be \"0\" or \"1\".");
     }
   }
 
@@ -339,18 +353,29 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
 }  // namespace
 
-std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
+static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
+    const ConfigOptions& config_options, uint64_t test_only_max_storage_buffer_binding_size) {
   // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
 
   // prepare WebGpuContextConfig
   WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
+  config.test_only_max_storage_buffer_binding_size = test_only_max_storage_buffer_binding_size;
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(config.context_id, context, std::move(webgpu_ep_config));
+}
+
+std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
+  return CreateWebGpuProviderFactory(config_options, 0);
+}
+
+std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::CreateForTesting(
+    const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size) {
+  return CreateWebGpuProviderFactory(config_options, max_storage_buffer_binding_size);
 }
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization

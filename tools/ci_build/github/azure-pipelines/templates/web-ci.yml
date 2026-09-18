@@ -10,7 +10,7 @@ parameters:
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
-  default: 'onnxruntime-Win-CPU-VS2022-Latest'
+  default: 'onnxruntime-Win-CPU-2022'
 - name: PackageName
   displayName: 'Package name'
   type: string
@@ -64,6 +64,7 @@ parameters:
 
 stages:
 - stage: Precheck_and_extract_commit
+  dependsOn: []
   jobs:
   - job: Precheck_and_extract_commit
     pool:
@@ -77,6 +78,9 @@ stages:
       clean: all
     steps:
     - template: jobs/checkout-and-git-redirect.yml
+    - template: setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: x64
 
     - script: |
         git submodule sync -- cmake/external/onnx
