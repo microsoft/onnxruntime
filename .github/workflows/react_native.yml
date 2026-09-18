@@ -78,6 +78,8 @@ jobs:
         "JobId=react_native_ci_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 90
+    env:
+      NPM_CONFIG_REPLACE_REGISTRY_HOST: never
     steps:
       - name: Set ANDROID_AVD_HOME environment variable
         run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
@@ -225,6 +227,8 @@ jobs:
     needs: react_native_ci_ios_build
     runs-on: macos-14
     timeout-minutes: 90
+    env:
+      NPM_CONFIG_REPLACE_REGISTRY_HOST: never
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
