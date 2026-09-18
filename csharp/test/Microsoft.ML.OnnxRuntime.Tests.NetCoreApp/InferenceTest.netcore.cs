@@ -491,9 +491,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 { "test_mul_uint8", "Could not find an implementation for Mul(14) node with name" },
 
-                { "test_bitshift_right_uint16", "Could not find an implementation for BitShift(11) nodeMeta with name ''"},
-                { "test_bitshift_left_uint16", "Could not find an implementation for BitShift(11)"},
-
                 { "test_pow_types_float32_uint64", "Could not find an implementation for Pow(15) node with name ''"},
                 { "test_pow_types_float32_uint32", "Could not find an implementation for Pow(15) node with name ''"},
 
