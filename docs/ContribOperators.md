@@ -4960,7 +4960,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>compress_ratio</tt> : int (required)</dt>
 <dd>Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0 and 2 * compress_ratio - 1 must not exceed INT_MAX.</dd>
 <dt><tt>epsilon</tt> : float</dt>
-<dd>Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.</dd>
+<dd>Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.</dd>
 <dt><tt>head_weight_scale</tt> : float</dt>
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
@@ -4979,9 +4979,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Packed indexer queries with shape (total_tokens, num_heads, head_size), already normalized but not yet rotated.</dd>
+<dd>Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, logical reshape, and rotary embedding.</dd>
 <dt><tt>key</tt> : T</dt>
 <dd>Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dt><tt>query_norm_weight</tt> : T</dt>
+<dd>Effective RMSNorm multiplier of the queries, with shape (head_size).</dd>
 <dt><tt>key_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
 <dt><tt>cos_cache</tt> : T</dt>

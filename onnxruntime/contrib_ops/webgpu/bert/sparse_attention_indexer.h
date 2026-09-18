@@ -139,6 +139,7 @@ class SparseAttentionIndexerCsaSelectProgram final
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"present_compressed_length", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32},
       {"scale", ProgramUniformVariableDataType::Float32},
       {"head_weight_scale", ProgramUniformVariableDataType::Float32});
 };

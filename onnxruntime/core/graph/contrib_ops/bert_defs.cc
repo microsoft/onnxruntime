@@ -2309,19 +2309,29 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kCosCache);
   (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kSinCache);
 
-  const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 4);
+  const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 3);
   if (query_shape == nullptr) {
     return;
   }
   const auto& batch_dim = query_shape->dim(0);
   const auto& sequence_dim = query_shape->dim(1);
-  const auto& num_heads_dim = query_shape->dim(2);
-  const auto& head_size_dim = query_shape->dim(3);
-  if (num_heads_dim.has_dim_value() && num_heads_dim.dim_value() <= 0) {
-    fail_shape_inference("SparseAttentionIndexer: num_heads must be > 0, got ", num_heads_dim.dim_value());
+  const auto& query_width_dim = query_shape->dim(2);
+  const auto* query_norm_shape = SparseAttentionIndexerShape(ctx, sai::kQueryNormWeight, 1);
+  if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be > 0, got ", query_width_dim.dim_value());
   }
-  if (!is_qsa && head_size_dim.has_dim_value() &&
-      head_size_dim.dim_value() > std::numeric_limits<int64_t>::max() / 2) {
+  if (query_norm_shape == nullptr) {
+    return;
+  }
+  const auto& head_size_dim = query_norm_shape->dim(0);
+  if (head_size_dim.has_dim_value() && head_size_dim.dim_value() <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: head_size must be > 0, got ", head_size_dim.dim_value());
+  }
+  if (query_width_dim.has_dim_value() && head_size_dim.has_dim_value() && head_size_dim.dim_value() > 0 &&
+      query_width_dim.dim_value() % head_size_dim.dim_value() != 0) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be divisible by head_size");
+  }
+  if (!is_qsa && head_size_dim.has_dim_value() && head_size_dim.dim_value() > std::numeric_limits<int64_t>::max() / 2) {
     fail_shape_inference("SparseAttentionIndexer: 2 * head_size exceeds INT64_MAX");
   }
 
@@ -2449,7 +2459,7 @@ Common contract:
     absolute key position. "qsa" applies the half-rotation of the model's (M)RoPE to the leading
     rotary_dim = cos_cache.shape[2] channels. "csa" applies its trailing rotary to the last
     2 * cos_cache.shape[2] channels, with each cos/sin entry covering two consecutive channels.
-  * key_norm_weight is the effective RMSNorm multiplier. Models that store a zero-centered gamma
+  * query_norm_weight and key_norm_weight are the effective RMSNorm multipliers. Models that store a zero-centered gamma
     (the normalized value is multiplied by 1 + gamma) must fold the addition into this initializer.
   * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
     result is rounded once to the tensor element type.
@@ -2487,7 +2497,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("epsilon",
-              "Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.",
+              "Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.",
               AttributeProto::FLOAT,
               1.0e-6f)
         .Attr("scale",
@@ -2501,8 +2511,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Indexer queries with shape (batch_size, sequence_length, num_heads, head_size), already "
-               "normalized but not yet rotated.",
+               "Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before "
+               "normalization, logical reshape, and rotary embedding.",
                "T")
         .Input(1,
                "key",
@@ -2511,20 +2521,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "where the first head_size channels are the Ca series and the last head_size channels the Cb series.",
                "T")
         .Input(2,
+               "query_norm_weight",
+               "Effective RMSNorm multiplier of the queries, with shape (head_size).",
+               "T")
+        .Input(3,
                "key_norm_weight",
                "Effective RMSNorm multiplier of the compressed keys, with shape (head_size).",
                "T")
-        .Input(3,
+        .Input(4,
                "cos_cache",
                "Cosine rotary table indexed by absolute key position, shared across the batch with shape "
                "(max_rotary_sequence_length, rotary_width) or request-specific with shape "
                "(batch_size, max_rotary_sequence_length, rotary_width).",
                "T")
-        .Input(4,
+        .Input(5,
                "sin_cache",
                "Sine rotary table with the same shape as cos_cache.",
                "T")
-        .Input(5,
+        .Input(6,
                "mask",
                "Only for policy_mode 'qsa': an INT64 padding mask with shape "
                "(batch_size, total_sequence_length), for which causal visibility is derived internally, or a BOOL "
@@ -2533,43 +2547,43 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "total_sequence_length is past_sequence_length + sequence_length.",
                "TB",
                OpSchema::Optional)
-        .Input(6,
+        .Input(7,
                "past_key",
                "Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed "
                "keys. Shape is (batch_size, past_sequence_length, head_size), or "
                "(batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.",
                "T")
-        .Input(7,
+        .Input(8,
                "gate",
                "Only for policy_mode 'csa': gate projection of the new tokens with shape "
                "(batch_size, sequence_length, 2 * head_size).",
                "T",
                OpSchema::Optional)
-        .Input(8,
+        .Input(9,
                "position_bias",
                "Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).",
                "T",
                OpSchema::Optional)
-        .Input(9,
+        .Input(10,
                "head_weights",
                "Only for policy_mode 'csa': per-head score weights with shape "
                "(batch_size, sequence_length, num_heads).",
                "T",
                OpSchema::Optional)
-        .Input(10,
+        .Input(11,
                "position_ids",
                "Only for policy_mode 'csa': absolute position of every query with shape "
                "(batch_size, sequence_length).",
                "I",
                OpSchema::Optional)
-        .Input(11,
+        .Input(12,
                "past_sequence_length",
                "Optional one-element CPU tensor containing the number of valid rows in past_key. For policy_mode "
                "'csa', the value is the number of compressed keys. When provided, past_key and present_key have "
                "the same max-capacity shape and may share their buffer.",
                "M",
                OpSchema::Optional)
-        .Input(12,
+        .Input(13,
                "past_proj_buffer",
                "Only for policy_mode 'csa': buffered key and gate projections packed along dimension 0, with shape "
                "(2, batch_size, buffer_length, 2 * head_size). Slice 0 contains keys and slice 1 contains gates. "
@@ -2715,9 +2729,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastGateBuffer, psai::kPresentGateBuffer);
   }
 
-  const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 3);
+  const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 2);
   const auto* key_shape = PackedSparseAttentionIndexerShape(ctx, psai::kKey, 2);
-  const auto* norm_shape = PackedSparseAttentionIndexerShape(ctx, psai::kKeyNormWeight, 1);
+  const auto* query_norm_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQueryNormWeight, 1);
+  const auto* key_norm_shape = PackedSparseAttentionIndexerShape(ctx, psai::kKeyNormWeight, 1);
   const auto* cumulative_shape =
       PackedSparseAttentionIndexerShape(ctx, psai::kCumulativeSequenceLengths, 1);
   const auto* past_sequence_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastSequenceLengths, 1);
@@ -2773,14 +2788,15 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio);
   require_equal_dims(key_shape, 0, query_shape, 0, "key dimension 0 must equal query dimension 0");
-  require_equal_dims(norm_shape, 0, query_shape, 2, "key_norm_weight dimension 0 must equal head_size");
+  require_equal_dims(query_norm_shape, 0, key_norm_shape, 0,
+                     "query_norm_weight and key_norm_weight dimensions must match");
   require_equal_dims(past_sequence_shape, 0, key_state_shape, 0,
                      "past_sequence_lengths dimension 0 must equal the state batch dimension");
   require_equal_dims(key_state_shape, 0, kv_buffer_shape, 0,
                      "past_key_state and past_kv_buffer batch dimensions must match");
   require_equal_dims(state_lengths_shape, 0, key_state_shape, 0,
                      "past_state_lengths dimension 0 must equal the state batch dimension");
-  require_equal_dims(key_state_shape, 2, query_shape, 2,
+  require_equal_dims(key_state_shape, 2, query_norm_shape, 0,
                      "past_key_state dimension 2 must equal head_size");
   require_dim_value(key_state_shape, 1, state_capacity, "past_key_state dimension 1 must equal state_capacity");
   require_dim_value(kv_buffer_shape, 1, buffer_capacity,
@@ -2794,8 +2810,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
         "PackedSparseAttentionIndexer: cumulative_sequence_lengths dimension 0 must equal batch_size + 1");
   }
 
-  if (query_shape != nullptr && query_shape->dim(2).has_dim_value()) {
-    const int64_t head_size = query_shape->dim(2).dim_value();
+  if (query_norm_shape != nullptr && query_norm_shape->dim(0).has_dim_value()) {
+    const int64_t head_size = query_norm_shape->dim(0).dim_value();
     if (head_size <= 0) {
       fail_shape_inference("PackedSparseAttentionIndexer: head_size must be > 0, got ", head_size);
     }
@@ -2816,8 +2832,14 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     require_equal_dims(gate_shape, 0, query_shape, 0, "gate dimension 0 must equal query dimension 0");
     require_equal_dims(head_weights_shape, 0, query_shape, 0,
                        "head_weights dimension 0 must equal query dimension 0");
-    require_equal_dims(head_weights_shape, 1, query_shape, 1,
-                       "head_weights dimension 1 must equal num_heads");
+    if (head_weights_shape != nullptr && query_shape != nullptr &&
+        head_weights_shape->dim(1).has_dim_value() && query_shape->dim(1).has_dim_value() &&
+        query_norm_shape != nullptr && query_norm_shape->dim(0).has_dim_value() &&
+        query_norm_shape->dim(0).dim_value() > 0 &&
+        query_shape->dim(1).dim_value() / query_norm_shape->dim(0).dim_value() !=
+            head_weights_shape->dim(1).dim_value()) {
+      fail_shape_inference("PackedSparseAttentionIndexer: head_weights dimension 1 must equal num_heads");
+    }
     require_dim_value(position_bias_shape, 0, compress_ratio,
                       "position_bias dimension 0 must equal compress_ratio");
     require_equal_dims(gate_buffer_shape, 0, kv_buffer_shape, 0,
@@ -2855,8 +2877,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
       if (rotary_width <= 0 || (is_qsa && rotary_width % 2 != 0)) {
         fail_shape_inference("PackedSparseAttentionIndexer: invalid rotary cache width ", rotary_width);
       }
-      if (query_shape != nullptr && query_shape->dim(2).has_dim_value()) {
-        const int64_t head_size = query_shape->dim(2).dim_value();
+      if (query_norm_shape != nullptr && query_norm_shape->dim(0).has_dim_value()) {
+        const int64_t head_size = query_norm_shape->dim(0).dim_value();
         if ((is_qsa && rotary_width > head_size) ||
             (!is_qsa && rotary_width > head_size / 2)) {
           fail_shape_inference("PackedSparseAttentionIndexer: rotary cache width is incompatible with head_size");
@@ -2867,9 +2889,15 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
 
   if (query_shape != nullptr) {
     const auto& total_tokens_dim = query_shape->dim(0);
-    const auto& num_heads_dim = query_shape->dim(1);
-    if (num_heads_dim.has_dim_value() && num_heads_dim.dim_value() <= 0) {
-      fail_shape_inference("PackedSparseAttentionIndexer: num_heads must be > 0, got ", num_heads_dim.dim_value());
+    const auto& query_width_dim = query_shape->dim(1);
+    if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
+      fail_shape_inference("PackedSparseAttentionIndexer: query width must be > 0, got ",
+                           query_width_dim.dim_value());
+    }
+    if (query_width_dim.has_dim_value() && query_norm_shape != nullptr &&
+        query_norm_shape->dim(0).has_dim_value() && query_norm_shape->dim(0).dim_value() > 0 &&
+        query_width_dim.dim_value() % query_norm_shape->dim(0).dim_value() != 0) {
+      fail_shape_inference("PackedSparseAttentionIndexer: query width must be divisible by head_size");
     }
 
     const int64_t capacity = psai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
@@ -2947,7 +2975,8 @@ Common contract:
     with attention_mode="local_plus_selected", selected_kv_source="auxiliary"; key_state is
     layout-compatible with a [batch_size, capacity, 1, head_size] auxiliary cache when K = V).
     Unused entries are -1 and selected_counts holds the exact number of used entries.
-  * key_norm_weight is the effective RMSNorm multiplier, exactly as in SparseAttentionIndexer.
+  * query_norm_weight and key_norm_weight are the effective RMSNorm multipliers, exactly as in
+    SparseAttentionIndexer.
   * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
     result is rounded once to the tensor element type.
   * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
@@ -2989,7 +3018,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("epsilon",
-              "Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.",
+              "Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.",
               AttributeProto::FLOAT,
               1.0e-6f)
         .Attr("scale",
@@ -3003,8 +3032,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Packed indexer queries with shape (total_tokens, num_heads, head_size), already normalized but "
-               "not yet rotated.",
+               "Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, "
+               "logical reshape, and rotary embedding.",
                "T")
         .Input(1,
                "key",
@@ -3013,72 +3042,76 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "head_size channels are the Ca series and the last head_size channels the Cb series.",
                "T")
         .Input(2,
+               "query_norm_weight",
+               "Effective RMSNorm multiplier of the queries, with shape (head_size).",
+               "T")
+        .Input(3,
                "key_norm_weight",
                "Effective RMSNorm multiplier of the compressed keys, with shape (head_size).",
                "T")
-        .Input(3,
+        .Input(4,
                "cos_cache",
                "Cosine rotary table indexed by absolute key position, shared across the batch with shape "
                "(max_rotary_sequence_length, rotary_width) or request-specific with shape "
                "(batch_size, max_rotary_sequence_length, rotary_width).",
                "T")
-        .Input(4,
+        .Input(5,
                "sin_cache",
                "Sine rotary table with the same shape as cos_cache.",
                "T")
-        .Input(5,
+        .Input(6,
                "cumulative_sequence_lengths",
                "Device-resident packed request boundaries with shape (batch_size + 1); "
                "cumulative_sequence_lengths[0] must be 0 and cumulative_sequence_lengths[batch_size] must equal "
                "total_tokens. Request b owns rows [cumulative_sequence_lengths[b], "
                "cumulative_sequence_lengths[b + 1]) of query/key (a repeated offset is a valid zero-token row).",
                "M")
-        .Input(6,
+        .Input(7,
                "past_sequence_lengths",
                "Device-resident number of tokens already processed for each request before this call, with "
                "shape (batch_size). Used as the default absolute query position when position_ids is omitted "
                "(policy_mode 'qsa'), and to validate state consistency.",
                "M")
-        .Input(7,
+        .Input(8,
                "gate",
                "Only for policy_mode 'csa': gate projection of the new tokens with shape "
                "(total_tokens, 2 * head_size).",
                "T",
                OpSchema::Optional)
-        .Input(8,
+        .Input(9,
                "position_bias",
                "Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).",
                "T",
                OpSchema::Optional)
-        .Input(9,
+        .Input(10,
                "head_weights",
                "Only for policy_mode 'csa': per-head score weights with shape (total_tokens, num_heads).",
                "T",
                OpSchema::Optional)
-        .Input(10,
+        .Input(11,
                "position_ids",
                "Optional for policy_mode 'qsa', required for policy_mode 'csa': absolute position of every "
                "packed query, with shape (total_tokens).",
                "I",
                OpSchema::Optional)
-        .Input(11,
+        .Input(12,
                "past_key_state",
                "Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; "
                "policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and "
                "never changes across calls.",
                "T")
-        .Input(12,
+        .Input(13,
                "past_kv_buffer",
                "Generic fixed-capacity pending-token buffer. Shape is (batch_size, 2 * compress_ratio - 1, "
                "head_size) for policy_mode 'qsa' (which only ever uses up to compress_ratio - 1 of these "
                "entries) and (batch_size, 2 * compress_ratio - 1, 2 * head_size) for policy_mode 'csa'.",
                "T")
-        .Input(13,
+        .Input(14,
                "past_gate_buffer",
                "Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.",
                "T",
                OpSchema::Optional)
-        .Input(14,
+        .Input(15,
                "past_state_lengths",
                "Generic per-request state length with shape (batch_size, 2). Column 0 is the key_state entry "
                "count (policy_mode 'qsa': complete-block count; 'csa': compressed-entry count); column 1 is the "

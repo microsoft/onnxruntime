@@ -105,8 +105,8 @@ struct GraphOptions {
 
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
-// Builds a fixed 15-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 10) is optional for "qsa" and forced on for "csa".
+// Builds a fixed 16-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
+// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -115,9 +115,10 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> inputs{
       builder.MakeInput<float>(
-          std::vector<int64_t>{options.total_tokens, options.num_heads, options.head_size}),
+          std::vector<int64_t>{options.total_tokens, options.num_heads * options.head_size}),
       builder.MakeInput<float>(
           std::vector<int64_t>{options.key_total_tokens >= 0 ? options.key_total_tokens : options.total_tokens, width}),
+      builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
@@ -275,7 +276,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
   GraphOptions options;
   options.num_heads = 0;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "num_heads must be > 0");
+                       "query width must be > 0");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsGenericBufferCapacityOverflow) {
@@ -321,8 +322,9 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionId
         const int64_t width = 2 * local.head_size;
         const int64_t buffer_capacity = BufferCapacity(local.compress_ratio);
         std::vector<NodeArg*> inputs{
-            builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, local.num_heads, local.head_size}),
+            builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, local.num_heads * local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{local.total_tokens, width}),
+            builder.MakeInput<float>(std::vector<int64_t>{local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{local.head_size}),
             builder.MakeInput<float>(std::vector<int64_t>{64, local.rotary_width}),
             builder.MakeInput<float>(std::vector<int64_t>{64, local.rotary_width}),
@@ -514,6 +516,7 @@ struct QsaPackedProblem {
 
   std::vector<float> query;
   std::vector<float> key;
+  std::vector<float> query_norm_weight;
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;  // shared: [max_position, rotary_width]
   std::vector<float> sin_cache;
@@ -618,6 +621,7 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
       for (int h = 0; h < p.num_heads; ++h) {
         const size_t base = (static_cast<size_t>(token) * p.num_heads + h) * head_size;
         std::vector<float> head(p.query.begin() + base, p.query.begin() + base + head_size);
+        head = RmsNormalize(head, p.query_norm_weight, p.epsilon);
         const int clamped_position = std::min(std::max(position, 0), p.max_position - 1);
         rotated_query[static_cast<size_t>(h)] =
             LeadingRope(head, p.rotary_width, p.cos_cache.data() + clamped_position * p.rotary_width,
@@ -676,6 +680,7 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
   problem.query =
       MakeWave(static_cast<size_t>(total_tokens) * problem.num_heads * problem.head_size, 0.35f, 0.41f);
   problem.key = MakeWave(static_cast<size_t>(total_tokens) * problem.head_size, 1.10f, 0.29f);
+  problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.30f, 0.23f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.70f, 0.17f);
   problem.cos_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.20f, 0.13f);
   problem.sin_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.90f, 0.19f);
@@ -697,6 +702,7 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
 
   problem.query = RoundTrip<T>(problem.query);
   problem.key = RoundTrip<T>(problem.key);
+  problem.query_norm_weight = RoundTrip<T>(problem.query_norm_weight);
   problem.key_norm_weight = RoundTrip<T>(problem.key_norm_weight);
   problem.cos_cache = RoundTrip<T>(problem.cos_cache);
   problem.sin_cache = RoundTrip<T>(problem.sin_cache);
@@ -719,8 +725,9 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   if (problem.scale.has_value()) {
     test.AddAttribute("scale", *problem.scale);
   }
-  test.AddInput<T>("query", {total_tokens, problem.num_heads, head_size}, ToElementType<T>(problem.query));
+  test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
   test.AddInput<T>("key", {total_tokens, head_size}, ToElementType<T>(problem.key));
+  test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
@@ -847,6 +854,7 @@ struct CsaPackedProblem {
 
   std::vector<float> query;
   std::vector<float> key;
+  std::vector<float> query_norm_weight;
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;
   std::vector<float> sin_cache;
@@ -1001,6 +1009,7 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
       for (int h = 0; h < p.num_heads; ++h) {
         const size_t base = (static_cast<size_t>(token) * p.num_heads + h) * head_size;
         std::vector<float> head(p.query.begin() + base, p.query.begin() + base + head_size);
+        head = RmsNormalize(head, p.query_norm_weight, p.epsilon);
         const int clamped_position = std::min(std::max(position, 0), p.max_position - 1);
         rotated_query[static_cast<size_t>(h)] =
             TrailingRope(head, p.rotary_width, p.cos_cache.data() + clamped_position * p.rotary_width,
@@ -1046,6 +1055,7 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 
   problem.query = MakeWave(static_cast<size_t>(total_tokens) * problem.num_heads * problem.head_size, 0.25f, 0.37f);
   problem.key = MakeWave(static_cast<size_t>(total_tokens) * width, 0.60f, 0.21f);
+  problem.query_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 1.25f, 0.19f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.45f, 0.31f);
   problem.cos_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 0.15f, 0.27f);
   problem.sin_cache = MakeWave(static_cast<size_t>(problem.max_position) * problem.rotary_width, 1.05f, 0.33f);
@@ -1082,6 +1092,7 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
   CsaPackedProblem problem = base;
   problem.query = RoundTrip<T>(problem.query);
   problem.key = RoundTrip<T>(problem.key);
+  problem.query_norm_weight = RoundTrip<T>(problem.query_norm_weight);
   problem.key_norm_weight = RoundTrip<T>(problem.key_norm_weight);
   problem.cos_cache = RoundTrip<T>(problem.cos_cache);
   problem.sin_cache = RoundTrip<T>(problem.sin_cache);
@@ -1109,8 +1120,9 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
   if (problem.scale.has_value()) test.AddAttribute("scale", *problem.scale);
   if (problem.head_weight_scale.has_value()) test.AddAttribute("head_weight_scale", *problem.head_weight_scale);
 
-  test.AddInput<T>("query", {total_tokens, problem.num_heads, head_size}, ToElementType<T>(problem.query));
+  test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
   test.AddInput<T>("key", {total_tokens, width}, ToElementType<T>(problem.key));
+  test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
