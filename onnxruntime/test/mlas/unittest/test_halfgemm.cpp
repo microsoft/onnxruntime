@@ -649,8 +649,8 @@ TEST(HalfGemmKleidiAISVE2p1, RuntimePackedExactTileSingleThread) {
 #endif
 }
 
-TEST(HalfGemmKleidiAISVE2p1, NativePackedDifferentExecutionThreadVectorLengthIsRejected) {
-#if defined(__linux__) && defined(__aarch64__) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+TEST(HalfGemmKleidiAISVE2p1, NativePackedBatchSameVectorLengthCompletes) {
+#if defined(MLAS_TARGET_ARM64) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
   const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
   if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
     GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
@@ -658,19 +658,13 @@ TEST(HalfGemmKleidiAISVE2p1, NativePackedDifferentExecutionThreadVectorLengthIsR
 
   ASSERT_TRUE(IsSve2p1HalfGemmSelected());
 
-  const int packing_vl_config = prctl(PR_SVE_GET_VL);
-  ASSERT_GE(packing_vl_config, 0);
-  const int packing_vl = packing_vl_config & PR_SVE_VL_LEN_MASK;
-  const unsigned long requested_execution_vl = packing_vl == SVE_VL_MIN ? SVE_VL_MAX : SVE_VL_MIN;
-
   constexpr size_t M = 1;
   constexpr size_t K = 9;
+  constexpr size_t BatchN = 2;
   const size_t N = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting() + 1;
-  std::vector<MLFp16> a(M * K);
-  std::vector<MLFp16> b(K * N);
-  std::vector<MLFp16> c(M * N, MLFp16(-1.0f));
-  SmallFloatFill(a.data(), a.size());
-  SmallFloatFill(b.data(), b.size());
+  std::vector<MLFp16> a(M * K, MLFp16(1.0f));
+  std::vector<MLFp16> b(K * N, MLFp16(1.0f));
+  std::vector<MLFp16> c(BatchN * M * N, MLFp16(-1.0f));
 
   const size_t packed_b_size =
       ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, K);
@@ -680,33 +674,95 @@ TEST(HalfGemmKleidiAISVE2p1, NativePackedDifferentExecutionThreadVectorLengthIsR
       CblasNoTrans, CblasNoTrans, N, K,
       reinterpret_cast<const MLAS_FP16*>(b.data()), N, packed_b.data()));
 
-  MLAS_HALF_GEMM_DATA_PARAMS data{};
-  data.A = a.data();
-  data.B = packed_b.data();
-  data.C = reinterpret_cast<MLAS_FP16*>(c.data());
-  data.lda = K;
-  data.ldb = 0;
-  data.ldc = N;
-  data.BIsBackendNativePacked = true;
+  std::array<MLAS_HALF_GEMM_DATA_PARAMS, BatchN> data{};
+  for (size_t batch = 0; batch < BatchN; ++batch) {
+    data[batch].A = a.data();
+    data[batch].B = packed_b.data();
+    data[batch].C = reinterpret_cast<MLAS_FP16*>(c.data() + batch * M * N);
+    data[batch].lda = K;
+    data[batch].ldb = 0;
+    data[batch].ldc = N;
+    data[batch].BIsBackendNativePacked = true;
+  }
 
-  int execution_vl = -1;
-  bool handled = true;
-  std::thread execution_thread([&]() {
-    const int execution_vl_config = prctl(PR_SVE_SET_VL, requested_execution_vl);
-    if (execution_vl_config < 0) {
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, BatchN, data.data(), nullptr));
+  for (size_t i = 0; i < c.size(); ++i) {
+    EXPECT_EQ(c[i], MLFp16(static_cast<float>(K))) << "index=" << i;
+  }
+#else
+  GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
+#endif
+}
+
+TEST(HalfGemmKleidiAISVE2p1, NativePackedBatchVectorLengthMismatchIsRejectedBeforeExecution) {
+#if defined(__linux__) && defined(__aarch64__) && defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  const auto& cpuid = MLAS_CPUIDINFO::GetCPUIDInfo();
+  if (!cpuid.HasArmSVE2p1() || cpuid.HasArm_SME() || cpuid.HasArm_SME2()) {
+    GTEST_SKIP() << "SVE2.1 must be selected without an SME-priority backend.";
+  }
+
+  ASSERT_TRUE(IsSve2p1HalfGemmSelected());
+
+  const int execution_vl_config = prctl(PR_SVE_GET_VL);
+  ASSERT_GE(execution_vl_config, 0);
+  const int execution_vl = execution_vl_config & PR_SVE_VL_LEN_MASK;
+  const unsigned long requested_packing_vl = execution_vl == SVE_VL_MIN ? SVE_VL_MAX : SVE_VL_MIN;
+
+  constexpr size_t M = 1;
+  constexpr size_t K = 9;
+  constexpr size_t BatchN = 2;
+  const size_t N = ArmKleidiAI::GetKleidiAISve2p1HalfGemmNStepForTesting() + 1;
+  std::vector<MLFp16> a(M * K, MLFp16(1.0f));
+  std::vector<MLFp16> b(K * N, MLFp16(1.0f));
+  std::vector<MLFp16> c(BatchN * M * N, MLFp16(-1.0f));
+
+  const size_t first_packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, K);
+  ASSERT_NE(first_packed_b_size, size_t{0});
+  std::array<std::vector<std::byte>, BatchN> packed_b;
+  packed_b[0].resize(first_packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasNoTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(b.data()), N, packed_b[0].data()));
+
+  int second_packing_vl = -1;
+  bool second_pack_succeeded = false;
+  std::thread packing_thread([&]() {
+    const int packing_vl_config = prctl(PR_SVE_SET_VL, requested_packing_vl);
+    if (packing_vl_config < 0) {
       return;
     }
-    execution_vl = execution_vl_config & PR_SVE_VL_LEN_MASK;
-    if (execution_vl != packing_vl) {
-      handled = ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr);
+    second_packing_vl = packing_vl_config & PR_SVE_VL_LEN_MASK;
+    if (second_packing_vl != execution_vl) {
+      const size_t second_packed_b_size =
+          ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, K);
+      if (second_packed_b_size != 0) {
+        packed_b[1].resize(second_packed_b_size);
+        second_pack_succeeded = ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+            CblasNoTrans, CblasNoTrans, N, K,
+            reinterpret_cast<const MLAS_FP16*>(b.data()), N, packed_b[1].data());
+      }
     }
   });
-  execution_thread.join();
+  packing_thread.join();
 
-  if (execution_vl < 0 || execution_vl == packing_vl) {
+  if (second_packing_vl < 0 || second_packing_vl == execution_vl) {
     GTEST_SKIP() << "The system does not expose two usable SVE vector lengths.";
   }
-  EXPECT_FALSE(handled);
+  ASSERT_TRUE(second_pack_succeeded);
+
+  std::array<MLAS_HALF_GEMM_DATA_PARAMS, BatchN> data{};
+  for (size_t batch = 0; batch < BatchN; ++batch) {
+    data[batch].A = a.data();
+    data[batch].B = packed_b[batch].data();
+    data[batch].C = reinterpret_cast<MLAS_FP16*>(c.data() + batch * M * N);
+    data[batch].lda = K;
+    data[batch].ldb = 0;
+    data[batch].ldc = N;
+    data[batch].BIsBackendNativePacked = true;
+  }
+
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, BatchN, data.data(), nullptr));
   for (size_t i = 0; i < c.size(); ++i) {
     EXPECT_EQ(c[i], MLFp16(-1.0f)) << "index=" << i;
   }

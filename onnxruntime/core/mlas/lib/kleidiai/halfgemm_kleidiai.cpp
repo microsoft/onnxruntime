@@ -184,9 +184,8 @@ bool RunSve2p1HalfGemm(
     const float* clamp_min,
     const float* clamp_max
 ) {
-    // The current ORT MatMul native-packed path reaches MlasHalfGemmBatch with BatchN == 1.
-    // If native-packed batching is added, validate every entry's SVE VL metadata before
-    // invoking this function to avoid partial output from a later mismatch.
+    // MlasHalfGemmBatch prevalidates native-packed metadata. Keep this local check
+    // as defense in depth for this execution boundary.
     const auto& hgemm = kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot();
     const kai_matmul_uker_config config{};
     if (hgemm.get_step(&config).n != expected_vector_length) {
@@ -398,19 +397,32 @@ ArmKleidiAI::MlasHalfGemmBatch(
 
     ScopedKaiHalfTlsCleanup cleanup{g_kai_half_tls};
 
-    // Validate all batch entries up front so we never partially execute and then
-    // fall back (which would corrupt results for the already-written outputs).
+    size_t caller_vector_length = 0;
+    if (backend == KaiHalfGemmBackend::Sve2p1) {
+        const auto& hgemm = kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot();
+        const kai_matmul_uker_config config{};
+        caller_vector_length = hgemm.get_step(&config).n;
+    }
+
+    // MatMul currently supplies one backend-native packed RHS (BatchN == 1), but
+    // this override accepts arbitrary MLAS batches. Validate every native-packed
+    // RHS before any entry writes output so a later mismatch cannot partially modify C.
     bool needs_rhs_packing = false;
     for (size_t b = 0; b < BatchN; ++b) {
         const auto& data = DataParams[b];
         if (data.OutputProcessor != nullptr) {
             return false;
         }
-        if (data.BIsBackendNativePacked && data.Bias != nullptr) {
+        if (data.BIsBackendNativePacked && (data.ldb != 0 || data.Bias != nullptr)) {
             return false;
         }
-        if (data.BIsBackendNativePacked && data.ldb != 0) {
-            return false;
+        if (backend == KaiHalfGemmBackend::Sve2p1 && data.BIsBackendNativePacked) {
+            size_t packed_vector_length = 0;
+            const std::byte* packed_rhs = nullptr;
+            if (!ReadSve2p1PackedRhsMetadata(data.B, packed_vector_length, packed_rhs) ||
+                packed_vector_length != caller_vector_length) {
+                return false;
+            }
         }
         // Native-packed RHS is consumed directly below. Only allocate the
         // runtime RHS packing scratch when at least one batch entry needs it.
