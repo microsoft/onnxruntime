@@ -86,7 +86,7 @@ for a runtime:
 | 3 | `key_norm_weight` | both | `T` | `(D)` |
 | 4 | `cos_cache` | both | `T` | `(max_rotary_sequence_length, R)` when shared across the batch, or `(B, max_rotary_sequence_length, R)` |
 | 5 | `sin_cache` | both | `T` | same as `cos_cache` |
-| 6 | `mask` | `qsa` | `TB` | INT64 padding mask `(B, T)`, or BOOL explicit visibility `(B, 1, S, T)` / `(B, S, T)` |
+| 6 | `mask` | `qsa` | `TB` | INT64 padding mask `(B, T)` |
 | 7 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
 | 8 | `gate` | `csa` | `T` | `(B, S, 2D)` |
 | 9 | `position_bias` | `csa` | `T` | `(r, 2D)` |
@@ -111,7 +111,7 @@ follow from `Lb`, `S` and `r` alone (see [§5](#5-policy-csa)).
 | Name | Allowed types |
 |---|---|
 | `T` | `tensor(float)`, `tensor(float16)`, `tensor(bfloat16)` |
-| `TB` | `tensor(bool)` |
+| `TB` | `tensor(int64)` |
 | `I` | `tensor(int64)` |
 | `M` | `tensor(int32)` |
 
@@ -151,10 +151,7 @@ its ordinary bounded state contract and stays below `2r` positions.
 
 For every `(b, s)`:
 
-1. **Visible set.** For an INT64 rank-2 padding mask,
-   `visible = [t for t in range(T) if mask[b, t] != 0 and t <= P + s]`. For a BOOL rank-3/4
-   explicit mask, `visible = [t for t in range(T) if mask[b, s, t]]`. Positions remain in
-   ascending `t` order.
+1. **Visible set.** `visible = [t for t in range(T) if mask[b, t] != 0 and t <= P + s]`, in ascending `t`.
 2. **Complete blocks.** `nblocks = len(visible) // r`. Block `j` covers
    `visible[j*r : (j+1)*r]`.
 3. **Pooled key.** `k_j = mean` of the `r` raw `present_key` rows of block `j`, then
@@ -366,18 +363,17 @@ python onnxruntime/python/tools/microbench/sparse_attention_indexer.py
 The implementation is correctness-first. The following are known and deliberate:
 
 1. **Exact query-specific scoring remains `O(visible_tokens / compress_ratio)`.** Every decode query
-   can change and the schema permits an arbitrary mask per query, so an exact implementation must
-   inspect every eligible block; persistent candidates from an earlier query cannot preserve QSA
-   semantics. The bounded radix path removes full-context sorting and candidate buffers, but not
-   this scoring lower bound.
+  can change, so an exact implementation must inspect every eligible block; persistent candidates
+  from an earlier query cannot preserve QSA semantics. The bounded radix path removes full-context
+  sorting and candidate buffers, but not this scoring lower bound.
 2. **Scoring is not tensor-core accelerated.** `QsaBlockScoreKernel` and `CsaScoreKernel` compute
    `q · k` with a shared-memory block reduction, one dot product per block. A tiled GEMM (or a
    fused `ReLU`+reduce epilogue) would be far better once shapes grow.
 3. **Query rotation is fused into QSA scoring.** This removes the separate rotation launch and the
    `B*S*N*D` float workspace, at the cost of recomputing rotation for each scored block.
 4. **Mask analysis remains `O(T)` per query row.** Prefix-causal masks avoid visible-index writes
-   and tile-by-tile scan synchronization. Arbitrary masks still require exact compaction because
-   block membership is defined by visible rank, not absolute position.
+  and tile-by-tile scan synchronization. Padding masks with holes still require exact compaction
+  because block membership is defined by visible rank, not absolute position.
 5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
 6. **No CPU kernel.** The operator is CUDA-only today.
