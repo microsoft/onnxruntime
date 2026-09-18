@@ -460,6 +460,56 @@ TEST(ConcatOpTest, Concat4D_2) {
   test.Run();
 }
 
+// Concatenating along the innermost axis where every input is a multiple of four there. A kernel
+// that moves four elements per thread may take this path only because no vec4 straddles the
+// boundary between two inputs.
+TEST(ConcatOpTest, Concat2D_innermost_axis_aligned_inputs) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("input2", {2, 8},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.AddOutput<float>("concat_result", {2, 12},
+                        {1.0f, 2.0f, 3.0f, 4.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                         5.0f, 6.0f, 7.0f, 8.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.Run();
+}
+
+// The output's innermost dimension is a multiple of four but the inputs' are not, so a four-element
+// group would straddle the boundary between them. Checking only the output would be wrong here.
+TEST(ConcatOpTest, Concat2D_innermost_axis_unaligned_inputs) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {2, 2}, {1.0f, 2.0f, 5.0f, 6.0f});
+  test.AddInput<float>("input2", {2, 6},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddOutput<float>("concat_result", {2, 8},
+                        {1.0f, 2.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                         5.0f, 6.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.Run();
+}
+
+// Concatenating on an outer axis leaves the innermost dimension untouched, so elements can still be
+// moved four at a time while the offsets along the concat axis stay in single-element units.
+TEST(ConcatOpTest, Concat3D_outer_axis_aligned_innermost) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<float>("input1", {1, 2, 4}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<float>("input2", {2, 2, 4},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.AddOutput<float>("concat_result", {3, 2, 4},
+                        {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                         11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f});
+  test.Run();
+}
+
 #ifdef USE_WEBGPU
 TEST(ConcatOpTest, Concat1D_int32_4inputs) {
   OpTester test("Concat");

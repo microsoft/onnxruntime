@@ -51,16 +51,15 @@ static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F
               "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
 
 // Vendor-agnostic subgroup matrix config: {componentType, resultComponentType, M, N, K,
-// subgroupMinSize, subgroupMaxSize, needsPrepack}. Any GPU reporting a matching config from
-// wgpu::AdapterPropertiesSubgroupMatrixConfigs is supported.
+// subgroupSize, needsPrepack}. Any GPU reporting a matching config from
+// wgpu::AdapterPropertiesSubgroupMatrixConfigs and supporting the required subgroup size is supported.
 struct SupportedSubgroupMatrixConfig {
   wgpu::SubgroupMatrixComponentType componentType;
   wgpu::SubgroupMatrixComponentType resultComponentType;
   uint32_t M;
   uint32_t N;
   uint32_t K;
-  uint32_t subgroupMinSize;
-  uint32_t subgroupMaxSize;
+  uint32_t subgroupSize;
   bool needsPrepack;  // Whether input A needs layout optimization for subgroupMatrixLoad
 
   // True if this config's subgroup-matrix shape equals (m, n, k).
@@ -69,15 +68,24 @@ struct SupportedSubgroupMatrixConfig {
   }
 };
 
+// A fixed-size adapter already guarantees the required size. An adapter exposing a range needs
+// subgroup-size control so the kernel can select its required size instead of relying on the
+// implementation's choice.
+constexpr bool IsSubgroupSizeSupported(uint32_t adapter_min_size, uint32_t adapter_max_size,
+                                       uint32_t required_size, bool has_subgroup_size_control) {
+  return adapter_min_size <= required_size && required_size <= adapter_max_size &&
+         (adapter_min_size == adapter_max_size || has_subgroup_size_control);
+}
+
 // Subgroup matrix configs the subgroup-matrix kernels are implemented for.
 inline constexpr std::array<SupportedSubgroupMatrixConfig, 4> supported_subgroup_matrix_configs = {{
-    // 16x16x16 config with 128x128 tiles (NVIDIA Blackwell, subgroup size 32)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, 32, true},
-    // 8x16x16 config (Intel Xe2/Xe3, subgroup size 16-32)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32, true},
+    // 16x16x16 config with 128x128 tiles (AMD RDNA 3+ and NVIDIA Blackwell)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, true},
+    // 8x16x16 config (Intel Xe2/Xe3)
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 32, true},
     // 8x8x8 config (Apple M-series, etc.)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, 32, false},
-    {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, 32, false},
+    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, false},
+    {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, false},
 }};
 
 // Returns true and sets config_index (into supported_subgroup_matrix_configs) when the device

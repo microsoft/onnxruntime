@@ -20,10 +20,6 @@ namespace webgpu {
 
 namespace {
 
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
-
 // Subgroup-matrix Gemm implementation. Loads A and B directly from global memory
 // (transposed operands via column-major loads) and runs the cooperative
 // subgroup-matrix kernel during Compute. Y = alpha * op(A) @ op(B) + beta * C.
@@ -139,8 +135,8 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
     SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
-    program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
-    program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
+    program.SetWorkgroupSize(config.subgroupSize * split_k);
+    program.SetSubgroupSize(config.subgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
     program.CacheHint(has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
