@@ -516,6 +516,12 @@ static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
 static const char* const kOrtSessionOptionsEnableStaticWorkspacePreallocation =
     "session.enable_static_workspace_preallocation";
 
+/// Optional positive upper bound for the total_sequence_length scalar of non-windowed CUDA
+/// GroupQueryAttention nodes. The scalar value is unavailable during workspace declaration,
+/// so callers must provide a sound bound when it may exceed the past-cache capacity.
+static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
+    "ep.cuda.gqa_workspace_max_total_sequence_length";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)

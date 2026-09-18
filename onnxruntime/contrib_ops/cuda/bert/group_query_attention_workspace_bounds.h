@@ -35,9 +35,7 @@ constexpr bool HasGQAReachableBackend(GQAReachableBackend mask,
 
 // Graph-free upper bounds and immutable feature facts. Positive dimensions are
 // componentwise bounds, not a claim that their combination is one runtime shape.
-// The aggregate assumes both past/present K/V pairs alias. A caller that permits
-// partial aliasing must separately account for preservation scratch. For a
-// non-windowed cache, present_kv_cache_capacity_bound must bound the runtime
+// For a non-windowed cache, present_kv_cache_capacity_bound must bound the runtime
 // present KV length, not only the past input tensor's sequence dimension.
 struct GQAWorkspaceBounds {
   size_t qkv_element_size = 0;
@@ -48,6 +46,7 @@ struct GQAWorkspaceBounds {
   int64_t kv_num_heads = 0;
   int64_t head_size_bound = 0;
   int64_t present_kv_cache_capacity_bound = 0;
+  int64_t past_kv_cache_capacity_bound = 0;
   int64_t kv_cache_bit_width = 0;
   GQAKvQuantizationType k_quantization = GQAKvQuantizationType::None;
   GQAKvQuantizationType v_quantization = GQAKvQuantizationType::None;
@@ -57,6 +56,8 @@ struct GQAWorkspaceBounds {
   bool use_qk_norm = false;
   bool prompt_reachable = false;
   bool decode_reachable = false;
+  // Non-windowed execution may bind exactly one past/present pair in-place.
+  bool partial_alias_reachable = false;
 
   GQAReachableBackend reachable_backends = GQAReachableBackend::None;
   int64_t device_major = 0;

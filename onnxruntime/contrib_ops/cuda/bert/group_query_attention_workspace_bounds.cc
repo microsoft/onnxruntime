@@ -76,7 +76,8 @@ GQAWorkspaceStatus EffectiveKvLengthBound(const GQAWorkspaceBounds& bounds,
 GQAWorkspaceProblem MakeProblem(const GQAWorkspaceBounds& bounds,
                                 int64_t sequence_length,
                                 int64_t head_size,
-                                bool first_prompt) noexcept {
+                                bool first_prompt,
+                                bool requires_separate_past_buffer = false) noexcept {
   GQAWorkspaceProblem problem;
   problem.qkv_element_size = bounds.qkv_element_size;
   problem.cache_element_size = bounds.cache_element_size;
@@ -86,6 +87,8 @@ GQAWorkspaceProblem MakeProblem(const GQAWorkspaceBounds& bounds,
   problem.kv_num_heads = bounds.kv_num_heads;
   problem.head_size = head_size;
   problem.present_kv_cache_capacity = bounds.present_kv_cache_capacity_bound;
+  problem.past_kv_cache_capacity =
+      requires_separate_past_buffer ? bounds.past_kv_cache_capacity_bound : 0;
   problem.kv_cache_bit_width = bounds.kv_cache_bit_width;
   problem.k_quantization = bounds.k_quantization;
   problem.v_quantization = bounds.v_quantization;
@@ -94,6 +97,7 @@ GQAWorkspaceProblem MakeProblem(const GQAWorkspaceBounds& bounds,
   problem.do_rotary = bounds.do_rotary;
   problem.is_packed_qkv = bounds.is_packed_qkv;
   problem.use_qk_norm = bounds.use_qk_norm;
+  problem.requires_separate_past_buffer = requires_separate_past_buffer;
   return problem;
 }
 
@@ -233,6 +237,7 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
       bounds.num_heads <= 0 || bounds.kv_num_heads <= 0 ||
       bounds.num_heads % bounds.kv_num_heads != 0 ||
       bounds.head_size_bound < 8 || bounds.present_kv_cache_capacity_bound <= 0 ||
+      (bounds.partial_alias_reachable && bounds.past_kv_cache_capacity_bound <= 0) ||
       bounds.multi_processor_count <= 0 ||
       (!bounds.prompt_reachable && !bounds.decode_reachable)) {
     aggregate.status = Invalid("GQA workspace bounds are incomplete or invalid.");
@@ -272,7 +277,8 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   const std::array<int64_t, 2> sequence_candidates{
       1, bounds.sequence_length_bound};
   const auto size_complete = [&](GQABackend backend, int64_t head_size,
-                                 int64_t sequence_length, bool first_prompt) {
+                                 int64_t sequence_length, bool first_prompt,
+                                 bool requires_separate_past_buffer) {
     int64_t effective_kv_length = 0;
     const auto effective_status =
         EffectiveKvLengthBound(bounds, sequence_length, effective_kv_length);
@@ -288,7 +294,9 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
                                                : GQAPreprocessMode::Unfused;
     route.unfused.total_sequence_length = effective_kv_length;
     return GetGQACompleteWorkspaceRecipe(
-        MakeProblem(bounds, sequence_length, head_size, first_prompt), route);
+        MakeProblem(bounds, sequence_length, head_size, first_prompt,
+                    requires_separate_past_buffer),
+        route);
   };
 
   const int64_t general_head = LargestMultipleOfEight(
@@ -304,24 +312,29 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
       if (sequence > 1 && !bounds.prompt_reachable) continue;
       for (bool first : {false, true}) {
         if (first && !bounds.prompt_reachable) continue;
-        const auto result = size_complete(
-            backend == GQAReachableBackend::MemoryEfficient
-                ? GQABackend::MemoryEfficient
-                : GQABackend::Unfused,
-            head, sequence, first);
-        retain(backend, result.status, result.recipe.total_workspace_bytes);
+        for (bool partial_alias : {false, true}) {
+          if (partial_alias && !bounds.partial_alias_reachable) continue;
+          const auto result = size_complete(
+              backend == GQAReachableBackend::MemoryEfficient
+                  ? GQABackend::MemoryEfficient
+                  : GQABackend::Unfused,
+              head, sequence, first, partial_alias);
+          retain(backend, result.status, result.recipe.total_workspace_bytes);
+        }
       }
     }
   }
 
-  const auto size_flash = [&](bool fast, int64_t sequence, bool first) {
+  const auto size_flash = [&](bool fast, int64_t sequence, bool first,
+                              bool requires_separate_past_buffer) {
     int64_t effective_kv_length = 0;
     auto status = EffectiveKvLengthBound(bounds, sequence, effective_kv_length);
     if (!status.IsOK()) {
       return std::pair<GQAWorkspaceStatus, size_t>{status, 0};
     }
     const int64_t head = LargestMultipleOfEight(bounds.head_size_bound, 256);
-    const auto problem = MakeProblem(bounds, sequence, head, first);
+    const auto problem = MakeProblem(
+        bounds, sequence, head, first, requires_separate_past_buffer);
     GQAPreparationRoute prep_route;
     prep_route.preprocess_mode = GQAPreprocessMode::Flash;
     prep_route.use_flash_attention_fast_decode = fast;
@@ -339,8 +352,11 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
       if (sequence > 1 && !bounds.prompt_reachable) continue;
       for (bool first : {false, true}) {
         if (first && !bounds.prompt_reachable) continue;
-        const auto result = size_flash(false, sequence, first);
-        retain(GQAReachableBackend::Flash, result.first, result.second);
+        for (bool partial_alias : {false, true}) {
+          if (partial_alias && !bounds.partial_alias_reachable) continue;
+          const auto result = size_flash(false, sequence, first, partial_alias);
+          retain(GQAReachableBackend::Flash, result.first, result.second);
+        }
       }
     }
   }
@@ -352,7 +368,9 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     // of evaluating the non-monotonic split heuristic. Its storage and the
     // preparation storage are nondecreasing in sequence length, so Smax covers
     // every dynamic S in the bounded domain.
-    const auto result = size_flash(true, bounds.sequence_length_bound, false);
+    const auto result = size_flash(
+        true, bounds.sequence_length_bound, false,
+        /*requires_separate_past_buffer=*/false);
     retain(GQAReachableBackend::FlashFastDecode, result.first, result.second);
   }
 
@@ -361,7 +379,8 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
     for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}}) {
       if (head > bounds.head_size_bound) continue;
       found_head = true;
-      const auto problem = MakeProblem(bounds, 1, head, false);
+      const auto problem = MakeProblem(
+          bounds, 1, head, false, /*requires_separate_past_buffer=*/false);
       GQAPreparationRoute route;
       route.preprocess_mode = GQAPreprocessMode::Xqa;
       const auto prep = GetGQAPreparationRecipe(problem, route);
