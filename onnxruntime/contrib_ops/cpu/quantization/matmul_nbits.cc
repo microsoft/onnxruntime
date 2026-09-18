@@ -111,18 +111,19 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
+        force_fp32_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) == "1" &&
+                    kQNBitForceFp32Supported && std::is_same_v<T1, float> &&
+                    nbits_ == 4 && block_size_ == 32 &&
+                    info.GetAttr<int64_t>("accuracy_level") == static_cast<int64_t>(Level4) &&
+                    MlasIsQNBitGemmAvailable(nbits_, block_size_, SQNBIT_CompFp32)},
         prefer_lut_gemm_{std::is_same_v<T1, float> &&
-                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) != "1" &&
+                         !force_fp32_ &&
                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
-        compute_type_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32) == "1" &&
-                              kQNBitForceFp32Supported && std::is_same_v<T1, float> &&
-                              nbits_ == 4 && block_size_ == 32 &&
-                              info.GetAttr<int64_t>("accuracy_level") == static_cast<int64_t>(Level4) &&
-                              MlasIsQNBitGemmAvailable(nbits_, block_size_, SQNBIT_CompFp32)
+        compute_type_{force_fp32_
                           ? SQNBIT_CompFp32
                           : GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
@@ -172,6 +173,7 @@ class MatMulNBits final : public OpKernel {
   const bool has_g_idx_;
   const bool has_bias_;
   bool scales_are_packed_{false};
+  const bool force_fp32_;
   const bool prefer_lut_gemm_{false};
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
   bool has_unquantized_zero_point_{false};
