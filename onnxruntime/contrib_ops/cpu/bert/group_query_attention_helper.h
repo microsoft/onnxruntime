@@ -325,6 +325,23 @@ Status CheckInputs(const T* query,
                            "total_sequence_length must be positive, got ", total_sequence_length, ".");
   }
 
+  if (is_total_seqlen_on_cpu && !sliding_window_cache) {
+    if (total_sequence_length < kv_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "total_sequence_length must be at least kv_sequence_length for a non-sliding cache. Got ",
+                             total_sequence_length, " and ", kv_sequence_length, ".");
+    }
+    if (total_sequence_length > past_sequence_length &&
+        total_sequence_length - kv_sequence_length != past_sequence_length) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "total_sequence_length must equal past_sequence_length + kv_sequence_length for a dynamic cache, or be "
+          "no greater than past_sequence_length for a static cache. Got total_sequence_length=",
+          total_sequence_length, ", past_sequence_length=", past_sequence_length,
+          ", kv_sequence_length=", kv_sequence_length, ".");
+    }
+  }
+
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
   // Windowed KV cache: the bound past/present buffer *is* the capacity C, which is intentionally

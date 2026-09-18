@@ -103,7 +103,8 @@ $MAIN {
   }
   // Per-batch total_sequence_length used for K/V bounds, causal mask, and softmax range.
   #if use_seqlen_k
-  let total_sequence_length = u32(seqlens_k[batch_idx]) + 1u;
+  let raw_total_sequence_length = u32(max(seqlens_k[batch_idx], 0)) + 1u;
+  let total_sequence_length = min(raw_total_sequence_length, uniforms.present_sequence_length);
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif

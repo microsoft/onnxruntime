@@ -33,7 +33,9 @@
 #endif
 #ifdef USE_WEBGPU
 #include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
+#include "core/framework/session_options.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -951,8 +953,8 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
       /*past_seq_len=*/4);
 }
 
-// Non-first-prompt: seqlens_k valid for KV cache but too small for sequence_length.
-// past_seqlen = total_seqlen - sequence_length underflows size_t, causing memcpy OOB.
+// Non-first-prompt: seqlens_k is valid for the KV cache but implies fewer total tokens
+// than sequence_length, which would underflow the derived past sequence length.
 TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{1},
@@ -962,34 +964,30 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       OpTester::ExpectResult::kExpectFailure,
       "is too small for sequence_length",
       /*provide_past=*/true,
-      /*past_seq_len=*/4);
+      /*past_seq_len=*/2);
 }
 
-// Regression: present buffer large enough (total_seq_len passes the present-buffer check),
-// but the past buffer is much smaller. ConcatStateChunkGQA would copy
-// (seqlens_k + 1 - sequence_length) rows out of the small past buffer, reading past its end.
-TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
-  // present_kv_seqlen = max(total_seq_len=100, past_seq_len=2) = 100, so seqlens_k=50 passes the
-  // present-buffer check, but past_seqlen = 51 - 1 = 50 rows >> past buffer (2 rows) => OOB read.
+// Reject a total sequence length that describes neither a dynamic nor a static cache.
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayout) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/2);
 }
 
-TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayoutWithEmptyPast) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/0);
 }
@@ -1053,6 +1051,18 @@ TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
       "total_sequence_length must be positive");
+}
+
+TEST(GroupQueryAttentionTest, TotalSeqLenLessThanKvSequenceLength) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/2,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length must be at least kv_sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
 }
 
 // Backward compat: seqlens_k shape {1, 1} accepted for batch_size=1.
@@ -4206,9 +4216,236 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillNonFlashAttention_W
 // test builds (CPU/CUDA) still compile the rest of this file.
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(bool enable_graph_capture,
-                                                                 uint32_t kv_cache_quant_bits,
-                                                                 uint32_t multi_rotary_cache_concat_offset = 0) {
+static void RunOnWebGpu(OpTester& tester, std::unique_ptr<IExecutionProvider> webgpu_ep) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  tester.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+struct WebGpuEpForGqaOptions {
+  bool enable_graph_capture = false;
+  uint32_t kv_cache_quant_bits = 0;
+  uint32_t multi_rotary_cache_concat_offset = 0;
+};
+
+static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options);
+
+struct SeparateQkvCacheBoundsTestOptions {
+  int32_t seqlens_k = 0;
+  uint32_t kv_cache_quant_bits = 0;
+  bool smooth_softmax = false;
+  int sequence_length = 2;
+  int past_seq_len = 4;
+  int present_seq_len = -1;
+  std::optional<float> expected_output_value = std::nullopt;
+  OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess;
+  std::string expected_failure_string = {};
+};
+
+static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOptions& options) {
+  const auto& [seqlens_k, kv_cache_quant_bits, smooth_softmax,
+               sequence_length, past_seq_len, configured_present_seq_len,
+               expected_output_value, expected_result, expected_failure_string] = options;
+  const int present_seq_len = configured_present_seq_len < 0
+                                  ? past_seq_len + sequence_length
+                                  : configured_present_seq_len;
+  auto webgpu_ep = CreateWebGpuEpForGqa({.kv_cache_quant_bits = kv_cache_quant_bits});
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int cache_head_size = kv_cache_quant_bits == 0
+                                  ? head_size
+                                  : (head_size * static_cast<int>(kv_cache_quant_bits) + 32) / 32;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (smooth_softmax) {
+    tester.AddAttribute<int64_t>("smooth_softmax", 1);
+  }
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.4f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.5f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seqlens_k});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {present_seq_len}, /*is_initializer=*/true);
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+  const int present_size = batch_size * kv_num_heads * present_seq_len * cache_head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
+                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
+                          std::vector<float>(present_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([output_size, expected_output_value](const std::vector<OrtValue>& fetches,
+                                                                      const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    ASSERT_TRUE(fetches[0].IsTensor());
+    EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), static_cast<int64_t>(output_size));
+    if (expected_output_value.has_value()) {
+      const auto* output_data = fetches[0].Get<Tensor>().Data<float>();
+      for (int i = 0; i < output_size; ++i) {
+        EXPECT_NEAR(output_data[i], *expected_output_value, 1e-5f);
+      }
+    }
+  });
+
+  tester.Config(expected_result, expected_failure_string);
+  RunOnWebGpu(tester, std::move(webgpu_ep));
+}
+
+struct PackedQkvRotaryCacheBoundsTestOptions {
+  int32_t seqlens_k = 2;
+  int cos_cache_length = 4;
+  int sin_cache_length = 2;
+  bool verify_first_present_row = false;
+};
+
+static void RunPackedQkvRotaryCacheBoundsTest(const PackedQkvRotaryCacheBoundsTestOptions& options) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 1;
+  constexpr int total_sequence_length = past_sequence_length + sequence_length;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int half_rotary_dimension = head_size / 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * packed_hidden_size, 0.1f));
+  tester.AddOptionalInputEdge<float>();  // key
+  tester.AddOptionalInputEdge<float>();  // value
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_sequence_length * head_size, 0.2f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_sequence_length * head_size, 0.3f));
+
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {options.seqlens_k});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddInput<float>("cos_cache", {options.cos_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.cos_cache_length * half_rotary_dimension, 1.0f));
+  tester.AddInput<float>("sin_cache", {options.sin_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.sin_cache_length * half_rotary_dimension, 0.0f));
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+  if (options.verify_first_present_row) {
+    tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                      const std::string& /*provider*/) {
+      ASSERT_GE(fetches.size(), 3u);
+      const auto* present_key = fetches[1].Get<Tensor>().Data<float>();
+      const auto* present_value = fetches[2].Get<Tensor>().Data<float>();
+      for (int i = 0; i < head_size; ++i) {
+        EXPECT_NEAR(present_key[i], 0.1f, 1e-5f);
+        EXPECT_NEAR(present_value[i], 0.1f, 1e-5f);
+      }
+    });
+  }
+  RunOnWebGpu(tester, std::move(webgpu_ep));
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_FlashAttention_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -5,
+                                 .sequence_length = 1,
+                                 .expected_output_value = 0.3f});
+}
+
+TEST(GroupQueryAttentionTest, ShortPastLargeTotal_InvalidCacheLayout_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 50,
+                                 .sequence_length = 1,
+                                 .past_seq_len = 2,
+                                 .present_seq_len = 100,
+                                 .expected_result = OpTester::ExpectResult::kExpectFailure,
+                                 .expected_failure_string =
+                                     "must equal past_sequence_length + kv_sequence_length"});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .smooth_softmax = true});
+}
+
+TEST(GroupQueryAttentionTest, PackedRotaryAsymmetricCaches_NoOOB_WebGPU) {
+  RunPackedQkvRotaryCacheBoundsTest({});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_PackedRotary_WebGPU) {
+  RunPackedQkvRotaryCacheBoundsTest({.seqlens_k = -5,
+                                     .cos_cache_length = 2,
+                                     .sin_cache_length = 2,
+                                     .verify_first_present_row = true});
+}
+
+static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options) {
+  const auto& [enable_graph_capture, kv_cache_quant_bits, multi_rotary_cache_concat_offset] = options;
   ORT_ENFORCE(kv_cache_quant_bits == 0 || kv_cache_quant_bits == 4 || kv_cache_quant_bits == 8,
               "KV cache quantization bit width must be 0, 4, or 8, got ", kv_cache_quant_bits);
   ConfigOptions config_options{};
@@ -4236,7 +4473,8 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPForGqaOptions(bool enable_gra
 static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
     uint32_t bit_width,
     bool enable_graph_capture = false) {
-  return WebGpuEPForGqaOptions(enable_graph_capture, bit_width);
+  return CreateWebGpuEpForGqa({.enable_graph_capture = enable_graph_capture,
+                               .kv_cache_quant_bits = bit_width});
 }
 
 static std::vector<float> RunGQAReference(
@@ -4262,14 +4500,22 @@ static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
 // instead of deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
 // four-token input also makes batch 0's logical total shorter than kv_sequence_length,
 // covering the right-padding underflow clamp with true static-cache aliasing.
-static void RunIndirectDispatchGraphCapture(bool do_rotary,
-                                            uint32_t kv_cache_quant_bits,
-                                            bool enable_multi_rotary_cache,
-                                            bool rotary_interleaved = false,
-                                            int sequence_length = 4,
-                                            int local_window_size = -1,
-                                            bool enable_graph_capture = true,
-                                            std::vector<float>* replay_output = nullptr) {
+struct IndirectDispatchGraphCaptureTestOptions {
+  bool do_rotary = false;
+  uint32_t kv_cache_quant_bits = 0;
+  bool enable_multi_rotary_cache = false;
+  bool rotary_interleaved = false;
+  int sequence_length = 4;
+  int local_window_size = -1;
+  bool enable_graph_capture = true;
+  std::vector<float>* replay_output = nullptr;
+  bool use_asymmetric_rotary_caches = false;
+};
+
+static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptureTestOptions& options) {
+  const auto& [do_rotary, kv_cache_quant_bits, enable_multi_rotary_cache,
+               rotary_interleaved, sequence_length, local_window_size,
+               enable_graph_capture, replay_output, use_asymmetric_rotary_caches] = options;
   constexpr int batch_size = 2;
   constexpr int short_total_sequence_length = 2;
   constexpr int cache_sequence_length = 130;  // Three 64-token attention tiles.
@@ -4340,10 +4586,11 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
 
   SessionOptions session_options;
   InferenceSession session{session_options, GetEnvironment()};
-  auto webgpu_ep = WebGpuEPForGqaOptions(
-      enable_graph_capture,
-      kv_cache_quant_bits,
-      enable_multi_rotary_cache ? multi_rotary_cache_concat_offset : 0);
+  auto webgpu_ep = CreateWebGpuEpForGqa({
+      .enable_graph_capture = enable_graph_capture,
+      .kv_cache_quant_bits = kv_cache_quant_bits,
+      .multi_rotary_cache_concat_offset = enable_multi_rotary_cache ? multi_rotary_cache_concat_offset : 0,
+  });
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -4391,15 +4638,19 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   constexpr int half_rotary_dim = head_size / 2;
   const int large_rotary_cache_length = cache_sequence_length + 1;
   auto cos_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 37);
-  auto sin_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 41);
-  int rotary_cache_length = large_rotary_cache_length;
+  int cos_cache_length = large_rotary_cache_length;
+  int sin_cache_length = use_asymmetric_rotary_caches ? short_total_sequence_length
+                                                      : large_rotary_cache_length;
+  auto sin_cache_data = make_data(sin_cache_length * half_rotary_dim, 0.001f, 41);
   if (enable_multi_rotary_cache) {
+    ASSERT_FALSE(use_asymmetric_rotary_caches);
     const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
     cos_cache_data.insert(cos_cache_data.begin(), small_cache_size,
                           std::numeric_limits<float>::quiet_NaN());
     sin_cache_data.insert(sin_cache_data.begin(), small_cache_size,
                           std::numeric_limits<float>::quiet_NaN());
-    rotary_cache_length += multi_rotary_cache_concat_offset;
+    cos_cache_length += multi_rotary_cache_concat_offset;
+    sin_cache_length += multi_rotary_cache_concat_offset;
   }
 
   auto make_gpu_value = [&](const void* data, MLDataType data_type, const TensorShape& shape) {
@@ -4422,7 +4673,8 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   const TensorShape cache_shape{batch_size, kv_num_heads, cache_sequence_length, cache_head_size};
   const TensorShape seqlens_shape{batch_size};
   const TensorShape total_sequence_length_shape{1};
-  const TensorShape rotary_cache_shape{rotary_cache_length, half_rotary_dim};
+  const TensorShape cos_cache_shape{cos_cache_length, half_rotary_dim};
+  const TensorShape sin_cache_shape{sin_cache_length, half_rotary_dim};
   auto query_value = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(), query_shape);
   auto key_value = make_gpu_value(key_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
   auto value_value = make_gpu_value(value_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
@@ -4441,8 +4693,8 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
                          total_sequence_length_data.data(), cpu_allocator->Info(),
                          total_sequence_length_value);
   }
-  auto cos_cache_value = make_gpu_value(cos_cache_data.data(), DataTypeImpl::GetType<float>(), rotary_cache_shape);
-  auto sin_cache_value = make_gpu_value(sin_cache_data.data(), DataTypeImpl::GetType<float>(), rotary_cache_shape);
+  auto cos_cache_value = make_gpu_value(cos_cache_data.data(), DataTypeImpl::GetType<float>(), cos_cache_shape);
+  auto sin_cache_value = make_gpu_value(sin_cache_data.data(), DataTypeImpl::GetType<float>(), sin_cache_shape);
 
   Tensor output_tensor(DataTypeImpl::GetType<float>(),
                        TensorShape{batch_size, sequence_length, hidden_size}, gpu_allocator);
@@ -4610,55 +4862,73 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_NoRotary) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/false,
-                                  /*kv_cache_quant_bits=*/4,
-                                  /*enable_multi_rotary_cache=*/false);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_Rotary) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
-                                  /*kv_cache_quant_bits=*/4,
-                                  /*enable_multi_rotary_cache=*/false);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true, .kv_cache_quant_bits = 4});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
-                                  /*kv_cache_quant_bits=*/0,
-                                  /*enable_multi_rotary_cache=*/true);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .enable_multi_rotary_cache = true});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
-                                  /*kv_cache_quant_bits=*/4,
-                                  /*enable_multi_rotary_cache=*/true);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 4,
+                                       .enable_multi_rotary_cache = true});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_FusedRotary) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
-                                  /*kv_cache_quant_bits=*/8,
-                                  /*enable_multi_rotary_cache=*/false);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_InterleavedRotaryFallback) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
-                                  /*kv_cache_quant_bits=*/8,
-                                  /*enable_multi_rotary_cache=*/false,
-                                  /*rotary_interleaved=*/true);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 8,
+                                       .rotary_interleaved = true});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
-  RunIndirectDispatchGraphCapture(/*do_rotary=*/false,
-                                  /*kv_cache_quant_bits=*/8,
-                                  /*enable_multi_rotary_cache=*/false);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 8});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
   std::vector<float> captured_output;
   std::vector<float> eager_output;
-  RunIndirectDispatchGraphCapture(true, 0, false, false, 1, 64, true, &captured_output);
-  RunIndirectDispatchGraphCapture(true, 0, false, false, 1, 64, false, &eager_output);
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .sequence_length = 1,
+                                       .local_window_size = 64,
+                                       .replay_output = &captured_output});
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .sequence_length = 1,
+                                       .local_window_size = 64,
+                                       .enable_graph_capture = false,
+                                       .replay_output = &eager_output});
   ExpectOutputsMatch(captured_output, eager_output, 2e-3f,
                      "WebGPU_GraphCapture_PackedRotaryLocalWindow");
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .use_asymmetric_rotary_caches = true});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 4,
+                                       .use_asymmetric_rotary_caches = true});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 8,
+                                       .use_asymmetric_rotary_caches = true});
 }
 
 // The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
@@ -4731,10 +5001,9 @@ TEST(GroupQueryAttentionTest, WebGPU_MultiRotaryCache_UsesGlobalLength_NonStatic
   });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuEPForGqaOptions(
-      /*enable_graph_capture=*/false,
-      /*kv_cache_quant_bits=*/0,
-      multi_rotary_cache_concat_offset));
+  execution_providers.push_back(CreateWebGpuEpForGqa({
+      .multi_rotary_cache_concat_offset = multi_rotary_cache_concat_offset,
+  }));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
