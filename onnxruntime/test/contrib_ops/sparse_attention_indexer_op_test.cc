@@ -95,6 +95,7 @@ struct QsaGraphOptions {
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool share_cache = false;
+  bool shared_rotary_cache = false;
   std::string policy_mode = sai::kPolicyModeQsa;
 };
 
@@ -108,8 +109,12 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
                                                     options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{total, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{total, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
       builder.MakeInput<bool>(std::vector<int64_t>{options.batch_size, 1, options.sequence_length, total}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
@@ -150,6 +155,7 @@ struct CsaGraphOptions {
   int64_t output_count = sai::kCsaOutputCount;
   bool add_token_budget = false;
   bool share_cache = false;
+  bool shared_rotary_cache = false;
 };
 
 void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
@@ -160,8 +166,12 @@ void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
                                                     options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{64, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
+      builder.MakeInput<float>(options.shared_rotary_cache
+                                   ? std::vector<int64_t>{64, options.rotary_width}
+                                   : std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
       &empty,
       builder.MakeInput<float>(
           std::vector<int64_t>{options.batch_size,
@@ -296,6 +306,7 @@ struct QsaProblem {
   int token_budget = 4;
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
+  bool shared_rotary_cache = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -341,10 +352,11 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
 
   selected.assign(static_cast<size_t>(problem.batch_size) * problem.sequence_length * capacity, -1);
   for (int b = 0; b < problem.batch_size; ++b) {
-    const float* cos_base = problem.cos_cache.data() +
-                            static_cast<size_t>(b) * problem.MaxRotaryLength() * problem.rotary_width;
-    const float* sin_base = problem.sin_cache.data() +
-                            static_cast<size_t>(b) * problem.MaxRotaryLength() * problem.rotary_width;
+    const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
+    const float* cos_base =
+        problem.cos_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
+    const float* sin_base =
+        problem.sin_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
     for (int s = 0; s < problem.sequence_length; ++s) {
       const size_t row = static_cast<size_t>(b) * problem.sequence_length + s;
 
@@ -427,6 +439,7 @@ struct CsaProblem {
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
   std::optional<float> head_weight_scale;
+  bool shared_rotary_cache = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -492,10 +505,11 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
       }
     }
 
+    const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
     const float* cos_base =
-        problem.cos_cache.data() + static_cast<size_t>(b) * problem.max_rotary_length * problem.rotary_width;
+        problem.cos_cache.data() + cache_batch * problem.max_rotary_length * problem.rotary_width;
     const float* sin_base =
-        problem.sin_cache.data() + static_cast<size_t>(b) * problem.max_rotary_length * problem.rotary_width;
+        problem.sin_cache.data() + cache_batch * problem.max_rotary_length * problem.rotary_width;
 
     for (int window = 0; window < plan.new_window_count; ++window) {
       const bool has_previous = window >= 1 || plan.overlap_length >= problem.compress_ratio;
@@ -636,8 +650,9 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
   problem.key = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * problem.head_size,
                          1.10f, 0.29f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.70f, 0.17f);
-  problem.cos_cache = MakeWave(static_cast<size_t>(problem.batch_size) * total * problem.rotary_width, 0.20f, 0.13f);
-  problem.sin_cache = MakeWave(static_cast<size_t>(problem.batch_size) * total * problem.rotary_width, 0.90f, 0.19f);
+  const size_t cache_batches = problem.shared_rotary_cache ? 1 : static_cast<size_t>(problem.batch_size);
+  problem.cos_cache = MakeWave(cache_batches * total * problem.rotary_width, 0.20f, 0.13f);
+  problem.sin_cache = MakeWave(cache_batches * total * problem.rotary_width, 0.90f, 0.19f);
   problem.past_key = MakeWave(
       static_cast<size_t>(problem.batch_size) * problem.PastKeyCapacity() * problem.head_size, 0.05f, 0.23f);
 
@@ -696,8 +711,11 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
                    ToElementType<T>(problem.query));
   test.AddInput<T>("key", {batch_size, sequence_length, head_size}, ToElementType<T>(problem.key));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
-  test.AddInput<T>("cos_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
-  test.AddInput<T>("sin_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
+  const std::vector<int64_t> rotary_cache_shape = problem.shared_rotary_cache
+                                                      ? std::vector<int64_t>{total, problem.rotary_width}
+                                                      : std::vector<int64_t>{batch_size, total, problem.rotary_width};
+  test.AddInput<T>("cos_cache", rotary_cache_shape, ToElementType<T>(problem.cos_cache));
+  test.AddInput<T>("sin_cache", rotary_cache_shape, ToElementType<T>(problem.sin_cache));
   test.AddInput<bool>("mask", {batch_size, 1, sequence_length, total}, mask.get(), problem.mask.size());
   test.AddInput<T>("past_key", {batch_size, problem.PastKeyCapacity(), head_size},
                    ToElementType<T>(problem.past_key));
@@ -720,12 +738,11 @@ CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
                            0.25f, 0.37f);
   problem.key = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * width, 0.60f, 0.21f);
   problem.key_norm_weight = MakeWave(static_cast<size_t>(problem.head_size), 0.45f, 0.31f);
+  const size_t cache_batches = problem.shared_rotary_cache ? 1 : static_cast<size_t>(problem.batch_size);
   problem.cos_cache =
-      MakeWave(static_cast<size_t>(problem.batch_size) * problem.max_rotary_length * problem.rotary_width, 0.15f,
-               0.27f);
+      MakeWave(cache_batches * problem.max_rotary_length * problem.rotary_width, 0.15f, 0.27f);
   problem.sin_cache =
-      MakeWave(static_cast<size_t>(problem.batch_size) * problem.max_rotary_length * problem.rotary_width, 1.05f,
-               0.33f);
+      MakeWave(cache_batches * problem.max_rotary_length * problem.rotary_width, 1.05f, 0.33f);
   problem.gate = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * width, 0.80f, 0.24f);
   problem.position_bias = MakeWave(static_cast<size_t>(problem.compress_ratio) * width, 0.33f, 0.11f);
   problem.head_weights = MakeWave(
@@ -798,10 +815,12 @@ void RunCsaTest(const CsaProblem& base, float tolerance,
                    ToElementType<T>(problem.query));
   test.AddInput<T>("key", {batch_size, sequence_length, width}, ToElementType<T>(problem.key));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
-  test.AddInput<T>("cos_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
-                   ToElementType<T>(problem.cos_cache));
-  test.AddInput<T>("sin_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
-                   ToElementType<T>(problem.sin_cache));
+  const std::vector<int64_t> rotary_cache_shape =
+      problem.shared_rotary_cache
+          ? std::vector<int64_t>{problem.max_rotary_length, problem.rotary_width}
+          : std::vector<int64_t>{batch_size, problem.max_rotary_length, problem.rotary_width};
+  test.AddInput<T>("cos_cache", rotary_cache_shape, ToElementType<T>(problem.cos_cache));
+  test.AddInput<T>("sin_cache", rotary_cache_shape, ToElementType<T>(problem.sin_cache));
   test.AddOptionalInputEdge<bool>();
   test.AddInput<T>("past_key", {batch_size, problem.PastCompressedCapacity(), head_size},
                    ToElementType<T>(problem.past_compressed_key));
@@ -901,6 +920,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
               {options.batch_size, options.key_cache_capacity, options.head_size});
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsSharedRotaryCache) {
+  QsaGraphOptions options;
+  options.shared_rotary_cache = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model));
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, CsaInfersCompressedStateShapes) {
   CsaGraphOptions options;
   std::unique_ptr<Model> model;
@@ -937,6 +963,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, CsaSharedCacheKeepsCapacity) {
   ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.compressed_cache_capacity, options.head_size});
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, CsaAcceptsSharedRotaryCache) {
+  CsaGraphOptions options;
+  options.shared_rotary_cache = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); }, model));
 }
 
 #ifndef ORT_NO_EXCEPTIONS
@@ -1090,7 +1123,30 @@ TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKParity) {
     problem.past_sequence_length = context_length - 1;
     problem.compress_ratio = 4;
     problem.token_budget = 2048;
-    RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+    problem = MakeQsaProblem(std::move(problem));
+
+    std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+    for (int head = 0; head < problem.num_heads; ++head) {
+      problem.query[static_cast<size_t>(head) * problem.head_size] = 1.0f;
+    }
+    std::fill(problem.key_norm_weight.begin(), problem.key_norm_weight.end(), 1.0f);
+    std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+    std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+    std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
+    std::fill(problem.key.begin(), problem.key.end(), 0.0f);
+
+    const int block_count = context_length / problem.compress_ratio;
+    for (int position = 0; position < context_length; ++position) {
+      const float rank = static_cast<float>(position / problem.compress_ratio + 1) /
+                         static_cast<float>(block_count);
+      std::vector<float>& cache = position < problem.past_sequence_length ? problem.past_key : problem.key;
+      const int cache_position = position < problem.past_sequence_length ? position : 0;
+      const size_t offset = static_cast<size_t>(cache_position) * problem.head_size;
+      cache[offset] = rank;
+      cache[offset + 1] = 1.0f;
+    }
+
+    RunQsaTest<float>(1.0e-5f, std::move(problem));
   }
 }
 
@@ -1117,6 +1173,12 @@ TEST(SparseAttentionIndexerTest, QsaSharedCacheCapacity) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+TEST(SparseAttentionIndexerTest, QsaSharedRotaryCache) {
+  QsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
 TEST(SparseAttentionIndexerTest, CsaFloat) { RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProblem(), 4.0e-3f); }
@@ -1132,6 +1194,12 @@ TEST(SparseAttentionIndexerTest, CsaNoCompressedEntry) {
 TEST(SparseAttentionIndexerTest, CsaSharedCacheCapacity) {
   CsaProblem problem;
   problem.compressed_cache_capacity = 16;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaSharedRotaryCache) {
+  CsaProblem problem;
+  problem.shared_rotary_cache = true;
   RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
 }
 
@@ -1169,12 +1237,24 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
   RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaSharedRotaryCache) {
+  QsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16) {
   RunCsaTest<MLFloat16>(MakeCsaProblem(), 6.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaSharedRotaryCache) {
+  CsaProblem problem;
+  problem.shared_rotary_cache = true;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, CsaBufferOnlyStep) {

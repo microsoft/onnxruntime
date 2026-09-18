@@ -83,7 +83,7 @@ for a runtime:
 | 0 | `query` | both | `T` | `(B, S, N, D)` |
 | 1 | `key` | both | `T` | `(B, S, D)` for `qsa`, `(B, S, 2D)` for `csa` |
 | 2 | `key_norm_weight` | both | `T` | `(D)` |
-| 3 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
+| 3 | `cos_cache` | both | `T` | `(max_rotary_sequence_length, R)` when shared across the batch, or `(B, max_rotary_sequence_length, R)` |
 | 4 | `sin_cache` | both | `T` | same as `cos_cache` |
 | 5 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
 | 6 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
@@ -316,7 +316,8 @@ Shape inference and the kernel both reject:
 - `index_topk` absent or `<= 0` for `csa`;
 - an output count other than 2 (`qsa`) or 3 (`csa`);
 - a `past_proj_buffer` length outside `[0, 2 * compress_ratio)`;
-- rank or dimension mismatches between `query`, `key`, the caches and the buffers.
+- rank or dimension mismatches between `query`, `key`, the caches and the buffers. Rotary caches
+  may be shared rank-2 tables or request-specific rank-3 tables.
 
 Because the checks live in shape inference, most misuse fails at `Graph::Resolve()` with a clear
 message rather than at kernel launch.
@@ -335,7 +336,8 @@ contains:
 - **Numeric tests** (`float`, `float16`, `bfloat16`) that run the CUDA kernel against a float
   reference implementation of both policies written directly from the reference semantics. Inputs
   are round-tripped through the tested element type before the reference runs, so the reference
-  sees exactly the values the kernel reads. These tests skip when no CUDA EP is available.
+  sees exactly the values the kernel reads. Shared rank-2 rotary caches are covered for both CUDA
+  and WebGPU. These tests skip when the requested EP is unavailable.
 - **Long-context parity tests** at 8K, 32K, 64K, 128K and 256K for
   `compress_ratio=4, token_budget=2048`.
 - **Fixed-address CUDA graph capture and replay** in

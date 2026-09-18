@@ -1926,6 +1926,19 @@ const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerShape(ONNX_NAMESPA
   return &shape;
 }
 
+const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerRotaryCacheShape(
+    ONNX_NAMESPACE::InferenceContext& ctx, int index) {
+  if (!SparseAttentionIndexerHasInput(ctx, index) || !hasInputShape(ctx, index)) {
+    return nullptr;
+  }
+  const auto& shape = getInputShape(ctx, index);
+  if (shape.dim_size() != 2 && shape.dim_size() != 3) {
+    fail_shape_inference("SparseAttentionIndexer: input ", index, " must have rank 2 or 3, got rank ",
+                         shape.dim_size());
+  }
+  return &shape;
+}
+
 }  // namespace
 
 void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -2002,8 +2015,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
   (void)SparseAttentionIndexerShape(ctx, sai::kKey, 3);
   (void)SparseAttentionIndexerShape(ctx, sai::kKeyNormWeight, 1);
-  (void)SparseAttentionIndexerShape(ctx, sai::kCosCache, 3);
-  (void)SparseAttentionIndexerShape(ctx, sai::kSinCache, 3);
+  (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kCosCache);
+  (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kSinCache);
 
   const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 4);
   if (query_shape == nullptr) {
@@ -2211,7 +2224,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "cos_cache",
-               "Cosine rotary table indexed by absolute key position, with shape "
+               "Cosine rotary table indexed by absolute key position, shared across the batch with shape "
+               "(max_rotary_sequence_length, rotary_width) or request-specific with shape "
                "(batch_size, max_rotary_sequence_length, rotary_width).",
                "T")
         .Input(4,
