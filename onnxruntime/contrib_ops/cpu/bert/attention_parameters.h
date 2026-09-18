@@ -119,6 +119,9 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   // Upper bound (exclusive) for absolute RoPE positions: dim 0 of the cos/sin caches.
   // 0 when rotary is not configured.
   int rotary_max_position = 0;
+
+  // Group size for PER_GROUP (OSCAR 2-bit) quantization. 0 means the whole head is one group.
+  int kv_quant_group_size = 0;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

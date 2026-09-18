@@ -239,9 +239,9 @@ Status CheckInputs(const T* query,
                            num_heads % kv_num_heads);
   }
 
-  if (kv_cache_bit_width != 0 && kv_cache_bit_width != 4 && kv_cache_bit_width != 8) {
+  if (kv_cache_bit_width != 0 && kv_cache_bit_width != 2 && kv_cache_bit_width != 4 && kv_cache_bit_width != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "kv_cache_bit_width must be 0, 4 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
+                           "kv_cache_bit_width must be 0, 2, 4 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
   }
 
   int batch_size = 0;
@@ -528,6 +528,16 @@ Status CheckOutputs(const T* output_qk, int qk_output) {
   if (qk_output != static_cast<int>(QKOutputType::NO_OUTPUT) && output_qk == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "qk_output attribute was configured but output buffer was not provided");
+  }
+
+  // Enforce the reverse direction too. Shape inference cannot reliably tell an empty "" output_qk
+  // placeholder from a real connection once later optional outputs (present_hp_*) follow it, so its
+  // attribute/connection checks degrade to no-ops in that case. Here the actual output pointer is
+  // available: a connected output_qk buffer with the attribute left at NO_OUTPUT would be allocated
+  // but never written, so reject it.
+  if (qk_output == static_cast<int>(QKOutputType::NO_OUTPUT) && output_qk != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_qk buffer was provided but qk_output attribute was not configured");
   }
 
   return Status::OK();
