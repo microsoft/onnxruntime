@@ -62,6 +62,25 @@ template <>
 Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
 
 //
+// Template: nn/conv_transpose3d.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"nn/conv_transpose3d.wgsl.template"> {
+  using type = struct {
+    int param_has_bias;
+    int param_is_channels_last;
+    const ShaderVariableHelper* var_bias;
+    const ShaderVariableHelper* var_output;
+    const ShaderVariableHelper* var_w;
+    const ShaderVariableHelper* var_x;
+  };
+};
+
+template <>
+Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"nn/conv_transpose3d.wgsl.template">::type params);
+
+//
 // Template: nn/im2col_matmul.wgsl.template
 //
 
