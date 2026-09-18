@@ -25,6 +25,34 @@ The measurements below used:
 | CUDA toolkit | 13.3 |
 | NVIDIA driver | 610.62 |
 
+## Results at a glance
+
+Each latency value is the median of six fresh-process 10% trimmed means. Peak
+VRAM is the median device-wide `nvidia-smi memory.used` value from six
+fresh-process runs.
+
+### Legacy `MatMulNBits`
+
+| Model | Configuration | TTFT | Scenario | TPOT | Peak VRAM |
+|---|---|---:|---:|---:|---:|
+| Qwen 2.5 1.5B | Scratch | 61.535 ms | 854.730 ms | 5.979 ms | 4,197 MiB |
+| Qwen 2.5 1.5B | MatMulNBits planned | 61.526 ms | 871.920 ms | 6.024 ms | 4,008 MiB |
+| Qwen 2.5 1.5B | Combined planned | 61.766 ms | 858.416 ms | 5.961 ms | 4,006 MiB |
+| Qwen 2.5 7B | Scratch | 275.790 ms | 1,584.195 ms | 10.283 ms | 8,169 MiB |
+| Qwen 2.5 7B | MatMulNBits planned | 276.062 ms | 1,583.405 ms | 10.260 ms | 8,172 MiB |
+| Qwen 2.5 7B | Combined planned | 276.140 ms | 1,589.409 ms | 10.320 ms | 8,168 MiB |
+
+### fpA-intB
+
+| Model | Configuration | TTFT | Scenario | TPOT | Peak VRAM |
+|---|---|---:|---:|---:|---:|
+| Qwen 2.5 1.5B | Scratch | 58.512 ms | 1,477.123 ms | 10.589 ms | 4,942 MiB |
+| Qwen 2.5 1.5B | MatMulNBits planned | 58.540 ms | 1,359.249 ms | 9.790 ms | 4,961 MiB |
+| Qwen 2.5 1.5B | Combined planned | 58.174 ms | 1,660.078 ms | 11.903 ms | 4,944 MiB |
+| Qwen 2.5 7B | Scratch | 240.198 ms | 1,546.984 ms | 10.333 ms | 11,093 MiB |
+| Qwen 2.5 7B | MatMulNBits planned | 241.984 ms | 1,588.049 ms | 10.528 ms | 11,460 MiB |
+| Qwen 2.5 7B | Combined planned | 240.006 ms | 1,554.085 ms | 10.367 ms | 12,108 MiB |
+
 ## Benchmark design
 
 The script creates a temporary `genai_config.json` for each mode and never
