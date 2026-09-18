@@ -19,8 +19,9 @@ struct SparseAttentionIndexerParams {
   int sequence_length = 0;
   int num_heads = 0;
   int head_size = 0;
-  int rotary_width = 0;       // cos_cache.shape[2]
-  int max_rotary_length = 0;  // cos_cache.shape[1]
+  int rotary_width = 0;
+  int max_rotary_length = 0;
+  int rotary_cache_batch_stride = 0;
   int compress_ratio = 0;
   int capacity = 0;  // selected_indices.shape[2]
   float epsilon = 1e-6f;

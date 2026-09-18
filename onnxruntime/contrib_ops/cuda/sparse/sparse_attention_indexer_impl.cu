@@ -95,7 +95,7 @@ __global__ void RotateQueryKernel(const T* query, const T* cos_cache, const T* s
                                      : position_ids[static_cast<int64_t>(batch) * params.sequence_length + token];
     const int position = ClampPosition(raw_position, params.max_rotary_length);
     const int64_t cache_offset =
-        (static_cast<int64_t>(batch) * params.max_rotary_length + position) * params.rotary_width;
+        (static_cast<int64_t>(batch) * params.rotary_cache_batch_stride + position) * params.rotary_width;
     const T* cos_row = cos_cache + cache_offset;
     const T* sin_row = sin_cache + cache_offset;
 
@@ -239,7 +239,7 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key, const 
 
     const int position = ClampPosition(group[0], params.max_rotary_length);
     const int64_t cache_offset =
-        (static_cast<int64_t>(batch) * params.max_rotary_length + position) * params.rotary_width;
+        (static_cast<int64_t>(batch) * params.rotary_cache_batch_stride + position) * params.rotary_width;
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
       rotated[d] = LeadingRope<T>(pooled, params.rotary_width, cos_cache + cache_offset,
                                   sin_cache + cache_offset, d);
@@ -258,7 +258,7 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key, const 
           static_cast<int64_t>(params.past_sequence_length) + row % params.sequence_length,
           params.max_rotary_length);
       const int64_t query_cache_offset =
-          (static_cast<int64_t>(batch) * params.max_rotary_length + query_position) * params.rotary_width;
+          (static_cast<int64_t>(batch) * params.rotary_cache_batch_stride + query_position) * params.rotary_width;
       float partial = 0.0f;
       for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
         partial += LeadingRope<T>(query_head, params.rotary_width, cos_cache + query_cache_offset,
@@ -465,7 +465,7 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
     const int64_t entry = static_cast<int64_t>(params.past_compressed_length) + window;
     const int position = ClampPosition(entry * params.compress_ratio, params.max_rotary_length);
     const int64_t cache_offset =
-        (static_cast<int64_t>(batch) * params.max_rotary_length + position) * params.rotary_width;
+        (static_cast<int64_t>(batch) * params.rotary_cache_batch_stride + position) * params.rotary_width;
     const int64_t out_base =
         (static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) * params.head_size;
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
