@@ -199,6 +199,8 @@ class Model {
   const Graph& MainGraph() const noexcept;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  size_t ModelProtoByteSize() const noexcept { return model_proto_.ByteSizeLong(); }
+
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto() const;
 
