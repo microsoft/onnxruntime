@@ -46,8 +46,7 @@ $MAIN {
 
 #if use_seqlen_k
   let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
-  let per_batch_total_seq_length =
-  min(raw_total_seq_length, uniforms.present_seq_length);
+  let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
