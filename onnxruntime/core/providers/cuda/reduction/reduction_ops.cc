@@ -975,7 +975,8 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle,
+                                      bool fast_reduction, Stream* stream, Stream* alloc_stream,
+                                      cudnnHandle_t cudnn_handle,
                                       const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
   auto status = PrepareForReduce(&input,
@@ -988,12 +989,14 @@ std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnRe
     ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
   }
 
-  auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
+  auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator, alloc_stream);
 
+  // ReduceComputeCore only uses its `compute_stream` to tag allocations, so it gets `alloc_stream`
+  // too. The launches take the native handle off `stream`.
   status = ReduceComputeCore<T, ReduceTensorIndices>(gpu_allocator, nullptr, input, prepare_reduce_metadata, *output, cudnn_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction,
                                                      stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr,
-                                                     static_cast<void*>(stream), cudnn_handle,
+                                                     static_cast<void*>(alloc_stream), cudnn_handle,
                                                      input_shape_override);
 
   if (!status.IsOK()) {
@@ -1010,21 +1013,24 @@ template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_IND
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle, const TensorShape* input_shape_override);
+    bool fast_reduction, Stream* stream, Stream* alloc_stream, cudnnHandle_t cudnn_handle,
+    const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle, const TensorShape* input_shape_override);
+    bool fast_reduction, Stream* stream, Stream* alloc_stream, cudnnHandle_t cudnn_handle,
+    const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle, const TensorShape* input_shape_override);
+    bool fast_reduction, Stream* stream, Stream* alloc_stream, cudnnHandle_t cudnn_handle,
+    const TensorShape* input_shape_override);
 
 }  // namespace ReductionOps
 
