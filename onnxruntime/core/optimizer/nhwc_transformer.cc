@@ -207,12 +207,14 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   std::array<size_t, 2> strides{1, 1};
   std::array<size_t, 4> pads{};
   size_t batch_count = 0;
+  size_t input_channels_per_group = 0;
   size_t total_filter_count = 0;
 
   if (!TryGetDimValueAsSizeT(*input_shape, 0, batch_count) ||
       !TryGetDimValueAsSizeT(*input_shape, 2, input_spatial_shape[0]) ||
       !TryGetDimValueAsSizeT(*input_shape, 3, input_spatial_shape[1]) ||
       !TryGetDimValueAsSizeT(*weight_shape, 0, total_filter_count) ||
+      !TryGetDimValueAsSizeT(*weight_shape, 1, input_channels_per_group) ||
       !TryGetDimValueAsSizeT(*weight_shape, 2, kernel_spatial_shape[0]) ||
       !TryGetDimValueAsSizeT(*weight_shape, 3, kernel_spatial_shape[1])) {
     return false;
@@ -249,11 +251,6 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
           filter_count,
           /*Beta*/ 0.0f)) {
     return true;
-  }
-
-  size_t input_channels_per_group = 0;
-  if (!TryGetDimValueAsSizeT(*weight_shape, 1, input_channels_per_group)) {
-    return false;
   }
 
   return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
