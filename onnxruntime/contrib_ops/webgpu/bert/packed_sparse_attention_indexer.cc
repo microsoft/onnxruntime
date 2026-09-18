@@ -241,6 +241,7 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
 
 Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+  const auto& query_norm = shader.AddInput("query_norm_weight", ShaderUsage::UseUniform);
   const auto& present_key_state = shader.AddInput("present_key_state", ShaderUsage::UseUniform);
   const auto& rotary_cache = shader.AddInput("rotary_cache", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cumulative_sequence_lengths", ShaderUsage::UseUniform);
@@ -288,14 +289,25 @@ Status PackedSparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHe
         << "}\n";
   }
   shader.AdditionalImplementation()
+      << "fn normalized_query_value(token: u32, head: u32, d: u32) -> f32 {\n"
+      << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
+      << "  var square_sum = 0.0;\n"
+      << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
+      << "    let value = f32(" << query.GetByOffset("base + k") << ");\n"
+      << "    square_sum += value * value;\n"
+      << "  }\n"
+      << "  return f32(" << query.GetByOffset("base + d")
+      << ") * inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon) * f32("
+      << query_norm.GetByOffset("d") << ");\n"
+      << "}\n"
       << "fn query_value(token: u32, head: u32, d: u32, position: i32, b: u32) -> f32 {\n"
       << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
-      << "  var value = f32(" << query.GetByOffset("base + d") << ");\n"
+      << "  var value = normalized_query_value(token, head, d);\n"
       << "  if (d >= uniforms.rotary_width) { return value; }\n"
       << "  let half = uniforms.rotary_width / 2u;\n"
       << "  let pair_d = select(d - half, d + half, d < half);\n"
       << "  let sign = select(1.0, -1.0, d < half);\n"
-      << "  let paired = sign * f32(" << query.GetByOffset("base + pair_d") << ");\n"
+      << "  let paired = sign * normalized_query_value(token, head, pair_d);\n"
       << "  let position_clamped = clamp_position(position);\n";
   if (cos_cache_batched_) {
     shader.AdditionalImplementation()
@@ -570,6 +582,7 @@ Status PackedSparseAttentionIndexerCsaUpdateProgram::GenerateShaderCode(ShaderHe
 
 Status PackedSparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+  const auto& query_norm = shader.AddInput("query_norm_weight", ShaderUsage::UseUniform);
   const auto& present_key_state = shader.AddInput("present_key_state", ShaderUsage::UseUniform);
   const auto& head_weights = shader.AddInput("head_weights", ShaderUsage::UseUniform);
   const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
@@ -600,15 +613,26 @@ Status PackedSparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHe
       << "  let cr = uniforms.compress_ratio;\n"
       << "  return p / cr + select(0u, 1u, p % cr == cr - 1u);\n"
       << "}\n"
+      << "fn normalized_query_value(token: u32, head: u32, d: u32) -> f32 {\n"
+      << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
+      << "  var square_sum = 0.0;\n"
+      << "  for (var k = 0u; k < uniforms.head_size; k++) {\n"
+      << "    let value = f32(" << query.GetByOffset("base + k") << ");\n"
+      << "    square_sum += value * value;\n"
+      << "  }\n"
+      << "  return f32(" << query.GetByOffset("base + d")
+      << ") * inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon) * f32("
+      << query_norm.GetByOffset("d") << ");\n"
+      << "}\n"
       << "fn query_value(token: u32, head: u32, d: u32, raw: vec2<u32>, b: u32) -> f32 {\n"
       << "  let base = (token * uniforms.num_heads + head) * uniforms.head_size;\n"
-      << "  var value = f32(" << query.GetByOffset("base + d") << ");\n"
+      << "  var value = normalized_query_value(token, head, d);\n"
       << "  let rotary_base = uniforms.head_size - 2u * uniforms.rotary_width;\n"
       << "  if (d < rotary_base) { return value; }\n"
       << "  let offset = d - rotary_base;\n"
       << "  let pair_d = select(d - 1u, d + 1u, (offset & 1u) == 0u);\n"
       << "  let sign = select(1.0, -1.0, (offset & 1u) == 0u);\n"
-      << "  let paired = sign * f32(" << query.GetByOffset("base + pair_d") << ");\n"
+      << "  let paired = sign * normalized_query_value(token, head, pair_d);\n"
       << "  let position = min(clamped_position(raw), uniforms.max_rotary_length - 1u);\n";
   if (cos_cache_batched_) {
     shader.AdditionalImplementation()
@@ -739,6 +763,7 @@ Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::Comput
 Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input(psai::kQuery);
   const Tensor* key = context.Input(psai::kKey);
+  const Tensor* query_norm = context.Input(psai::kQueryNormWeight);
   const Tensor* norm = context.Input(psai::kKeyNormWeight);
   const Tensor* cos_cache = context.Input(psai::kCosCache);
   const Tensor* sin_cache = context.Input(psai::kSinCache);
@@ -751,10 +776,15 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
 
   ORT_RETURN_IF(query == nullptr, "PackedSparseAttentionIndexer: query is required");
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3, "PackedSparseAttentionIndexer: query must have rank 3");
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 2, "PackedSparseAttentionIndexer: query must have rank 2");
   const int64_t total_tokens = query_shape[0];
-  const int64_t num_heads = query_shape[1];
-  const int64_t head_size = query_shape[2];
+  ORT_RETURN_IF(query_norm == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
+  const auto& query_norm_shape = query_norm->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0 &&
+                        query_shape[1] % query_norm_shape[0] == 0,
+                    "PackedSparseAttentionIndexer: invalid flattened query dimensions");
+  const int64_t head_size = query_norm_shape[0];
+  const int64_t num_heads = query_shape[1] / head_size;
   ORT_RETURN_IF_NOT(num_heads > 0 && head_size > 0, "PackedSparseAttentionIndexer: invalid query dimensions");
 
   ORT_RETURN_IF(cu_seqlens == nullptr, "PackedSparseAttentionIndexer: cumulative_sequence_lengths is required");
@@ -767,6 +797,7 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
 
   ORT_RETURN_IF_ERROR(CheckShape(past_seqlens, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(norm, "key_norm_weight", {head_size}));
   if (position_ids != nullptr) {
     ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
@@ -880,6 +911,7 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
+                  {query_norm, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},
                   {&rotary_cache, ProgramTensorMetadataDependency::Type},
                   {cu_seqlens, ProgramTensorMetadataDependency::Type},
@@ -910,6 +942,7 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
 Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input(psai::kQuery);
   const Tensor* key = context.Input(psai::kKey);
+  const Tensor* query_norm = context.Input(psai::kQueryNormWeight);
   const Tensor* norm = context.Input(psai::kKeyNormWeight);
   const Tensor* cos_cache = context.Input(psai::kCosCache);
   const Tensor* sin_cache = context.Input(psai::kSinCache);
@@ -926,10 +959,15 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
 
   ORT_RETURN_IF(query == nullptr, "PackedSparseAttentionIndexer: query is required");
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3, "PackedSparseAttentionIndexer: query must have rank 3");
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 2, "PackedSparseAttentionIndexer: query must have rank 2");
   const int64_t total_tokens = query_shape[0];
-  const int64_t num_heads = query_shape[1];
-  const int64_t head_size = query_shape[2];
+  ORT_RETURN_IF(query_norm == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
+  const auto& query_norm_shape = query_norm->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0 &&
+                        query_shape[1] % query_norm_shape[0] == 0,
+                    "PackedSparseAttentionIndexer: invalid flattened query dimensions");
+  const int64_t head_size = query_norm_shape[0];
+  const int64_t num_heads = query_shape[1] / head_size;
   ORT_RETURN_IF_NOT(num_heads > 0 && head_size > 0, "PackedSparseAttentionIndexer: invalid query dimensions");
   const int64_t width = 2 * head_size;
 
@@ -943,6 +981,7 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
 
   ORT_RETURN_IF_ERROR(CheckShape(past_seqlens, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, width}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(norm, "key_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(gate, "gate", {total_tokens, width}));
   ORT_RETURN_IF_ERROR(CheckShape(position_bias, "position_bias", {compress_ratio_, width}));
@@ -1047,6 +1086,7 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
   select.CacheHint(rotary.batched)
       .SetWorkgroupSize(kWorkgroupSize)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
+                  {query_norm, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},
                   {head_weights, ProgramTensorMetadataDependency::Type},
                   {position_ids, ProgramTensorMetadataDependency::Type},
@@ -1067,6 +1107,7 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
                             {ToUint32(state_capacity)},
                             {ToUint32(capacity)},
                             {ToUint32(index_topk_)},
+                            {epsilon_},
                             {has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))},
                             {has_head_weight_scale_ ? head_weight_scale_
                                                     : 1.0f / std::sqrt(static_cast<float>(num_heads))}});

@@ -209,11 +209,13 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
 // defaults to past_sequence_lengths[batch] + request-local offset when position_ids is absent);
 // otherwise the csa trailing convention with positions always taken from position_ids.
 template <typename T, bool kUseLeadingRope>
-__global__ void PackedRotateQueryKernel(const T* query, const T* cos_cache, const T* sin_cache,
+__global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weight,
+                                        const T* cos_cache, const T* sin_cache,
                                         const int32_t* cumulative_sequence_lengths,
                                         const int32_t* past_sequence_lengths, const int64_t* position_ids,
                                         float* query_rotated, PackedSparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
+  float* reduction = shared + params.head_size;
   const int64_t rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     const int token = static_cast<int>(row / params.num_heads);
@@ -222,6 +224,17 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* cos_cache, cons
 
     for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
       shared[d] = to_float<T>(query[base + d]);
+    }
+    __syncthreads();
+
+    float sum_squares = 0.0f;
+    for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
+      sum_squares += shared[d] * shared[d];
+    }
+    sum_squares = SaiBlockSum(sum_squares, reduction);
+    const float inverse_rms = rsqrtf(sum_squares / static_cast<float>(params.head_size) + params.epsilon);
+    for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
+      shared[d] = shared[d] * inverse_rms * to_float<T>(query_norm_weight[d]);
     }
     __syncthreads();
 
@@ -725,7 +738,8 @@ size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams&
 template <typename T>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream, const PackedSparseAttentionIndexerParams& params, const T* query, const T* key,
-    const T* key_norm_weight, const T* cos_cache, const T* sin_cache, const int32_t* cumulative_sequence_lengths,
+    const T* query_norm_weight, const T* key_norm_weight, const T* cos_cache, const T* sin_cache,
+    const int32_t* cumulative_sequence_lengths,
     const int32_t* past_sequence_lengths, const int64_t* position_ids, const T* past_key_state,
     const T* past_kv_buffer, const int32_t* past_state_lengths, int32_t* selected_indices,
     int32_t* selected_counts, T* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
@@ -769,9 +783,9 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes, stream>>>(
-      query, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, position_ids, query_rotated,
-      params);
+  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+      query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+      position_ids, query_rotated, params);
 
   if (params.state_capacity > 0) {
     const int64_t score_work = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
@@ -792,7 +806,8 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 template <typename T>
 Status LaunchCsaPackedSparseAttentionIndexer(
     cudaStream_t stream, const PackedSparseAttentionIndexerParams& params, const T* query, const T* key,
-    const T* key_norm_weight, const T* cos_cache, const T* sin_cache, const T* gate, const T* position_bias,
+    const T* query_norm_weight, const T* key_norm_weight, const T* cos_cache, const T* sin_cache, const T* gate,
+    const T* position_bias,
     const T* head_weights, const int32_t* cumulative_sequence_lengths, const int32_t* past_sequence_lengths,
     const int64_t* position_ids, const T* past_key_state, const T* past_kv_buffer, const T* past_gate_buffer,
     const int32_t* past_state_lengths, int32_t* selected_indices, int32_t* selected_counts, T* present_key_state,
@@ -844,9 +859,9 @@ Status LaunchCsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_bytes, stream>>>(
-      query, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, position_ids, query_rotated,
-      params);
+  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+      query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+      position_ids, query_rotated, params);
 
   if (params.state_capacity > 0) {
     const int64_t score_work = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
@@ -864,14 +879,15 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(T)                                                        \
-  template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                   \
-      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,        \
-      const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*, int32_t*, \
-      int32_t*, T*, T*, int32_t*, float*, int32_t*);                                                          \
-  template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                   \
-      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,        \
-      const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*,       \
+#define INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(T)                                                            \
+  template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                       \
+      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
+      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*,     \
+      int32_t*,                                                                                                   \
+      int32_t*, T*, T*, int32_t*, float*, int32_t*);                                                              \
+  template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                       \
+      cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
+      const T*, const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, \
       const T*, const T*, const int32_t*, int32_t*, int32_t*, T*, T*, T*, int32_t*, float*, int32_t*);
 
 INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(float)

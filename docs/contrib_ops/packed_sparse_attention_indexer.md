@@ -10,7 +10,7 @@ Source:
 (policy enum, selected-capacity formula and CSA window-plan arithmetic, shared unmodified with
 `SparseAttentionIndexer`),
 [packed_sparse_attention_indexer_common.h](../../onnxruntime/contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h)
-(fixed 15-input / 6-output slot map),
+(fixed 16-input / 6-output slot map),
 [packed_sparse_attention_indexer.cc](../../onnxruntime/contrib_ops/cuda/sparse/packed_sparse_attention_indexer.cc) /
 [packed_sparse_attention_indexer_impl.cu](../../onnxruntime/contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.cu)
 (CUDA),
@@ -52,28 +52,29 @@ Attributes:
 | `scale` | default `1/sqrt(head_size)` | per-head score scale |
 | `head_weight_scale` | `csa` only, default `1/sqrt(num_heads)` | head-weight score scale |
 
-Inputs are **fixed at 15 indices** for both policies (unlike the dense op, which uses a different
+Inputs are **fixed at 16 indices** for both policies (unlike the dense op, which uses a different
 input/output count per policy). A slot not owned by the active policy is a *positional* optional:
 its `NodeProto` input name is empty rather than the slot being removed from the list, so every
 later slot keeps its fixed index.
 
 | # | Name | Shape | Type | Policy |
 |---|---|---|---|---|
-| 0 | `query` | `(total_tokens, num_heads, head_size)` | T | both |
+| 0 | `query` | `(total_tokens, num_heads*head_size)` | T | both |
 | 1 | `key` | `(total_tokens, head_size)` qsa / `(total_tokens, 2*head_size)` csa | T | both |
-| 2 | `key_norm_weight` | `(head_size)` | T | both |
-| 3 | `cos_cache` | `(max_position, rotary_width)` or `(batch_size, max_position, rotary_width)` | T | both |
-| 4 | `sin_cache` | same shape as `cos_cache` | T | both |
-| 5 | `cumulative_sequence_lengths` | `(batch_size + 1)` | int32, device-resident | both |
-| 6 | `past_sequence_lengths` | `(batch_size)` | int32, device-resident | both |
-| 7 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
-| 8 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
-| 9 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
-| 10 | `position_ids` | `(total_tokens)` | int64 | optional qsa / required csa |
-| 11 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
-| 12 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
-| 13 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
-| 14 | `past_state_lengths` | `(batch_size, 2)` | int32, device-resident | both (generic) |
+| 2 | `query_norm_weight` | `(head_size)` | T | both |
+| 3 | `key_norm_weight` | `(head_size)` | T | both |
+| 4 | `cos_cache` | `(max_position, rotary_width)` or `(batch_size, max_position, rotary_width)` | T | both |
+| 5 | `sin_cache` | same shape as `cos_cache` | T | both |
+| 6 | `cumulative_sequence_lengths` | `(batch_size + 1)` | int32, device-resident | both |
+| 7 | `past_sequence_lengths` | `(batch_size)` | int32, device-resident | both |
+| 8 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
+| 9 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
+| 10 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
+| 11 | `position_ids` | `(total_tokens)` | int64 | optional qsa / required csa |
+| 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
+| 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
+| 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
+| 15 | `past_state_lengths` | `(batch_size, 2)` | int32, device-resident | both (generic) |
 
 Outputs are **fixed at 6 indices** for both policies (`present_gate_buffer` is declared with an
 empty output name for `qsa`, the same positional-optional convention as above):

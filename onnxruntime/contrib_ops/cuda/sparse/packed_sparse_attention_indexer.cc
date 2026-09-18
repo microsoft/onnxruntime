@@ -169,6 +169,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* key = context->Input<Tensor>(psai::kKey);
+  const Tensor* query_norm_weight = context->Input<Tensor>(psai::kQueryNormWeight);
   const Tensor* key_norm_weight = context->Input<Tensor>(psai::kKeyNormWeight);
   const Tensor* cos_cache = context->Input<Tensor>(psai::kCosCache);
   const Tensor* sin_cache = context->Input<Tensor>(psai::kSinCache);
@@ -181,13 +182,20 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
 
   ORT_RETURN_IF(query == nullptr, "PackedSparseAttentionIndexer: query is required");
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3,
-                    "PackedSparseAttentionIndexer: query must have shape (total_tokens, num_heads, head_size), "
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 2,
+                    "PackedSparseAttentionIndexer: query must have shape (total_tokens, num_heads * head_size), "
                     "got ",
                     query_shape.ToString());
   const int64_t total_tokens = query_shape[0];
-  const int64_t num_heads = query_shape[1];
-  const int64_t head_size = query_shape[2];
+  ORT_RETURN_IF(query_norm_weight == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
+  const auto& query_norm_shape = query_norm_weight->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1,
+                    "PackedSparseAttentionIndexer: query_norm_weight must have shape (head_size), got ",
+                    query_norm_shape.ToString());
+  const int64_t head_size = query_norm_shape[0];
+  ORT_RETURN_IF(head_size <= 0 || query_shape[1] % head_size != 0,
+                "PackedSparseAttentionIndexer: query width must be divisible by head_size");
+  const int64_t num_heads = query_shape[1] / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("total_tokens", total_tokens));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
   ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
@@ -206,6 +214,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
   if (position_ids != nullptr) {
     ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
@@ -278,6 +287,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
+      reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
@@ -302,6 +312,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
 
   const Tensor* query = context->Input<Tensor>(psai::kQuery);
   const Tensor* key = context->Input<Tensor>(psai::kKey);
+  const Tensor* query_norm_weight = context->Input<Tensor>(psai::kQueryNormWeight);
   const Tensor* key_norm_weight = context->Input<Tensor>(psai::kKeyNormWeight);
   const Tensor* cos_cache = context->Input<Tensor>(psai::kCosCache);
   const Tensor* sin_cache = context->Input<Tensor>(psai::kSinCache);
@@ -318,13 +329,20 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
 
   ORT_RETURN_IF(query == nullptr, "PackedSparseAttentionIndexer: query is required");
   const auto& query_shape = query->Shape();
-  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 3,
-                    "PackedSparseAttentionIndexer: query must have shape (total_tokens, num_heads, head_size), "
+  ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 2,
+                    "PackedSparseAttentionIndexer: query must have shape (total_tokens, num_heads * head_size), "
                     "got ",
                     query_shape.ToString());
   const int64_t total_tokens = query_shape[0];
-  const int64_t num_heads = query_shape[1];
-  const int64_t head_size = query_shape[2];
+  ORT_RETURN_IF(query_norm_weight == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
+  const auto& query_norm_shape = query_norm_weight->Shape();
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1,
+                    "PackedSparseAttentionIndexer: query_norm_weight must have shape (head_size), got ",
+                    query_norm_shape.ToString());
+  const int64_t head_size = query_norm_shape[0];
+  ORT_RETURN_IF(head_size <= 0 || query_shape[1] % head_size != 0,
+                "PackedSparseAttentionIndexer: query width must be divisible by head_size");
+  const int64_t num_heads = query_shape[1] / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("total_tokens", total_tokens));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
   ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
@@ -346,6 +364,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, width}));
+  ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(gate, "gate", {total_tokens, width}));
   ORT_RETURN_IF_ERROR(CheckShape(position_bias, "position_bias", {compress_ratio_, width}));
@@ -421,6 +440,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
       reinterpret_cast<const CudaT*>(key->Data<T>()),
+      reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
