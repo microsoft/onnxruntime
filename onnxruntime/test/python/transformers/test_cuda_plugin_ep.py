@@ -30,8 +30,8 @@ TEST_FAIL = "FAIL"
 EP_GRAPH_ASSIGNMENT_CONFIG_KEY = "session.record_ep_graph_assignment_info"
 NO_CUDNN_PLUGIN_TEST = os.getenv("ORT_TEST_CUDA_PLUGIN_NO_CUDNN", "").upper() in {"1", "ON", "TRUE", "YES"}
 requires_cudnn = unittest.skipIf(NO_CUDNN_PLUGIN_TEST, "test requires cuDNN-backed CUDA plugin kernels")
-# Use the latest released ai.onnx opset so the model builders stay current as ONNX releases new opsets.
-DEFAULT_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP if d == "ai.onnx")
+# CUDA plugin runtime currently supports released ai.onnx opsets through 27.
+DEFAULT_ONNX_OPSET = 27
 
 
 def _make_released_opset_model(graph, producer_name="onnx-example"):

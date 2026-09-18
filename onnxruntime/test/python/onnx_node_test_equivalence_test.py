@@ -62,14 +62,14 @@ def _repo_root() -> str:
 
 
 def _expected_onnx_version() -> str | None:
-    """Parse the onnx pin (archive tag) from cmake/deps.txt."""
+    """Parse the ONNX_VERSION metadata paired with the archive pin in cmake/deps.txt."""
     deps = os.path.join(_repo_root(), "cmake", "deps.txt")
     if not os.path.isfile(deps):
         return None
     with open(deps) as f:
         for line in f:
-            if line.startswith("onnx;"):
-                m = re.search(r"/tags/v([0-9]+\.[0-9]+\.[0-9]+)\.zip", line)
+            if line.startswith("# ONNX_VERSION="):
+                m = re.search(r"ONNX_VERSION=([0-9]+\.[0-9]+\.[0-9]+)", line)
                 if m:
                     return m.group(1)
     return None
