@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("TB", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("TB", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     SparseAttentionIndexer);
@@ -102,8 +102,11 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
 
   shader.AdditionalImplementation()
       << "fn visible(row: u32, token: u32) -> bool {\n"
-      << "  let offset = row * uniforms.total_sequence_length + token;\n"
-      << "  return " << mask.GetByOffset("offset / 4u") << "[offset % 4u];\n"
+      << "  let batch = row / uniforms.sequence_length;\n"
+      << "  let query = row % uniforms.sequence_length;\n"
+      << "  let offset = batch * uniforms.total_sequence_length + token;\n"
+      << "  return token <= uniforms.past_sequence_length + query && "
+      << mask.GetByOffset("offset") << " != 0;\n"
       << "}\n"
       << "fn visible_at(row: u32, ordinal: u32) -> u32 {\n"
       << "  var seen = 0u;\n"
@@ -612,11 +615,8 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
                     "SparseAttentionIndexer: invalid qsa rotary cache shape");
   const auto& mask_shape = mask->Shape();
   ORT_RETURN_IF_NOT(
-      (mask_shape.NumDimensions() == 4 && mask_shape[0] == batch_size && mask_shape[1] == 1 &&
-       mask_shape[2] == sequence_length && mask_shape[3] == total_length) ||
-          (mask_shape.NumDimensions() == 3 && mask_shape[0] == batch_size &&
-           mask_shape[1] == sequence_length && mask_shape[2] == total_length),
-      "SparseAttentionIndexer: invalid qsa mask shape");
+      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
+      "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
   Tensor* selected =
@@ -656,7 +656,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
                   {key_norm, ProgramTensorMetadataDependency::Type},
                   {cos_cache, ProgramTensorMetadataDependency::Type},
                   {sin_cache, ProgramTensorMetadataDependency::Type}})
-      .AddInput({mask, ProgramTensorMetadataDependency::Type, {(mask->Shape().Size() + 3) / 4}, 4})
+      .AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1})
       .AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))

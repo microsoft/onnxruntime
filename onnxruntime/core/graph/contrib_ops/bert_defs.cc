@@ -2073,6 +2073,7 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   updateOutputShape(ctx, sai::kSelectedIndices, selected_shape);
 
   if (is_qsa) {
+    (void)SparseAttentionIndexerShape(ctx, sai::kMask, 2);
     // ctx.getNumOutputs() == 2 was enforced above, so index 1 is in range.
     propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKey);
     const auto* past_key_shape = SparseAttentionIndexerShape(ctx, sai::kPastKey, 3);
@@ -2268,9 +2269,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(6,
                "mask",
-               "Only for policy_mode 'qsa': tokens visible to each query, with shape "
-               "(batch_size, 1, sequence_length, total_sequence_length) or "
-               "(batch_size, sequence_length, total_sequence_length). "
+               "Only for policy_mode 'qsa': INT64 padding mask with shape "
+               "(batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. "
                "total_sequence_length is past_sequence_length + sequence_length.",
                "TB",
                OpSchema::Optional)
@@ -2340,7 +2340,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")
-        .TypeConstraint("TB", {"tensor(bool)"}, "Constrain the visibility mask to boolean tensors.")
+        .TypeConstraint("TB", {"tensor(int64)"}, "Constrain the mask to 64-bit integer tensors.")
         .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to 64-bit integer tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain indices and cache lengths to 32-bit integer tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

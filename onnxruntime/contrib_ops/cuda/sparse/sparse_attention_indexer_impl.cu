@@ -152,17 +152,23 @@ __global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttention
 }
 
 // One block per query row; compacts the visible key positions of that row into visible_indices.
-__global__ void CompactVisibleKernel(const bool* mask, int32_t* visible_indices, int32_t* visible_count,
+__global__ void CompactVisibleKernel(const int64_t* mask, int32_t* visible_indices, int32_t* visible_count,
                                      SparseAttentionIndexerParams params) {
   extern __shared__ int32_t shared_scan[];
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
-    const bool* mask_row = mask + row * params.total_sequence_length;
+    const int batch = static_cast<int>(row / params.sequence_length);
+    const int query = static_cast<int>(row % params.sequence_length);
+    const int64_t* mask_row = mask + static_cast<int64_t>(batch) * params.total_sequence_length;
     int32_t* out_row = visible_indices + row * params.total_sequence_length;
     int32_t offset = 0;
     for (int base = 0; base < params.total_sequence_length; base += blockDim.x) {
       const int position = base + static_cast<int>(threadIdx.x);
-      const int32_t flag = (position < params.total_sequence_length && mask_row[position]) ? 1 : 0;
+      const int32_t flag =
+          (position < params.total_sequence_length && position <= params.past_sequence_length + query &&
+           mask_row[position] != 0)
+              ? 1
+              : 0;
       shared_scan[threadIdx.x] = flag;
       __syncthreads();
       for (int stride = 1; stride < blockDim.x; stride <<= 1) {
@@ -586,7 +592,7 @@ template <typename T>
 Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentionIndexerParams& params,
                                        const T* query, const T* key, const T* query_norm_weight,
                                        const T* key_norm_weight,
-                                       const T* cos_cache, const T* sin_cache, const bool* mask,
+                                       const T* cos_cache, const T* sin_cache, const int64_t* mask,
                                        const T* past_key, int32_t* selected_indices, T* present_key,
                                        float* float_workspace, int32_t* int_workspace) {
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
@@ -696,7 +702,7 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
 #define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                                      \
   template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,              \
                                                      const T*, const T*, const T*, const T*, const T*, const T*,     \
-                                                     const bool*, const T*, int32_t*, T*, float*, int32_t*);         \
+                                                     const int64_t*, const T*, int32_t*, T*, float*, int32_t*);      \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                                \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*, const T*, \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);
