@@ -69,7 +69,7 @@ for a runtime:
 | `compress_ratio` | int | yes | Tokens folded into one block/entry. Must be `> 0`. |
 | `token_budget` | int | `qsa` only | Maximum number of tokens taken from complete blocks. Must be `> 0` and divisible by `compress_ratio`. Must be absent for `csa`. |
 | `index_topk` | int | `csa` only | Number of compressed entries selected per query. Must be `> 0`. Must be absent for `qsa`. |
-| `epsilon` | float | no | RMSNorm epsilon of the compressed key. Default `1e-6`. |
+| `epsilon` | float | no | RMSNorm epsilon of queries and compressed keys. Default `1e-6`. |
 | `scale` | float | no | Scale of the per-head ReLU score. Default `1/sqrt(head_size)`. |
 | `head_weight_scale` | float | `csa` only | Scale applied to `head_weights`. Default `1/sqrt(num_heads)`. Must be absent for `qsa`. |
 
@@ -80,19 +80,20 @@ for a runtime:
 
 | # | Name | Policy | Type | Shape |
 |---|---|---|---|---|
-| 0 | `query` | both | `T` | `(B, S, N, D)` |
+| 0 | `query` | both | `T` | `(B, S, N*D)`; logically reshaped and normalized inside the operator |
 | 1 | `key` | both | `T` | `(B, S, D)` for `qsa`, `(B, S, 2D)` for `csa` |
-| 2 | `key_norm_weight` | both | `T` | `(D)` |
-| 3 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
-| 4 | `sin_cache` | both | `T` | same as `cos_cache` |
-| 5 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
-| 6 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
-| 7 | `gate` | `csa` | `T` | `(B, S, 2D)` |
-| 8 | `position_bias` | `csa` | `T` | `(r, 2D)` |
-| 9 | `head_weights` | `csa` | `T` | `(B, S, N)` |
-| 10 | `position_ids` | `csa` | `I` | `(B, S)` |
-| 11 | `past_sequence_length` | both | `M` | `(1)`; optional valid length for a max-capacity `past_key` |
-| 12 | `past_proj_buffer` | `csa` | `T` | `(2, B, Lb, 2D)`, `Lb` in `[0, 2r)`; keys then gates |
+| 2 | `query_norm_weight` | both | `T` | `(D)` |
+| 3 | `key_norm_weight` | both | `T` | `(D)` |
+| 4 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
+| 5 | `sin_cache` | both | `T` | same as `cos_cache` |
+| 6 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
+| 7 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
+| 8 | `gate` | `csa` | `T` | `(B, S, 2D)` |
+| 9 | `position_bias` | `csa` | `T` | `(r, 2D)` |
+| 10 | `head_weights` | `csa` | `T` | `(B, S, N)` |
+| 11 | `position_ids` | `csa` | `I` | `(B, S)` |
+| 12 | `past_sequence_length` | both | `M` | `(1)`; optional valid length for a max-capacity `past_key` |
+| 13 | `past_proj_buffer` | `csa` | `T` | `(2, B, Lb, 2D)`, `Lb` in `[0, 2r)`; keys then gates |
 
 ### Outputs
 
@@ -154,8 +155,9 @@ For every `(b, s)`:
    `visible[j*r : (j+1)*r]`.
 3. **Pooled key.** `k_j = mean` of the `r` raw `present_key` rows of block `j`, then
    `RMSNorm(k_j) * key_norm_weight`, then rotary at absolute position `visible[j*r]`.
-4. **Score.** `score_j = scale * sum_h ReLU(q_h · k_j)` where `q_h` is the rotated query head
-   at absolute position `P + s`.
+4. **Score.** Logically reshape each raw query row from `(N*D)` to `(N,D)`, apply
+  `RMSNorm(q_h) * query_norm_weight`, and rotate it at absolute position `P + s`. Then
+  `score_j = scale * sum_h ReLU(q_h · k_j)`.
 5. **Selection.** `topk = min(token_budget // r, nblocks)` blocks, ordered by decreasing score.
    Their tokens are emitted in that block order, `r` token indices per block.
 6. **Tail.** The `len(visible) % r` tokens of the trailing incomplete block,
@@ -209,6 +211,7 @@ the bias is re-applied at use time and never accumulates). A softmax over the `2
 ### Scoring and selection
 
 ```
+q_h = RoPE(RMSNorm(query[b, s, h, :]) * query_norm_weight)
 scores[b, s, e] = head_weight_scale * sum_h head_weights[b, s, h] * scale * ReLU(q_h · k_e)
 threshold[b, s] = (position_ids[b, s] + 1) / r        # integer division
 scores[b, s, e] = -inf  for  e >= threshold[b, s]
@@ -238,11 +241,11 @@ frequencies inside the kernel:
 Positions are clamped into `[0, max_rotary_sequence_length - 1]` inside the kernel, so an
 out-of-range `position_ids` value cannot read out of bounds.
 
-### `key_norm_weight` and zero-centered gamma
+### Norm weights and zero-centered gamma
 
-`key_norm_weight` is the **effective** multiplier: the kernel computes
-`normalized * key_norm_weight`. Qwen's `Qwen4ExpTextRMSNorm` multiplies by `1 + gamma`. Exporters
-targeting that model must fold the addition into the initializer (`key_norm_weight = 1 + gamma`).
+`query_norm_weight` and `key_norm_weight` are the **effective** multipliers: the kernel computes
+`normalized * norm_weight`. Qwen's `Qwen4ExpTextRMSNorm` multiplies by `1 + gamma`. Exporters
+targeting that model must fold the addition into both initializers (`norm_weight = 1 + gamma`).
 DeepSeek's `DeepseekV4RMSNorm` uses a plain `weight *`, so its tensor is passed through unchanged.
 
 ## 7. CUDA Kernel Pipeline
@@ -309,7 +312,7 @@ Shape inference and the kernel both reject:
 
 - a `policy_mode` other than `qsa` / `csa`;
 - `compress_ratio <= 0`;
-- a `qsa` node that provides any `csa`-only input (slots 7–10 or 12) or attribute, and vice versa;
+- a `qsa` node that provides any `csa`-only input (slots 8–11 or 13) or attribute, and vice versa;
 - a missing required input for the active policy;
 - `token_budget` absent, `<= 0`, or not divisible by `compress_ratio` for `qsa`;
 - `index_topk` absent or `<= 0` for `csa`;
