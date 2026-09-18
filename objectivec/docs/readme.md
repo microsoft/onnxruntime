@@ -4,12 +4,23 @@ The API should be documented with comments in the [public header files](../inclu
 
 ## Documentation Generation
 
+Documentation generation dependencies are defined in [Gemfile](./Gemfile) and managed with
+[Bundler](https://bundler.io/).
+
 The [Jazzy](https://github.com/realm/jazzy) tool is used to generate documentation from the code.
 
-To generate documentation, from the repo root, run:
+To install the dependencies, from the repo root, run:
 
 ```bash
-jazzy --config objectivec/docs/jazzy_config.yaml --output <output directory>
+BUNDLE_GEMFILE=objectivec/docs/Gemfile bundle install
+```
+
+Then, to generate the documentation, run:
+
+```bash
+BUNDLE_GEMFILE=objectivec/docs/Gemfile bundle exec jazzy \
+	--config objectivec/docs/jazzy_config.yaml \
+	--output <output directory>
 ```
 
 The generated documentation website files will be in `<output directory>`.

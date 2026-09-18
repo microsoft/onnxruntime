@@ -53,10 +53,6 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
 
 namespace {
 
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
-
 // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 // (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
 // subgroup-matrix f16 load's 4-byte row-start alignment holds for odd N.
@@ -191,8 +187,8 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     SubgroupMatrixMatMulProgram program{activation, has_bias, config_index_,
                                         sg_mat_count_m, sg_mat_count_n, split_k};
-    program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
-    program.SetSubgroupSize(kSubgroupMatrixSubgroupSize);
+    program.SetWorkgroupSize(config.subgroupSize * split_k);
+    program.SetSubgroupSize(config.subgroupSize);
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(activation.CacheKey(), has_bias, config_index_,
                       sg_mat_count_m, sg_mat_count_n, split_k)

@@ -90,6 +90,21 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
     return status;
   }
 
+  if (problem.requires_separate_past_buffer) {
+    status = ValidateDimension(
+        problem.past_kv_cache_capacity,
+        "GQA separate past-buffer capacity must be positive and fit int32.");
+    if (!status.IsOK()) {
+      return status;
+    }
+  } else if (problem.past_kv_cache_capacity != 0) {
+    return Invalid("GQA past KV cache capacity requires a separate past buffer.");
+  }
+
+  if (problem.requires_separate_past_buffer && problem.is_windowed_kv_cache) {
+    return Invalid("Windowed GQA requires both past/present K/V pairs to alias.");
+  }
+
   if (problem.num_heads % problem.kv_num_heads != 0) {
     return Invalid("GQA num_heads must be a multiple of kv_num_heads.");
   }
@@ -131,7 +146,7 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
     case GQAPreprocessMode::Xqa:
     case GQAPreprocessMode::Flash:
     case GQAPreprocessMode::MemoryEfficient:
-    case GQAPreprocessMode::Fallback:
+    case GQAPreprocessMode::Unfused:
       break;
     default:
       return Invalid("GQA preprocess mode is invalid.");
@@ -158,6 +173,12 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
 
   if (route.use_flash_attention_fast_decode && problem.use_qk_norm) {
     return Invalid("GQA Flash fast decode is incompatible with QK-Norm.");
+  }
+
+  if (problem.requires_separate_past_buffer &&
+      (route.preprocess_mode == GQAPreprocessMode::Xqa ||
+       route.use_flash_attention_fast_decode)) {
+    return Invalid("GQA XQA and Flash fast decode require both past/present K/V pairs to alias.");
   }
 
   if (route.preprocess_mode == GQAPreprocessMode::Xqa) {
@@ -233,7 +254,7 @@ GQAWorkspaceStatus AppendRegion(size_t bytes, size_t& cursor, size_t& offset) no
   }
 
   size_t aligned_cursor = 0;
-  auto status = CheckedGQAWorkspaceAlign(cursor, kGQAPreparationAlignment, aligned_cursor);
+  auto status = CheckedGQAWorkspaceAlign(cursor, kGQAWorkspaceAlignment, aligned_cursor);
   if (!status.IsOK()) {
     return status;
   }
@@ -368,7 +389,7 @@ GQAWorkspaceStatus ComputeQkvPreprocessBytes(
         preprocess_elements = q_elements;
       }
       break;
-    case GQAPreprocessMode::Fallback:
+    case GQAPreprocessMode::Unfused:
       // The unfused fallback materializes Q for rotary, packed input, or QK-Norm.
       if (problem.do_rotary || problem.is_packed_qkv || problem.use_qk_norm) {
         preprocess_elements = q_elements;
@@ -388,7 +409,7 @@ struct Range {
 };
 
 GQAWorkspaceStatus ValidateTopLevelRanges(
-    const std::array<Range, 5>& ranges, size_t total_bytes) noexcept {
+    const std::array<Range, 6>& ranges, size_t total_bytes) noexcept {
   size_t previous_end = 0;
   bool found_region = false;
   for (const auto& range : ranges) {
@@ -399,7 +420,7 @@ GQAWorkspaceStatus ValidateTopLevelRanges(
       continue;
     }
 
-    if (range.offset % kGQAPreparationAlignment != 0) {
+    if (range.offset % kGQAWorkspaceAlignment != 0) {
       return Invalid("A GQA preparation region offset is not 256-byte aligned.");
     }
 
@@ -492,6 +513,24 @@ GQAPreparationResult GetGQAPreparationRecipe(
   const size_t capacity = static_cast<size_t>(problem.present_kv_cache_capacity);
 
   size_t cursor = 0;
+  if (problem.requires_separate_past_buffer) {
+    recipe.uses_separate_past_buffer = true;
+    result.status = CheckedMultiplyMany(
+        batch_size, kv_num_heads,
+        static_cast<size_t>(problem.past_kv_cache_capacity),
+        recipe.cache_row_bytes,
+        recipe.separate_past_bytes);
+    if (!result.status.IsOK()) {
+      return result;
+    }
+
+    result.status = AppendRegion(
+        recipe.separate_past_bytes, cursor, recipe.separate_past_offset_bytes);
+    if (!result.status.IsOK()) {
+      return result;
+    }
+  }
+
   if (problem.is_windowed_kv_cache && problem.sequence_length > 1) {
     size_t effective_capacity = 0;
     result.status = CheckedGQAWorkspaceAdd(capacity, sequence_length, effective_capacity);
@@ -609,6 +648,20 @@ GQAWorkspaceStatus ValidateGQAPreparationRecipe(const GQAPreparationRecipe& reci
     return Invalid("GQA preparation staging and compaction are mutually exclusive.");
   }
 
+  if (recipe.uses_separate_past_buffer &&
+      (recipe.uses_staging || recipe.uses_compaction)) {
+    return Invalid("GQA separate past preservation is incompatible with windowed preparation.");
+  }
+
+  if (recipe.uses_separate_past_buffer) {
+    if (recipe.separate_past_bytes == 0) {
+      return Invalid("GQA separate past-buffer region must be nonempty.");
+    }
+  } else if (recipe.separate_past_offset_bytes != 0 ||
+             recipe.separate_past_bytes != 0) {
+    return Invalid("A GQA recipe without separate past preservation exposes its region.");
+  }
+
   if (recipe.uses_staging) {
     if (recipe.staged_key_bytes == 0 ||
         recipe.staged_key_bytes != recipe.staged_value_bytes) {
@@ -658,8 +711,14 @@ GQAWorkspaceStatus ValidateGQAPreparationRecipe(const GQAPreparationRecipe& reci
     return Invalid("GQA preparation sequence-vector metadata is invalid.");
   }
 
+  if ((recipe.uses_staging || recipe.uses_compaction) &&
+      recipe.sequence_length_vector_count != 6) {
+    return Invalid("Windowed GQA preparation requires six sequence vectors.");
+  }
+
   return ValidateTopLevelRanges(
-      {{{recipe.staged_key_offset_bytes, recipe.staged_key_bytes},
+      {{{recipe.separate_past_offset_bytes, recipe.separate_past_bytes},
+        {recipe.staged_key_offset_bytes, recipe.staged_key_bytes},
         {recipe.staged_value_offset_bytes, recipe.staged_value_bytes},
         {recipe.compaction_offset_bytes, recipe.compaction_bytes},
         {recipe.sequence_lengths_offset_bytes, recipe.sequence_lengths_bytes},

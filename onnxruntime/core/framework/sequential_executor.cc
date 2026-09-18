@@ -156,8 +156,19 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
-      : session_state_(session_state), run_profiler_(run_profiler)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler
+#if !defined(ORT_MINIMAL_BUILD)
+               ,
+               const RunInstrumentationContext* run_instrumentation_context)
+#else
+               )
+#endif
+      : session_state_(session_state),
+        run_profiler_(run_profiler)
+#if !defined(ORT_MINIMAL_BUILD)
+        ,
+        run_instrumentation_context_(run_instrumentation_context)
+#endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
         frame_(frame)
@@ -255,6 +266,12 @@ class SessionScope {
 
   profiling::Profiler* GetRunProfiler() const { return run_profiler_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const RunInstrumentationContext* GetRunInstrumentationContext() const {
+    return run_instrumentation_context_;
+  }
+#endif
+
   void StopProfilingIfEnabled(profiling::EventCategory category,
                               const std::string& event_name,
                               const TimePoint& start_time,
@@ -290,6 +307,9 @@ class SessionScope {
  private:
   const SessionState& session_state_;
   profiling::Profiler* run_profiler_;
+#if !defined(ORT_MINIMAL_BUILD)
+  const RunInstrumentationContext* run_instrumentation_context_;
+#endif
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
@@ -545,7 +565,13 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                      ctx.GetLogger(),
                                      terminate_flag,
                                      ctx.GetDeviceStream(stream_idx),
-                                     session_scope.GetRunProfiler());
+                                     session_scope.GetRunProfiler()
+#if !defined(ORT_MINIMAL_BUILD)
+                                         ,
+                                     session_scope.GetRunInstrumentationContext());
+#else
+  );
+#endif
   onnxruntime::Status status;
   auto& logger = ctx.GetLogger();
   if (p_kernel->IsAsync()) {
@@ -688,7 +714,13 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
-                                   profiling::Profiler* run_profiler) {
+                                   profiling::Profiler* run_profiler
+#if !defined(ORT_MINIMAL_BUILD)
+                                   ,
+                                   const RunInstrumentationContext* run_instrumentation_context) {
+#else
+) {
+#endif
   auto* execution_plan = session_state.GetExecutionPlan();
   VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
@@ -731,7 +763,12 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler);
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler
+#if !defined(ORT_MINIMAL_BUILD)
+                             ,
+                             run_instrumentation_context
+#endif
+  );
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
@@ -792,7 +829,12 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), nullptr);
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                             ,
+                             nullptr
+#endif
+  );
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Only flush memory info for the 2nd partial graph execution (since ORTModule runs this function twice).
