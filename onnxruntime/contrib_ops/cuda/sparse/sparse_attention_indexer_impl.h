@@ -62,7 +62,7 @@ Status LaunchQsaSparseAttentionIndexer(
     const T* key_norm_weight,
     const T* cos_cache,
     const T* sin_cache,
-    const bool* mask,
+    const int64_t* mask,
     const T* past_key,
     int32_t* selected_indices,
     T* present_key,

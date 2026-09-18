@@ -86,7 +86,7 @@ for a runtime:
 | 3 | `key_norm_weight` | both | `T` | `(D)` |
 | 4 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
 | 5 | `sin_cache` | both | `T` | same as `cos_cache` |
-| 6 | `mask` | `qsa` | `TB` | `(B, 1, S, T)` or `(B, S, T)` |
+| 6 | `mask` | `qsa` | `TB` | INT64 padding mask `(B, T)` |
 | 7 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
 | 8 | `gate` | `csa` | `T` | `(B, S, 2D)` |
 | 9 | `position_bias` | `csa` | `T` | `(r, 2D)` |
@@ -111,7 +111,7 @@ follow from `Lb`, `S` and `r` alone (see [§5](#5-policy-csa)).
 | Name | Allowed types |
 |---|---|
 | `T` | `tensor(float)`, `tensor(float16)`, `tensor(bfloat16)` |
-| `TB` | `tensor(bool)` |
+| `TB` | `tensor(int64)` |
 | `I` | `tensor(int64)` |
 | `M` | `tensor(int32)` |
 
@@ -150,7 +150,7 @@ its ordinary bounded state contract and stays below `2r` positions.
 
 For every `(b, s)`:
 
-1. **Visible set.** `visible = [t for t in range(T) if mask[b, s, t]]`, in ascending `t`.
+1. **Visible set.** `visible = [t for t in range(T) if mask[b, t] != 0 and t <= P + s]`, in ascending `t`.
 2. **Complete blocks.** `nblocks = len(visible) // r`. Block `j` covers
    `visible[j*r : (j+1)*r]`.
 3. **Pooled key.** `k_j = mean` of the `r` raw `present_key` rows of block `j`, then
@@ -358,8 +358,8 @@ The implementation is correctness-first. The following are known and deliberate:
 3. **The rotated query is materialized in `float32`.** That costs `B*S*N*D` floats of workspace.
    Fusing the rotation into the scoring kernels removes the traffic at the cost of recomputing the
    rotation per block.
-4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. For long
-   contexts a batched exclusive scan over the whole `(B, S, T)` mask would be cheaper.
+4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads each batch's `(B, T)` padding
+  mask for every `s`. Sharing work across query rows would reduce that traffic for long contexts.
 5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
 6. **No CPU kernel.** The operator is CUDA-only today.

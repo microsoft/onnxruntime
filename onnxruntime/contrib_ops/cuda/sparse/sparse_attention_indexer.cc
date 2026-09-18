@@ -27,7 +27,7 @@ namespace sai = onnxruntime::contrib::sparse_attention_indexer;
       kCudaExecutionProvider,                                             \
       (*KernelDefBuilder::Create())                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())          \
-          .TypeConstraint("TB", DataTypeImpl::GetTensorType<bool>())      \
+          .TypeConstraint("TB", DataTypeImpl::GetTensorType<int64_t>())   \
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())    \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())    \
           .MayInplace(sai::kPastKey, sai::kPresentKey)                    \
@@ -199,14 +199,10 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
 
   const auto& mask_shape = mask->Shape();
-  const bool mask_is_4d = mask_shape.NumDimensions() == 4;
   ORT_RETURN_IF_NOT(
-      (mask_is_4d && mask_shape[0] == batch_size && mask_shape[1] == 1 && mask_shape[2] == sequence_length &&
-       mask_shape[3] == total_sequence_length) ||
-          (mask_shape.NumDimensions() == 3 && mask_shape[0] == batch_size && mask_shape[1] == sequence_length &&
-           mask_shape[2] == total_sequence_length),
-      "SparseAttentionIndexer: mask must have shape (batch_size, 1, sequence_length, total_sequence_length) or "
-      "(batch_size, sequence_length, total_sequence_length) with total_sequence_length=",
+      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_sequence_length,
+      "SparseAttentionIndexer: mask must be INT64 with shape (batch_size, total_sequence_length), with "
+      "total_sequence_length=",
       total_sequence_length, ", got ", mask_shape.ToString());
 
   SparseAttentionIndexerParams params;
@@ -250,7 +246,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
-      mask->Data<bool>(),
+      mask->Data<int64_t>(),
       reinterpret_cast<const CudaT*>(past_key->Data<T>()),
       selected_indices->MutableData<int32_t>(),
       reinterpret_cast<CudaT*>(present_key->MutableData<T>()),
