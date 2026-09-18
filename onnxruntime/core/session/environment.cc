@@ -899,14 +899,6 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     return ToStatusAndRelease(ort_status);
   }
 
-  if (allocator == nullptr) {
-    if (allocator_out != nullptr) {
-      *allocator_out = nullptr;
-    }
-
-    return Status::OK();
-  }
-
   if (allocator->Info(allocator)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "

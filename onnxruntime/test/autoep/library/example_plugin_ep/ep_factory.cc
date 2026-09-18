@@ -314,10 +314,6 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
 
   // the read-only allocator is used for initializers. we don't need an arena for that.
   // host-accessible memory is also returned via a plain non-arena allocator.
-  if (is_host_accessible_allocator && factory.ep_name_ == "example_ep.default_cpu_allocator") {
-    return nullptr;
-  }
-
   if (is_readonly_allocator || is_host_accessible_allocator) {
     auto simple_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
     *allocator = simple_allocator.release();
