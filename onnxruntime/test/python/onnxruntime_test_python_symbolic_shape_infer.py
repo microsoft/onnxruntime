@@ -39,6 +39,47 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_shape_preserving_hyper_connection_ops(self):
+        cases = {
+            "BranchwiseRMSNorm": (
+                ["input"],
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"])],
+            ),
+            "HyperConnectionPostMix": (
+                ["input", "block_output", "post_mix"],
+                [
+                    helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"]),
+                    helper.make_tensor_value_info("block_output", TensorProto.FLOAT16, ["batch", "hidden"]),
+                    helper.make_tensor_value_info("post_mix", TensorProto.FLOAT16, ["batch", "sequence"]),
+                ],
+            ),
+            "ScaledSiLU": (
+                ["input"],
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"])],
+            ),
+        }
+        for op_type, (node_inputs, graph_inputs) in cases.items():
+            with self.subTest(op_type=op_type):
+                graph = helper.make_graph(
+                    [helper.make_node(op_type, node_inputs, ["output"], domain="com.microsoft")],
+                    op_type,
+                    graph_inputs,
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT16, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                inferred = SymbolicShapeInference.infer_shapes(
+                    model, auto_merge=True, int_max=100000, guess_output_rank=False
+                )
+                output = inferred.graph.output[0].type.tensor_type
+                self.assertEqual(output.elem_type, TensorProto.FLOAT16)
+                self.assertEqual(
+                    [dimension.dim_param for dimension in output.shape.dim],
+                    ["batch", "sequence", "hidden"],
+                )
+
     def test_hyper_connection_pre_mix(self):
         for flattened in (False, True):
             with self.subTest(flattened=flattened):
