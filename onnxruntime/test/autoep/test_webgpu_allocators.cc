@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -19,11 +20,17 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/file_util.h"
+
+#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
+#include "dawn/dawn_proc.h"
+#include "dawn/native/DawnNative.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -180,6 +187,94 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
   RegisteredEpDeviceUniquePtr ep_device_holder_;
   std::vector<const OrtEpDevice*> ep_devices_;
 };
+
+#if !defined(USE_EXTERNAL_DAWN)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
+namespace {
+WGPUBuffer free_failure_buffer = nullptr;
+size_t free_failure_probes = 0;
+
+WGPUBufferMapState InjectMappedBufferOnFree(WGPUBuffer buffer) {
+  if (buffer == free_failure_buffer) {
+    ++free_failure_probes;
+    std::fputs("Injecting mapped state in actual Session allocator Free\n", stderr);
+    std::fflush(stderr);
+    return WGPUBufferMapState_Mapped;
+  }
+  return dawn::native::GetProcs().bufferGetMapState(buffer);
+}
+}  // namespace
+#endif
+
+class WebGpuSessionAllocatorDeathTest : public WebGpuPluginSharedAllocatorTest {
+ protected:
+  void SetUp() override {
+    // Re-exec on POSIX rather than inheriting initialized Dawn/driver state through fork.
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    WebGpuPluginSharedAllocatorTest::SetUp();
+  }
+};
+
+TEST_F(WebGpuSessionAllocatorDeathTest, PublicApiReportsFactoryStreamsUnsupported) {
+  ASSERT_EXIT(
+      {
+        OrtSyncStream* stream = nullptr;
+        std::fputs("Calling public CreateSyncStreamForEpDevice for WebGPU\n", stderr);
+        std::fflush(stderr);
+        Ort::Status status{Ort::GetApi().CreateSyncStreamForEpDevice(EpDevice(), nullptr, &stream)};
+        if (status.IsOK() || status.GetErrorCode() != ORT_NOT_IMPLEMENTED ||
+            status.GetErrorMessage() != "WebGPU supports Session-owned streams only; factory streams are not supported.") {
+          std::_Exit(72);
+        }
+        if (stream != nullptr) {
+          std::_Exit(73);
+        }
+        std::fputs(status.GetErrorMessage().c_str(), stderr);
+        std::fflush(stderr);
+        std::_Exit(0);
+      },
+      ::testing::ExitedWithCode(0), "WebGPU supports Session-owned streams only; factory streams are not supported.");
+}
+
+TEST_F(WebGpuSessionAllocatorDeathTest, FreeContainsExceptionAndPreservesUnreleasedBuffer) {
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
+  GTEST_SKIP() << "Shared Dawn calls bypass the replaceable proc table required for map-state fault injection.";
+#else
+  ASSERT_EXIT(
+      {
+        auto procs = dawn::native::GetProcs();
+        procs.bufferGetMapState = InjectMappedBufferOnFree;
+        dawnProcSetProcs(&procs);
+        Ort::SessionOptions options;
+        options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+        options.AppendExecutionProvider_V2(
+            Env(), {EpDevice()},
+            {{"validationMode", "full"},
+             {"dawnProcTable", std::to_string(reinterpret_cast<uintptr_t>(&procs))}});
+        Ort::Session session(Env(), ORT_TSTR("testdata/mul_1.onnx"), options);
+        Ort::Allocator allocator(session, EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+        void* buffer = allocator.Alloc(64);
+        if (buffer == nullptr) {
+          std::_Exit(2);
+        }
+        // Inject a mapped state only for this allocation. The actual Session wrapper and
+        // GpuBufferAllocator::Free must contain EnforceBufferUnmapped's exception.
+        free_failure_buffer = static_cast<WGPUBuffer>(buffer);
+        allocator.Free(buffer);
+        if (free_failure_probes != 1) {
+          std::_Exit(73);
+        }
+        free_failure_buffer = nullptr;
+        if (procs.bufferGetSize(static_cast<WGPUBuffer>(buffer)) != 64) {
+          std::_Exit(4);
+        }
+        allocator.Free(buffer);
+        std::_Exit(0);
+      },
+      ::testing::ExitedWithCode(0), "Buffer is still mapped");
+#endif
+}
+#endif
 
 }  // namespace
 
