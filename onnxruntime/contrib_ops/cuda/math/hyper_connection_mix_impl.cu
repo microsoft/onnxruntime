@@ -114,8 +114,8 @@ __global__ __launch_bounds__(PT) void HyperConnectionPartialKernel(
 #pragma unroll
     for (int g = 0; g < HC; ++g) rv[g] = C::ToFloat(residual[off_r + static_cast<size_t>(g) * dim + d]);
 
-    // One pass over the owned streams: forming v[h] and consuming it are independent across h,
-    // and at G == 1 this still visits h in order, so `acc` is summed exactly as before.
+      // One pass over the owned streams: forming v[h] and consuming it are independent across h,
+      // and at G == 1 this still visits h in order, so `acc` is summed exactly as before.
 #pragma unroll
     for (int i = 0; i < kOwned; ++i) {
       const int h = group + i * G;
