@@ -134,7 +134,10 @@ class ShaderHelper final {
                                         const std::string& name,
                                         ShaderUsage usage,
                                         const TensorShape& dims,
-                                        uint32_t segments);
+                                        uint32_t segments,
+                                        std::string_view storage_name,
+                                        uint32_t storage_offset_in_elements,
+                                        bool owns_storage_binding);
 
 #ifndef NDEBUG  // if debug build
   Status ValidateVariable(const ProgramInput& input, const ShaderVariableHelper& var) const;

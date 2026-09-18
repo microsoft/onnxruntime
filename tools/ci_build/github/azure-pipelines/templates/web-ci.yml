@@ -64,6 +64,7 @@ parameters:
 
 stages:
 - stage: Precheck_and_extract_commit
+  dependsOn: []
   jobs:
   - job: Precheck_and_extract_commit
     pool:

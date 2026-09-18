@@ -372,24 +372,15 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
-  // Create a temporary threadpool for parallel packing
-  // This is used during model load time to speed up weight prepacking
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
-
-  // Only create threadpool for LUT GEMM path which can benefit from parallel packing
-  // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
-  if (prefer_lut_gemm_) {
+  if (prefer_lut_gemm_ && input_idx == InputIndex::B && !IsOuterPrePackParallelismEnabled()) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
-    tpo.allow_spinning = false;  // Don't spin during model load
+    tpo.allow_spinning = false;
     tpo.auto_set_affinity = false;
-
     temp_threadpool = concurrency::CreateThreadPool(
-        &Env::Default(),
-        tpo,
-        concurrency::ThreadPoolType::INTRA_OP);
-
+        &Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP);
     threadpool_ptr = temp_threadpool.get();
   }
 
@@ -491,7 +482,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         std::memset(packed_b_.get(), 0, packed_b_size_);
       }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
-                                  has_zp_input_, zp_ptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
+                                  has_zp_input_, zp_ptr, nullptr, &mlas_backend_kernel_selector_config_);
 
       // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
       // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
