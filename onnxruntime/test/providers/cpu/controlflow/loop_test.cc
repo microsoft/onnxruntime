@@ -834,32 +834,36 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
 // that is ALSO a body initializer. Such a body has fewer entries in GraphViewer::GetInputs() (which excludes
 // initializer-backed inputs) than the parent Loop's explicit inputs. Previously
 // OuterScopeNodeArgLocationAccumulator() indexed GetInputs() using the parent's input index, reading past the
-// end of the vector and dereferencing an invalid NodeArg pointer. The model must now be rejected with a clean
-// error status rather than crashing / tripping ASan.
-TEST(Loop, BodyInputAlsoInitializer_RejectedWithoutOutOfBoundsRead) {
-  auto create_subgraph = []() {
-    Model model("Loop body with initializer-backed input", false, DefaultLoggingManager().DefaultLogger());
-    auto& graph = model.MainGraph();
+// end of the vector and dereferencing an invalid NodeArg pointer.
+//
+// The model must be rejected during InferenceSession::Initialize() with an INVALID_GRAPH status. Checking the
+// status code and message matters here: the downstream Loop::Info validation of the same condition is
+// ORT_ENFORCE based, which calls abort() in ORT_NO_EXCEPTIONS builds, so the test would silently stop covering
+// the intended path if the rejection moved back there.
+TEST(Loop, BodyInputAlsoInitializerIsRejected) {
+  auto create_body = []() {
+    Model body_model("Loop body with initializer-backed input", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = body_model.MainGraph();
 
-    TypeProto int64_scalar;
-    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    TypeProto int64_tensor;
+    int64_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-    TypeProto bool_scalar;
-    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
-    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    TypeProto bool_tensor;
+    bool_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-    TypeProto float_scalar;
-    float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-    float_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
     // Body inputs: iter_num, cond_in, state_in (a loop-carried variable).
-    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
-    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
-    auto& state_in = graph.GetOrCreateNodeArg("state_in", &float_scalar);
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_tensor);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_tensor);
+    auto& state_in = graph.GetOrCreateNodeArg("state_in", &float_tensor);
 
-    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
-    auto& state_out = graph.GetOrCreateNodeArg("state_out", &float_scalar);
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_tensor);
+    auto& state_out = graph.GetOrCreateNodeArg("state_out", &float_tensor);
 
     graph.AddNode("cond_identity", "Identity", "Forward cond_in to cond_out", {&cond_in}, {&cond_out});
     graph.AddNode("state_identity", "Identity", "Forward state_in to state_out", {&state_in}, {&state_out});
@@ -882,17 +886,56 @@ TEST(Loop, BodyInputAlsoInitializer_RejectedWithoutOutOfBoundsRead) {
     return graph.ToGraphProto();
   };
 
-  OpTester test("Loop", 13);
-  auto body = create_subgraph();
-  test.AddAttribute<GraphProto>("body", body);
-  test.AddInput<int64_t>("M", {1}, {1});
-  test.AddInput<bool>("cond", {1}, {true});
-  test.AddInput<float>("state", {1}, {3.0f});
-  test.AddOutput<float>("final_state", {1}, {3.0f});
+  // Build the main graph: M, cond, state -> Loop -> final_state
+  onnxruntime::Model model("Loop with malformed body", false, ModelMetaData(),
+                           PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto int64_tensor;
+  int64_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  int64_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& M = graph.GetOrCreateNodeArg("M", &int64_tensor);
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_tensor);
+  auto& state = graph.GetOrCreateNodeArg("state", &float_tensor);
+  auto& final_state = graph.GetOrCreateNodeArg("final_state", &float_tensor);
+
+  auto& loop_node = graph.AddNode("loop", "Loop", "Loop with an initializer-backed body input",
+                                  {&M, &cond, &state}, {&final_state});
+  loop_node.AddAttribute("body", create_body());
+
+  graph.SetInputs({&M, &cond, &state});
+  graph.SetOutputs({&final_state});
+
+  Status st = graph.Resolve();
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+  SessionOptions so;
+  so.session_logid = "Loop.BodyInputAlsoInitializerIsRejected";
+  InferenceSession session_object{so, GetEnvironment()};
+  std::string serialized_model;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized_model));
+  std::stringstream model_istream(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(model_istream));
 
   // Must be rejected cleanly during initialization (no crash / no out-of-bounds read).
-  test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  st = session_object.Initialize();
+  ASSERT_FALSE(st.IsOK());
+  EXPECT_EQ(st.Code(), common::StatusCode::INVALID_GRAPH) << st.ErrorMessage();
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::HasSubstr("Subgraph input count does not match the number of inputs provided by the "
+                                   "parent node 'loop'"));
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::HasSubstr("The subgraph declares a graph input that is also one of its initializers"));
 }
 
 // Test a combination of things:

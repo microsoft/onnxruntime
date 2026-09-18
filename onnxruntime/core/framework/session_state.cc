@@ -1519,42 +1519,41 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   // mapping and nothing is accumulated here.
   if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
     // The parent node's explicit inputs map positionally onto the subgraph's declared inputs.
-    // Select the subgraph input vector whose cardinality matches the parent's explicit inputs, mirroring the
-    // logic in Graph::InferAndVerifySubgraphTypes: the ONNX spec requires all subgraph inputs (including those
-    // backed by an initializer) to be provided, so prefer GetInputsIncludingInitializers(); ORT also allows just
-    // the required inputs (GetInputs()) as a user-friendly relaxation. A malformed/hostile model can declare a
-    // subgraph input that is also an initializer, which makes GetInputs() shorter than the parent input list and,
-    // without this guard, causes an out-of-bounds read below ((*subgraph_inputs)[arg_idx]).
+    //
+    // GetInputs() (inputs that are not backed by an initializer) is the list every downstream Loop/Scan path
+    // validates and indexes against - see Loop::Info, scan::detail::Info and scan_8/scan_9's
+    // ValidateSubgraphInput - so it is also the list used for the re-mapping here. Those downstream checks are
+    // ORT_ENFORCE based, which abort() in ORT_NO_EXCEPTIONS builds, so the mismatch has to be rejected with a
+    // clean status here before we get that far.
+    //
+    // A malformed/hostile model can declare a subgraph input that is also an initializer of the subgraph. Such
+    // an input is dropped from GetInputs() while remaining in GetInputsIncludingInitializers(), making
+    // GetInputs() shorter than the parent's input list. Without this check, indexing the shorter vector by the
+    // parent's input index below is an out-of-bounds read.
     const auto num_parent_inputs = parent_node.InputDefs().size();
-    const auto* subgraph_inputs = &subgraph.GetInputsIncludingInitializers();
-    if (subgraph_inputs->size() != num_parent_inputs) {
-      const auto& required_subgraph_inputs = subgraph.GetInputs();
-      if (required_subgraph_inputs.size() != num_parent_inputs) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                               "Subgraph input count does not match the number of inputs provided by the parent node '",
-                               parent_node.Name(), "' (OpType: ", parent_node.OpType(), "). Parent provides ",
-                               num_parent_inputs, " inputs but the subgraph declares ", subgraph_inputs->size(),
-                               " inputs and requires ", required_subgraph_inputs.size(), ".");
-      }
-      subgraph_inputs = &required_subgraph_inputs;
+    const auto& subgraph_inputs = subgraph.GetInputs();
+    if (subgraph_inputs.size() != num_parent_inputs) {
+      const char* initializer_hint =
+          subgraph.GetInputsIncludingInitializers().size() != subgraph_inputs.size()
+              ? " The subgraph declares a graph input that is also one of its initializers, which is not supported"
+                " for the body of a Loop or Scan node."
+              : "";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Subgraph input count does not match the number of inputs provided by the parent node '",
+                             parent_node.Name(), "' (OpType: ", parent_node.OpType(), "). Parent provides ",
+                             num_parent_inputs, " inputs but the subgraph has ", subgraph_inputs.size(),
+                             " inputs that are not also initializers.", initializer_hint);
     }
 
     auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
-                          subgraph_inputs, &parent_node](const NodeArg& input, size_t arg_idx) {
+                          &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
       const auto& name = input.Name();
       OrtValueIndex index = -1;
       ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
 
-      // Defensive bounds check: the selected vector's size is validated to match parent_node.InputDefs() above,
-      // so this should never trip for a well-formed graph, but guard against indexing past the end for a
-      // malformed/hostile model rather than performing an out-of-bounds read.
-      ORT_RETURN_IF_NOT(arg_idx < subgraph_inputs->size(), "Explicit input index ", arg_idx,
-                        " is out of range for subgraph of node '", parent_node.Name(), "' which has ",
-                        subgraph_inputs->size(), " inputs.");
-
       // Store the location of the outer scope value in the map using the subgraph input as the key
       // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
-      outer_scope_arg_to_location_map.insert({(*subgraph_inputs)[arg_idx]->Name(), plan.GetLocation(index)});
+      outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
 
       return Status::OK();
     };
