@@ -44,8 +44,9 @@ __global__ void MixedScaleBranchwiseRMSNormKernel(const T* x, const void* scale,
   const float inv_rms = rsqrtf(sum_sq / hidden + epsilon);
   for (int h = 0; h < hidden; ++h) {
     const int64_t scale_index = shared_scale ? h : (group % branches) * hidden + h;
+    const float weight = scale == nullptr ? 1.0f : LoadScale(scale, scale_index, scale_type);
     y[offset + h] = from_float<T>(
-        to_float<T>(x[offset + h]) * inv_rms * LoadScale(scale, scale_index, scale_type));
+        to_float<T>(x[offset + h]) * inv_rms * weight);
   }
 }
 

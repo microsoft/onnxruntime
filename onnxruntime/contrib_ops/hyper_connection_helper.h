@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime::contrib::hyper_connection {
 
