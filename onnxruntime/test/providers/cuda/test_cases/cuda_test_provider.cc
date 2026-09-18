@@ -34,6 +34,26 @@ namespace onnxruntime {
 void InitializeRegistry();
 void DeleteRegistry();
 
+TEST(CUDAProviderOptionsTest, HostPageableGatherRoundTripAndHash) {
+  const CUDAExecutionProviderInfo default_info =
+      CUDAExecutionProviderInfo::FromProviderOptions({});
+  EXPECT_FALSE(default_info.enable_host_pageable_gather);
+
+  const CUDAExecutionProviderInfo disabled_info =
+      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "0"}});
+  EXPECT_FALSE(disabled_info.enable_host_pageable_gather);
+
+  const CUDAExecutionProviderInfo enabled_info =
+      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "1"}});
+  EXPECT_TRUE(enabled_info.enable_host_pageable_gather);
+  const ProviderOptions serialized = CUDAExecutionProviderInfo::ToProviderOptions(enabled_info);
+  ASSERT_EQ(serialized.count("enable_host_pageable_gather"), 1u);
+  EXPECT_EQ(serialized.at("enable_host_pageable_gather"), "1");
+  EXPECT_TRUE(CUDAExecutionProviderInfo::FromProviderOptions(serialized).enable_host_pageable_gather);
+  EXPECT_NE(std::hash<CUDAExecutionProviderInfo>{}(disabled_info),
+            std::hash<CUDAExecutionProviderInfo>{}(enabled_info));
+}
+
 struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int) override {
     return nullptr;
@@ -96,6 +116,10 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
 #endif
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const CUDAExecutionProviderInfo&) override {
+    return nullptr;
+  }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const ProviderOptions&) override {
     return nullptr;
   }
 

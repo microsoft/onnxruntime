@@ -1403,29 +1403,6 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
             GatherBlockQuantizedDataPolicy::DeviceCopy);
 }
 
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
-TEST(GatherBlockQuantizedOpTest, HostPageableProviderOptionRoundTripAndHash) {
-  CUDAExecutionProviderInfo default_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({});
-  EXPECT_FALSE(default_info.enable_host_pageable_gather);
-
-  CUDAExecutionProviderInfo disabled_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "0"}});
-  EXPECT_FALSE(disabled_info.enable_host_pageable_gather);
-
-  CUDAExecutionProviderInfo enabled_info =
-      CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "1"}});
-  EXPECT_TRUE(enabled_info.enable_host_pageable_gather);
-  const ProviderOptions serialized = CUDAExecutionProviderInfo::ToProviderOptions(enabled_info);
-  ASSERT_EQ(serialized.count("enable_host_pageable_gather"), 1u);
-  EXPECT_EQ(serialized.at("enable_host_pageable_gather"), "1");
-  EXPECT_TRUE(CUDAExecutionProviderInfo::FromProviderOptions(serialized).enable_host_pageable_gather);
-  EXPECT_NE(std::hash<CUDAExecutionProviderInfo>{}(disabled_info),
-            std::hash<CUDAExecutionProviderInfo>{}(enabled_info));
-}
-
-#endif
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
   if (!HasCudaEnvironment(0)) {
@@ -1665,18 +1642,16 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
     ASSERT_TRUE(cuda_ep_ptr->IsGraphCaptured(1));
 
     auto verify_output = [&](std::initializer_list<float> expected) {
-      ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
       std::vector<float> actual(expected.size());
       Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({2, 2}), actual.data(), cpu_memory_info);
       ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
       EXPECT_EQ(actual, std::vector<float>(expected.begin(), expected.end()));
     };
     verify_output({1.0f, 2.0f, 10.0f, 12.0f});
-
     indices = {3, 1};
-    ASSERT_EQ(cudaSuccess,
-              cudaMemcpy(indices_value.GetMutable<Tensor>()->MutableData<int64_t>(), indices.data(),
-                         indices.size() * sizeof(indices[0]), cudaMemcpyHostToDevice));
+    indices = {3, 1};
+    Tensor cpu_indices(DataTypeImpl::GetType<int64_t>(), TensorShape({2}), indices.data(), cpu_memory_info);
+    ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(cpu_indices, *indices_value.GetMutable<Tensor>()));
     ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
     verify_output({1.75f, 2.0f, 1.5f, 2.0f});
 
