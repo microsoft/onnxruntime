@@ -120,11 +120,25 @@ onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
 onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
   FLASH_SOURCES _cuda_plugin_flash_attention_srcs
 )
+onnxruntime_extract_xqa_sources(CUDA_PLUGIN_EP_CU_SRCS
+  XQA_SOURCES _cuda_plugin_xqa_srcs
+)
 onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
   LLM_FP4_SOURCES _cuda_plugin_llm_fp4_srcs
 )
+if(MSVC OR UNIX)
+  foreach(_src IN LISTS _cuda_plugin_llm_sm90_srcs)
+    if(_src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
+      if(MSVC)
+        set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=/wd4068")
+      else()
+        set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=-Wno-unknown-pragmas")
+      endif()
+    endif()
+  endforeach()
+endif()
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -281,6 +295,11 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
+if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  include(deep_gemm)
+  target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_DEEP_GEMM)
+endif()
 
 # TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
 if(ORT_HAS_SM90_OR_LATER)
@@ -311,13 +330,12 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
 )
 
 # SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
-# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
 # SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
 
 # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
 # Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
-# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
-# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+# _cuda_plugin_flash_attention_srcs is only populated when onnxruntime_USE_FLASH_ATTENTION
+# is ON; otherwise the .cu sources are excluded from the build entirely (see extraction above).
 if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
   set(onnxruntime_FLASH_NVCC_THREADS "1")
 endif()
@@ -336,6 +354,21 @@ if(_cuda_plugin_flash_attention_srcs)
     # linker can find the host-side symbols referenced by flash_api.cc. The kernels
     # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
     target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_flash_attention_srcs})
+  endif()
+endif()
+
+if(_cuda_plugin_xqa_srcs)
+  onnxruntime_filter_cuda_archs(_plugin_xqa_cuda_architectures MIN_SM 80)
+  if(_plugin_xqa_cuda_architectures)
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_xqa
+      PARENT onnxruntime_providers_cuda_plugin
+      CUDA_ARCHITECTURES "${_plugin_xqa_cuda_architectures}"
+      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_xqa_srcs})
+  else()
+    target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_xqa_srcs})
   endif()
 endif()
 

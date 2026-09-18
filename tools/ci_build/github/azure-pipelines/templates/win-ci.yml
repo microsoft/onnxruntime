@@ -44,8 +44,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
 
@@ -61,7 +59,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'onnxruntime-Win-CPU-VS2022-Latest'
+  default: 'onnxruntime-Win-CPU-2022'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -136,7 +134,7 @@ stages:
 
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
     ${{ else }}:
       pool:
@@ -157,7 +155,7 @@ stages:
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         # Download and install JDK 17 explicitly instead of relying on a
         # preinstalled JDK, which is no longer guaranteed to be present on the
-        # onnxruntime-Win-CPU-VS2022-Latest agent pool image.
+        # agent pool image.
         - powershell: |
             $jdkUrl = "https://aka.ms/download-jdk/microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"
             $jdkZip = "$(Agent.TempDirectory)\microsoft-jdk-17-windows-${{ parameters.buildArch }}.zip"

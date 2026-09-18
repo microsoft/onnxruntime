@@ -5,9 +5,17 @@
 This work provides operator-specific workspace estimation for the CUDA Attention family. It defines how an
 Attention kernel derives a workspace recipe from a plain problem description and a selected backend.
 
-The generic memory-estimation framework is a separate work track and is out of scope here. That track includes L1/L2
-callback plumbing, kernel registration, shape and max-shape infrastructure, optional-input contracts at the framework
-boundary, partition budgeting, memory planning, and planned-root or preallocation integration.
+The generic memory-estimation framework is a separate work track. PA and PMHA now use its Level-1 and Level-2
+declaration points, but partition budgeting, memory planning, and planned-root or preallocation integration remain
+outside this operator-specific work.
+
+Related design and rollout:
+
+- [Constrained-environment memory roadmap](https://github.com/microsoft/onnxruntime/issues/29775)
+- [Generic workspace framework and future allocation modes](future_directions_constrained_env.md#phase-a-workspace-pre-declaration-declareworkspacerequirements)
+- [Optional-aware Level-2 input-shape contract](https://github.com/microsoft/onnxruntime/pull/32312)
+- [Activation memory-pattern planner](https://github.com/microsoft/onnxruntime/pull/32071)
+- [PA/PMHA Level-1 and Level-2 adapters](https://github.com/microsoft/onnxruntime/pull/32321)
 
 The Attention work owns:
 
@@ -28,23 +36,29 @@ Runtime sizing can be exact because the kernel first selects a backend and then 
 concrete inputs -> runtime dispatch -> selected backend -> exact workspace recipe
 ```
 
-Ahead-of-time (AOT) estimation cannot assume that the same selection is known. Backend feasibility can depend on
+Ahead-of-time (AOT) estimation cannot assume that the same selection is known. Backend reachability can depend on
 optional inputs, build and runtime options, cache state, runner availability, device properties, and concrete dynamic
-sequence lengths. When the exact backend cannot be proven, AOT estimation must enumerate the feasible backend recipes
+sequence lengths. When the exact backend cannot be proven, AOT estimation must enumerate the reachable backend recipes
 and take a safe upper bound:
 
 ```text
-shapes and bounds -> feasible backends -> recipe per backend -> maximum workspace
+shapes and bounds -> reachable backends -> recipe per backend -> maximum workspace
 ```
 
 An estimator must not copy the runtime dispatch cascade or assume that dispatch is monotonic with shape. For example,
 a larger shape may use a fused backend with small workspace while a nearby smaller shape falls back to an unfused
-backend with an `S^2` attention buffer.
+backend with an `S^2` attention buffer. Head eligibility is also non-monotonic: a componentwise upper bound can exceed
+a backend's supported head range while a smaller runtime head remains supported, and equal-head routes can be reachable
+under unequal Q/K and V bounds. Each route reachable at a positive runtime geometry within the bounds must therefore be
+sized using the original componentwise maximum geometry, whose current workspace terms are monotonic. PA's
+`qkv_hidden_sizes` values are immutable node attributes, not shape bounds, so their derived head sizes retain exact
+runtime eligibility checks. Only PA geometry derived without that attribute and PMHA geometry supplied through
+`WorkspaceInputShape` use bounded head reachability.
 
 An AOT result should therefore be classified as:
 
 - **Exact:** the backend and all governing dimensions are proven.
-- **Safe bound:** the maximum workspace across all feasible backend recipes.
+- **Safe bound:** the maximum workspace across all reachable backend recipes.
 - **Unavailable:** a required shape, optional-input, capability, or recipe contract is not available.
 
 ## Recipe architecture
@@ -146,7 +160,108 @@ The planned operator-specific sequence is:
 3. `PagedAttention`.
 4. High-value decoder-specific variants.
 5. Separate memory models for Linear, Sparse, Longformer, quantized, and ONNX Attention operators.
-6. Thin Attention-specific adapters to the generic framework after its API stabilizes.
+6. Continue the generic planner integration after its budget and multi-slot contracts stabilize.
+
+### GroupQueryAttention XQA and Flash recipes
+
+The first GroupQueryAttention backend follow-up adds graph-free, checked
+recipes for two concrete selected backends:
+
+- XQA reproduces the semaphore, row-max, row-sum, and multi-block output
+  accumulator layout from `GetXQAScratchSize`. Its backend allocation also
+  retains the runtime's aligned RoPE Q/K buffers and dynamic FP32 head-sink
+  conversion. A persistent prepacked head sink is not transient workspace.
+- Flash retains the separate LSE, split-LSE, and split-output allocations.
+  Fast decode selects splits using KV heads and the local-window-adjusted KV
+  length, but sizes accumulators using query heads and a head size rounded to
+  32, matching the GQA override.
+
+Flash split selection is discontinuous and concrete workspace is not monotonic
+in KV length. For example, with `B=1`, `S_q=1`, two heads, head size 64, and
+108 SMs, increasing KV length from 13,824 to 13,825 changes the selected split
+count from 54 to 28 and reduces the concrete split workspace. A future bounded
+aggregate must therefore compute a conservative envelope over the bounded
+domain or report unavailable; evaluating only the componentwise maximum is not
+safe.
+
+### GroupQueryAttention MEA, unfused, and complete-route recipes
+
+The stacked route-composition follow-up adds the remaining selected backends:
+
+- Memory-efficient Attention retains separate K and V head-expansion
+  allocations at the effective staged cache capacity and its optional FP32
+  output accumulator.
+- Unfused retains the single combined allocation containing aligned Q BNSH,
+  aligned Y BNSH, aligned FP32 QK, and the aligned softmax upper bound.
+
+A complete concrete route places its preparation regions once, then places the
+selected backend's simultaneously-live allocation regions at checked
+256-byte-aligned offsets. This does not change runtime allocation topology and
+does not select or aggregate routes. cuDNN is explicitly unavailable because a
+graph-free recipe must not query or build a cuDNN graph.
+
+When exactly one past/present K/V pair aliases, non-windowed GQA preserves the
+aliased past tensor in a separate scratch allocation before preprocessing
+overwrites the present cache. The workspace problem records that asymmetric
+alias fact and the past-cache capacity, and the preparation recipe includes the
+checked preservation region. Windowed execution, XQA, and Flash fast decode
+require both K/V pairs to alias and reject this state.
+
+### GroupQueryAttention bounded estimator and framework adapters
+
+The GQA framework follow-up translates positional inputs and immutable kernel
+attributes into a graph-free bounded domain. It covers packed and separate
+Q/K/V, optional past-cache pairs, cache quantization, prompt and decode states,
+windowed staging and compaction, XQA (including unresolved shared-memory
+fallback), regular and fast-decode Flash, MEA, unfused, and cuDNN reachability.
+Head geometry derived from `WorkspaceInputShape` is an upper bound: route
+reachability searches supported smaller head sizes instead of testing only the
+componentwise maximum.
+
+Flash split selection is not monotonic in KV length. The bounded estimator uses
+the runtime block size (`256` for head size at most 64, `128` through 128, and
+`64` above 128) and bounds the selected split count by:
+
+```text
+min(128, SM count, ceil(KV length bound / block size))
+```
+
+It then sizes the split accumulators at that envelope. Complete routes are
+mutually exclusive and are aggregated with `max`, not sum. The resulting
+nonzero estimate is one operator-owned slot-0 root with 256-byte alignment.
+Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares one root from
+the same estimator. Level 1 conservatively includes dynamic head-sink conversion
+because prepack state is unavailable during capability analysis. For a constant
+head sink, it separately charges the possible session-lived FP32 copy and the
+initialization-only device staging copy, even when session configuration later
+disables prepacking. Level 2 can omit the transient conversion region when the
+constructed kernel has a prepacked head sink, so its root can be smaller.
+Neither adapter changes runtime
+`GetScratchBuffer()` calls or allocation topology.
+
+The CPU `total_sequence_length` scalar and past/present aliasing are not
+available through `WorkspaceInputShape`. For non-windowed GQA, the scalar can
+exceed the past-cache sequence dimension and directly scale Flash, MEA, and
+unfused workspace. Non-windowed execution can also preserve one full past
+tensor when exactly one past/present pair aliases. The current adapter therefore
+reports non-windowed GQA as unavailable rather than treating the past shape as
+a total-KV bound or omitting alias-preservation scratch.
+
+Successful estimates are currently limited to sliding-window cache nodes.
+Their final cache capacity remains `C`, while a multi-token step uses a
+transient staged/effective attention extent of `C + S`; a single-token step
+uses `C`. This shape-only bound remains sound even when the scalar
+`total_sequence_length` is much larger. Runtime requires both past/present
+pairs to alias before staging or compaction, excluding the partial-alias
+preservation path. Sliding-window attention bias remains
+unsupported by runtime and is also unavailable to the estimator. If cuDNN can
+be reached anywhere in a graph-free bounded domain, aggregation remains
+unavailable because cuDNN's allocator-based workspace has no sound graph-free
+oracle. Level 1 then uses the generic fallback and Level 2 emits no requirement.
+
+Unlike the log-only PA/PMHA Level-1 probe, a successful GQA Level-1 estimate is
+passed to the #31962 resource accountant as `runtime_workspace_bytes` and can
+affect CUDA partition acceptance.
 
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
@@ -164,9 +279,54 @@ Each Attention family must provide:
 - a runtime source of truth for the selected backend's workspace and layout;
 - checked arithmetic and ABI, grid, alignment, and containment validation;
 - byte-total and view-layout parity with runtime allocation;
-- tests for feasible backend routes and fallback boundaries;
+- tests for reachable backend routes and fallback boundaries;
 - explicit exact, safe-bound, or unavailable estimation semantics;
 - no copied runtime dispatch cascade; and
 - no dependency from the reusable recipe on graph or CUDA runtime types.
 
 This document defines operator-estimation work tracks and invariants. It does not prescribe a public framework API.
+
+## PA/PMHA framework follow-up
+
+The PA/PMHA follow-up connects the graph-free recipes to the current Phase-A framework:
+
+- **Level 1:** CUDA EP `GetCapability()` translates positional node inputs, uses max-shape inference when available
+  (and graph metadata otherwise), enumerates routes that can be reached by some valid runtime geometry up to the
+  supplied shape, and logs the aggregate. This estimate is
+  currently **log-only**. It does not change the resource-accountant value or the partition accept/reject decision.
+- **Level 2:** constructed PA and PMHA kernels translate `WorkspaceInputShape` entries and declare nonzero workspace
+  slots. Missing mandatory inputs, present inputs without required shape metadata, partial required dimensions,
+  malformed geometry, and checked overflow produce no declaration rather than a zero-byte estimate.
+- **Zero-shaped hints:** `WorkspaceInputShape` does not identify whether a shape came from concrete graph metadata or
+  max-shape inference. The adapter therefore treats any zero extent as unavailable and emits no declaration rather
+  than interpreting it as a proven empty runtime output. The current Level-2 requirements boundary represents both
+  unavailable estimates and explicit zero estimates as an empty requirement list, so it cannot expose that
+  distinction. Exact-zero behavior remains available in the graph-free single-route recipe.
+
+Route aggregation does not evaluate the runtime cascade only at the supplied maximum sequence length: dispatch gates
+such as Flash and FP32 MEA thresholds or attention-bias alignment are non-monotonic across smaller runtime shapes.
+Every backend that can be reached for some valid shape up to the supplied geometry is sized at that maximum geometry.
+Unfused is always retained as a possible fallback for a nonempty problem, including alongside Flash, MEA, and
+TensorRT candidates. Bound aggregates deliberately bypass exact equal-head recipe gates because an equal-head route
+can be reachable below unequal maximum bounds; the recipe is still checked at those original maximum bounds. If a
+newly reachable route's max-geometry recipe is invalid, or any included route otherwise cannot be safely bounded,
+estimation is unavailable rather than silently omitting the route. Mutually exclusive route workspaces are combined
+with `max`, never `sum`. The Level-1 aggregate describes one 256-byte-aligned, operator-owned root. PA places its
+simultaneously-live projection and Attention regions in that root; PMHA naturally has only the Attention region:
+
+```text
+PA attention offset = align_up(projection bytes, 256)
+PA root bytes = attention offset + max(reachable attention routes)
+PMHA attention offset = 0
+PMHA root bytes = max(reachable attention routes)
+```
+
+The PA alignment gap is intentional, so its root can be up to 255 bytes larger than the unaligned sum. Level 2 emits
+exactly one slot-0 requirement for either operator, with explicit `alignment_bytes=256`. This does not depend on the
+framework's generic multi-slot capability.
+
+Runtime allocation topology is unchanged: PA continues to make separate dynamic projection and Attention
+`GetScratchBuffer()` allocations, and PMHA continues to dynamically allocate its Attention workspace. Future #32071
+integration must atomically add the explicit `SupportsPreallocatedWorkspace()` planner opt-in, retrieve the planned
+root, and slice it at the declared Attention offset. A declaration alone is not planner opt-in and does not itself
+change runtime allocation behavior.

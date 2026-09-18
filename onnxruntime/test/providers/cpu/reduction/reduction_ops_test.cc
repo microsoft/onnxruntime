@@ -2038,6 +2038,44 @@ TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
            {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset13) {
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_bfloat16) {
 #ifdef USE_DNNL

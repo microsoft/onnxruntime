@@ -18,6 +18,52 @@ namespace onnxruntime {
 
 namespace {
 
+using NodeRange = const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>*;
+using PendingNodeRanges = InlinedVector<std::pair<NodeRange, size_t>>;
+
+Status AddAttributeSubgraphs(const ONNX_NAMESPACE::AttributeProto& attr,
+                             size_t subgraph_depth,
+                             PendingNodeRanges& pending) {
+  if ((attr.has_g() || !attr.graphs().empty()) && subgraph_depth > kMaxModelSubgraphDepth) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Model subgraph depth ", subgraph_depth,
+        " exceeds the maximum supported depth of ", kMaxModelSubgraphDepth, ".");
+  }
+
+  if (attr.has_g()) {
+    pending.push_back({&attr.g().node(), subgraph_depth});
+  }
+  for (const auto& graph : attr.graphs()) {
+    pending.push_back({&graph.node(), subgraph_depth});
+  }
+
+  return Status::OK();
+}
+
+Status ValidateSubgraphDepth(
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>& root_nodes,
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::AttributeProto>* root_attributes = nullptr) {
+  PendingNodeRanges pending{{&root_nodes, 0}};
+  if (root_attributes != nullptr) {
+    for (const auto& attr : *root_attributes) {
+      ORT_RETURN_IF_ERROR(AddAttributeSubgraphs(attr, 1, pending));
+    }
+  }
+
+  while (!pending.empty()) {
+    const auto [nodes, depth] = pending.back();
+    pending.pop_back();
+    for (const auto& node : *nodes) {
+      for (const auto& attr : node.attribute()) {
+        ORT_RETURN_IF_ERROR(AddAttributeSubgraphs(attr, depth + 1, pending));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 // Iterative collection of local function calls from a sequence of nodes,
 // including nodes inside nested subgraph attributes. Avoids recursion to
 // prevent stack overflow from maliciously deep subgraph nesting.
@@ -63,6 +109,19 @@ void CollectLocalFunctionCalls(
 }
 
 }  // namespace
+
+Status ValidateModelSubgraphDepth(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  ORT_RETURN_IF_ERROR(ValidateSubgraphDepth(model_proto.graph().node()));
+  for (const auto& function : model_proto.functions()) {
+    ORT_RETURN_IF_ERROR(ValidateFunctionSubgraphDepth(function));
+  }
+
+  return Status::OK();
+}
+
+Status ValidateFunctionSubgraphDepth(const ONNX_NAMESPACE::FunctionProto& function_proto) {
+  return ValidateSubgraphDepth(function_proto.node(), &function_proto.attribute_proto());
+}
 
 Status BuildLocalFunctionCallGraph(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,

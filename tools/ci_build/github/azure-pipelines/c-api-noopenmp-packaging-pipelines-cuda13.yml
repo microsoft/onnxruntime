@@ -18,8 +18,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
   default: none
@@ -27,7 +25,7 @@ parameters:
 - name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
-  default: 0
+  default: 1
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
@@ -57,12 +55,22 @@ parameters:
   values:
   - 13.0
 
+- name: EnableReactNative
+  displayName: Whether to build React Native packages
+  type: boolean
+  default: false
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
     type: github
     endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
   - repository: 1esPipelines
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
@@ -70,6 +78,8 @@ resources:
 
 variables:
 - template: templates/common-variables.yml
+- name: ComponentDetection.Timeout
+  value: 1800
 - name: win_trt_home
   value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
 - name: win_cuda_home
@@ -79,6 +89,15 @@ variables:
 # Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
   value: '75-real;80-real;86-real;89-real;120-real'
+- ${{ if and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'none')) }}:
+  - name: NpmPackagingMode
+    value: release
+- ${{ elseif and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'rc')) }}:
+  - name: NpmPackagingMode
+    value: rc
+- ${{ else }}:
+  - name: NpmPackagingMode
+    value: dev
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -87,7 +106,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: CFSClean2,CFSClean3,DefaultDeny
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
@@ -95,7 +114,7 @@ extends:
         enabled: true
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
       componentgovernance:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
@@ -191,7 +210,9 @@ extends:
         DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
 
-    - template: stages/nodejs-npm-packaging-stage.yml
+    - template: stages/npm-packaging-stage.yml
       parameters:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+        EnableReactNative: ${{ parameters.EnableReactNative }}
