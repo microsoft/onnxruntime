@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <vector>
 #include "core/common/safeint.h"
@@ -500,6 +501,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   void* preallocated_workspace = nullptr;
   const size_t declared_workspace_bytes =
       declared_workspace_bytes_.load(std::memory_order_relaxed);
+  static const bool trace_preallocated_workspace =
+      ParseEnvironmentVariableWithDefault<int>(
+          "ORT_CUDA_TRACE_PREALLOCATED_WORKSPACE", 0) != 0;
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   const bool workspace_bound_satisfied =
       sliding_window_cache_ ||
@@ -511,6 +515,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
   size_t preallocated_workspace_offset = 0;
+  size_t preallocated_workspace_region_count = 0;
+  size_t preallocated_workspace_region_bytes = 0;
+  size_t scratch_fallback_region_count = 0;
+  size_t scratch_fallback_region_bytes = 0;
   auto allocate_workspace = [&](size_t bytes, IAllocatorUniquePtr<void>& fallback) -> void* {
     if (bytes == 0) {
       return nullptr;
@@ -523,10 +531,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       if (aligned_offset <= declared_workspace_bytes &&
           bytes <= declared_workspace_bytes - aligned_offset) {
         preallocated_workspace_offset = SafeInt<size_t>(aligned_offset) + bytes;
+        if (trace_preallocated_workspace) {
+          ++preallocated_workspace_region_count;
+          preallocated_workspace_region_bytes += bytes;
+        }
         return reinterpret_cast<uint8_t*>(preallocated_workspace) + aligned_offset;
       }
     }
 
+    if (trace_preallocated_workspace) {
+      ++scratch_fallback_region_count;
+      scratch_fallback_region_bytes += bytes;
+    }
     fallback = GetScratchBuffer<void>(bytes, GetComputeStream(context));
     return fallback.get();
   };
@@ -1023,6 +1039,24 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
     data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+  }
+
+  if (trace_preallocated_workspace) {
+    std::cerr << "[cuda_workspace_check] op=GroupQueryAttention"
+              << " node_index=" << this->Node().Index()
+              << " node_name=" << this->Node().Name()
+              << " phase=" << (parameters.sequence_length == 1 ? "decode" : "prefill")
+              << " root="
+              << (declared_workspace_bytes == 0
+                      ? "unplanned"
+                      : (preallocated_workspace == nullptr ? "scratch_fallback" : "preallocated"))
+              << " declared_bytes=" << declared_workspace_bytes
+              << " consumed_bytes=" << preallocated_workspace_offset
+              << " preallocated_regions=" << preallocated_workspace_region_count
+              << " preallocated_region_bytes=" << preallocated_workspace_region_bytes
+              << " scratch_fallback_regions=" << scratch_fallback_region_count
+              << " scratch_fallback_region_bytes=" << scratch_fallback_region_bytes
+              << std::endl;
   }
 
   if (kernel_options_->AllowDebugInfo()) {

@@ -881,6 +881,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
   last_compute_used_preallocated_workspace_.store(false, std::memory_order_relaxed);
+  static const bool trace_preallocated_workspace =
+      ParseEnvironmentVariableWithDefault<int>(
+          "ORT_CUDA_TRACE_PREALLOCATED_WORKSPACE", 0) != 0;
 
   DUMP_TENSOR_INIT();
 
@@ -982,6 +985,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         const bool use_preallocated_workspace = workspace != nullptr;
         last_compute_used_preallocated_workspace_.store(
             use_preallocated_workspace, std::memory_order_relaxed);
+        if (trace_preallocated_workspace) {
+          std::cerr << "[cuda_workspace_check] op=MatMulNBits"
+                    << " path=fpa_intb_cutlass"
+                    << " node_index=" << this->Node().Index()
+                    << " node_name=" << this->Node().Name()
+                    << " source="
+                    << (use_preallocated_workspace ? "preallocated" : "scratch_fallback")
+                    << " requested_bytes=" << workspace_size
+                    << std::endl;
+        }
         if (!use_preallocated_workspace)
 #endif
         {
@@ -1093,6 +1106,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                 << " required_bytes=" << legacy_workspace->size_bytes
                 << std::endl;
     }
+  }
+  if (trace_preallocated_workspace) {
+    std::cerr << "[cuda_workspace_check] op=MatMulNBits"
+              << " path=legacy"
+              << " node_index=" << this->Node().Index()
+              << " node_name=" << this->Node().Name()
+              << " source="
+              << (workspace == nullptr ? "scratch_fallback" : "preallocated")
+              << " requested_bytes=" << legacy_workspace->size_bytes
+              << std::endl;
   }
   last_compute_used_preallocated_workspace_.store(
       workspace != nullptr, std::memory_order_relaxed);

@@ -4,8 +4,8 @@
 
 These local benchmarks compare the existing dynamic workspace allocation path with
 run-scoped static workspace preallocation for CUDA kernels. The measured Qwen
-results currently exercise `MatMulNBits` preallocation. `GroupQueryAttention` workspace estimation and slot-0 runtime consumption are
-also included and reported separately below.
+results exercise both `MatMulNBits` and `GroupQueryAttention` workspace
+preallocation.
 
 The current RTX 5090 results approximate ONNX Runtime GenAI generation with a
 1,024-token prefill followed by 128 batch-1 decode steps. Fixed-capacity CUDA
@@ -66,6 +66,12 @@ For robust latency analysis, the benchmark additionally reports:
 |---|---:|---:|---:|
 | NVIDIA GeForce RTX 5090 Laptop GPU | SM120 | 13.3 | 610.62 |
 | NVIDIA T1000, 4 GiB | SM75 | 12.8 | Not recorded |
+
+## ORT GenAI Python benchmark
+
+The ORT GenAI methodology, runtime-consumption verification, and Python
+benchmark results are maintained separately in
+[`ort_genai_workspace_benchmark_results.md`](ort_genai_workspace_benchmark_results.md).
 
 The **WDDM process peak** is sampled every 5 ms from
 `IDXGIAdapter3::QueryVideoMemoryInfo(DXGI_MEMORY_SEGMENT_GROUP_LOCAL)`. The DXGI
@@ -142,6 +148,24 @@ process peak and ORT arena measurements were:
 | Qwen 2.5 1.5B, fpA-intB | 2,294 MiB | 2,294 MiB | 2,376 MiB | +82 MiB | 420,758,784 B | 421,053,952 B | 506,283,776 B |
 | Qwen 2.5 7B, legacy | 6,572 MiB | 6,314 MiB | 6,390 MiB | -182 MiB | 943,736,064 B | 676,513,280 B | 754,075,392 B |
 | Qwen 2.5 7B, fpA-intB | 6,258 MiB | 6,256 MiB | 6,430 MiB | +172 MiB | 573,047,040 B | 573,047,040 B | 754,057,984 B |
+
+The corresponding latency measurements were:
+
+| Model and path | Scratch end-to-end | MatMulNBits planned | Combined planned | Combined vs MatMulNBits planned | Combined vs scratch | Prefill change vs MatMulNBits planned | Decode change vs MatMulNBits planned |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen 2.5 1.5B, legacy | 773.62 ms | 791.96 ms | 824.27 ms | +4.1% | +6.5% | -1.7% | +4.4% |
+| Qwen 2.5 1.5B, fpA-intB | 1,633.14 ms | 1,540.90 ms | 1,685.13 ms | +9.4% | +3.2% | -1.8% | +9.5% |
+| Qwen 2.5 7B, legacy | 1,806.95 ms | 1,826.51 ms | 1,758.20 ms | -3.7% | -2.7% | -1.1% | -3.3% |
+| Qwen 2.5 7B, fpA-intB | 1,859.20 ms | 1,936.64 ms | 1,697.69 ms | -12.3% | -8.7% | -3.1% | -10.6% |
+
+These are 10% trimmed means from one fresh process per mode. The direction is
+not consistent across model sizes: combined planning was slower in both 1.5B
+runs and faster in both 7B runs, with most of the end-to-end difference coming
+from decode. Earlier balanced multi-process measurements showed substantial
+process-dependent tactic and decode-stall variation, especially for 7B and
+fpA-intB. These values therefore do not establish either a GQA latency speedup
+or regression. A balanced scratch/MatMul-only/combined rerun would be required
+for latency attribution.
 
 The incremental GQA effect within the planned configurations was:
 
