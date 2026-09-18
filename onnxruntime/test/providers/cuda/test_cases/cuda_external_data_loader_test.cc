@@ -85,6 +85,7 @@ void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_coun
     CreateExternalDataFile(length, path, {}, load);
     ScopedFileDeleter file_deleter{path};
     ASSERT_EQ(cudaSuccess, cudaMemset(tensor.MutableDataRaw(), 0xa5, length));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(nullptr));
     ASSERT_STATUS_OK(loader->LoadTensor(Env::Default(), path, kFilePrefixSize, length, tensor));
 
     std::vector<uint8_t> output(length);
