@@ -208,8 +208,10 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
 
     // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
     PrepackProgram prepack_program{m, k};
-    constexpr uint32_t kSubgroupSize = 32;
-    prepack_program.SetWorkgroupSize(kSubgroupSize);
+    prepack_program.SetWorkgroupSize(config.subgroupSize);
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      prepack_program.SetSubgroupSize(config.subgroupSize);
+    }
 
     // Pad M to workgroup tile size so all subgroups read valid prepacked data.
     const uint32_t padded_M = ((M + tile_size_a - 1) / tile_size_a) * tile_size_a;
@@ -244,10 +246,9 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer};
   mul_program.SetWorkgroupSize(work_group_size);
 
-  // On Intel, use a fixed subgroup size of 32 for better performance.
-  if (context.AdapterInfo().vendor == std::string_view{"intel"} &&
-      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-    mul_program.SetSubgroupSize(32);
+  // Pin kernels running on variable-size adapters to the subgroup size they were written for.
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    mul_program.SetSubgroupSize(config.subgroupSize);
   }
 
   uint32_t dispatch_x = (N + tile_size_b - 1) / tile_size_b;

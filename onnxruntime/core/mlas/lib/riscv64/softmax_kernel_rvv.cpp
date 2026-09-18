@@ -15,6 +15,16 @@ Abstract:
     focuses on the float32 primitives used by Softmax and LogSoftmax:
     reduction, sum-exp, normalization, and log-softmax output.
 
+    The two reducing kernels carry their result in a vector across the row and
+    reduce once at the end, which is what the generic implementations do. A
+    reduction costs several times what an add or a max costs, so issuing one per
+    group turns the row into a chain of them.
+
+    LMUL is 4 throughout. The polynomial in the exponential is a dependency
+    chain, so what the loop wants is a group wide enough to keep independent work
+    in flight across it rather than the widest group available: LMUL 8 leaves the
+    register file four names and spills.
+
 --*/
 
 #include "mlasi.h"
@@ -38,68 +48,76 @@ constexpr float kPoly4 = 0x1.fffff6p-2f;
 constexpr float kPoly56 = 0x1.000000p+0f;
 constexpr int32_t kMaximumExponentBits = 0x3F800000;
 
+//
+// The polynomial is a multiply and an add rather than a fused multiply add.
+// Horner's form wants the addend to be the constant, and the fused instruction
+// takes its addend from a vector, so every step would first have to broadcast
+// the constant into one. That is an instruction and a register group per step,
+// and it measures no faster than the pair it would replace.
+//
+
 MLAS_FORCEINLINE
-vfloat32m1_t
+vfloat32m4_t
 MlasComputeExpVectorRvv(
-    vfloat32m1_t value,
+    vfloat32m4_t value,
     size_t vl
     )
 {
-    value = __riscv_vfmax_vf_f32m1(value, kExpLowerRangeSumExp, vl);
+    value = __riscv_vfmax_vf_f32m4(value, kExpLowerRangeSumExp, vl);
 
-    vfloat32m1_t scaled = __riscv_vfmul_vf_f32m1(value, kLog2Reciprocal, vl);
-    vfloat32m1_t biased = __riscv_vfadd_vf_f32m1(scaled, kRoundingBias, vl);
-    vfloat32m1_t reduced_m = __riscv_vfsub_vf_f32m1(biased, kRoundingBias, vl);
-    vfloat32m1_t reduced = __riscv_vfadd_vv_f32m1(
-        __riscv_vfmul_vf_f32m1(reduced_m, kLog2High, vl), value, vl);
-    reduced = __riscv_vfadd_vv_f32m1(
-        __riscv_vfmul_vf_f32m1(reduced_m, kLog2Low, vl), reduced, vl);
+    vfloat32m4_t scaled = __riscv_vfmul_vf_f32m4(value, kLog2Reciprocal, vl);
+    vfloat32m4_t biased = __riscv_vfadd_vf_f32m4(scaled, kRoundingBias, vl);
+    vfloat32m4_t reduced_m = __riscv_vfsub_vf_f32m4(biased, kRoundingBias, vl);
+    vfloat32m4_t reduced = __riscv_vfadd_vv_f32m4(
+        __riscv_vfmul_vf_f32m4(reduced_m, kLog2High, vl), value, vl);
+    reduced = __riscv_vfadd_vv_f32m4(
+        __riscv_vfmul_vf_f32m4(reduced_m, kLog2Low, vl), reduced, vl);
 
-    vfloat32m1_t poly = __riscv_vfmv_v_f_f32m1(kPoly0, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly1, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly2, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly3, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly4, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly56, vl);
-    poly = __riscv_vfadd_vf_f32m1(
-        __riscv_vfmul_vv_f32m1(poly, reduced, vl), kPoly56, vl);
+    vfloat32m4_t poly = __riscv_vfmv_v_f_f32m4(kPoly0, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly1, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly2, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly3, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly4, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly56, vl);
+    poly = __riscv_vfadd_vf_f32m4(
+        __riscv_vfmul_vv_f32m4(poly, reduced, vl), kPoly56, vl);
 
-    vint32m1_t exponent_bits = __riscv_vreinterpret_v_f32m1_i32m1(biased);
-    exponent_bits = __riscv_vsll_vx_i32m1(exponent_bits, 23, vl);
-    exponent_bits = __riscv_vadd_vx_i32m1(exponent_bits, kMaximumExponentBits, vl);
-    vfloat32m1_t scale = __riscv_vreinterpret_v_i32m1_f32m1(exponent_bits);
+    vint32m4_t exponent_bits = __riscv_vreinterpret_v_f32m4_i32m4(biased);
+    exponent_bits = __riscv_vsll_vx_i32m4(exponent_bits, 23, vl);
+    exponent_bits = __riscv_vadd_vx_i32m4(exponent_bits, kMaximumExponentBits, vl);
+    vfloat32m4_t scale = __riscv_vreinterpret_v_i32m4_f32m4(exponent_bits);
 
-    return __riscv_vfmul_vv_f32m1(poly, scale, vl);
+    return __riscv_vfmul_vv_f32m4(poly, scale, vl);
 }
 
 MLAS_FORCEINLINE
 float
 MlasReduceSumRvv(
-    vfloat32m1_t value,
+    vfloat32m4_t value,
     size_t vl
     )
 {
-    vfloat32m1_t accumulator = __riscv_vfmv_s_f_f32m1(0.0f, 1);
-    accumulator = __riscv_vfredusum_vs_f32m1_f32m1(value, accumulator, vl);
-    return __riscv_vfmv_f_s_f32m1_f32(accumulator);
+    vfloat32m1_t accumulation = __riscv_vfmv_s_f_f32m1(0.0f, 1);
+    accumulation = __riscv_vfredusum_vs_f32m4_f32m1(value, accumulation, vl);
+    return __riscv_vfmv_f_s_f32m1_f32(accumulation);
 }
 
 MLAS_FORCEINLINE
 float
 MlasReduceMaxRvv(
-    vfloat32m1_t value,
+    vfloat32m4_t value,
     size_t vl
     )
 {
-    vfloat32m1_t accumulator =
+    vfloat32m1_t maximum =
         __riscv_vfmv_s_f_f32m1(std::numeric_limits<float>::lowest(), 1);
-    accumulator = __riscv_vfredmax_vs_f32m1_f32m1(value, accumulator, vl);
-    return __riscv_vfmv_f_s_f32m1_f32(accumulator);
+    maximum = __riscv_vfredmax_vs_f32m4_f32m1(value, maximum, vl);
+    return __riscv_vfmv_f_s_f32m1_f32(maximum);
 }
 
 }  // namespace
@@ -111,19 +129,28 @@ MlasReduceMaximumF32KernelRvv(
     size_t N
     )
 {
-    float maximum = std::numeric_limits<float>::lowest();
+    const size_t VectorLength = __riscv_vsetvlmax_e32m4();
+
+    //
+    // The accumulator starts at the identity and the groups are taken into it
+    // with the tail undisturbed, so a final group shorter than the rest leaves
+    // the lanes it does not reach at that identity.
+    //
+
+    vfloat32m4_t maximum =
+        __riscv_vfmv_v_f_f32m4(std::numeric_limits<float>::lowest(), VectorLength);
 
     while (N > 0) {
-        size_t vl = __riscv_vsetvl_e32m1(N);
-        vfloat32m1_t input = __riscv_vle32_v_f32m1(Input, vl);
-        input = __riscv_vfmax_vf_f32m1(input, maximum, vl);
-        maximum = MlasReduceMaxRvv(input, vl);
+        const size_t vl = __riscv_vsetvl_e32m4(N);
+
+        maximum = __riscv_vfmax_vv_f32m4_tu(maximum, maximum,
+                                            __riscv_vle32_v_f32m4(Input, vl), vl);
 
         Input += vl;
         N -= vl;
     }
 
-    return maximum;
+    return MlasReduceMaxRvv(maximum, VectorLength);
 }
 
 float
@@ -136,26 +163,28 @@ MlasComputeSumExpF32KernelRvv(
     )
 {
     const float negative_maximum = *NegativeMaximum;
-    float accumulation = 0.0f;
+    const size_t VectorLength = __riscv_vsetvlmax_e32m4();
+
+    vfloat32m4_t accumulation = __riscv_vfmv_v_f_f32m4(0.0f, VectorLength);
 
     while (N > 0) {
-        size_t vl = __riscv_vsetvl_e32m1(N);
-        vfloat32m1_t input = __riscv_vle32_v_f32m1(Input, vl);
-        vfloat32m1_t shifted = __riscv_vfadd_vf_f32m1(input, negative_maximum, vl);
-        vfloat32m1_t exp_value = MlasComputeExpVectorRvv(shifted, vl);
+        const size_t vl = __riscv_vsetvl_e32m4(N);
+        vfloat32m4_t input = __riscv_vle32_v_f32m4(Input, vl);
+        vfloat32m4_t shifted = __riscv_vfadd_vf_f32m4(input, negative_maximum, vl);
+        vfloat32m4_t exp_value = MlasComputeExpVectorRvv(shifted, vl);
 
         if (Output != nullptr) {
-            __riscv_vse32_v_f32m1(Output, exp_value, vl);
+            __riscv_vse32_v_f32m4(Output, exp_value, vl);
             Output += vl;
         }
 
-        accumulation += MlasReduceSumRvv(exp_value, vl);
+        accumulation = __riscv_vfadd_vv_f32m4_tu(accumulation, accumulation, exp_value, vl);
 
         Input += vl;
         N -= vl;
     }
 
-    return accumulation;
+    return MlasReduceSumRvv(accumulation, VectorLength);
 }
 
 void
@@ -169,10 +198,10 @@ MlasComputeSoftmaxOutputF32KernelRvv(
     const float scale = Parameters[0];
 
     while (N > 0) {
-        size_t vl = __riscv_vsetvl_e32m1(N);
-        vfloat32m1_t output = __riscv_vle32_v_f32m1(Output, vl);
-        output = __riscv_vfmul_vf_f32m1(output, scale, vl);
-        __riscv_vse32_v_f32m1(Output, output, vl);
+        const size_t vl = __riscv_vsetvl_e32m4(N);
+        vfloat32m4_t output = __riscv_vle32_v_f32m4(Output, vl);
+        output = __riscv_vfmul_vf_f32m4(output, scale, vl);
+        __riscv_vse32_v_f32m4(Output, output, vl);
 
         Output += vl;
         N -= vl;
@@ -192,11 +221,11 @@ MlasComputeLogSoftmaxOutputF32KernelRvv(
     const float logarithm = Parameters[1];
 
     while (N > 0) {
-        size_t vl = __riscv_vsetvl_e32m1(N);
-        vfloat32m1_t input = __riscv_vle32_v_f32m1(Input, vl);
-        input = __riscv_vfadd_vf_f32m1(input, negative_maximum, vl);
-        input = __riscv_vfsub_vf_f32m1(input, logarithm, vl);
-        __riscv_vse32_v_f32m1(Output, input, vl);
+        const size_t vl = __riscv_vsetvl_e32m4(N);
+        vfloat32m4_t input = __riscv_vle32_v_f32m4(Input, vl);
+        input = __riscv_vfadd_vf_f32m4(input, negative_maximum, vl);
+        input = __riscv_vfsub_vf_f32m4(input, logarithm, vl);
+        __riscv_vse32_v_f32m4(Output, input, vl);
 
         Input += vl;
         Output += vl;
