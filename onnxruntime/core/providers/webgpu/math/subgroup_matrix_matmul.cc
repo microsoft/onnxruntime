@@ -321,10 +321,8 @@ std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeConte
   // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
   // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
   // subgroup-size control.
-  int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16) ||
-      !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+  const auto config_index = SelectSubgroupMatrixConfig(context, /*is_fp16=*/true, {{8, 16, 16, 32}});
+  if (!config_index || !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -335,7 +333,7 @@ std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeConte
   if (!tiling_selector) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixMatMulImpl>(config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixMatMulImpl>(*config_index, std::move(tiling_selector));
 }
 
 }  // namespace webgpu

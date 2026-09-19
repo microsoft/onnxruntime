@@ -6,7 +6,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
+#include <optional>
 #include <string_view>
+
+#include <gsl/span>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -68,6 +72,13 @@ struct SupportedSubgroupMatrixConfig {
   }
 };
 
+struct SubgroupMatrixConfigPreference {
+  uint32_t M;
+  uint32_t N;
+  uint32_t K;
+  uint32_t subgroupSize;
+};
+
 // A fixed-size adapter already guarantees the required size. An adapter exposing a range needs
 // subgroup-size control so the kernel can select its required size instead of relying on the
 // implementation's choice.
@@ -88,10 +99,21 @@ inline constexpr std::array<SupportedSubgroupMatrixConfig, 4> supported_subgroup
     {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, false},
 }};
 
-// Returns true and sets config_index (into supported_subgroup_matrix_configs) when the device
-// reports one of the supported configs matching the requested output precision. is_fp16 selects
-// F16-output configs; otherwise F32-output configs.
-bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_fp16, int32_t& config_index);
+// Returns the first device-supported config matching the operation's preference list.
+// Preference order, rather than adapter or global config-table order, determines the result.
+std::optional<int32_t> SelectSubgroupMatrixConfig(
+    const ComputeContextBase& context,
+    bool is_fp16,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+
+namespace detail {
+
+// Separated from device capability discovery for focused preference-order testing.
+std::optional<int32_t> SelectSubgroupMatrixConfigFromCandidates(
+    gsl::span<const int32_t> candidate_indices,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+
+}  // namespace detail
 
 }  // namespace webgpu
 }  // namespace onnxruntime
