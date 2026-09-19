@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
 #include <span>
 #include <string>
@@ -107,7 +106,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
-  bool IsRunActive() const { return run_active_.load(); }
 
   // WebGPU EP reuses the Device ID as the key to get the WebGpuContext instance.
   int GetDeviceId() const override { return context_id_; }
@@ -122,6 +120,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
+  webgpu::BufferManager& InitializerBufferManager() const;
+  webgpu::CommandRecordingState& Recording() const { return *recording_; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
@@ -145,7 +145,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
-  std::atomic<bool> run_active_{false};
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
@@ -158,6 +157,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
+  // Command recording is per session and is passed separately from the context-level BufferManagers.
+  std::unique_ptr<webgpu::CommandRecordingState> recording_;
 
   // Per-graph buffer managers keyed by annotation ID.
   // Each captured graph gets its own buffer manager so that buffer caches

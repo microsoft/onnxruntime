@@ -24,6 +24,12 @@ void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
   }
 }
 
+bool CanClearOnRecycle(WGPUBuffer buffer) {
+  const auto usage = wgpuBufferGetUsage(buffer);
+  return (usage & WGPUBufferUsage_Storage) != 0 && (usage & WGPUBufferUsage_CopyDst) != 0 &&
+         wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped;
+}
+
 }  // namespace
 
 class DisabledCacheManager : public IBufferCacheManager {
@@ -489,13 +495,15 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
 
 BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
     : context_{context},
+      clear_storage_on_recycle_{storage_buffer_cache_mode == BufferCacheMode::Bucket ||
+                                storage_buffer_cache_mode == BufferCacheMode::Simple},
       storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
       default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)} {
 }
 
-void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
+void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
   // If the buffer is mapped, we can directly write to it.
   void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
@@ -522,14 +530,14 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
+  auto& command_encoder = context_.GetCommandEncoder(recording);
+  context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this));
+  ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
 }
 
-void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
+void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
   EnforceBufferUnmapped(context_, src);
   EnforceBufferUnmapped(context_, dst);
@@ -541,30 +549,38 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
+  auto& command_encoder = context_.GetCommandEncoder(recording);
+  context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero,
-                                 bool submit_zero_initialize) const {
-  auto& cache = GetCacheManager(usage);
-  auto buffer_size = cache.CalculateBufferSize(size);
-
-  auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
+WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage) const {
+  size_t buffer_size;
+  WGPUBuffer buffer;
+  const bool zeroed_cache = clear_storage_on_recycle_ && (usage & wgpu::BufferUsage::Storage);
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    auto& cache = GetCacheManager(usage);
+    buffer_size = cache.CalculateBufferSize(size);
+    buffer = cache.TryAcquireCachedBuffer(buffer_size);
+  }
+  // Reclaim outside-Run frees without cutting a live compute batch short.
+  if (!buffer && zeroed_cache && !recording.has_unsubmitted_work && !recording.pending_buffers.empty()) {
+    ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    std::lock_guard<std::mutex> lock{mutex_};
+    buffer = storage_cache_->TryAcquireCachedBuffer(buffer_size);
+  }
   if (buffer) {
-    if (initialize_to_zero) {
-      // initialize_to_zero controls whether a cached buffer is cleared. submit_zero_initialize separately controls
-      // whether that clear is submitted before Create returns. Session::Run defers submission to preserve dispatch
-      // batching, while allocations made outside Run submit immediately so subsequent queue work observes the clear.
+    if ((usage & wgpu::BufferUsage::Storage) && !zeroed_cache) {
+      // Capture caches retain their allocation-time policy: their buffers may still be
+      // referenced by replay commands after the CPU Tensor is released. Submit the clear
+      // before returning because the next consumer may use a different recording.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
-      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
-      context_.EndComputePass();
-      context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
-      if (submit_zero_initialize) {
-        ORT_THROW_IF_ERROR(context_.Flush(*this));
-      }
+      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
+      context_.EndComputePass(recording);
+      context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
+      ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
       return buffer_guard.MoveToCHandle();
     }
     return buffer;
@@ -581,7 +597,10 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool init
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 
-  cache.RegisterBuffer(buffer, size);
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    GetCacheManager(usage).RegisterBuffer(buffer, size);
+  }
   return buffer;
 }
 
@@ -594,15 +613,21 @@ bool BufferManager::SupportsUMA() const {
 #endif  // !defined(__wasm__)
 }
 
-void BufferManager::Release(WGPUBuffer buffer) const {
+void BufferManager::Release(CommandRecordingState& recording, WGPUBuffer buffer) const {
   EnforceBufferUnmapped(context_, buffer);
+  if (clear_storage_on_recycle_ || recording.has_unsubmitted_work) {
+    recording.pending_buffers.emplace_back(wgpu::Buffer::Acquire(buffer));
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock{mutex_};
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
-void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
+void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
   // Encode pending deferred dispatches before recording the readback; the flush below submits both
   // in order.
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
 
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
@@ -612,10 +637,10 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
+  auto& command_encoder = context_.GetCommandEncoder(recording);
+  context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this));
+  ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
 
   // TODO: revise wait in whole project
 
@@ -647,11 +672,47 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(GraphCaptureState graph_capture_state) const {
-  storage_cache_->OnRefresh(graph_capture_state);
-  uniform_cache_->OnRefresh(graph_capture_state);
-  query_resolve_cache_->OnRefresh(graph_capture_state);
-  default_cache_->OnRefresh(graph_capture_state);
+void BufferManager::ClearPendingBuffers(CommandRecordingState& recording) const {
+  if (!clear_storage_on_recycle_ || recording.pending_buffers.empty()) {
+    return;
+  }
+  context_.EndComputePass(recording);
+  for (const auto& buffer : recording.pending_buffers) {
+    if (CanClearOnRecycle(buffer.Get())) {
+      context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer.GetSize());
+    }
+  }
+}
+
+void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  for (auto& buffer : recording.pending_buffers) {
+    if (clear_storage_on_recycle_ && (buffer.GetUsage() & wgpu::BufferUsage::Storage) &&
+        !CanClearOnRecycle(buffer.Get())) {
+      // Non-clearable storage must not enter a cache advertised as zero-initialized.
+      buffer = nullptr;
+    } else {
+      GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
+    }
+  }
+  recording.pending_buffers.clear();
+
+  storage_cache_->OnRefresh(recording.graph_capture_state);
+  uniform_cache_->OnRefresh(recording.graph_capture_state);
+  query_resolve_cache_->OnRefresh(recording.graph_capture_state);
+  default_cache_->OnRefresh(recording.graph_capture_state);
+}
+
+std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {
+  std::lock_guard<std::mutex> lock{mutex_};
+  return GetCacheManager(usage).ExtractCachedBuffers();
+}
+
+void BufferManager::AbsorbCachedBuffers(
+    wgpu::BufferUsage usage,
+    std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) {
+  std::lock_guard<std::mutex> lock{mutex_};
+  GetCacheManager(usage).AbsorbCachedBuffers(std::move(buffers));
 }
 
 IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {
