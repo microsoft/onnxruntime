@@ -31,16 +31,17 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // daf7aa96ffddeaaeabed7e8443f06e17d95660758d717a00948a19e7000c7712
+#include "wgsl_template_gen/string_table.h"  // aa513d49babfbc115c3eb0ffe5cf24757dcf509dd7ef945489cc1c1ab9acb1c8
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // b924b0e7b6902b0a6786b9a536c68d3ffee9d8a1603da987abb89dcd82672156
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 26616da09d38ec21713de728effdb3b9feb2340091724b4c321ece03188ae37a
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 4ed8f01f59daebbf590309462caaed6e2695d1355c940f85ce156d57badca705
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 44273eeffa55ca1ba04a76b8e5044e804165551a88f93a9bcdd4afda21a3bd2f
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // cd817815871e8dadab0d91b2373a80120b35e60e6e14c462e0717575dfb9d6da
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 8d7d221c1474801542197778c529e2204df0dc4d21d8bf7a31530821b6350405
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // c8a570a5d8ff663432f0d9c94c3a5452110aad6d2f19ad4adc7e29fa2c3a4321
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 60101f484a36a2b8a5478f1920633effbf4305cd6d7cb4e2e96cae3b3c961d29
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // e24ca42a283777d0b77674df983786380237dcdee3d874a66193cb54036e09a9
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 692b5b720f7ec79fcc5a4084e3148b92879f51d8da2bad960517778d9aab4a72
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // d2948ee6bdc1270089e48968545007b118e2bcd2d87c7711eb7640c4f19ad6c1
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 4f073a0a558bae0b59821c90fcced631e40bf244970657271aa9a934a08a6ee4
+#include "wgsl_template_gen/generated/tensor/pad.h"  // d7a8bb9fd50535f6847951a2b57d075efb67ca076039b7b2359793aadcf174a4
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

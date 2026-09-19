@@ -65,6 +65,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
     tester = std::make_unique<OpTester>("Conv", opset);
   }
 
+  tester->ConfigSkipUnsupportedWebGpuFp16();
   tester->AddAttribute("group", attributes.group);
   tester->AddAttribute("kernel_shape", attributes.kernel_shape);
 
@@ -849,8 +850,6 @@ TEST(ConvFp16Test, Conv2D_AutoPad2) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
-// TODO: Enable Conv3D fp16 tests for WebGPU when the test infrastructure supports
-// conditionally skipping based on device capabilities (e.g., wgpu::FeatureName::ShaderF16).
 TEST(ConvFp16Test, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad
@@ -859,7 +858,7 @@ TEST(ConvFp16Test, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -898,7 +897,7 @@ TEST(ConvFp16Test, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -942,7 +941,7 @@ TEST(ConvFp16Test, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -1666,7 +1665,7 @@ TEST(ConvFp16Test, Pointwise_3D) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {kWebGpuExecutionProvider}          // excluded EPs
+      {}                                  // excluded EPs
   };
 
   vector<MLFloat16> X = {

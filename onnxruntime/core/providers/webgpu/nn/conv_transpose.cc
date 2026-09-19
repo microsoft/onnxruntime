@@ -32,6 +32,24 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
                            " W: ", filter_shape.ToString().c_str());
   }
 
+  if (rank != filter_shape.NumDimensions()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.");
+  }
+  if (rank > 5) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Only ConvTranspose1d, ConvTranspose2d, and ConvTranspose3d are supported.");
+  }
+  const auto input_channels = input_shape[is_channels_last ? rank - 1 : 1];
+  if (conv_transpose_attrs_.group <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0");
+  }
+  if (filter_shape[0] != input_channels) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.");
+  }
+  if (input_channels % conv_transpose_attrs_.group != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.");
+  }
+
   const InlinedVector<size_t> perm = {2, 3, 0, 1};
   TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
   ConvAttributes::ConvPadVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
@@ -99,6 +117,27 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
   }
 
+  if (rank == 5) {
+    auto* output = context.Output(0, computed_output_shape);
+    const auto output_size = narrow<uint32_t>(computed_output_shape.Size());
+    if (output_size == 0) {
+      return Status::OK();
+    }
+    const gsl::span<const uint32_t> pads_3d{pads.data(), 3};
+    const auto input_channels_per_group = narrow<uint32_t>(input_channels / group);
+    ConvTranspose3DProgram program(is_channels_last, has_bias);
+    program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                       {filter, ProgramTensorMetadataDependency::TypeAndRank}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+        .CacheHint(is_channels_last, has_bias)
+        .AddUniformVariables({{output_size}, {strides}, {dilations}, {pads_3d}, {input_channels_per_group}})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    return context.RunProgram(program);
+  }
+
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
@@ -112,11 +151,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
-  }
-  if (input_shape.NumDimensions() > 4 || filter_shape.NumDimensions() > 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv2d or Conv1d are supported.");
-  } else if (input_shape.NumDimensions() < 2 || filter_shape.NumDimensions() < 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
   // Transpose weights
   Tensor transposed_filter;

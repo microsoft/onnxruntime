@@ -16,6 +16,26 @@
 namespace onnxruntime {
 namespace webgpu {
 
+class ConvTranspose3DProgram final : public Program<ConvTranspose3DProgram> {
+ public:
+  ConvTranspose3DProgram(bool is_channels_last, bool has_bias)
+      : Program("ConvTranspose3D"), is_channels_last_(is_channels_last), has_bias_(has_bias) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"strides", ProgramUniformVariableDataType::Uint32},
+      {"dilations", ProgramUniformVariableDataType::Uint32},
+      {"pads", ProgramUniformVariableDataType::Uint32},
+      {"input_channels_per_group", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvTranspose3DProgram);
+
+  bool is_channels_last_;
+  bool has_bias_;
+};
+
 class ConvTranspose2DProgram : public Program<ConvTranspose2DProgram> {
  public:
   ConvTranspose2DProgram(bool is_channels_last, bool has_bias, uint32_t components, uint32_t a_components, uint32_t b_components, uint32_t input_channels_remainder, bool pack_input_as4) : Program("ConvTranspose2D"), is_channels_last_(is_channels_last), has_bias_(has_bias), components_(components), a_components_(a_components), b_components_(b_components), input_channels_remainder_(input_channels_remainder), pack_input_as4_(pack_input_as4) {
