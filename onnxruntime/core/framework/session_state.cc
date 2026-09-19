@@ -1486,22 +1486,51 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   // Process explicit inputs to the node
   // (they are passed through as explicit subgraph inputs and hence requires a re-mapping of names
   // to their corresponding names in the inner nested subgraph(s) held by the node)
-  const auto& subgraph_inputs = subgraph.GetInputs();
-
-  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
-                        &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
-    const auto& name = input.Name();
-    OrtValueIndex index = -1;
-    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
-
-    // Store the location of the outer scope value in the map using the subgraph input as the key
-    // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
-    outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
-
-    return Status::OK();
-  };
-
+  //
+  // Only nodes whose inputs map one-to-one onto the explicit subgraph inputs (Loop, Scan>=9) reach the
+  // re-mapping below; for other control flow nodes (e.g. If, or Scan opset 8) there is no such positional
+  // mapping and nothing is accumulated here.
   if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
+    // The parent node's explicit inputs map positionally onto the subgraph's declared inputs.
+    //
+    // GetInputs() (inputs that are not backed by an initializer) is the list every downstream Loop/Scan path
+    // validates and indexes against - see Loop::Info, scan::detail::Info and scan_8/scan_9's
+    // ValidateSubgraphInput - so it is also the list used for the re-mapping here. Those downstream checks are
+    // ORT_ENFORCE based, which abort() in ORT_NO_EXCEPTIONS builds, so the mismatch has to be rejected with a
+    // clean status here before we get that far.
+    //
+    // A malformed/hostile model can declare a subgraph input that is also an initializer of the subgraph. Such
+    // an input is dropped from GetInputs() while remaining in GetInputsIncludingInitializers(), making
+    // GetInputs() shorter than the parent's input list. Without this check, indexing the shorter vector by the
+    // parent's input index below is an out-of-bounds read.
+    const auto num_parent_inputs = parent_node.InputDefs().size();
+    const auto& subgraph_inputs = subgraph.GetInputs();
+    if (subgraph_inputs.size() != num_parent_inputs) {
+      const char* initializer_hint =
+          subgraph.GetInputsIncludingInitializers().size() != subgraph_inputs.size()
+              ? " The subgraph declares a graph input that is also one of its initializers, which is not supported"
+                " for the body of a Loop or Scan node."
+              : "";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Subgraph input count does not match the number of inputs provided by the parent node '",
+                             parent_node.Name(), "' (OpType: ", parent_node.OpType(), "). Parent provides ",
+                             num_parent_inputs, " inputs but the subgraph has ", subgraph_inputs.size(),
+                             " inputs that are not also initializers.", initializer_hint);
+    }
+
+    auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
+                          &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
+      const auto& name = input.Name();
+      OrtValueIndex index = -1;
+      ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+
+      // Store the location of the outer scope value in the map using the subgraph input as the key
+      // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
+      outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
+
+      return Status::OK();
+    };
+
     return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
   }
 
