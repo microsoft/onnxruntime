@@ -339,6 +339,39 @@ symmetric zero point 2. `FastInterleavedAndBiasedNumericArrayConverter<T,
 uint2b_t, N>` inverts exactly that pair-interleave, which is why its output
 comes back in logical order.
 
+#### The row-permutation map is forced, not tuned
+
+`kPerm_W2_A16` follows the same closed form as the existing 8- and 4-bit maps.
+With `tile = 8 * kInterleave` and `i = (tile/4)*q + r`:
+
+```
+perm[i] = 2q + 8*(r >> 1) + (r & 1)
+```
+
+which reproduces `kPerm_W8_A16` at `kInterleave = 2` and `kPerm_W4_A16` at
+`kInterleave = 4`, and gives the 64-entry 2-bit map at `kInterleave = 8`.
+
+This map is a **correctness requirement, not a bank-conflict optimization**, and
+it has no free parameters:
+
+- `ldmatrix` always moves 16-bit elements, so one of its element slots carries
+  `16/bits` weights (`= kInterleave`). The permutation is what puts the weight a
+  thread needs into the slot `ldmatrix` will hand that thread; it composes with
+  the fixed `ldmatrix` pattern and the fixed converter shuffle to the identity.
+- Measured on H200 with `ncu`: the 2-bit `CtaShape128x128x64` kernel executes
+  **0 shared-memory bank conflicts** on both loads and stores
+  (`l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_{ld,st}.sum = 0`, over 832
+  load and 128 store wavefronts); 4-bit is also 0. Bank-conflict avoidance is
+  already handled by the swizzled smem layout
+  (`layout::ColumnMajorTensorOpMultiplicandCrosswise<2, 64>`), which is a
+  separate mechanism from this map.
+- Perturbing the map fails `MatMulNBitsFpAIntBLayout.Int2WeightsRoundTripExactly`
+  immediately: swapping the two entries *within* one pair, or swapping two whole
+  pairs, both produce wrong results. Every position is pinned.
+
+So there is no A/B test to run on the map itself. Any bank-conflict work would
+have to change the shared-memory layout and the permutation together.
+
 `MatMulNBitsFpAIntBLayout` in
 [onnxruntime/test/contrib_ops/matmul_nbits_fpa_intb_layout_test.cc](../../../onnxruntime/test/contrib_ops/matmul_nbits_fpa_intb_layout_test.cc)
 pins this layout down: it runs the op with `A = I` so the output *is* the
@@ -370,11 +403,11 @@ dequant+cuBLAS at `M=512`. The warp B fragment is fixed at 32 bytes per thread b
 and one B load feeds 4 MMA k-steps instead of 2.
 
 Converting that fragment one k-step at a time — so only 32 halves are live rather
-than 128 — was implemented and measured, and it is a **loss**: 4-8% slower across
-every production shape at `M >= 128`. It saves 6 registers (226 -> 220), but
-occupancy is 1 CTA/SM either way, so the saving buys nothing while the strided
-gather that rebuilds each k-step's converter word is pure added ALU. Do not retry
-it without first changing what limits occupancy.
+than 128 — was implemented and measured, and it is a **loss**: 9-15% slower than
+the shipped kernel across every production shape at `M >= 128`. It saves 6
+registers (226 -> 220), but occupancy is 1 CTA/SM either way, so the saving buys
+nothing while the strided gather that rebuilds each k-step's converter word is
+pure added ALU. Do not retry it without first changing what limits occupancy.
 
 When enabled via `ORT_FPA_INTB_GEMM`, eligible MatMulNBits nodes use the
 TensorRT-LLM-derived CUTLASS weight-only kernels. Weight and scale inputs (and
