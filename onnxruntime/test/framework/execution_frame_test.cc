@@ -282,7 +282,7 @@ TEST_F(ExecutionFrameTest, PreAllocatedBufferTooSmallForSubByteTypeTest) {
 
     OrtValue& uint4_value = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
     ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(uint4_value, start_index, uint4_type,
-                                                                 memory_info, shape));
+                                                                  memory_info, shape));
     EXPECT_EQ(uint4_value.Get<Tensor>().DataRaw(), uint8_value.Get<Tensor>().DataRaw());
   }
 }
