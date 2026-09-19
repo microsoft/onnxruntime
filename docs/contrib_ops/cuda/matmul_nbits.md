@@ -319,10 +319,14 @@ for.
 `kWarpGemmIterationsForB == 1` is what makes 2-bit the first width to exercise an
 odd B-load count per K tile. The dequantizing mainloops
 (`cutlass_extensions/gemm/threadblock/dq_mma_{multistage,pipelined}_{finegrained,percol}.h`)
-used to index the two-deep B register pipeline with the *within-tile* load index,
-which is only a valid cursor when that count is even; they now carry a running
-`warp_tileB_read_index` instead. The generated code is unchanged for 4- and
-8-bit.
+index the two-deep B register pipeline with the *within-tile* load index, which is
+only a valid cursor when that count is even. They now rotate the two buffers
+(`warp_frag_B[0] = warp_frag_B[1]`) after the last k-iteration when the count is
+odd, keeping both indices compile-time constants. A running read cursor also
+fixes the correctness bug but is not loop-invariant across the mainloop, so
+`warp_frag_B` becomes dynamically indexed and ptxas gives it a 64-byte per-thread
+stack frame; that cost 4-7% at `M >= 128`. The generated code is unchanged for 4-
+and 8-bit (verified by diffing PTX against the pre-2-bit baseline).
 
 The offline weight transform gains a `QuantType::W2_A16` that mirrors the 4-bit
 pipeline: row-permute, sub-byte transpose, 8-column interleave, then a
@@ -343,11 +347,11 @@ table printed by `Fp16Int2GroupwiseTest`:
 
 | shape | `M` | fpA_intB GEMV | fpA_intB GEMM | fused 2-bit GEMV (§4) | dequant + cuBLAS (§5) |
 |---|---|---|---|---|---|
-| `N=17408, K=5120` | 1 | **14.98** | 42.19 | 21.79 | 138.35 |
-| `N=5120, K=6144` | 1 | **7.70** | 25.97 | 9.94 | 54.06 |
-| `N=1024, K=5120` | 1 | **5.44** | 19.49 | 5.70 | 15.66 |
-| `N=17408, K=5120` | 512 | n/a | 471.8 | n/a | **203.7** |
-| `N=17408, K=5120` | 2048 | n/a | 1811 | n/a | **556** |
+| `N=17408, K=5120` | 1 | **15.03** | 40.17 | 21.79 | 138.55 |
+| `N=5120, K=6144` | 1 | **7.75** | 24.67 | 9.93 | 54.19 |
+| `N=1024, K=5120` | 1 | **5.41** | 18.25 | 5.67 | 16.19 |
+| `N=17408, K=5120` | 512 | n/a | 446.8 | n/a | **204.4** |
+| `N=17408, K=5120` | 2048 | n/a | 1703 | n/a | **556.2** |
 
 So the 2-bit fpA_intB path is a **decode** optimization: the fused GEMV is the
 fastest option at every production shape for `M <= 8` (1.05-1.45x over the
@@ -355,14 +359,18 @@ hand-written 2-bit GEMV and 2.9-9.2x over dequant+cuBLAS), and the tactic
 profiler switches to the CUTLASS GEMM at around `M = 14`.
 
 Above roughly `M = 128` the 2-bit CUTLASS GEMM is **slower than dequant+cuBLAS**
-(2.3x at `M=512`, 3.3x at `M=2048`). This is specific to 2 bits, not to the
+(2.2x at `M=512`, 3.1x at `M=2048`). This is specific to 2 bits, not to the
 weight-only path: under the same harness the 4-bit GEMM is 1.3x *faster* than
-dequant+cuBLAS at `M=512`. The cause is register pressure — the warp B fragment
-is fixed at 32 bytes per thread by `ldmatrix.x4`, so at 2 bits it decodes to 128
-halves where 4 bits decodes to 64, and `ptxas` reports a 64-byte per-thread stack
-frame for the 2-bit `CtaShape128x128x64` kernel where the 4-bit one spills
-nothing. Converting the fragment in `kNumKIterationsPerWarpBLoad` slices instead
-of all at once should remove it; that is future work.
+dequant+cuBLAS at `M=512`. The warp B fragment is fixed at 32 bytes per thread by
+`ldmatrix.x4`, so at 2 bits it decodes to 128 halves where 4 bits decodes to 64,
+and one B load feeds 4 MMA k-steps instead of 2.
+
+Converting that fragment one k-step at a time — so only 32 halves are live rather
+than 128 — was implemented and measured, and it is a **loss**: 4-8% slower across
+every production shape at `M >= 128`. It saves 6 registers (226 -> 220), but
+occupancy is 1 CTA/SM either way, so the saving buys nothing while the strided
+gather that rebuilds each k-step's converter word is pure added ALU. Do not retry
+it without first changing what limits occupancy.
 
 When enabled via `ORT_FPA_INTB_GEMM`, eligible MatMulNBits nodes use the
 TensorRT-LLM-derived CUTLASS weight-only kernels. Weight and scale inputs (and

@@ -254,11 +254,14 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
     // Pair of fragments used to overlap shared memory loads and math instructions
     WarpFragmentA warp_frag_A[2];
     WarpFragmentB warp_frag_B[2];
-    // Read cursor into the two-deep B register pipeline. The within-tile load index cannot be
-    // used directly: when kWarpGemmIterationsForB is 1 (one B smem load covers the whole
-    // threadblock K tile, which is what 2-bit weights produce) it is always 0, so every load
-    // would fill the buffer the MMA never reads and B would stay on the first K tile.
-    int warp_tileB_read_index = 0;
+    // The within-tile load index only ping-pongs the two-deep B register pipeline when
+    // kWarpGemmIterationsForB is even. At 1 -- one B smem load covers the whole threadblock K
+    // tile, which is what 2-bit weights produce -- it is always 0, so every load would fill the
+    // buffer the MMA never reads and B would stay on the first K tile. Rotate the buffers in
+    // that case instead of tracking a read cursor: a cursor is not loop-invariant across the
+    // mainloop, so warp_frag_B becomes dynamically indexed and lands in local memory (measured
+    // 6% slower at M >= 128).
+    static constexpr bool kRotateWarpFragmentB = (Base::kWarpGemmIterationsForB % 2) != 0;
 
     this->warp_tile_iterator_A_.set_kgroup_index(0);
     this->warp_tile_iterator_B_.set_kgroup_index(0);
@@ -331,7 +334,7 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
         if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
           this->warp_tile_iterator_B_.set_kgroup_index(
               (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
-          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_read_index + 1) % 2]);
+          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
           ++this->warp_tile_iterator_B_;
         }
 
@@ -347,12 +350,14 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
           iterator_B.clear_mask(gemm_k_iterations <= 2);
         }
 
-        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_read_index]);
+        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales);
         warp_mma(accum, warp_frag_A[warp_mma_k % 2], converted_frag_B, accum, warp_tileB_k_compute_offset);
         // The load above filled the other half of the pipeline; hand it to the next MMA group.
-        if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
-          warp_tileB_read_index ^= 1;
+        if constexpr (kRotateWarpFragmentB) {
+          if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
+            warp_frag_B[0] = warp_frag_B[1];
+          }
         }
       }
     }
