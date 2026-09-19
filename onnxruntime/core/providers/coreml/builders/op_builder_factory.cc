@@ -45,6 +45,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   // Binary elementwise ops
   CreateBinaryOpBuilder("Add", op_registrations);
   CreateBinaryOpBuilder("Div", op_registrations);
+  CreateBinaryOpBuilder("Equal", op_registrations);
   CreateBinaryOpBuilder("Mul", op_registrations);
   CreateBinaryOpBuilder("Max", op_registrations);
   CreateBinaryOpBuilder("Pow", op_registrations);
