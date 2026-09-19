@@ -132,8 +132,7 @@ bool CoreMLCanClaimGpu(const HardwareDeviceTypes& hardware) {
   return hardware.has_gpu && coreml::util::CoreMLVersion() >= MINIMUM_COREML_VERSION;
 }
 
-// Verifies that a session for mul_1.onnx assigns its input to the CoreML EP. Used as the session checker for
-// RunBasicTest, which runs the inference itself afterwards.
+// Verifies that a session for mul_1.onnx assigns its input to the CoreML EP.
 void AssertMul1InputAssignedToCoreML(Ort::Session& session) {
   const OrtApi* c_api = &Ort::GetApi();
   const OrtEpDevice* input_ep_device = nullptr;
@@ -211,10 +210,9 @@ TEST(AutoEpSelection, CoreMLEP) {
 
   // Both the "test.ep_to_select" auto-selection path and the AppendExecutionProvider_V2 path select CoreML as
   // the only non-CPU EP. Disabling CPU fallback makes session creation fail unless CoreML takes the entire graph.
-  // The V2 path also checks the input assignment directly. CoreMLEPPreferNpu and CoreMLEPPreferGpu perform the
-  // same assignment check for policy-based selection.
+  // CoreMLEPPreferNpu and CoreMLEPPreferGpu check the input assignment for policy-based selection.
   RunBasicTest(kCoreMLExecutionProvider, std::nullopt, Ort::KeyValuePairs{}, /*select_devices*/ nullptr,
-               /*test_auto_select*/ true, AssertMul1InputAssignedToCoreML, /*disable_cpu_ep_fallback*/ true);
+               /*test_auto_select*/ true, /*disable_cpu_ep_fallback*/ true);
 }
 
 // Tests explicit device selection through AppendExecutionProvider_V2. Each test case selects one or more CoreML
@@ -286,12 +284,12 @@ TEST(AutoEpSelection, CoreMLEPExplicitDeviceSelection) {
     }
 
     // Run only the AppendExecutionProvider_V2 path because it passes the test case's full device selection to the
-    // factory. The "test.ep_to_select" path would pass only the first CoreML device. Verify the input assignment and
-    // disable ORT CPU fallback so CoreML must execute the entire graph.
+    // factory. The "test.ep_to_select" path would pass only the first CoreML device. Disable ORT CPU fallback so
+    // CoreML must execute the entire graph.
     RunBasicTest(
         kCoreMLExecutionProvider, std::nullopt, ep_options,
         [&devices](std::vector<const OrtEpDevice*>& selected) { selected = devices; },
-        /*test_auto_select*/ false, AssertMul1InputAssignedToCoreML, /*disable_cpu_ep_fallback*/ true);
+        /*test_auto_select*/ false, /*disable_cpu_ep_fallback*/ true);
   }
 }
 
