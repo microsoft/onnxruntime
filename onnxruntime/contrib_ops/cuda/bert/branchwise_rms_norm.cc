@@ -8,6 +8,7 @@
 #include "contrib_ops/cuda/bert/branchwise_rms_norm_impl.h"
 #include "contrib_ops/cpu/hyper_connection_helper.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 
 namespace onnxruntime::contrib::cuda {
 
@@ -37,7 +38,7 @@ BranchwiseRMSNorm<T>::BranchwiseRMSNorm(const OpKernelInfo& info)
 
 template <typename T>
 Status BranchwiseRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
-  using CudaT = typename ToCudaType<T>::MappedType;
+  using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
   const auto* x = context->Input<Tensor>(0);
   const auto* scale = context->Input<Tensor>(1);
   hyper_connection::StreamShape params;
