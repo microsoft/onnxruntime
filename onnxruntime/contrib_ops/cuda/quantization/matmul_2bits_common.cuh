@@ -57,6 +57,7 @@ struct Traits2b {
   using Acc = float;
 };
 
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
 template <>
 struct Traits2b<half> {
   // Lane j holds elements (j, j + 8). That pairing falls straight out of masking the shifted
@@ -69,6 +70,7 @@ struct Traits2b<half> {
   };
   using Acc = half2;
 };
+#endif
 
 // Generic fp32 path, used for float and bfloat16 activations.
 template <class T>
@@ -124,6 +126,7 @@ __device__ __forceinline__ void DotAccum2b(const Traits2b<nv_bfloat16>::Weights&
 
 __device__ __forceinline__ float HorizontalAdd2b(float acc) { return acc; }
 
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
 // 0x6400 is half(1024). OR-ing a 2-bit code into its low mantissa bits yields half(1024 + code)
 // exactly, so subtracting half(1024) recovers the code with no rounding. Masking the shifted word
 // with 0x00030003 extracts codes j and j + 8 together, one LOP3 for the pair.
@@ -174,6 +177,19 @@ __device__ __forceinline__ void DotAccum2b(const Traits2b<half>::Weights& w, con
 __device__ __forceinline__ float HorizontalAdd2b(half2 acc) {
   return __half2float(acc.x) + __half2float(acc.y);
 }
+#else
+__device__ __forceinline__ void DequantizeSixteen2b(uint32_t values_quant, half scale, uint8_t zp,
+                                                    Traits2b<half>::Weights& w) {
+  DequantizeSixteenGeneric2b<half>(values_quant, scale, zp, w.v);
+}
+__device__ __forceinline__ void LoadSixteen2b(const half* a, Traits2b<half>::Acts& out) {
+  LoadSixteenGeneric2b<half>(a, out.v);
+}
+__device__ __forceinline__ void DotAccum2b(const Traits2b<half>::Weights& w, const Traits2b<half>::Acts& a,
+                                           float& acc) {
+  DotAccumGeneric2b(w.v, a.v, acc);
+}
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

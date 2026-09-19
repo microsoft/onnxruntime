@@ -144,8 +144,6 @@ bool TryMatMul2BitsM1(
     MATMUL_FLOAT2B_M1_DISPATCH(128)
   } else if (block_size == 256) {
     MATMUL_FLOAT2B_M1_DISPATCH(256)
-  } else if (block_size == 512) {
-    MATMUL_FLOAT2B_M1_DISPATCH(512)
   } else {
     return false;
   }

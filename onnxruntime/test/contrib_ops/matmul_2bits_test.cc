@@ -5,6 +5,8 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -61,6 +63,7 @@ struct TestOptions2Bits {
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
+  std::optional<std::string> expected_failure{};
 };
 
 [[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions2Bits& opts) {
@@ -177,8 +180,11 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
     test.AddOptionalInputEdge<uint8_t>();
   }
 
-  // Account for deprecated "g_idx" input
-  test.AddOptionalInputEdge<int32_t>();
+  if (opts.has_g_idx) {
+    test.AddInput<int32_t>("g_idx", {K}, std::vector<int32_t>(static_cast<size_t>(K), 0), false);
+  } else {
+    test.AddOptionalInputEdge<int32_t>();
+  }
 
   if (bias.has_value()) {
     if constexpr (std::is_same<T1, float>::value) {
@@ -212,7 +218,14 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   if (opts.use_cuda) {
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
     test.ConfigEps(std::move(execution_providers));
+    if (opts.expected_failure.has_value()) {
+      test.Config(OpTester::ExpectResult::kExpectFailure, *opts.expected_failure);
+    }
     test.RunWithConfig();
 #endif
     return;
@@ -1692,6 +1705,11 @@ TEST(MatMul2BitsCuda, Float16_BlkLen128) {
   RunCuda2BitsShapes<MLFloat16>(128, 0.1f, 0.02f);
 }
 
+TEST(MatMul2BitsCuda, Float16_BlkLen256) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  RunCuda2BitsShapes<MLFloat16>(256, 0.1f, 0.02f);
+}
+
 TEST(MatMul2BitsCuda, Float32_BlkLen32) {
   if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
   RunCuda2BitsShapes<float>(32, 0.05f, 0.01f);
@@ -1737,6 +1755,74 @@ TEST(MatMul2BitsCuda, Float16_Bias) {
     opts.block_size = 128;
     opts.has_zero_point = true;
     opts.has_bias = true;
+    opts.use_cuda = true;
+    opts.output_abs_error = 0.1f;
+    opts.output_rel_error = 0.02f;
+    RunTest2Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMul2BitsCuda, RejectsGroupIndex) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  TestOptions2Bits opts{};
+  opts.M = 1;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = 128;
+  opts.has_g_idx = true;
+  opts.use_cuda = true;
+  opts.expected_failure = "does not support g_idx";
+  RunTest2Bits<MLFloat16>(opts);
+}
+
+TEST(MatMul2BitsCuda, RejectsOversizedBlock) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+
+  constexpr int64_t M = 1, N = 1, K = 512, block_size = 512;
+  constexpr int64_t k_blocks = K / block_size;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", static_cast<int64_t>(QBits));
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(std::vector<float>(M * K, 0.5f)), false);
+  test.AddInput<uint8_t>("B", {N, k_blocks, block_size / 4},
+                         std::vector<uint8_t>(static_cast<size_t>(N * k_blocks * block_size / 4), 0x55), true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks},
+                           FloatsToMLFloat16s(std::vector<float>(static_cast<size_t>(N * k_blocks), 0.25f)), true);
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(std::vector<float>(M * N, 0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  session_options.use_per_session_threads = false;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+  test.Config(OpTester::ExpectResult::kExpectFailure, "block_size must not exceed 256")
+      .ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+TEST(MatMul2BitsCuda, ChunkedFallback) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (bool has_zero_point : {false, true}) {
+    TestOptions2Bits opts{};
+    opts.M = 2;
+    opts.N = 130;
+    opts.K = 384;
+    opts.block_size = 128;
+    opts.has_zero_point = has_zero_point;
     opts.use_cuda = true;
     opts.output_abs_error = 0.1f;
     opts.output_rel_error = 0.02f;
@@ -1834,6 +1920,10 @@ void RunTernary2BitsCudaTest(int64_t M, int64_t N, int64_t K, int64_t block_size
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  session_options.use_per_session_threads = false;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
   test.ConfigEps(std::move(execution_providers));
   test.RunWithConfig();
 }
@@ -1853,10 +1943,10 @@ TEST(MatMul2BitsCuda, TernaryZeroPointOne) {
 
 // The qkv_proj of the ternary 27B model: N = 10240, K = 5120, block_size = 128. M >= 32 is
 // past the small-M kernels and therefore exercises the dequantize-to-fp16 + cuBLAS fallback;
-// M = 512 matches the model's prefill chunk, while M = 1 covers GEMV at the same shape.
+// M = 32 covers the fallback boundary, while M = 1 covers GEMV at the same shape.
 TEST(MatMul2BitsCuda, TernaryPrefillQkvProjShape) {
   if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
-  for (int64_t m : {int64_t{1}, int64_t{32}, int64_t{256}, int64_t{512}}) {
+  for (int64_t m : {int64_t{1}, int64_t{32}}) {
     RunTernary2BitsCudaTest(m, 10240, 5120, 128, 0.2f, 0.02f);
   }
 }
@@ -1889,6 +1979,10 @@ TEST(MatMul2BitsCuda, UnsupportedBitWidthFailsLoudly) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  session_options.use_per_session_threads = false;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
   test.Config(OpTester::ExpectResult::kExpectFailure, "bits")
       .ConfigEps(std::move(execution_providers))
       .RunWithConfig();

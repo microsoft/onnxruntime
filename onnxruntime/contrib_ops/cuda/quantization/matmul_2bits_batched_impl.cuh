@@ -169,8 +169,6 @@ bool TryMatMul2BitsBatched(
     MatMulFloat2bBatchedDispatch(128, cm, cn) \
   } else if (256 == block_size) {             \
     MatMulFloat2bBatchedDispatch(256, cm, cn) \
-  } else if (512 == block_size) {             \
-    MatMulFloat2bBatchedDispatch(512, cm, cn) \
   } else {                                    \
     return false;                             \
   }

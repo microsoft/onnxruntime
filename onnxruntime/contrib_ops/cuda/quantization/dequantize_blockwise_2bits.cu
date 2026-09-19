@@ -1,21 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cstdint>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+
+#include <cstdint>
 #include <type_traits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 namespace {
+
+using onnxruntime::cuda::CeilDiv;
+using onnxruntime::cuda::GridDim;
 
 // A 2-bit weight blob packs four codes per byte, code i at bit offset 2*(i%4) of byte i/4
 // (the layout produced by MlasQuantizeBlockwise<T, 2>). One uint32 load therefore covers
@@ -54,50 +56,6 @@ __device__ __forceinline__ void DequantizeSixteen2b(uint32_t values_quant, T sca
     results[i] = static_cast<T>(fmaf(code, scale_f, zp_adjust));
   }
   StoreSixteen2b<T>(results, output);
-}
-
-// g_idx (reorder) variant: every code inside the thread's 16-element run may select a different
-// quantization block, so scale and zero point are looked up per element.
-template <class T>
-__global__ void Dequantize2BitsKernelReOrder(
-    T* output,
-    const uint8_t* quant_data,
-    const T* scale_data,
-    const uint8_t* zero_points,
-    const int32_t* reorder_idx,
-    int block_size,
-    int groups_per_K,
-    int groups_per_threadblock,
-    int total_groups) {
-  const int group_id = blockIdx.x * groups_per_threadblock + ((threadIdx.x * kElementsPerThread2b) / block_size);
-  if (group_id >= total_groups) {
-    return;
-  }
-
-  const int zero_point_shape_x = (groups_per_K + kElementsPerByte2b - 1) / kElementsPerByte2b;
-  const int n_idx = group_id / groups_per_K;
-  const int kb_idx = group_id % groups_per_K;
-  const int64_t element_offset = static_cast<int64_t>(group_id) * block_size +
-                                 ((threadIdx.x * kElementsPerThread2b) & (block_size - 1));
-  T* output_i = output + element_offset;
-  const uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / kElementsPerByte2b));
-  const int32_t* reorder_idx_with_off =
-      reorder_idx + kb_idx * block_size + ((threadIdx.x * kElementsPerThread2b) & (block_size - 1));
-
-  for (int i = 0; i < kElementsPerThread2b; i++) {
-    int32_t rid = reorder_idx_with_off[i];
-    CUDA_KERNEL_ASSERT(rid >= 0 && rid < groups_per_K);
-    rid = max(0, min(rid, groups_per_K - 1));  // Clamp for release safety
-    const T scale = *(scale_data + n_idx * groups_per_K + rid);
-    float zp = static_cast<float>(kDefaultZeroPoint2b);
-    if (zero_points) {
-      zp = static_cast<float>(UnpackZeroPoint2b(
-          zero_points, static_cast<int64_t>(n_idx) * zero_point_shape_x + rid / kElementsPerByte2b, rid));
-    }
-    const float scale_f = ToFloat2b(scale);
-    const float code = static_cast<float>((quant_value >> (2 * i)) & 0x03u);
-    output_i[i] = static_cast<T>((code - zp) * scale_f);
-  }
 }
 
 template <class T, typename ZeroT>
@@ -157,6 +115,8 @@ Status Dequantize2Bits(
   ORT_ENFORCE(k % block_size == 0, "k must be a multiplier of block_size");
   ORT_ENFORCE(block_size >= kElementsPerThread2b && (block_size & (block_size - 1)) == 0,
               "2-bit dequantization requires block_size to be a power of two >= 16, got ", block_size);
+  ORT_RETURN_IF(reorder_idx != nullptr, "CUDA 2-bit dequantization does not support g_idx (reorder_idx).");
+  ORT_ENFORCE(block_size <= 256, "2-bit dequantization block_size must not exceed 256, got ", block_size);
 
   const int groups_per_K = k / block_size;
   const int total_groups = n * groups_per_K;
@@ -165,33 +125,15 @@ Status Dequantize2Bits(
   dim3 grid_dim(groups_per_grid);
   dim3 block_dim(GridDim::maxThreadsPerBlock);
 
-  if (!reorder_idx || std::is_same_v<ZeroT, T>) {
-    Dequantize2BitsKernel<T, ZeroT><<<grid_dim, block_dim, 0, stream>>>(
-        output,
-        quant_data,
-        scales_data,
-        zero_points,
-        block_size,
-        groups_per_K,
-        groups_per_threadblock,
-        total_groups);
-  } else {
-    if constexpr (std::is_same_v<ZeroT, uint8_t>) {
-      Dequantize2BitsKernelReOrder<T><<<grid_dim, block_dim, 0, stream>>>(
-          output,
-          quant_data,
-          scales_data,
-          reinterpret_cast<const uint8_t*>(zero_points),
-          reorder_idx,
-          block_size,
-          groups_per_K,
-          groups_per_threadblock,
-          total_groups);
-    } else {
-      return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::INVALID_ARGUMENT,
-                    "Reorder kernel currently expects uint8_t zero points.");
-    }
-  }
+  Dequantize2BitsKernel<T, ZeroT><<<grid_dim, block_dim, 0, stream>>>(
+      output,
+      quant_data,
+      scales_data,
+      zero_points,
+      block_size,
+      groups_per_K,
+      groups_per_threadblock,
+      total_groups);
 
   return CUDA_CALL(cudaGetLastError());
 }
