@@ -677,7 +677,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // them. If PrePack never ran (e.g. ``session.disable_prepacking`` is set), the prepack
   // buffers stay null and falling through to the raw initializer pointers would feed
   // non-CUTLASS bytes to the runner, producing silently wrong output. Fail loudly instead.
-  if (is_int && !weights_prepacked_ &&
+  if (is_int && !is_mixed_width && !weights_prepacked_ &&
       (packed_fc1_weights_ == nullptr || packed_fc2_weights_ == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "QMoE weights_prepacked=0 requires PrePack to run, but the int weight "

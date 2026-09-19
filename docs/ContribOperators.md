@@ -219,7 +219,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain mask index to integer types</dd>
 </dl>
 
-
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
@@ -5655,8 +5654,13 @@ This version of the operator has been available since version 1 of the 'com.micr
         If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
   
-        If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
-        where pack_size = 8 / expert_weight_bits.
+        Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+        Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
+  
+        fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
+        expert_weight_bits for the corresponding projection. An omitted override inherits expert_weight_bits.
+        When SwiGLU is fused, FC3 is stored in FC1 and fc3_expert_weight_bits must be omitted or equal to
+        fc1_expert_weight_bits after inheritance.
   
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
@@ -5689,6 +5693,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
+<dt><tt>fc1_expert_weight_bits</tt> : int</dt>
+<dd>Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.</dd>
+<dt><tt>fc2_expert_weight_bits</tt> : int</dt>
+<dd>Optional FC2 override for expert_weight_bits. Inherits expert_weight_bits when omitted.</dd>
+<dt><tt>fc3_expert_weight_bits</tt> : int</dt>
+<dd>Optional FC3 override for expert_weight_bits. Inherits expert_weight_bits when omitted. For fused SwiGLU, the effective FC3 width must equal the effective FC1 width.</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -7742,4 +7752,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 
