@@ -55,6 +55,7 @@ struct TestOptions2Bits {
   int64_t accuracy_level{0};
 
   bool has_zero_point{false};
+  bool has_typed_zero_point{false};
   bool has_g_idx{false};
   bool has_bias{false};
 
@@ -71,6 +72,7 @@ struct TestOptions2Bits {
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
+            << ", has_typed_zero_point:" << opts.has_typed_zero_point
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias
             << ", use_cuda:" << opts.use_cuda;
@@ -79,6 +81,7 @@ struct TestOptions2Bits {
 template <typename T1>
 void RunTest2Bits(const TestOptions2Bits& opts) {
   SCOPED_TRACE(opts);
+  ASSERT_FALSE(opts.has_typed_zero_point && !opts.has_zero_point);
 
   const int64_t M = opts.M,
                 K = opts.K,
@@ -108,7 +111,7 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   MlasQuantizeBlockwise<float, QBits>(
       input1_vals.data(),
       scales.data(),
-      opts.has_zero_point ? zp.data() : nullptr,
+      opts.has_zero_point && !opts.has_typed_zero_point ? zp.data() : nullptr,
       input1_fp32_vals.data(),
       static_cast<int32_t>(opts.block_size),
       true,
@@ -122,7 +125,7 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
       input1_fp32_vals.data(),
       input1_vals.data(),
       scales.data(),
-      opts.has_zero_point ? zp.data() : nullptr,
+      opts.has_zero_point && !opts.has_typed_zero_point ? zp.data() : nullptr,
       static_cast<int32_t>(opts.block_size),
       true,
       static_cast<int32_t>(K),
@@ -175,7 +178,20 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   }
 
   if (opts.has_zero_point) {
-    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    if (opts.has_typed_zero_point) {
+      const std::vector<float> typed_zp(q_scale_size, 2.0f);
+      if constexpr (std::is_same<T1, float>::value) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_scale_size) / N}, typed_zp, true);
+      } else if constexpr (std::is_same<T1, MLFloat16>::value) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_scale_size) / N},
+                          FloatsToMLFloat16s(typed_zp), true);
+      } else if constexpr (std::is_same<T1, BFloat16>::value) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_scale_size) / N},
+                          FloatsToBFloat16s(typed_zp), true);
+      }
+    } else {
+      test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    }
   } else {
     test.AddOptionalInputEdge<uint8_t>();
   }
@@ -1760,6 +1776,21 @@ TEST(MatMul2BitsCuda, Float16_Bias) {
     opts.output_rel_error = 0.02f;
     RunTest2Bits<MLFloat16>(opts);
   }
+}
+
+TEST(MatMul2BitsCuda, Float16_TypedZeroPointFallback) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  TestOptions2Bits opts{};
+  opts.M = 128;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = 128;
+  opts.has_zero_point = true;
+  opts.has_typed_zero_point = true;
+  opts.use_cuda = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest2Bits<MLFloat16>(opts);
 }
 
 TEST(MatMul2BitsCuda, RejectsGroupIndex) {

@@ -14,7 +14,7 @@ namespace cuda {
 
 // Shared geometry for the 2-bit GEMV kernels. One uint32 of the packed weight blob holds 16
 // consecutive codes, so a thread consumes 16 elements of K per iteration and a warp consumes 512.
-// block_size is a power of two in [16, 512] for every shape these kernels accept, so a thread's
+// block_size is a power of two in [16, 256] for every shape these kernels accept, so a thread's
 // 16 codes always belong to a single quantization block.
 constexpr int kColsPerThreadBlock2b = 8;
 constexpr int kElementsPerThreadPerIteration2b = 16;
