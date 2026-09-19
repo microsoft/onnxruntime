@@ -2730,7 +2730,17 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
                 self.assertTrue(torch.equal(scales, torch.tensor([1.0])))
                 self.assertTrue(torch.equal(qweight, expected_qweight))
 
-    def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):
+    def _run_one(
+        self,
+        *,
+        hidden_size,
+        inter_size,
+        num_experts,
+        top_k,
+        swiglu_fusion,
+        batch_size,
+        row_tile_size=None,
+    ):
         torch.manual_seed(123)
         numpy.random.seed(123)
 
@@ -2800,7 +2810,13 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         )
         model.ir_version = 10
 
-        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=ort_provider)
+        session_options = None
+        if row_tile_size is not None:
+            session_options = onnxruntime.SessionOptions()
+            session_options.add_session_config_entry("ep.cuda.qmoe_row_tile_size", str(row_tile_size))
+        sess = onnxruntime.InferenceSession(
+            model.SerializeToString(), sess_options=session_options, providers=ort_provider
+        )
         x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
         router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
         out = sess.run(None, {"x": x, "router": router})[0]
@@ -2815,6 +2831,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         # indicate the PrePack hook silently produced wrong bytes.
         self.assertGreater(numpy.abs(out).mean(), 1e-4, "Output is suspiciously close to zero")
         self.assertLess(numpy.abs(out).max(), 10.0, "Output magnitude is implausibly large")
+        return out
 
     def _run_default_prepacked_model(
         self,
@@ -2987,6 +3004,25 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
 
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
+
+    def test_int4_grouped_moe_row_tiling_parity(self):
+        shape = dict(
+            hidden_size=128,
+            inter_size=128,
+            num_experts=8,
+            top_k=2,
+            swiglu_fusion=1,
+            batch_size=65,
+        )
+        tiled_output = self._run_one(**shape, row_tile_size=16)
+        untiled_output = self._run_one(**shape, row_tile_size=1024)
+        max_diff = numpy.max(numpy.abs(untiled_output.astype(numpy.float32) - tiled_output.astype(numpy.float32)))
+
+        self.assertLess(
+            max_diff,
+            0.02,
+            f"INT4 grouped-MoE row-tiled output differs from untiled output: max_diff={max_diff:.6f}",
+        )
 
 
 class TestQMoECudaGraph(unittest.TestCase):

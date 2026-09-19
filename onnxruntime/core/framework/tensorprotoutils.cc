@@ -312,11 +312,13 @@ namespace utils {
 
 bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   if (HasExternalData(ten_proto)) {
-    // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(entry.value());
-        return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
+        const PathString location = ToWideString(entry.value());
+        if (location == kTensorProtoLittleEndianMemoryAddressTag ||
+            location == kTensorProtoNativeEndianMemoryAddressTag) {
+          return true;
+        }
       }
     }
   }
@@ -407,11 +409,12 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
 ///
 /// Validation steps:
 ///   1. Reject empty paths
-///   2. Reject absolute paths (including Unix-style '/...' on Windows)
-///   3. Skip remaining checks on WASM if no filesystem is available
-///   4. Resolve `model_dir / external_data_path` to a canonical path (resolving symlinks for existing segments)
-///   5. Verify the canonical path is a prefix-child of the canonical model_dir (containment check)
-///   6. Verify the resolved file exists on disk
+///   2. Reject internal in-memory reference tags
+///   3. Reject absolute paths (including Unix-style '/...' on Windows)
+///   4. Skip remaining checks on WASM if no filesystem is available
+///   5. Resolve `model_dir / external_data_path` to a canonical path (resolving symlinks for existing segments)
+///   6. Verify the canonical path is a prefix-child of the canonical model_dir (containment check)
+///   7. Verify the resolved file exists on disk
 ///
 /// This function does NOT handle the symlinked-model fallback — that is the responsibility of
 /// ValidateExternalDataPath(), which calls this function as a first pass.
@@ -420,13 +423,18 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   // Step 1: Reject empty external data paths.
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
 
-  // Step 2: Reject absolute paths.
+  // Step 2: Reject internal in-memory reference tags.
+  ORT_RETURN_IF(external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag,
+                "In-memory external data reference tag is not a valid file path");
+
+  // Step 3: Reject absolute paths.
   // Use !root_path().empty() to reject paths like '/some/path' even on Windows (where is_absolute()
   // requires a drive letter).
   ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
 #if defined(__wasm__)
-  // Step 3 (WASM only): If we can't access the current working directory, assume the WASM environment
+  // Step 4 (WASM only): If we can't access the current working directory, assume the WASM environment
   // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the WASM EP.
   std::error_code error_code;
   std::filesystem::current_path(error_code);
@@ -435,7 +443,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   }
 #endif
 
-  // Step 4: Resolve both the model directory and the combined path to canonical forms.
+  // Step 5: Resolve both the model directory and the combined path to canonical forms.
   // WeaklyCanonicalPath resolves symlinks for existing path segments while lexically normalizing
   // non-existent trailing segments.
   std::filesystem::path resolved_dir = model_dir.empty() ? std::filesystem::path{"."} : model_dir;
@@ -445,8 +453,8 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(resolved_dir, model_dir_canonical));
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir_canonical / external_data_path, external_data_path_canonical));
 
-  // Step 5: Containment check — verify the resolved external data path starts with the model directory.
-  // Step 6: Existence check — verify the file actually exists on disk.
+  // Step 6: Containment check — verify the resolved external data path starts with the model directory.
+  // Step 7: Existence check — verify the file actually exists on disk.
   if (HasPathComponentPrefix(model_dir_canonical, external_data_path_canonical)) {
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
@@ -466,7 +474,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
 /// Validation flow:
 ///   1. Try ValidateExternalDataPathFromDir against the model file's parent directory.
 ///      If it passes, return success.
-///   2. If it fails due to empty/absolute external_data_path, return the error immediately
+///   2. If it fails due to an empty/absolute path or an in-memory reference tag, return the error immediately
 ///      (these are input errors unrelated to the model location).
 ///   3. If model_path is empty (model loaded from bytes), wrap the error with context.
 ///   4. If model_path is a symlink, try the symlink fallback:
@@ -494,9 +502,11 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   }
 
   // --- Guard: Don't retry for input-validation errors ---
-  // Empty and absolute paths are always invalid regardless of model directory or symlinks.
+  // Empty paths, absolute paths, and in-memory reference tags are always invalid regardless of model directory.
   // Return the error directly without misleading "escapes directory" context.
-  if (external_data_path.empty() || !external_data_path.root_path().empty()) {
+  if (external_data_path.empty() || !external_data_path.root_path().empty() ||
+      external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+      external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag) {
     return status;
   }
 
@@ -1645,6 +1655,40 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
   return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
 }
 
+#if !defined(__wasm__)
+static Status LoadPrepackedWeightsFromFile(const Env& env,
+                                           const std::filesystem::path& external_data_file_path,
+                                           std::uintmax_t file_length,
+                                           const ExternalDataInfo::PrepackedInfos& prepacked_infos,
+                                           PrepackedWeightsForGraph& prepacked_info) {
+  for (const auto& [key, blobs] : prepacked_infos) {
+    PrePackedWeights prepacked_weights;
+    prepacked_weights.buffers_.reserve(blobs.size());
+    prepacked_weights.buffer_sizes_.reserve(blobs.size());
+    for (const auto& blob : blobs) {
+      const auto blob_offset = std::get<0>(blob);
+      const auto blob_length = std::get<1>(blob);
+      SafeInt<FileOffsetType> end_of_blob{blob_offset};
+      end_of_blob += blob_length;
+      ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
+                    "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
+                    " is out of bounds and can not read in full");
+
+      IAllocatorUniquePtr<void> data_ptr;
+      ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
+                                         data_ptr));
+      prepacked_weights.buffers_.push_back(std::move(data_ptr));
+      prepacked_weights.buffer_sizes_.push_back(blob_length);
+    }
+    if (!blobs.empty()) {
+      prepacked_info.InsertPrepackedWeights(key, std::move(prepacked_weights));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
 Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -1785,34 +1829,49 @@ Status GetExtDataFromTensorProto(const Env& env,
     ext_data_buf.release();
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
-      for (const auto& [key, blobs] : *prepacked_infos) {
-        PrePackedWeights prepacked_weights;
-        prepacked_weights.buffers_.reserve(blobs.size());
-        prepacked_weights.buffer_sizes_.reserve(blobs.size());
-        for (const auto& blob : blobs) {
-          const auto blob_offset = std::get<0>(blob);
-          const auto blob_length = std::get<1>(blob);
-          SafeInt<FileOffsetType> end_of_blob{blob_offset};
-          end_of_blob += blob_length;
-          ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
-                        "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
-                        " is out of bounds and can not read in full");
-
-          IAllocatorUniquePtr<void> data_ptr;
-          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
-                                             data_ptr));
-          prepacked_weights.buffers_.push_back(std::move(data_ptr));
-          prepacked_weights.buffer_sizes_.push_back(blob_length);
-        }
-        if (!blobs.empty()) {
-          prepacked_info->InsertPrepackedWeights(key, std::move(prepacked_weights));
-        }
-      }
+      ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
+          env, external_data_file_path, file_length, *prepacked_infos, *prepacked_info));
     }
 #endif
   }
 
   return Status::OK();
+}
+
+Status LoadPrepackedWeightsFromExternalData(const Env& env,
+                                            const std::filesystem::path& model_path,
+                                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                            PrepackedWeightsForGraph& prepacked_info) {
+  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
+              tensor_proto.name(), "Expected to have external data");
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ExternalDataInfo::PrepackedInfos prepacked_infos;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
+                          raw_data_safe_len, &prepacked_infos));
+  if (prepacked_infos.empty()) {
+    return Status::OK();
+  }
+
+#if defined(__wasm__)
+  return Status::OK();
+#else
+  ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
+                    external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
+                "Pre-packed blobs cannot be restored from an in-memory external tensor.");
+  const std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+  return LoadPrepackedWeightsFromFile(
+      env, external_data_file_path, file_length, prepacked_infos, prepacked_info);
+#endif
 }
 
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
@@ -2245,6 +2304,12 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
+  const auto append_indices = [&indices_values, indices_elements](auto first, auto last) {
+    indices_values.reserve(narrow<size_t>(indices_elements));
+    for (; first != last; ++first) {
+      indices_values.push_back(*first);
+    }
+  };
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2280,14 +2345,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int32_t));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
+        append_indices(int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int32 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2304,14 +2369,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int16_t));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
+        append_indices(int16_span.begin(), int16_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int16 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2328,14 +2393,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int8_t));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
+        append_indices(int8_span.begin(), int8_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int8 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2505,10 +2570,15 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     const size_t element_size = ml_data->Size();
+    const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
+    ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
+                      "Sparse tensor: ", name, " dense data size of ", dense_data_size,
+                      " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                      " byte limit for embedded initializer data.");
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
+    std::string dense_data_storage(dense_data_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;

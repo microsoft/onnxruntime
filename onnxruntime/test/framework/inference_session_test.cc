@@ -5,14 +5,16 @@
 #include "core/session/inference_session.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <filesystem>
 #include <functional>
 #include <future>
 #include <iterator>
-#include <thread>
 #include <fstream>
 #include <random>
+#include <set>
+#include <thread>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -27,6 +29,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -233,6 +236,34 @@ void RunModel(InferenceSession& session_object,
   ASSERT_TRUE(st.IsOK());
   VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
 }
+
+Status RunModelWithValues(InferenceSession& session_object,
+                          const RunOptions& run_options,
+                          const std::vector<float>& values,
+                          const std::vector<int64_t>& dims = {3, 2}) {
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &input);
+  NameMLValMap feeds{{"X", input}};
+  const std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  return session_object.Run(run_options, feeds, output_names, &fetches);
+}
+
+class ProfileEventCapturingSink final : public logging::ISink {
+ public:
+  void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
+
+  void SendProfileEvent(profiling::EventRecord& event) const override {
+    event_ = event;
+  }
+
+  const std::optional<profiling::EventRecord>& Event() const noexcept {
+    return event_;
+  }
+
+ private:
+  mutable std::optional<profiling::EventRecord> event_;
+};
 
 TEST(InferenceSessionTests, NoTimeout) {
   SessionOptions so;
@@ -881,6 +912,179 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))
+
+TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesStringArguments) {
+  const std::string profile_file = "profiler_json_escaping_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.StartProfiling(profile_file);
+  InlinedHashMap<std::string, std::string> args;
+  args["key\"\n"] = "value\"\n";
+  args["quoted_string"] = "\"quoted\"";
+  args["raw_array"] = "[1,2]";
+  args["json_null"] = "null";
+  const TimePoint start_time = profiler.Start();
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event\"\n", start_time, std::move(args));
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 1U);
+  EXPECT_EQ(profile_json[0]["name"], "event\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["key\"\n"], "value\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["quoted_string"], "\"quoted\"");
+  EXPECT_EQ(profile_json[0]["args"]["raw_array"], nlohmann::json({1, 2}));
+  EXPECT_EQ(profile_json[0]["args"]["json_null"], "null");
+}
+
+TEST(InferenceSessionTests, ProfilerStringIsPreservedForCustomLogger) {
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("profile_event_test");
+
+  profiling::Profiler profiler;
+  profiler.Initialize(logger.get());
+  profiler.StartProfiling(logger.get());
+  InlinedHashMap<std::string, std::string> args;
+  args["request_id"] = "{request}";
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event", profiler.Start(), std::move(args));
+  profiler.EndProfiling();
+
+  ASSERT_TRUE(capturing_sink_ptr->Event().has_value());
+  EXPECT_EQ(capturing_sink_ptr->Event()->args.at("request_id"), "{request}");
+}
+
+TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
+  const std::string profile_file = "profiler_overflow_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.SetMaxNumEventsForTest(1);
+  profiler.StartProfiling(profile_file);
+  const TimePoint start_time = std::chrono::high_resolution_clock::now();
+  profiler.RecordEvent(profiling::SESSION_EVENT, "kept", start_time, start_time);
+  profiler.RecordEvent(profiling::SESSION_EVENT, "dropped", start_time, start_time);
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 2U);
+  EXPECT_EQ(profile_json[0]["name"], "kept");
+  EXPECT_EQ(profile_json[1]["name"], "profile_truncated");
+  EXPECT_EQ(profile_json[1]["args"]["dropped_event_count"], "1");
+  EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
+}
+
+TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
+  RunInstrumentationContext instrumentation{"request", *logger};
+
+  EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
+      RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
+  EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
+
+  instrumentation.LogMoeStatisticsTruncation();
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
+class CudaPluginTestExecutionProvider final : public IExecutionProvider {
+ public:
+  CudaPluginTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&,
+      const IKernelLookup&,
+      const GraphOptimizerRegistry&,
+      IResourceAccountant*) const override {
+    return {};
+  }
+
+  const OrtEp* GetOrtEp() const override {
+    return reinterpret_cast<const OrtEp*>(this);
+  }
+};
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "true"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
+}
+
+TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_routing_json");
+  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
+  const TimePoint now = std::chrono::high_resolution_clock::now();
+
+  instrumentation.RecordMoeRoutingEvent(
+      now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
+
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  const std::string& message = capturing_sink_ptr->Messages()[0];
+  const size_t marker = message.find("moe_routing ");
+  ASSERT_NE(marker, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
+  EXPECT_EQ(event["request_id"], "request \"one\"");
+  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
+  EXPECT_EQ(event["node_index"], 42);
+  EXPECT_EQ(event["node_type"], "QMoE");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
+  EXPECT_EQ(event["num_rows"], 1);
+  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["execution_device_id"], 0);
+}
 
 // See issue #27732 for details on why this is disabled.
 TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithSessionOptions) {
@@ -3694,6 +3898,139 @@ static OrtStatus* ORT_API_CALL AppendToStringWriteFunc(void* stream_state, const
   return nullptr;  // No error
 }
 
+struct CompileApiInitializerHandlerState {
+  bool externalize = false;
+  const ORTCHAR_T* external_file_path = nullptr;
+  std::ofstream* external_file = nullptr;
+  size_t callback_count = 0;
+};
+
+static OrtStatus* ORT_API_CALL HandleCompileApiInitializer(
+    void* state, const char* /*initializer_name*/, const OrtValue* initializer_value,
+    const OrtExternalInitializerInfo* /*existing_info*/, OrtExternalInitializerInfo** new_external_info) {
+  auto& handler_state = *reinterpret_cast<CompileApiInitializerHandlerState*>(state);
+  ++handler_state.callback_count;
+  *new_external_info = nullptr;
+
+  if (!handler_state.externalize) {
+    return nullptr;
+  }
+
+  Ort::Status status{nullptr};
+  ORT_TRY {
+    Ort::ConstValue value{initializer_value};
+    const size_t byte_size = value.GetTensorSizeInBytes();
+    const int64_t offset = handler_state.external_file->tellp();
+    handler_state.external_file->write(static_cast<const char*>(value.GetTensorRawData()), byte_size);
+    handler_state.external_file->flush();
+
+    Ort::ExternalInitializerInfo external_info{nullptr};
+    status = Ort::ExternalInitializerInfo::Create(handler_state.external_file_path, offset, byte_size, external_info);
+    if (status.IsOK()) {
+      *new_external_info = external_info.release();
+    }
+  }
+  ORT_CATCH(const Ort::Exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex}; }));
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION(([&ex, &status]() { status = Ort::Status{ex.what(), ORT_FAIL}; }));
+  }
+
+  return status.release();
+}
+
+static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(17);
+
+  GraphProto& graph = *model_proto.mutable_graph();
+  graph.set_name("compile_api_custom_initializer_graph");
+
+  auto add_value_info = [](ValueInfoProto& value_info, const char* name) {
+    value_info.set_name(name);
+    auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
+    tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(2);
+  };
+
+  add_value_info(*graph.add_input(), "X");
+  if (!use_initializer) {
+    add_value_info(*graph.add_input(), "Y");
+  } else {
+    TensorProto& initializer = *graph.add_initializer();
+    initializer.set_name("Y");
+    initializer.set_data_type(TensorProto_DataType_FLOAT);
+    initializer.add_dims(2);
+    initializer.add_float_data(3.0f);
+    initializer.add_float_data(4.0f);
+  }
+  add_value_info(*graph.add_output(), "Z");
+
+  NodeProto& node = *graph.add_node();
+  node.set_name("add_node");
+  node.set_op_type("Add");
+  node.add_input("X");
+  node.add_input("Y");
+  node.add_output("Z");
+
+  std::ofstream output(model_path, std::ios::binary);
+  ASSERT_TRUE(output.is_open());
+  ASSERT_TRUE(model_proto.SerializeToOstream(&output));
+}
+
+static void VerifyCompileApiAddModel(const ModelProto& model_proto, bool use_initializer, bool externalized) {
+  const GraphProto& graph = model_proto.graph();
+  ASSERT_EQ(graph.input_size(), use_initializer ? 1 : 2);
+  ASSERT_EQ(graph.output_size(), 1);
+  ASSERT_EQ(graph.node_size(), 1);
+  ASSERT_EQ(graph.initializer_size(), use_initializer ? 1 : 0);
+
+  std::set<std::string> names;
+  for (const ValueInfoProto& input : graph.input()) {
+    EXPECT_TRUE(names.insert(input.name()).second) << "Duplicate graph input: " << input.name();
+  }
+  names.clear();
+  for (const ValueInfoProto& output : graph.output()) {
+    EXPECT_TRUE(names.insert(output.name()).second) << "Duplicate graph output: " << output.name();
+  }
+
+  if (use_initializer) {
+    const TensorProto& initializer = graph.initializer(0);
+    EXPECT_EQ(initializer.name(), "Y");
+    EXPECT_EQ(initializer.data_location(),
+              externalized ? TensorProto_DataLocation_EXTERNAL : TensorProto_DataLocation_DEFAULT);
+  }
+}
+
+static void RunCompileApiAddModel(const std::string& model_data, const ORTCHAR_T* model_path,
+                                  bool use_initializer) {
+  Ort::SessionOptions session_options;
+  Ort::Session session = model_path == nullptr
+                             ? Ort::Session(*ort_env, model_data.data(), model_data.size(), session_options)
+                             : Ort::Session(*ort_env, model_path, session_options);
+
+  const std::array<int64_t, 1> shape{2};
+  std::array<float, 2> x{1.0f, 2.0f};
+  std::array<float, 2> y{3.0f, 4.0f};
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, x.data(), x.size(), shape.data(), shape.size()));
+  if (!use_initializer) {
+    inputs.push_back(Ort::Value::CreateTensor<float>(memory_info, y.data(), y.size(), shape.data(), shape.size()));
+  }
+
+  const std::array<const char*, 2> input_names{"X", "Y"};
+  const std::array<const char*, 1> output_names{"Z"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                             output_names.data(), output_names.size());
+  ASSERT_EQ(outputs.size(), 1);
+  const float* output = outputs[0].GetTensorData<float>();
+  EXPECT_EQ(output[0], 4.0f);
+  EXPECT_EQ(output[1], 6.0f);
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 // A compile-only session (Compile API path, marked by kOrtSessionOptionCompileOnly) whose EPs compile no
 // nodes emits a plain optimized output model. The serialization point is chosen by the requested level:
@@ -3941,6 +4278,91 @@ TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToWriteFunc) {
   EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
 }
 
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerDoesNotDuplicateGraph) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_no_init.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{input_path};
+  CreateCompileApiAddModel(input_path, false);
+
+  std::string sink;
+  CompileApiInitializerHandlerState handler_state;
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+  compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+  compile_options.SetEpContextEmbedMode(true);
+
+  const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  ASSERT_FALSE(sink.empty());
+  EXPECT_EQ(handler_state.callback_count, 0u);
+
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromString(sink));
+  VerifyCompileApiAddModel(model_proto, false, false);
+  RunCompileApiAddModel(sink, nullptr, false);
+}
+
+TEST(InferenceSessionTests, CompileApiWriteFuncWithCustomInitializerHandlerPreservesInitializerOnce) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_custom_initializer_input.onnx");
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_custom_initializer_output.onnx");
+  const std::basic_string<ORTCHAR_T> external_path = ORT_TSTR("compile_api_custom_initializer.bin");
+  struct RemoveOnExit {
+    std::array<std::basic_string<ORTCHAR_T>, 3> paths;
+    ~RemoveOnExit() {
+      for (const auto& path : paths) {
+        std::filesystem::remove(path);
+      }
+    }
+  } remove_on_exit{{input_path, output_path, external_path}};
+  CreateCompileApiAddModel(input_path, true);
+
+  for (bool externalize : {false, true}) {
+    std::string sink;
+    std::ofstream external_file;
+    if (externalize) {
+      external_file.open(external_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(external_file.is_open());
+    }
+
+    CompileApiInitializerHandlerState handler_state{
+        externalize, external_path.c_str(), externalize ? &external_file : nullptr, 0};
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelPath(input_path.c_str());
+    compile_options.SetOutputModelWriteFunc(AppendToStringWriteFunc, &sink);
+    compile_options.SetOutputModelGetInitializerLocationFunc(HandleCompileApiInitializer, &handler_state);
+    compile_options.SetEpContextEmbedMode(true);
+
+    const Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    ASSERT_FALSE(sink.empty());
+    EXPECT_EQ(handler_state.callback_count, 1u);
+
+    ModelProto model_proto;
+    ASSERT_TRUE(model_proto.ParseFromString(sink));
+    VerifyCompileApiAddModel(model_proto, true, externalize);
+
+    if (externalize) {
+      external_file.close();
+      ASSERT_GT(std::filesystem::file_size(external_path), 0u);
+#if !defined(__EMSCRIPTEN__)
+      // WASM cannot load host filesystem external data without a Module.MountedFiles mapping.
+      std::ofstream output_model(output_path, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(output_model.is_open());
+      output_model.write(sink.data(), static_cast<std::streamsize>(sink.size()));
+      output_model.close();
+      RunCompileApiAddModel(sink, output_path.c_str(), true);
+#endif
+    } else {
+      RunCompileApiAddModel(sink, nullptr, true);
+    }
+  }
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 // The public Compile API honors SetGraphOptimizationLevel for the plain output model. bias_gelu_fusion.onnx
 // fuses to com.microsoft.BiasGelu only at Level2+, so it is present when ORT_ENABLE_ALL is requested and
@@ -3976,6 +4398,109 @@ TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
   // Default level (no optimizations): the Level2-only fusion must be absent.
   const std::map<std::string, int> default_counts = compile_to_buffer_counts(/*enable_all=*/false);
   EXPECT_EQ(default_counts.count("com.microsoft.BiasGelu") ? default_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// SessionState::FinalizeSessionStateImpl unconditionally static_casts any node that carries
+// a subgraph to controlflow::IControlFlowKernel and calls the control-flow-only virtual
+// SetupSubgraphExecutionInfo on it. The "only control flow nodes have subgraphs" invariant it
+// relies on is enforced nowhere: Node::Init builds a subgraph for ANY attribute of GRAPH type,
+// with no schema gate. So a model whose ordinary node carries a GRAPH attribute reaches an
+// out-of-bounds vtable slot read (IControlFlowKernel appends a vtable slot that a plain kernel
+// does not have).
+//
+// SimplifiedLayerNormalization is a usable carrier: its schema (kOnnxDomain, since v1) sets
+// AllowUncheckedAttributes(), ONNX defines no competing op of that name, and it has a plain
+// (non-control-flow) CPU kernel. The CPU EP assigns it as a single node and keeps its GRAPH
+// attribute, so finalize hits the bad cast.
+TEST(InferenceSessionTests, SubgraphAttributeOnNonControlFlowNodeIsRejected) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Minimal, self-contained subgraph body: a single Constant producing one output and taking
+  // no inputs, so it needs no outer-scope wiring. Its contents are irrelevant to the defect.
+  ONNX_NAMESPACE::GraphProto forged_subgraph;
+  {
+    onnxruntime::Model sub_model("forged_subgraph", false, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+    Graph& sub_graph = sub_model.MainGraph();
+
+    ONNX_NAMESPACE::TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    auto& sub_out = sub_graph.GetOrCreateNodeArg("forged_sub_out", &float_tensor);
+    std::vector<onnxruntime::NodeArg*> const_inputs;
+    std::vector<onnxruntime::NodeArg*> const_outputs = {&sub_out};
+    auto& const_node = sub_graph.AddNode("forged_const", "Constant", "", const_inputs, const_outputs);
+
+    ONNX_NAMESPACE::TensorProto value;
+    value.set_name("forged_value");
+    value.add_dims(1);
+    value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    value.add_float_data(0.0f);
+    const_node.AddAttribute("value", value);
+
+    std::vector<const onnxruntime::NodeArg*> sub_graph_outputs = {&sub_out};
+    sub_graph.SetOutputs(sub_graph_outputs);
+    ASSERT_STATUS_OK(sub_graph.Resolve());
+    forged_subgraph = sub_graph.ToGraphProto();
+  }
+
+  // Main graph: SimplifiedLayerNormalization(X, scale) -> Y, plus a forged GRAPH attribute that
+  // no schema forbids because the op allows unchecked attributes.
+  onnxruntime::Model model("subgraph_type_confusion", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto vec_type;
+  vec_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  vec_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& scale = graph.GetOrCreateNodeArg("scale", &vec_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &x_type);
+
+  std::vector<onnxruntime::NodeArg*> inputs = {&x, &scale};
+  std::vector<onnxruntime::NodeArg*> outputs = {&y};
+  auto& node = graph.AddNode("sln", "SimplifiedLayerNormalization", "carrier", inputs, outputs);
+  node.AddAttribute("axis", int64_t{-1});
+  // The forged, non-control-flow subgraph. Node::Init materializes a Graph for it with no schema
+  // gate, and finalize then treats this ordinary node as a control flow kernel.
+  node.AddAttribute("forged_subgraph", forged_subgraph);
+
+  std::vector<const onnxruntime::NodeArg*> graph_inputs = {&x, &scale};
+  std::vector<const onnxruntime::NodeArg*> graph_outputs = {&y};
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+  // Resolving OK proves the model is otherwise well-formed, so a later Initialize failure can
+  // only come from the type-confusion guard, not from a malformed graph.
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.SubgraphAttributeOnNonControlFlowNodeIsRejected";
+  // Keep optimizers out so the carrier node reaches finalize unchanged, mirroring the WebNN
+  // dispatch session which also runs with ORT_DISABLE_ALL.
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+
+  // Mirrors the attacker's entry point (CreateSessionFromArray on attacker-controlled bytes).
+  ASSERT_STATUS_OK(session_object.Load(serialized.data(), static_cast<int>(serialized.size())));
+
+  const auto status = session_object.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("has a subgraph but is not a control flow node"),
+            std::string::npos)
+      << "actual error: " << status.ErrorMessage();
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)

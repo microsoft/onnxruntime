@@ -547,12 +547,26 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
+WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero,
+                                 bool submit_zero_initialize) const {
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
   auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
   if (buffer) {
+    if (initialize_to_zero) {
+      // initialize_to_zero controls whether a cached buffer is cleared. submit_zero_initialize separately controls
+      // whether that clear is submitted before Create returns. Session::Run defers submission to preserve dispatch
+      // batching, while allocations made outside Run submit immediately so subsequent queue work observes the clear.
+      auto buffer_guard = wgpu::Buffer::Acquire(buffer);
+      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+      context_.EndComputePass();
+      context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
+      if (submit_zero_initialize) {
+        ORT_THROW_IF_ERROR(context_.Flush(*this));
+      }
+      return buffer_guard.MoveToCHandle();
+    }
     return buffer;
   }
 

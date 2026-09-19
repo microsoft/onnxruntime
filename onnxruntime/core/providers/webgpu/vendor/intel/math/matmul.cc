@@ -26,9 +26,11 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
+  // Emit activation helpers before the write function uses them.
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
-  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
+  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_, b_is_fp16_));
   return Status::OK();
@@ -40,8 +42,9 @@ bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, in
 
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
-                        std::vector<const Tensor*>& inputs,
-                        Tensor* output) {
+                        const std::vector<const Tensor*>& inputs,
+                        Tensor* output,
+                        bool is_channels_last) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -124,9 +127,11 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, b_components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16, elements_per_thread};
+  MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16,
+                                is_channels_last, elements_per_thread};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), a_vec4, b_is_fp16)
+      .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
+                 a_vec4, b_is_fp16, is_channels_last)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
@@ -134,9 +139,11 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
+  // Activation uniforms must remain last because definitions and values are matched by index.
+  AppendActivationUniformsData(activation, program);
 
   if (has_bias) {
-    auto bias_components = 1;
+    const int bias_components = is_channels_last ? components : 1;
     const auto* bias = inputs[2];
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
     program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});

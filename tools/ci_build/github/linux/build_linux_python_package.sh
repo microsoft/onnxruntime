@@ -17,7 +17,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:" parameter_Option
+while getopts "d:p:x:c:a:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -33,7 +33,8 @@ p)
   ;;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+a) CUDA_ARCHS=${OPTARG};;
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-a <cuda_archs>]"
    exit 1;;
 esac
 done
@@ -73,13 +74,19 @@ if [ "$ARCH" == "x86_64" ]; then
 fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
-    if [ "$CUDA_VERSION" == "12.8" ]; then
-        CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;90-real;120-real;120-virtual"
-    elif [ "$CUDA_VERSION" == "13.0" ]; then
-        CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
-    else
-        echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
-        exit 1
+    # The caller (-a) normally supplies these. Keep in sync with plugin-cuda-pipeline.yml
+    # (cmake_linux_x64_cuda_archs / cmake_linux_aarch64_cuda_archs).
+    if [ -z "${CUDA_ARCHS:-}" ]; then
+        if [ "$CUDA_VERSION" == "13.0" ] && [ "$ARCH" == "aarch64" ]; then
+            CUDA_ARCHS="89-real;90-real;120-real;121-real"
+        elif [ "$CUDA_VERSION" == "12.8" ]; then
+            CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;89-real;90-real;120-real"
+        elif [ "$CUDA_VERSION" == "13.0" ]; then
+            CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;120-real"
+        else
+            echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
+            exit 1
+        fi
     fi
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')

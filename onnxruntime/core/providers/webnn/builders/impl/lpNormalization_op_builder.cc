@@ -106,8 +106,8 @@ bool LpNormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const 
     return false;
   }
   // reduceL2 consumes the input; div consumes the input as its first operand ("a").
-  return IsInputRankSupported(wnn_limits, "reduceL2", "input", input_shape.size(), node.Name(), logger) &&
-         IsInputRankSupported(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
+  return IsRankSupportedByWebNNOp(wnn_limits, "reduceL2", "input", input_shape.size(), node.Name(), logger) &&
+         IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
 }
 
 bool LpNormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,

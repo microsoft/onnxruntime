@@ -4,6 +4,7 @@
 #include "lib/Api.Ort/pch.h"
 
 #include <evntrace.h>
+#include <limits>
 
 #include "OnnxruntimeDescriptorConverter.h"
 #include "ImageFeatureDescriptor.h"
@@ -447,6 +448,13 @@ static winml::ILearningModelFeatureDescriptor CreateImageFeatureDescriptor(
   // Should the model metadata be read instead???
   const int c_height_dimension = 2;
   const int c_width_dimension = 3;
+  WINML_THROW_HR_IF_FALSE_MSG(
+    E_INVALIDARG,
+    shape.size() > static_cast<size_t>(c_width_dimension) && shape[c_height_dimension] > 0 &&
+      shape[c_width_dimension] > 0 && shape[c_height_dimension] <= std::numeric_limits<int32_t>::max() &&
+      shape[c_width_dimension] <= std::numeric_limits<int32_t>::max(),
+    "Image tensor height and width must be positive and no greater than INT32_MAX."
+  );
   auto height = static_cast<uint32_t>(shape[c_height_dimension]);
   auto width = static_cast<uint32_t>(shape[c_width_dimension]);
   auto descriptor = winrt::make<winmlp::ImageFeatureDescriptor>(
