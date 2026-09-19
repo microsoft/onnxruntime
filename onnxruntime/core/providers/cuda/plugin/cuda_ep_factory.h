@@ -65,6 +65,11 @@ class CudaEpFactory : public OrtEpFactory {
   static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept;
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetOperatorCompatibilityInfoImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpOperatorCompatibilityInfo** entries,
+      size_t* num_entries) noexcept;
+
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* const* devices, size_t num_devices,
