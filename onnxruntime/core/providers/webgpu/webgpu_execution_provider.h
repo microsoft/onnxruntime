@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,7 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -63,6 +65,7 @@ struct WebGpuExecutionProviderConfig {
   // This is the single line that decides the shipped default for the
   // "enableMatmulFp32Accumulation" provider option.
   bool enable_matmul_fp32_accumulation{false};
+  std::optional<webgpu::MatMulAlgorithm> forced_matmul_algorithm;
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -128,6 +131,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t KvCacheQuantizationBits() const { return kv_cache_quantization_bits_; }
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
   bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
+  std::optional<webgpu::MatMulAlgorithm> ForcedMatMulAlgorithm() const { return forced_matmul_algorithm_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   onnxruntime::ep::adapter::Logger& GetEpLogger() const;
@@ -150,6 +154,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
   bool enable_matmul_fp32_accumulation_ = false;
+  std::optional<webgpu::MatMulAlgorithm> forced_matmul_algorithm_;
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;

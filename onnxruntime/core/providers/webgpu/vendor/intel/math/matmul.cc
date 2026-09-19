@@ -36,8 +36,9 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K) {
-  return CanApplySubgroup(context, M, N, K);
+bool HasMatMulIntelCapability(const ComputeContext& context) {
+  return context.AdapterInfo().vendor == std::string_view{"intel"} &&
+         context.HasFeature(wgpu::FeatureName::Subgroups);
 }
 
 Status ApplyMatMulIntel(ComputeContext& context,

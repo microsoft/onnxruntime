@@ -124,6 +124,14 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  if (std::string forced_matmul_algorithm_str;
+      config_options.TryGetConfigEntry(kForceMatMulAlgorithm, forced_matmul_algorithm_str)) {
+    webgpu_ep_config.forced_matmul_algorithm = ParseMatMulAlgorithm(forced_matmul_algorithm_str);
+    ORT_ENFORCE(webgpu_ep_config.forced_matmul_algorithm.has_value(),
+                "Invalid forced MatMul algorithm: ", forced_matmul_algorithm_str,
+                ". Must be one of: subgroup_matrix, naive, intel_subgroup, packed, packed_split_k.");
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
