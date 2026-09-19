@@ -264,16 +264,15 @@ __global__ void CompactVisibleKernel(const int64_t* mask, int32_t* visible_indic
 // One block per (query row, block index). Pools compress_ratio visible keys, normalizes, rotates
 // and scores the result against every query head.
 template <typename T>
-__global__ void QsaBlockScoreKernel(const T* query, const T* present_key,
-                                    const T* query_norm_weight, const T* key_norm_weight,
+__global__ void QsaBlockScoreKernel(const float* query_rotated, const T* present_key,
+                                    const T* key_norm_weight,
                                     const T* cos_cache, const T* sin_cache,
                                     const int32_t* visible_indices, const int32_t* visible_count,
                                     float* block_scores, SparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
   float* pooled = shared;
   float* rotated = shared + params.head_size;
-  float* query_head = shared + 2 * params.head_size;
-  float* reduction = shared + 3 * params.head_size;
+  float* reduction = shared + 2 * params.head_size;
 
   const int64_t total = static_cast<int64_t>(params.batch_size) * params.sequence_length * params.max_block_count;
   for (int64_t work = blockIdx.x; work < total; work += gridDim.x) {
@@ -325,33 +324,9 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key,
     float score = 0.0f;
     for (int head = 0; head < params.num_heads; ++head) {
       const int64_t query_base = (row * params.num_heads + head) * params.head_size;
-      for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-        query_head[d] = to_float<T>(query[query_base + d]);
-      }
-      __syncthreads();
-
-      float query_sum_squares = 0.0f;
-      for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-        query_sum_squares += query_head[d] * query_head[d];
-      }
-      query_sum_squares = BlockSum(query_sum_squares, reduction);
-      const float query_inverse_rms =
-          rsqrtf(query_sum_squares / static_cast<float>(params.head_size) + params.epsilon);
-      for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-        query_head[d] = query_head[d] * query_inverse_rms * to_float<T>(query_norm_weight[d]);
-      }
-      __syncthreads();
-
-      const int query_position = ClampPosition(
-          static_cast<int64_t>(params.past_sequence_length) + row % params.sequence_length,
-          params.max_rotary_length);
-      const int64_t query_cache_offset =
-          (static_cast<int64_t>(batch) * params.max_rotary_length + query_position) * params.rotary_width;
       float partial = 0.0f;
       for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-        partial += LeadingRope<T>(query_head, params.rotary_width, cos_cache + query_cache_offset,
-                                  sin_cache + query_cache_offset, d) *
-                   rotated[d];
+        partial += query_rotated[query_base + d] * rotated[d];
       }
       score += fmaxf(BlockSum(partial, reduction), 0.0f);
     }
@@ -685,7 +660,8 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
     return CUDA_CALL(cudaGetLastError());
   }
 
-  float* block_scores = float_workspace + rows * params.num_heads * params.head_size;
+  float* query_rotated = float_workspace;
+  float* block_scores = query_rotated + rows * params.num_heads * params.head_size;
   int32_t* visible_indices = int_workspace;
   int32_t* visible_count = int_workspace + rows * params.total_sequence_length;
 
@@ -695,11 +671,16 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   CompactVisibleKernel<<<row_blocks, kThreads, kThreads * sizeof(int32_t), stream>>>(
       mask, visible_indices, visible_count, params);
 
+  const int64_t query_rows = rows * params.num_heads;
+  const int rotate_blocks = static_cast<int>(std::min<int64_t>(query_rows, kMaxGridDimX));
+  RotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+      query, query_norm_weight, cos_cache, sin_cache, nullptr, query_rotated, params);
+
   if (params.max_block_count > 0) {
     const int64_t block_work = rows * params.max_block_count;
     const int score_blocks = static_cast<int>(std::min<int64_t>(block_work, kMaxGridDimX));
-    QsaBlockScoreKernel<T><<<score_blocks, kThreads, 3 * value_bytes + kThreads * sizeof(float), stream>>>(
-        query, present_key, query_norm_weight, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
+    QsaBlockScoreKernel<T><<<score_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+        query_rotated, present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
         block_scores, params);
   }
 
