@@ -14,6 +14,7 @@
 #include <fstream>
 
 #include "nlohmann/json.hpp"
+#include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -1879,7 +1880,6 @@ TEST(MoETest, QMoETest_CPU_Int2_BlockWiseLutIdentity) {
 }
 
 TEST(MoETest, QMoETest_CPU_Int2_InvalidHiddenSize) {
-#ifdef USE_MLAS
   auto cpu_ep = DefaultCpuExecutionProvider();
   if (!cpu_ep) {
     GTEST_SKIP() << "CPU execution provider not available";
@@ -1934,9 +1934,6 @@ TEST(MoETest, QMoETest_CPU_Int2_InvalidHiddenSize) {
                  {},
                  nullptr,
                  &cpu_execution_providers);
-#else
-  GTEST_SKIP() << "Skipping CPU QMoE test";
-#endif
 }
 
 static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape) {
@@ -2020,6 +2017,14 @@ TEST(MoETest, QMoETest_MixedWidthFusedSwiGLURequiresMatchingFC1AndFC3) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.",
              {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_PackedByteCountSupportsArbitraryBitWidths) {
+  EXPECT_EQ(contrib::moe_helper::PackedByteCount(8, 3), 3);
+  EXPECT_EQ(contrib::moe_helper::PackedByteCount(8, 5), 5);
+  EXPECT_EQ(contrib::moe_helper::PackedByteCount(4, 6), 3);
+  EXPECT_EQ(contrib::moe_helper::PackedByteCountWithPadding(1, 3), 1);
+  EXPECT_EQ(contrib::moe_helper::PackedByteCountWithPadding(3, 5), 2);
 }
 
 // Regression test: row-wise asymmetric 2-bit with dimensions that trigger
