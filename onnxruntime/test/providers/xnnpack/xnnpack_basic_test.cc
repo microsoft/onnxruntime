@@ -521,6 +521,54 @@ TEST(XnnpackEP, Resize) {
   RunModelTestWithPath(ort_model_path, "test_resize", nullptr);
 }
 
+TEST(XnnpackEP, TestResizeEmptyScalesUsesSizes) {
+  auto model_builder = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    auto* roi = builder.MakeInitializer<float>({0}, {});
+    auto* scales = builder.MakeInitializer<float>({0}, {});
+    auto* sizes = builder.MakeInitializer<int64_t>({4}, {1, 3, 16, 16});
+    auto* output = builder.MakeOutput();
+
+    auto& resize = builder.AddNode("Resize", {input, roi, scales, sizes}, {output});
+    resize.AddAttribute("mode", "linear");
+    resize.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  };
+
+  RunModelTest(model_builder, "xnnpack_test_resize_empty_scales",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
+TEST(XnnpackEP, TestResizeDynamicSpatialDimensionsFallBack) {
+  const std::vector<int64_t> input_shape = {1, 3, 8, 8};
+  auto model_builder = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeSymbolicInput<float>(
+        {int64_t{1}, int64_t{3}, std::string("height"), std::string("width")});
+    auto* roi = builder.MakeInitializer<float>({0}, {});
+    auto* scales = builder.MakeInitializer<float>({0}, {});
+    auto* sizes = builder.MakeInitializer<int64_t>({4}, {1, 3, 16, 16});
+    auto* output = builder.MakeOutput();
+
+    auto& resize = builder.AddNode("Resize", {input, roi, scales, sizes}, {output});
+    resize.AddAttribute("mode", "linear");
+    resize.AddAttribute("coordinate_transformation_mode", "half_pixel");
+
+    // MakeSymbolicInput doesn't register a feed, so add one ourselves.
+    OrtValue input_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_shape,
+                         builder.rand_gen_.Uniform<float>(input_shape, -1.0f, 1.0f), &input_value);
+    builder.feeds_.insert(std::make_pair(input->Name(), input_value));
+  };
+
+  RunModelTest(model_builder, "xnnpack_test_resize_dynamic_spatial_dimensions",
+               {
+                   ExpectedEPNodeAssignment::None,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
 TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NCWH_asymmetric_no_node_assiged) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for Resize(19) node with name 'node_token_5'
   // NCHW
   RunModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
