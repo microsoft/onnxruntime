@@ -84,7 +84,7 @@ for a runtime:
 | 1 | `key` | both | `T` | `(B, S, D)` for `qsa`, `(B, S, 2D)` for `csa` |
 | 2 | `query_norm_weight` | both | `T` | `(D)` |
 | 3 | `key_norm_weight` | both | `T` | `(D)` |
-| 4 | `cos_cache` | both | `T` | `(B, max_rotary_sequence_length, R)` |
+| 4 | `cos_cache` | both | `T` | `(max_rotary_sequence_length, R)` when shared across the batch, or `(B, max_rotary_sequence_length, R)` |
 | 5 | `sin_cache` | both | `T` | same as `cos_cache` |
 | 6 | `mask` | `qsa` | `TB` | INT64 padding mask `(B, T)` |
 | 7 | `past_key` | both | `T` | `(B, P, D)`; raw keys for `qsa`, compressed keys for `csa` |
@@ -261,9 +261,9 @@ that assign one block to each work item clamp the grid to the CUDA `gridDim.x` l
 |---|---|---|
 | 1 | `ConcatPastKeyKernel` | element |
 | 2 | `RotateQueryKernel<T, /*leading=*/true>` | one block per `(b, s, h)` |
-| 3 | `CompactVisibleKernel` | one block per `(b, s)`; Hillis–Steele scan in shared memory |
+| 3 | `AnalyzeVisibleKernel` / `CompactNonPrefixVisibleKernel` | one block per `(b, s)`; prefix-causal rows avoid index materialization |
 | 4 | `QsaBlockScoreKernel` | one block per `(b, s, block)`; mean-pool → RMSNorm → rotary → score |
-| 5 | `QsaSelectKernel` | one block per `(b, s)`; iterated block arg-max |
+| 5 | `QsaBoundedTopKKernel` / `QsaSelectKernel` | one block per `(b, s)`; fixed-capacity radix selection and emission |
 
 ### `csa`
 
@@ -280,19 +280,19 @@ that assign one block to each work item clamp the grid to the CUDA `gridDim.x` l
 
 | Policy | Buffer | Elements |
 |---|---|---|
-| `qsa` | float | `B*S*N*D` (rotated query) + `B*S*max_block_count` (block scores) |
-| `qsa` | int32 | `B*S*T` (visible indices) + `B*S` (visible counts) |
+| `qsa` | float | `B*S*max_block_count` (block scores) |
+| `qsa` | int32 | `B*S*T` (arbitrary-mask visible indices) + `B*S` (visible counts) + up to `B*S*block_topk` (TopK indices) |
 | `csa` | float | `B*S*N*D` (rotated query) + `B*S*present_compressed_length` (scores) |
 
 Every size is derived from shapes and attributes only.
 
-### Selection without a visited bitmap
+### Selection
 
-`QsaSelectKernel` and `CsaSelectKernel` repeatedly scan for the next element in the total order
-"score descending, index ascending", using the previously emitted `(score, index)` pair as the
-cursor. That avoids an `O(entries)` bitmap in shared memory, keeps the selection deterministic and
-makes ties resolve to the smaller index. The cost is `O(topk * entries)` per query row, which is
-the main performance follow-up below.
+For QSA `block_topk` values from 33 through 512, `QsaBoundedTopKKernel` finds the stable TopK with
+eight fixed-size radix-histogram passes and sorts only the selected candidates. Selection storage
+and output traffic are therefore `O(block_topk)`, rather than `O(entries)`, while the packed
+score/index key preserves deterministic "score descending, index ascending" ordering. Smaller QSA
+rows use the in-kernel block TopK; larger configured TopK values retain the repeated-scan fallback.
 
 ## 8. Numerics and Determinism
 
@@ -319,7 +319,8 @@ Shape inference and the kernel both reject:
 - `index_topk` absent or `<= 0` for `csa`;
 - an output count other than 2 (`qsa`) or 3 (`csa`);
 - a `past_proj_buffer` length outside `[0, 2 * compress_ratio)`;
-- rank or dimension mismatches between `query`, `key`, the caches and the buffers.
+- rank or dimension mismatches between `query`, `key`, the caches and the buffers. Rotary caches
+  may be shared rank-2 tables or request-specific rank-3 tables.
 
 Because the checks live in shape inference, most misuse fails at `Graph::Resolve()` with a clear
 message rather than at kernel launch.
@@ -338,7 +339,12 @@ contains:
 - **Numeric tests** (`float`, `float16`, `bfloat16`) that run the CUDA kernel against a float
   reference implementation of both policies written directly from the reference semantics. Inputs
   are round-tripped through the tested element type before the reference runs, so the reference
-  sees exactly the values the kernel reads. These tests skip when no CUDA EP is available.
+  sees exactly the values the kernel reads. Shared rank-2 rotary caches are covered for both CUDA
+  and WebGPU. These tests skip when the requested EP is unavailable.
+- **Long-context parity tests** at 8K, 32K, 64K, 128K and 256K for
+  `compress_ratio=4, token_budget=2048`.
+- **Fixed-address CUDA graph capture and replay** in
+  `onnxruntime/test/contrib_ops/cuda_kernels/sparse_attention_indexer_kernel_test.cc`.
 
 Run them with:
 
@@ -346,21 +352,28 @@ Run them with:
 ./build/Linux/Release/onnxruntime_provider_test --gtest_filter='SparseAttentionIndexer*'
 ```
 
+Run the CUDA decode sweep against a built Python package with:
+
+```bash
+python onnxruntime/python/tools/microbench/sparse_attention_indexer.py
+```
+
 ## 11. Known Limitations and Performance Follow-ups
 
 The implementation is correctness-first. The following are known and deliberate:
 
-1. **Selection is `O(topk * entries)` per query row.** Each emitted index costs a full block-wide
-   scan. A radix-select or a per-row bitonic top-k would reduce this to roughly one pass, and is the
-   single biggest win for large `index_topk` / `token_budget`.
+1. **Exact query-specific scoring remains `O(visible_tokens / compress_ratio)`.** Every decode query
+  can change, so an exact implementation must inspect every eligible block; persistent candidates
+  from an earlier query cannot preserve QSA semantics. The bounded radix path removes full-context
+  sorting and candidate buffers, but not this scoring lower bound.
 2. **Scoring is not tensor-core accelerated.** `QsaBlockScoreKernel` and `CsaScoreKernel` compute
    `q · k` with a shared-memory block reduction, one dot product per block. A tiled GEMM (or a
    fused `ReLU`+reduce epilogue) would be far better once shapes grow.
-3. **The rotated query is materialized in `float32`.** That costs `B*S*N*D` floats of workspace.
-   Fusing the rotation into the scoring kernels removes the traffic at the cost of recomputing the
-   rotation per block.
-4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads each batch's `(B, T)` padding
-  mask for every `s`. Sharing work across query rows would reduce that traffic for long contexts.
+3. **Query rotation is fused into QSA scoring.** This removes the separate rotation launch and the
+   `B*S*N*D` float workspace, at the cost of recomputing rotation for each scored block.
+4. **Mask analysis remains `O(T)` per query row.** Prefix-causal masks avoid visible-index writes
+  and tile-by-tile scan synchronization. Padding masks with holes still require exact compaction
+  because block membership is defined by visible rank, not absolute position.
 5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
 6. **No CPU kernel.** The operator is CUDA-only today.

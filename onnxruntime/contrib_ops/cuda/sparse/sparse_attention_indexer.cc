@@ -57,6 +57,32 @@ Status CheckIntDimension(const char* name, int64_t value, bool allow_zero = true
   return Status::OK();
 }
 
+struct RotaryCacheShape {
+  bool batched;
+  int64_t max_rotary_length;
+  int64_t rotary_width;
+};
+
+Status CheckRotaryCache(const Tensor* cos_cache, const Tensor* sin_cache, int64_t batch_size,
+                        RotaryCacheShape& out) {
+  ORT_RETURN_IF(cos_cache == nullptr, "SparseAttentionIndexer: cos_cache is required");
+  const auto& cos_shape = cos_cache->Shape();
+  out.batched = cos_shape.NumDimensions() == 3;
+  ORT_RETURN_IF_NOT(
+      (out.batched && cos_shape[0] == batch_size && cos_shape[1] > 0) ||
+          (cos_shape.NumDimensions() == 2 && cos_shape[0] > 0),
+      "SparseAttentionIndexer: cos_cache must have shape (max_rotary_sequence_length, rotary_width) or "
+      "(batch_size, max_rotary_sequence_length, rotary_width), got ",
+      cos_shape.ToString());
+  out.max_rotary_length = out.batched ? cos_shape[1] : cos_shape[0];
+  out.rotary_width = out.batched ? cos_shape[2] : cos_shape[1];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("max_rotary_sequence_length", out.max_rotary_length, false));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("rotary_width", out.rotary_width, false));
+  ORT_RETURN_IF_NOT(sin_cache != nullptr && sin_cache->Shape() == cos_shape,
+                    "SparseAttentionIndexer: sin_cache must have the same shape as cos_cache");
+  return Status::OK();
+}
+
 Status ReadOptionalLength(OpKernelContext* context, int index, const char* name, int64_t& value) {
   const Tensor* tensor = index < context->InputCount() ? context->Input<Tensor>(index) : nullptr;
   if (tensor == nullptr) {
@@ -159,18 +185,10 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
   ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
 
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: cos_cache must have shape "
-                    "(batch_size, max_rotary_sequence_length, rotary_width), got ",
-                    cos_shape.ToString());
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_ERROR(CheckIntDimension("max_rotary_sequence_length", max_rotary_length, false));
-  ORT_RETURN_IF_ERROR(CheckIntDimension("rotary_width", rotary_width, false));
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape,
-                    "SparseAttentionIndexer: sin_cache must have the same shape as "
-                    "cos_cache");
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
   ORT_RETURN_IF_NOT(rotary_width > 0 && rotary_width % 2 == 0 && rotary_width <= head_size,
                     "SparseAttentionIndexer: policy_mode 'qsa' requires an even rotary_width in (0, head_size], got ",
                     rotary_width);
@@ -212,6 +230,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   params.head_size = static_cast<int>(head_size);
   params.rotary_width = static_cast<int>(rotary_width);
   params.max_rotary_length = static_cast<int>(max_rotary_length);
+  params.rotary_cache_batch_stride = rotary_cache_shape.batched ? params.max_rotary_length : 0;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.capacity = static_cast<int>(
       sai::SelectedCapacity(sai::Policy::kQsa, token_budget_, index_topk_, compress_ratio_));
@@ -294,18 +313,10 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                 "SparseAttentionIndexer: 2 * head_size must be no greater than INT_MAX");
   const int64_t width = 2 * head_size;
 
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: cos_cache must have shape "
-                    "(batch_size, max_rotary_sequence_length, rotary_width), got ",
-                    cos_shape.ToString());
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_ERROR(CheckIntDimension("max_rotary_sequence_length", max_rotary_length, false));
-  ORT_RETURN_IF_ERROR(CheckIntDimension("rotary_width", rotary_width, false));
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape,
-                    "SparseAttentionIndexer: sin_cache must have the same shape as "
-                    "cos_cache");
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
   ORT_RETURN_IF_NOT(rotary_width > 0 && 2 * rotary_width <= head_size,
                     "SparseAttentionIndexer: policy_mode 'csa' requires 0 < 2 * rotary_width <= head_size, got "
                     "rotary_width=",
@@ -363,6 +374,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   params.head_size = static_cast<int>(head_size);
   params.rotary_width = static_cast<int>(rotary_width);
   params.max_rotary_length = static_cast<int>(max_rotary_length);
+  params.rotary_cache_batch_stride = rotary_cache_shape.batched ? params.max_rotary_length : 0;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.capacity = static_cast<int>(
       sai::SelectedCapacity(sai::Policy::kCsa, token_budget_, index_topk_, compress_ratio_));

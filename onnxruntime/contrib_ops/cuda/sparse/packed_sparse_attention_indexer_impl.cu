@@ -325,7 +325,10 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* cumula
                                 PackedSparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
   float* shared_value = shared;
-  int* shared_index = reinterpret_cast<int*>(shared + blockDim.x);
+  const bool use_fast_topk = params.block_topk <= kSaiFastTopKMax;
+  const int shared_entries = use_fast_topk ? static_cast<int>(blockDim.x) * params.block_topk
+                                           : static_cast<int>(blockDim.x);
+  int* shared_index = reinterpret_cast<int*>(shared + shared_entries);
 
   for (int token = static_cast<int>(blockIdx.x); token < params.total_tokens; token += static_cast<int>(gridDim.x)) {
     int32_t* out_row = selected_indices + static_cast<int64_t>(token) * params.capacity;
@@ -355,28 +358,42 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* cumula
 
     const float* scores_row = block_scores + static_cast<int64_t>(token) * params.state_capacity;
 
-    float previous_score = 0.0f;
-    int previous_index = -1;
-    int emitted_blocks = 0;
-    for (int rank = 0; rank < selected; ++rank) {
-      float best_value = 0.0f;
-      int best_index = -1;
-      SaiScanForNext(scores_row, visible_block_count, previous_score, previous_index, &best_value, &best_index);
-      shared_value[threadIdx.x] = best_value;
-      shared_index[threadIdx.x] = best_index;
-      __syncthreads();
-      SaiBlockArgMax(shared_value, shared_index);
-      previous_index = shared_index[0];
-      previous_score = shared_value[0];
-      __syncthreads();
-      if (previous_index < 0) {
-        break;
+    int emitted_blocks = selected;
+    if (selected > 0 && use_fast_topk) {
+      SaiBlockTopK(scores_row, visible_block_count, selected, shared_value, shared_index);
+      for (int rank = 0; rank < selected; ++rank) {
+        const int selected_block = shared_index[rank];
+        for (int t = static_cast<int>(threadIdx.x); t < params.compress_ratio;
+             t += static_cast<int>(blockDim.x)) {
+          out_row[rank * params.compress_ratio + t] = selected_block * params.compress_ratio + t;
+        }
       }
-      for (int t = static_cast<int>(threadIdx.x); t < params.compress_ratio; t += static_cast<int>(blockDim.x)) {
-        out_row[rank * params.compress_ratio + t] = previous_index * params.compress_ratio + t;
-      }
-      emitted_blocks = rank + 1;
       __syncthreads();
+    } else {
+      float previous_score = 0.0f;
+      int previous_index = -1;
+      emitted_blocks = 0;
+      for (int rank = 0; rank < selected; ++rank) {
+        float best_value = 0.0f;
+        int best_index = -1;
+        SaiScanForNext(scores_row, visible_block_count, previous_score, previous_index, &best_value, &best_index);
+        shared_value[threadIdx.x] = best_value;
+        shared_index[threadIdx.x] = best_index;
+        __syncthreads();
+        SaiBlockArgMax(shared_value, shared_index);
+        previous_index = shared_index[0];
+        previous_score = shared_value[0];
+        __syncthreads();
+        if (previous_index < 0) {
+          break;
+        }
+        for (int t = static_cast<int>(threadIdx.x); t < params.compress_ratio;
+             t += static_cast<int>(blockDim.x)) {
+          out_row[rank * params.compress_ratio + t] = previous_index * params.compress_ratio + t;
+        }
+        emitted_blocks = rank + 1;
+        __syncthreads();
+      }
     }
 
     // The trailing incomplete block is always causally visible in full up to this query's own
@@ -727,7 +744,8 @@ __global__ void CsaSelectKernel(const float* scores, const int32_t* cumulative_s
 
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.total_tokens);
-  return rows * params.num_heads * params.head_size + rows * static_cast<size_t>(std::max(params.state_capacity, 1));
+  return rows * params.num_heads * params.head_size +
+         rows * static_cast<size_t>(std::max(params.state_capacity, 1));
 }
 
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
@@ -779,7 +797,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 
   float* query_rotated = float_workspace;
   float* block_scores =
-      float_workspace + static_cast<int64_t>(params.total_tokens) * params.num_heads * params.head_size;
+      query_rotated + static_cast<int64_t>(params.total_tokens) * params.num_heads * params.head_size;
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
@@ -796,7 +814,10 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   }
 
   const int token_blocks = static_cast<int>(std::min<int64_t>(params.total_tokens, kSaiMaxGridDimX));
-  QsaSelectKernel<<<token_blocks, kThreads, kThreads * (sizeof(float) + sizeof(int)), stream>>>(
+  const int topk_shared_entries =
+      params.block_topk <= kSaiFastTopKMax ? kThreads * params.block_topk : kThreads;
+  QsaSelectKernel<<<token_blocks, kThreads,
+                    static_cast<size_t>(topk_shared_entries) * (sizeof(float) + sizeof(int)), stream>>>(
       block_scores, cumulative_sequence_lengths, past_sequence_lengths, position_ids, present_state_lengths,
       overflow_flags, selected_indices, selected_counts, params);
 

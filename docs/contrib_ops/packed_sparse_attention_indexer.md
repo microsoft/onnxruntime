@@ -261,8 +261,9 @@ mechanics with no packed equivalent):
 ## 10. Known limitations and follow-ups
 
 - The reference CUDA/WebGPU kernels prioritize correctness over throughput (see the top-of-file
-  comments in the `.cu`/`.cc` implementations); they are not yet tuned for large `state_capacity`
-  or long packed batches.
+  comments in the `.cu`/`.cc` implementations). CUDA QSA fuses query rotation into scoring and
+  uses a single-read deterministic block TopK for up to 32 selected blocks; larger TopK values
+  retain the correctness-first repeated-scan fallback.
 - OgaEngine / Model Builder integration (declaring `past_key_state` etc. as Engine-managed,
   per-request fixed-size state, analogous to a paged auxiliary cache) is out of scope for this
   operator definition and is expected in a follow-up to `microsoft/onnxruntime-genai`.
