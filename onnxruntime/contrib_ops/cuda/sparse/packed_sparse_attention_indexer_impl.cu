@@ -263,16 +263,12 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
 // present_key_state entry (unlike the dense op, no per-query pooling/normalize/rotate is repeated
 // here because the packed contract stores fully-prepared blocks in key_state).
 template <typename T>
-__global__ void QsaBlockScoreKernel(const T* query, const T* query_norm_weight,
-                                    const T* cos_cache, const T* sin_cache,
-                                    const T* present_key_state,
+__global__ void QsaBlockScoreKernel(const T* present_key_state, const float* query_rotated,
                                     const int32_t* cumulative_sequence_lengths,
                                     const int32_t* past_sequence_lengths, const int64_t* position_ids,
                                     const int32_t* present_state_lengths, float* block_scores,
                                     PackedSparseAttentionIndexerParams params) {
-  extern __shared__ float shared[];
-  float* query_head = shared;
-  float* reduction = shared + params.head_size;
+  extern __shared__ float reduction[];
   const int64_t total = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
   for (int64_t work = blockIdx.x; work < total; work += gridDim.x) {
     const int token = static_cast<int>(work / params.state_capacity);
@@ -301,36 +297,13 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* query_norm_weight,
     }
 
     const int64_t key_base = (static_cast<int64_t>(batch) * params.state_capacity + block_index) * params.head_size;
-    const int position = SaiClampPosition(abs_position, params.max_rotary_length);
-    const int64_t cache_offset =
-        (static_cast<int64_t>(params.cos_cache_batched ? batch : 0) * params.max_rotary_length + position) *
-        params.rotary_width;
     float score = 0.0f;
     for (int head = 0; head < params.num_heads; ++head) {
-      const int64_t query_base =
-          (static_cast<int64_t>(token) * params.num_heads + head) * params.head_size;
-      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        query_head[d] = to_float<T>(query[query_base + d]);
-      }
-      __syncthreads();
-
-      float query_sum_squares = 0.0f;
-      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        query_sum_squares += query_head[d] * query_head[d];
-      }
-      query_sum_squares = SaiBlockSum(query_sum_squares, reduction);
-      const float query_inverse_rms =
-          rsqrtf(query_sum_squares / static_cast<float>(params.head_size) + params.epsilon);
-      for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        query_head[d] = query_head[d] * query_inverse_rms * to_float<T>(query_norm_weight[d]);
-      }
-      __syncthreads();
-
+      const float* query_head =
+          query_rotated + (static_cast<int64_t>(token) * params.num_heads + head) * params.head_size;
       float partial = 0.0f;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-        partial += SaiLeadingRope<T>(query_head, params.rotary_width, cos_cache + cache_offset,
-                                     sin_cache + cache_offset, d) *
-                   to_float<T>(present_key_state[key_base + d]);
+        partial += query_head[d] * to_float<T>(present_key_state[key_base + d]);
       }
       score += fmaxf(SaiBlockSum(partial, reduction), 0.0f);
     }
@@ -771,7 +744,8 @@ __global__ void CsaSelectKernel(const float* scores, const int32_t* cumulative_s
 
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.total_tokens);
-  return rows * static_cast<size_t>(std::max(params.state_capacity, 1));
+  return rows * params.num_heads * params.head_size +
+         rows * static_cast<size_t>(std::max(params.state_capacity, 1));
 }
 
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params) {
@@ -821,14 +795,22 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     return CUDA_CALL(cudaGetLastError());
   }
 
-  float* block_scores = float_workspace;
+  float* query_rotated = float_workspace;
+  float* block_scores =
+      query_rotated + static_cast<int64_t>(params.total_tokens) * params.num_heads * params.head_size;
+
+  const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
+  const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
+  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+      query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
+      position_ids, query_rotated, params);
 
   if (params.state_capacity > 0) {
     const int64_t score_work = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
     const int score_blocks = static_cast<int>(std::min<int64_t>(score_work, kSaiMaxGridDimX));
-    QsaBlockScoreKernel<T><<<score_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
-        query, query_norm_weight, cos_cache, sin_cache, present_key_state, cumulative_sequence_lengths,
-        past_sequence_lengths, position_ids, present_state_lengths, block_scores, params);
+    QsaBlockScoreKernel<T><<<score_blocks, kThreads, kThreads * sizeof(float), stream>>>(
+        present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
+        present_state_lengths, block_scores, params);
   }
 
   const int token_blocks = static_cast<int>(std::min<int64_t>(params.total_tokens, kSaiMaxGridDimX));
