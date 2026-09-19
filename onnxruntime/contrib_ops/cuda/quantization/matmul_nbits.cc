@@ -127,7 +127,7 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int device_sm, int fpa_intb_option) {
 #if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-                        input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+                        (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 && nbits != 2);
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
   ORT_UNUSED_PARAMETER(has_bias);
@@ -159,10 +159,13 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
   }
 
 #if USE_COMPACT_FPA_INTB_GEMM
-  const bool base_ok = block_size == 32 && (nbits == 4 || nbits == 8) &&
+  // 2-bit needs block_size >= 64 (one B fragment spans a whole 64-element K tile), so the
+  // compact set carries block_size 64 for it where 4/8-bit carry 32.
+  const bool base_ok = (nbits == 2 ? block_size == 64 : block_size == 32) &&
+                       (nbits == 2 || nbits == 4 || nbits == 8) &&
                        !has_zero_points && !has_g_idx && !has_bias &&
                        weight_prepacked != kMatMulNBitsWeightPrepackedSm90 &&
-                       N % (nbits == 8 ? 32 : 64) == 0 &&
+                       N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
                        K % block_size == 0 && device_sm >= 75;
 #else
   // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
@@ -510,14 +513,19 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   KernelType cuda_kernel_type;
 #if USE_COMPACT_FPA_INTB_GEMM
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::FP16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
-    } else {
+    } else if (nbits_ == 4) {
       cuda_kernel_type = KernelType::FP16Int4Groupwise;
       weightOnlyGemmRunner_ =
           std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::FP16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);

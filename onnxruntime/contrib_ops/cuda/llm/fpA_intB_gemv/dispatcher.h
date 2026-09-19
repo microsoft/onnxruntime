@@ -447,6 +447,11 @@ void check_pointer(Params& params, cudaStream_t s) {
 
 template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s) {
+#if USE_COMPACT_FPA_INTB_GEMM
+  constexpr bool kCompact = true;
+#else
+  constexpr bool kCompact = false;
+#endif
   if constexpr (isGroupwise) {
     // A thread dequantizes kStepK consecutive weights with a single scale, so a group smaller
     // than kStepK has no valid instantiation (kStepK is 64 for 2-bit weights).
@@ -455,14 +460,17 @@ void select_gs(Params& params, cudaStream_t s) {
         check_pointer<Details, 32>(params, s);
         return;
       }
-#if !USE_COMPACT_FPA_INTB_GEMM
     } else if (params.groupsize == 64) {
-      check_pointer<Details, 64>(params, s);
-      return;
+      // The compact set carries block_size 64 for 2-bit only, since 2-bit cannot use 32.
+      if constexpr (!kCompact || Details::kStepK >= 64) {
+        check_pointer<Details, 64>(params, s);
+        return;
+      }
     } else if (params.groupsize == 128) {
-      check_pointer<Details, 128>(params, s);
-      return;
-#endif
+      if constexpr (!kCompact) {
+        check_pointer<Details, 128>(params, s);
+        return;
+      }
     }
   }
 

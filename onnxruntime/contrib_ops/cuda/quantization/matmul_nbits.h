@@ -256,10 +256,11 @@ class MatMulNBits final : public CudaKernel {
       if (prepacked) {
 #if USE_COMPACT_FPA_INTB_GEMM
         ORT_ENFORCE(has_fpA_intB_gemm_,
-                    "This compact fpA_intB build supports prepacked weights only for FP16/BF16 activations, "
-                    "INT4 or INT8 weights, block_size=32, scale-only quantization without zero points, bias, or g_idx, "
-                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later for FP16 "
-                    "(8.0 or later for BF16). Got bits=",
+        "This compact fpA_intB build supports prepacked weights for FP16 activations with "
+        "INT2 (block_size=64), INT4 or INT8 (block_size=32) weights, or BF16 activations with "
+        "INT4 or INT8 (block_size=32) weights; it requires scale-only quantization without zero "
+        "points, bias, or g_idx, the SM80 weight layout (weight_prepacked=1), and compute capability "
+        "7.5 or later for FP16 (8.0 or later for BF16). Got bits=",
                     nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
                     ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
                     ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);
