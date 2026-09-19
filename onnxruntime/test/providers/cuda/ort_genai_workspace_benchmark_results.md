@@ -18,7 +18,10 @@ The measurements below used:
 
 | Component | Version |
 |---|---|
-| ONNX Runtime | `f8531b4008845f61899f4619773e43cc675de81b` |
+| ONNX Runtime benchmark commit | `dddccbcf04c0eded17fca96d13b0b14e8fbf0ac4` |
+| Rebased ONNX Runtime base | `0e18025de7` (`origin/main`) |
+| Bounded non-windowed GQA estimator | `a08a73ee44` (rebased `chilo/bounded-non-windowed-gqa-workspace-estimation`) |
+| GQA runtime workspace consumer | `9ed038aa39` |
 | ONNX Runtime GenAI | `0.16.0-dev`, commit `d5b40851ba80ffa8e95b6b01f921dbb9008fac80` |
 | CUDA provider build | Release, native `sm_120a`, matched shared ORT and provider DLLs |
 | GPU | NVIDIA GeForce RTX 5090 Laptop GPU, SM120 |
@@ -55,17 +58,17 @@ Terminology:
 
 | Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Scratch | 61.535 ms | 854.730 ms | 5.979 ms | 4,197 MiB | 58.512 ms | 1,477.123 ms | 10.589 ms | 4,942 MiB |
-| MatMulNBits planned | 61.526 ms | 871.920 ms | 6.024 ms | 4,008 MiB | 58.540 ms | 1,359.249 ms | 9.790 ms | 4,961 MiB |
-| Combined planned | 61.766 ms | 858.416 ms | 5.961 ms | 4,006 MiB | 58.174 ms | 1,660.078 ms | 11.903 ms | 4,944 MiB |
+| Scratch | 63.284 ms | 997.656 ms | 7.012 ms | 4,067 MiB | 74.866 ms | 1,309.432 ms | 9.794 ms | 4,943 MiB |
+| MatMulNBits planned | 63.635 ms | 987.188 ms | 6.845 ms | 4,099 MiB | 60.079 ms | 1,052.767 ms | 7.514 ms | 4,940 MiB |
+| Combined planned | 63.813 ms | 968.611 ms | 6.832 ms | 4,005 MiB | 61.900 ms | 1,493.837 ms | 10.627 ms | 4,942 MiB |
 
 ### Qwen 2.5 7B
 
 | Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Scratch | 275.790 ms | 1,584.195 ms | 10.283 ms | 8,169 MiB | 240.198 ms | 1,546.984 ms | 10.333 ms | 11,093 MiB |
-| MatMulNBits planned | 276.062 ms | 1,583.405 ms | 10.260 ms | 8,172 MiB | 241.984 ms | 1,588.049 ms | 10.528 ms | 11,460 MiB |
-| Combined planned | 276.140 ms | 1,589.409 ms | 10.320 ms | 8,168 MiB | 240.006 ms | 1,554.085 ms | 10.367 ms | 12,108 MiB |
+| Scratch | 278.844 ms | 1,598.665 ms | 10.373 ms | 8,189 MiB | 240.027 ms | 1,582.895 ms | 10.587 ms | 12,101 MiB |
+| MatMulNBits planned | 279.053 ms | 1,620.927 ms | 10.539 ms | 8,164 MiB | 238.276 ms | 1,532.977 ms | 10.234 ms | 11,339 MiB |
+| Combined planned | 279.232 ms | 1,618.198 ms | 10.478 ms | 8,175 MiB | 239.995 ms | 1,530.203 ms | 10.197 ms | 12,102 MiB |
 
 ## Benchmark design
 
@@ -100,8 +103,8 @@ in the report.
 
 Each dispatch and workspace configuration runs in a separate fresh process so
 arena state, memory patterns, and tactic profiling from another mode cannot
-affect it. The controller uses six fresh-process comparisons arranged in three
-order-balanced blocks.
+affect it. The controller uses six order-balanced blocks, one for each
+permutation of the three workspace modes.
 
 An absolute latency is the median of the six process-level 10% trimmed means.
 Paired percentage changes are computed between adjacent processes within each
@@ -159,7 +162,8 @@ slot-0 root source and the number and bytes of subregions served by that root or
 by individual scratch fallbacks.
 
 The diagnostic used the Qwen 2.5 1.5B and 7B combined modes with one complete
-warmup and one measured 1,024-prefill plus 128-generated-token scenario:
+warmup and one measured 1,024-prefill plus 128-generated-token scenario. The
+command was repeated with `--no-fpa-intb` and `--fpa-intb`:
 
 ```powershell
 $env:ORT_CUDA_TRACE_PREALLOCATED_WORKSPACE = "1"
@@ -179,7 +183,7 @@ The warmup recorded the memory pattern and therefore reported
 | Model and dispatch | MatMulNBits measured workspace requests | Unique MatMulNBits nodes using slot 0 | GenAI GQA root | GQA prefill calls using slot 0 | GQA decode calls using slot 0 | GQA subregion fallbacks |
 |---|---:|---:|---:|---:|---:|---:|
 | Qwen 1.5B, legacy | 141 legacy requests | 141 | 123,273,472 B | 28 | 3,556 | 0 |
-| Qwen 1.5B, fpA-intB | 240 fpA-intB CUTLASS requests plus 28 legacy requests | 113 fpA-intB plus 28 legacy | 123,273,472 B | 28 | 3,556 | 0 |
+| Qwen 1.5B, fpA-intB | 10,908 fpA-intB CUTLASS requests plus 28 legacy requests | 113 fpA-intB plus 28 legacy | 123,273,472 B | 28 | 3,556 | 0 |
 | Qwen 7B, legacy | 141 legacy requests | 141 | 287,441,152 B | 28 | 3,556 | 0 |
 | Qwen 7B, fpA-intB | 240 fpA-intB CUTLASS requests plus 28 legacy requests | 113 fpA-intB plus 28 legacy | 287,441,152 B | 28 | 3,556 | 0 |
 
@@ -192,9 +196,11 @@ each decode call. Neither model had a per-region scratch fallback.
 
 For fpA-intB, the trace distinguishes the 113 nodes that selected
 workspace-using CUTLASS tactics from zero-workspace GEMV executions; the
-remaining 28 QKV projections used the legacy path. This confirms that the
-planned modes consume the cached slot-0 buffers rather than merely registering
-workspace plans.
+remaining 28 QKV projections used the legacy path. Qwen 1.5B selected CUTLASS
+for 10,908 measured invocations, including decode, while Qwen 7B selected it
+for 240 measured invocations. This confirms that the planned modes consume the
+cached slot-0 buffers rather than merely registering workspace plans. All four
+rows were reverified after rebasing.
 
 ## Legacy `MatMulNBits` results
 
@@ -203,33 +209,39 @@ complete warmups and 30 measured one-token requests per process.
 
 | Model | Scratch request TTFT | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 61.535 ms | 61.526 ms | 61.766 ms | -0.239% `[-0.525%, +0.464%]` | +0.074% `[-0.459%, +2.033%]` | +0.351% `[-0.055%, +1.652%]` |
-| Qwen 2.5 7B | 275.790 ms | 276.062 ms | 276.140 ms | -0.045% `[-1.734%, +0.525%]` | +0.024% `[-2.969%, +1.231%]` | +0.080% `[-1.257%, +0.703%]` |
+| Qwen 2.5 1.5B | 63.284 ms | 63.635 ms | 63.813 ms | +1.444% `[-0.283%, +2.489%]` | -0.043% `[-0.920%, +2.834%]` | -0.703% `[-3.327%, +1.211%]` |
+| Qwen 2.5 7B | 278.844 ms | 279.053 ms | 279.232 ms | +0.082% `[-0.093%, +0.500%]` | +0.125% `[-0.434%, +0.233%]` | +0.030% `[-0.562%, +0.221%]` |
 
 The model-side TTFT medians, measured from the start of `append_tokens`, were
-60.481/60.553/60.602 ms for Qwen 1.5B and 274.452/274.778/274.786 ms for Qwen
+60.973/61.443/61.582 ms for Qwen 1.5B and 276.423/276.583/276.835 ms for Qwen
 7B. The corresponding `append_tokens` prefill medians were
-59.962/60.047/60.099 ms and 273.891/274.197/274.173 ms. Static planning
-therefore produced no measurable warm TTFT change.
+60.453/60.889/61.041 ms and 275.830/275.995/276.198 ms. The paired ranges span
+zero or remain below 0.5%, so the rerun does not establish a warm TTFT change.
 
 The full scenario used three warmups and ten measured 1,024-prefill plus
 128-generated-token requests per process:
 
 | Model | Scratch scenario | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 854.730 ms | 871.920 ms | 858.416 ms | +1.538% `[-3.492%, +13.209%]` | +1.140% `[-1.540%, +11.153%]` | -0.563% `[-3.273%, +2.023%]` |
-| Qwen 2.5 7B | 1,584.195 ms | 1,583.405 ms | 1,589.409 ms | +0.111% `[-1.612%, +0.958%]` | +0.149% `[-1.198%, +1.265%]` | +0.379% `[-1.935%, +1.382%]` |
+| Qwen 2.5 1.5B | 997.656 ms | 987.188 ms | 968.611 ms | -0.137% `[-5.253%, +1.896%]` | -1.407% `[-7.270%, +12.557%]` | -0.874% `[-3.773%, +11.480%]` |
+| Qwen 2.5 7B | 1,598.665 ms | 1,620.927 ms | 1,618.198 ms | +1.361% `[-0.026%, +2.882%]` | +1.598% `[-0.354%, +2.960%]` | -0.168% `[-0.684%, +1.584%]` |
 
 | Model | Scratch TPOT | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 5.979 ms | 6.024 ms | 5.961 ms | +0.352% `[-3.425%, +13.468%]` | +0.389% `[-2.308%, +9.753%]` | -0.303% `[-3.981%, +1.157%]` |
-| Qwen 2.5 7B | 10.283 ms | 10.260 ms | 10.320 ms | -0.141% `[-2.177%, +1.112%]` | -0.134% `[-1.297%, +1.141%]` | +0.608% `[-2.125%, +1.503%]` |
+| Qwen 2.5 1.5B | 7.012 ms | 6.845 ms | 6.832 ms | -2.114% `[-6.755%, +4.052%]` | -1.460% `[-9.712%, +11.523%]` | -0.059% `[-3.655%, +12.295%]` |
+| Qwen 2.5 7B | 10.373 ms | 10.539 ms | 10.478 ms | +1.406% `[+0.595%, +2.630%]` | +1.404% `[-0.607%, +2.395%]` | -0.436% `[-1.195%, +0.710%]` |
 
-The 7B paired medians are all within 0.7%, with ranges spanning zero. The 1.5B
-medians are also small, but its process-level range is wider and includes
-occasional decode stalls. These runs do not show a repeatable TTFT, scenario,
-or TPOT improvement or regression from static workspace planning. All 18
-latency workers per phase produced one identical output hash for their model.
+The 1.5B ranges are much larger than the paired medians. For 7B, both planned
+modes were about 1.4% slower than scratch in median TPOT, but combined remained
+within 0.5% of MatMul-only planning, so the result does not identify an
+incremental GQA-planning cost. Warm TTFT remained neutral.
+
+All Qwen 1.5B workers were hash-consistent. The Qwen 7B scenario sampled two
+stable process-level hashes in scratch and MatMul-only workers but only one in
+the six combined workers, so the controller failed its strict sampled-set
+check after writing the report. Six additional combined-only workers
+reproduced both hashes, showing that the missing hash was a finite-sample
+fresh-process variation rather than a combined-planning-only output.
 
 Peak VRAM used six order-balanced fresh-process blocks per model. Each worker
 performed two warmups and one measured scenario. Values are median `[minimum,
@@ -237,19 +249,16 @@ maximum]` device-wide `nvidia-smi memory.used` readings:
 
 | Model | Scratch peak | MatMulNBits planned peak | Combined planned peak | MatMul minus scratch | Combined minus scratch | Combined minus MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 4,197 MiB `[4,008, 4,262]` | 4,008 MiB `[4,004, 4,260]` | 4,006 MiB `[4,004, 4,264]` | -93 MiB `[-256, 0]` | -65 MiB `[-256, +196]` | 0 MiB `[-256, +256]` |
-| Qwen 2.5 7B | 8,169 MiB `[7,652, 8,196]` | 8,172 MiB `[7,652, 9,220]` | 8,168 MiB `[8,164, 9,198]` | +18 MiB `[-544, +1,048]` | -1 MiB `[-24, +1,024]` | +127 MiB `[-1,056, +1,018]` |
+| Qwen 2.5 1.5B | 4,067 MiB `[4,002, 4,260]` | 4,099 MiB `[4,002, 4,258]` | 4,005 MiB `[4,002, 4,068]` | +33 MiB `[-256, +132]` | -64 MiB `[-258, +66]` | -35 MiB `[-256, +4]` |
+| Qwen 2.5 7B | 8,189 MiB `[8,164, 9,220]` | 8,164 MiB `[7,396, 9,202]` | 8,175 MiB `[8,162, 8,322]` | -129 MiB `[-1,056, +1,014]` | -23 MiB `[-1,040, +150]` | +11 MiB `[-1,008, +766]` |
 
 Every measured scenario remained at its post-warmup device residency, so the
 sampled scenario delta was 0 MiB in every worker. The broad, quantized
-fresh-process ranges are larger than the paired mode differences, especially
-for 7B. Device-wide `nvidia-smi` establishes an approximate steady-state
-envelope but cannot attribute a reliable VRAM delta to workspace planning on
-this WDDM system.
-
-Qwen 1.5B memory workers produced one output hash. Qwen 7B memory workers
-produced the same two process-level hashes in every mode, with an identical
-1,152-token output length; no hash was specific to a workspace mode.
+fresh-process ranges remain larger than the paired mode differences. The 7B
+memory run had the same sampled hash-set mismatch as the scenario run; the
+additional combined diagnostics above reproduced the second hash.
+Device-wide `nvidia-smi` therefore establishes only an approximate
+steady-state envelope on this WDDM system.
 
 ## fpA-intB results
 
@@ -257,58 +266,60 @@ The same six-block matrices were repeated with `--fpa-intb`. All other
 workload, warmup, iteration, process-order, build, and reporting settings were
 unchanged.
 
-Warm TTFT remained neutral across workspace modes:
+Warm TTFT measurements were:
 
 | Model | Scratch request TTFT | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 58.512 ms | 58.540 ms | 58.174 ms | +0.392% `[-4.082%, +2.343%]` | -0.072% `[-3.399%, +2.956%]` | -0.047% `[-1.922%, +2.186%]` |
-| Qwen 2.5 7B | 240.198 ms | 241.984 ms | 240.006 ms | +0.223% `[-3.120%, +2.040%]` | +0.072% `[-2.609%, +2.777%]` | -0.735% `[-1.342%, +3.450%]` |
+| Qwen 2.5 1.5B | 74.866 ms | 60.079 ms | 61.900 ms | -11.603% `[-28.199%, +0.499%]` | -16.972% `[-37.643%, +9.665%]` | +2.781% `[-30.940%, +9.121%]` |
+| Qwen 2.5 7B | 240.027 ms | 238.276 ms | 239.995 ms | -0.509% `[-3.447%, +0.021%]` | -0.028% `[-2.774%, +0.686%]` | +0.733% `[+0.083%, +1.584%]` |
 
-Compared with the separately measured legacy-path medians, fpA-intB reduced
-request TTFT by approximately 5% for Qwen 1.5B and 12-13% for Qwen 7B. This is
-an unpaired dispatch comparison, not a workspace-planning effect.
+The Qwen 1.5B request-TTFT median was distorted by slow fresh-process
+generator-setup workers in scratch mode. Its model-side medians were
+60.702/56.285/56.815 ms, substantially closer than the request medians, and
+the paired request ranges span zero. Qwen 7B model-side medians were
+237.448/236.060/237.712 ms. These measurements do not establish a
+workspace-planning TTFT effect.
 
 The scenario and TPOT measurements were:
 
 | Model | Scratch scenario | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 1,477.123 ms | 1,359.249 ms | 1,660.078 ms | +8.440% `[-35.608%, +46.177%]` | +3.852% `[-24.635%, +69.816%]` | +4.442% `[-26.995%, +59.833%]` |
-| Qwen 2.5 7B | 1,546.984 ms | 1,588.049 ms | 1,554.085 ms | +3.373% `[+0.592%, +15.858%]` | +0.851% `[-6.223%, +72.088%]` | -1.066% `[-11.612%, +48.534%]` |
+| Qwen 2.5 1.5B | 1,309.432 ms | 1,052.767 ms | 1,493.837 ms | -7.870% `[-52.143%, +7.892%]` | -4.157% `[-10.918%, +28.004%]` | +13.773% `[-12.874%, +92.648%]` |
+| Qwen 2.5 7B | 1,582.895 ms | 1,532.977 ms | 1,530.203 ms | -3.480% `[-38.465%, +2.833%]` | -3.284% `[-39.363%, -0.034%]` | +0.005% `[-2.787%, +0.709%]` |
 
 | Model | Scratch TPOT | MatMulNBits planned | Combined planned | MatMul vs scratch | Combined vs scratch | Combined vs MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 10.589 ms | 9.790 ms | 11.903 ms | +7.699% `[-34.800%, +45.403%]` | +2.639% `[-26.170%, +73.986%]` | +6.461% `[-24.177%, +55.091%]` |
-| Qwen 2.5 7B | 10.333 ms | 10.528 ms | 10.367 ms | +2.819% `[+0.839%, +16.607%]` | +0.770% `[-4.872%, +69.799%]` | -1.171% `[-11.703%, +45.617%]` |
+| Qwen 2.5 1.5B | 9.794 ms | 7.514 ms | 10.627 ms | -10.605% `[-50.704%, +4.425%]` | -4.453% `[-9.386%, +18.391%]` | +14.517% `[-9.927%, +86.776%]` |
+| Qwen 2.5 7B | 10.587 ms | 10.234 ms | 10.197 ms | -3.920% `[-35.608%, +3.030%]` | -3.434% `[-36.642%, -0.077%]` | -0.040% `[-3.015%, +0.639%]` |
 
-The Qwen 1.5B process medians varied from 956.626 to 1,873.451 ms, and its
-decode stall counts reached 104 of 1,270 measured decode tokens in one worker.
-Qwen 7B also had isolated slow workers, including a combined worker with
-2,784.882 ms scenario latency and 86 decode stalls. These large fresh-process
-differences dominate the small paired medians, so the scenario results do not
-establish a planning speedup or regression.
+Qwen 1.5B again showed large process/tactic variation, including scenario
+medians from about 981 to 2,078 ms. For Qwen 7B, both planned modes were about
+3.3% below scratch, but combined and MatMul-only differed by approximately
+zero; the apparent difference therefore is not an incremental GQA-planning
+effect, and one slow scratch process widened the paired range.
 
-Every Qwen 1.5B worker produced one identical output hash. The balanced Qwen 7B
-scenario produced three process-level hashes: scratch observed two, while the
-planned modes observed all three, so the report failed its strict same-sample
-hash-set check. A separate scratch-only diagnostic reproduced the third hash
-after four fresh workers. Each individual worker was internally stable across
-its ten measured iterations, all outputs had length 1,152, and no hash was
-specific to workspace planning. The variation therefore tracks fresh-process
-fpA-intB tactic/numerical behavior rather than a planning-only correctness
-change.
+Every Qwen 1.5B worker produced one identical output hash. The Qwen 7B
+scenario produced the same two process-level hashes in every mode. The Qwen
+7B memory sample failed the strict sampled-set check because scratch observed
+three hashes, MatMul-only one, and combined two. Six additional combined-only
+workers produced three hashes, including both balanced combined hashes and a
+further variant. Each worker remained internally stable, so the data shows
+fresh-process tactic/numerical variability; the failed strict memory report is
+retained rather than reported as a correctness pass.
 
 Peak VRAM was:
 
 | Model | Scratch peak | MatMulNBits planned peak | Combined planned peak | MatMul minus scratch | Combined minus scratch | Combined minus MatMul |
 |---|---:|---:|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | 4,942 MiB `[4,942, 4,944]` | 4,961 MiB `[4,942, 5,074]` | 4,944 MiB `[4,942, 5,198]` | +18 MiB `[-2, +132]` | +2 MiB `[-2, +256]` | -2 MiB `[-126, +254]` |
-| Qwen 2.5 7B | 11,093 MiB `[11,074, 11,586]` | 11,460 MiB `[11,076, 12,388]` | 12,108 MiB `[11,334, 13,124]` | +246 MiB `[-252, +1,058]` | +1,023 MiB `[+240, +1,538]` | +617 MiB `[-290, +1,790]` |
+| Qwen 2.5 1.5B | 4,943 MiB `[4,940, 5,198]` | 4,940 MiB `[4,940, 5,070]` | 4,942 MiB `[4,940, 5,196]` | -1 MiB `[-258, +126]` | -1 MiB `[-258, +252]` | +1 MiB `[0, +126]` |
+| Qwen 2.5 7B | 12,101 MiB `[11,072, 12,352]` | 11,339 MiB `[11,072, 12,386]` | 12,102 MiB `[11,586, 13,120]` | -369 MiB `[-1,056, +516]` | +22 MiB `[-544, +2,048]` | +640 MiB `[-288, +1,532]` |
 
-The 1.5B ranges overlap and do not establish a memory difference. Every 7B
-combined block was 240-1,538 MiB above its paired scratch process, although the
-large tactic-dependent range prevents precise attribution. These are
-device-wide WDDM readings after warmup, not process-local allocator
-measurements.
+The 1.5B ranges overlap and do not establish a memory difference. The 7B
+planned results remain highly tactic-dependent: MatMul-only had a lower median,
+while combined returned to the scratch median and ranged up to 13,120 MiB.
+The paired ranges are too broad to attribute either behavior to workspace
+planning. These are device-wide WDDM readings after warmup, not process-local
+allocator measurements.
 
 ## Dispatch-path comparison
 
@@ -317,28 +328,34 @@ dispatch paths must be reported separately:
 
 | Model and metric | Scratch | MatMulNBits planned | Combined planned |
 |---|---:|---:|---:|
-| Qwen 2.5 1.5B TTFT | -4.91% | -4.85% | -5.81% |
-| Qwen 2.5 1.5B scenario | +72.82% | +55.89% | +93.39% |
-| Qwen 2.5 1.5B TPOT | +77.10% | +62.50% | +99.69% |
-| Qwen 2.5 7B TTFT | -12.91% | -12.34% | -13.09% |
-| Qwen 2.5 7B scenario | -2.35% | +0.29% | -2.22% |
-| Qwen 2.5 7B TPOT | +0.49% | +2.62% | +0.46% |
+| Qwen 2.5 1.5B TTFT | +18.30% | -5.59% | -3.00% |
+| Qwen 2.5 1.5B scenario | +31.25% | +6.64% | +54.22% |
+| Qwen 2.5 1.5B TPOT | +39.67% | +9.77% | +55.55% |
+| Qwen 2.5 7B TTFT | -13.92% | -14.61% | -14.05% |
+| Qwen 2.5 7B scenario | -0.99% | -5.43% | -5.44% |
+| Qwen 2.5 7B TPOT | +2.06% | -2.89% | -2.68% |
 
-Negative values favor fpA-intB. Qwen 1.5B fpA-intB improved prefill-dominated
-TTFT but selected substantially slower and less stable decode tactics in these
-processes. Qwen 7B improved TTFT while scenario and TPOT remained close to the
-legacy medians except for isolated tactic/stall outliers.
+Negative values favor fpA-intB. These are unpaired comparisons and are
+especially misleading for Qwen 1.5B, where fresh-process generator setup and
+decode tactic outliers moved the aggregate medians substantially. Qwen 7B
+still shows the repeatable fpA-intB prefill advantage, while scenario and TPOT
+remain sensitive to process-level tactic selection.
 
 ## Conclusions
 
-- Static workspace planning was neutral for warm TTFT in both dispatch paths
-  and model sizes.
-- Scenario and TPOT differences were smaller than the observed
-  fresh-process/tactic variation and do not establish a planning speedup or
-  regression.
+- Legacy warm TTFT remained neutral. fpA-intB Qwen 7B was also effectively
+  neutral across workspace modes; Qwen 1.5B request TTFT was dominated by
+  fresh-process setup outliers.
+- Scenario and TPOT differences remain smaller than, or inseparable from,
+  fresh-process/tactic variation. Combined planning did not show an
+  incremental latency benefit over MatMulNBits-only planning.
 - The runtime trace proved that every planned `MatMulNBits` and GQA node
   consumed slot-0 preallocated memory after warmup, with no GQA subregion
   fallback.
 - Device-wide `nvidia-smi` memory is too quantized and process-variable for
   precise workspace attribution on this WDDM system. Use the separate C++
   benchmark report for process-local WDDM and ORT arena measurements.
+- The strict Qwen 7B sampled hash-set checks failed in two legacy phases and
+  the fpA-intB memory phase. Additional fresh-process diagnostics reproduced
+  omitted hashes while every individual worker remained internally stable;
+  the reports retain these failures instead of treating them as green.
