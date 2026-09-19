@@ -426,6 +426,11 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
     // instructions
     WarpFragmentA warp_frag_A[2];
     WarpFragmentB warp_frag_B[2];
+    // Read cursor into the two-deep B register pipeline. The within-tile load index cannot be
+    // used directly: when kWarpGemmIterationsForB is 1 (one B smem load covers the whole
+    // threadblock K tile, which is what 2-bit weights produce) it is always 0, so every load
+    // would fill the buffer the MMA never reads and B would stay on the first K tile.
+    int warp_tileB_read_index = 0;
     typename Dequantizer::FragmentScale warp_frag_scales;
 
     Operator warp_mma;
@@ -472,11 +477,11 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
         if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
           this->warp_tile_iterator_B_.set_kgroup_index(
               (warp_tileB_k_load_offset + 1) % Base::kWarpGemmIterationsForB);
-          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_k_load_offset + 1) % 2]);
+          this->warp_tile_iterator_B_.load(warp_frag_B[(warp_tileB_read_index + 1) % 2]);
           ++this->warp_tile_iterator_B_;
         }
 
-        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
+        typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_read_index]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales);
 
         using FragmentOperandB = cutlass::Array<ElementA, Operator::FragmentB::kElements>;
@@ -489,6 +494,10 @@ class DqMmaMultistage<Shape_, IteratorA_, SmemIteratorA_, CacheOpA, IteratorB_, 
         FragmentOperandB converted_frag_B_operand = Converter::convert(converted_frag_B);
         warp_mma(
             accum, warp_frag_A[warp_mma_k % 2], converted_frag_B_operand, accum, warp_tileB_k_compute_offset);
+        // The load above filled the other half of the pipeline; hand it to the next MMA group.
+        if (warp_tileB_k_compute_offset == Base::kNumKIterationsPerWarpBLoad - 1) {
+          warp_tileB_read_index ^= 1;
+        }
 
         // Issue global->shared copies for the this stage
         if (warp_mma_k < Base::kWarpGemmIterations - 1) {

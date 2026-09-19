@@ -42,8 +42,7 @@ enum class WeightTypeId {
 constexpr int32_t FP16_BITS = 16;
 constexpr int32_t INT8_BITS = 8;
 constexpr int32_t INT4_BITS = 4;
-constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
-constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
+constexpr int32_t INT2_BITS = 2;
 
 // Comma-separated list of M buckets to profile for MatMulNBits/fpA_intB. Overrides the default
 // reduced bucket set. Example: ORT_FPA_INTB_PROFILE_M="1,8,64,512".

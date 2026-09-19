@@ -225,9 +225,13 @@ class MatMulNBits final : public CudaKernel {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type;
         if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::FP16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::FP16Int4Groupwise
+                                             : KernelType::FP16Int2Groupwise;
         } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::BF16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::BF16Int4Groupwise
+                                             : KernelType::BF16Int2Groupwise;
         }
         if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
                 sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {

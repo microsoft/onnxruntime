@@ -172,7 +172,9 @@ struct cutlassTypeMapper {
     static constexpr cutlass::WeightOnlyQuantOp QuantOp = CutlassQuantOp;                       \
     static constexpr int WSizeInBits = WElemBits;                                               \
     static std::string ATypeStr() { return std::is_same_v<CudaAType, half> ? "Fp16" : "BF16"; } \
-    static std::string WTypeStr() { return WSizeInBits == 4 ? "Int4" : "Int8"; }                \
+    static std::string WTypeStr() {                                                             \
+      return WSizeInBits == 2 ? "Int2" : (WSizeInBits == 4 ? "Int4" : "Int8");                  \
+    }                                                                                           \
   };
 
 #if USE_COMPACT_FPA_INTB_GEMM
@@ -192,6 +194,10 @@ CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int8Groupwise, __nv_bfloat16, u
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int4Groupwise, half, cutlass::uint4b_t, 4,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int4Groupwise, __nv_bfloat16, cutlass::uint4b_t, 4,
+                             cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int2Groupwise, half, cutlass::uint2b_t, 2,
+                             cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int2Groupwise, __nv_bfloat16, cutlass::uint2b_t, 2,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
 #endif
 
@@ -319,6 +325,7 @@ class KernelTestFixture : public ::testing::Test {
   cublasHandle_t cublas_handle_;
 
   static constexpr int WSizeInBits = cutlassTypeMapper<KT>::WSizeInBits;
+  static constexpr bool kIsInt2 = (WSizeInBits == 2);
 
   void SetUp() override {
     int device;
@@ -423,7 +430,8 @@ class KernelTestFixture : public ::testing::Test {
 #if USE_COMPACT_FPA_INTB_GEMM
             constexpr int kernel_arch = 80;
 #else
-            const int kernel_arch = device_arch;
+            // 2-bit weights only have the SM80 column-interleaved layout.
+            const int kernel_arch = kIsInt2 ? 80 : device_arch;
 #endif
             ORT_ENFORCE(wo::is_supported(device_arch, kernel_arch, params.type));
             wo::kernel_launcher(kernel_arch, params, s_);
@@ -442,7 +450,10 @@ class KernelTestFixture : public ::testing::Test {
     int const arch = onnxruntime::llm::common::getSMVersion();
     runner->setArch(arch < 80 ? arch : (arch == 89 ? 89 : 80));
 #else
-    if (onnxruntime::llm::common::getSMVersion() == 90) {
+    if (kIsInt2) {
+      // 2-bit has no Hopper tactics; target the SM80 compatibility kernel and its tile configs.
+      runner->setArch(80);
+    } else if (onnxruntime::llm::common::getSMVersion() == 90) {
       runner->setUseSm90Native(true);
     }
 #endif
@@ -504,7 +515,8 @@ class KernelTestFixture : public ::testing::Test {
     // Note that it runs on random data, so the output is not compared.
     float nbits_time_ms = 0.f;
     float naive_time_ms = 0.f;
-    if constexpr (KT == wo::KernelType::FP16Int8Groupwise || KT == wo::KernelType::FP16Int4Groupwise) {
+    if constexpr (KT == wo::KernelType::FP16Int8Groupwise || KT == wo::KernelType::FP16Int4Groupwise ||
+                  KT == wo::KernelType::FP16Int2Groupwise) {
       const size_t n_x_k = static_cast<size_t>(n_) * static_cast<size_t>(k_);
       std::vector<uint8_t> h_uint8_zeros(n_x_k / static_cast<size_t>(block_size_));
       for (uint8_t& v : h_uint8_zeros) {
@@ -606,6 +618,8 @@ using Fp16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwis
 using Fp16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise>;
 using Bf16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int8Groupwise>;
 using Bf16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise>;
+using Fp16Int2GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int2Groupwise>;
+using Bf16Int2GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int2Groupwise>;
 #endif
 
 TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
@@ -623,6 +637,10 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
   EXPECT_TRUE(wo::is_supported(80, 80, wo::KernelType::BF16Int4Groupwise));
   EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
   EXPECT_FALSE(wo::is_supported(80, 90, wo::KernelType::FP16Int4Groupwise));
+  // 2-bit shares the SM80 layout but has no native Hopper instantiation.
+  EXPECT_TRUE(wo::is_supported(80, 80, wo::KernelType::FP16Int2Groupwise));
+  EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::BF16Int2Groupwise));
+  EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::FP16Int2Groupwise));
 #ifdef EXCLUDE_SM_90
   EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
 #else
@@ -727,6 +745,36 @@ TEST_F(Bf16Int4GroupwiseTest, BF16_Int4_Gemm_CudaKernel) {
   for (auto m : get_m_list()) {
     for (const auto& [n, k] : get_n_k_list(wo::KernelType::BF16Int4Groupwise)) {
       InitBuffers(m, n, k, 64);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    }
+  }
+}
+
+// The 2-bit layout interleaves 8 columns per cache line, so a block owns CtaN * 8 = 32 columns.
+TEST_F(Fp16Int2GroupwiseTest, Fp16_Int2_Gemm_CudaKernel) {
+  int const arch = onnxruntime::llm::common::getSMVersion();
+  if (arch < kMinSupportedSm) {
+    GTEST_SKIP() << "fp16 int2 groupwise GEMM kernel requires SM " << kMinSupportedSm << " or later";
+  }
+
+  for (auto m : get_m_list()) {
+    for (const auto& [n, k] : get_n_k_list(wo::KernelType::FP16Int2Groupwise)) {
+      InitBuffers(m, n, k, 128);  // 2-bit needs block_size >= 64
+      EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    }
+  }
+}
+
+TEST_F(Bf16Int2GroupwiseTest, BF16_Int2_Gemm_CudaKernel) {
+  int const arch = onnxruntime::llm::common::getSMVersion();
+  if (arch < 80) {
+    std::cout << "Skip bf16 int2 groupwise GEMM kernel test for SM < 80" << std::endl;
+    return;
+  }
+
+  for (auto m : get_m_list()) {
+    for (const auto& [n, k] : get_n_k_list(wo::KernelType::BF16Int2Groupwise)) {
+      InitBuffers(m, n, k, 128);  // 2-bit needs block_size >= 64
       EXPECT_TRUE(BenchmarkAndVerifyKernel());
     }
   }
