@@ -5,8 +5,10 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cub/block/block_reduce.cuh>
 #include <limits>
 
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -27,26 +29,49 @@ __device__ __forceinline__ float LoadScale(const void* data, int64_t index, int 
   return __bfloat162float(static_cast<const __nv_bfloat16*>(data)[index]);
 }
 
-template <typename T>
+template <typename T, int ILP>
 __global__ void MixedScaleBranchwiseRMSNormKernel(const T* x, const void* scale, int scale_type,
                                                   T* y, int64_t groups, int branches, int hidden,
                                                   bool shared_scale, float epsilon) {
-  const int64_t group = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t group = blockIdx.x;
   if (group >= groups) {
     return;
   }
+
+  using BlockReduce = cub::BlockReduce<float, kThreads>;
+  using VecT = onnxruntime::cuda::aligned_vector<T, ILP>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+  __shared__ float inv_rms;
+
   const int64_t offset = group * hidden;
   float sum_sq = 0.0f;
-  for (int h = 0; h < hidden; ++h) {
-    const float value = to_float<T>(x[offset + h]);
-    sum_sq += value * value;
+  for (int h = threadIdx.x * ILP; h < hidden; h += blockDim.x * ILP) {
+    const VecT values = *reinterpret_cast<const VecT*>(x + offset + h);
+#pragma unroll
+    for (int i = 0; i < ILP; ++i) {
+      const float value = to_float<T>(values.val[i]);
+      sum_sq += value * value;
+    }
   }
-  const float inv_rms = rsqrtf(sum_sq / hidden + epsilon);
-  for (int h = 0; h < hidden; ++h) {
-    const int64_t scale_index = shared_scale ? h : (group % branches) * hidden + h;
-    const float weight = scale == nullptr ? 1.0f : LoadScale(scale, scale_index, scale_type);
-    y[offset + h] = from_float<T>(
-        to_float<T>(x[offset + h]) * inv_rms * weight);
+
+  const float total_sum_sq = BlockReduce(temp_storage).Sum(sum_sq);
+  if (threadIdx.x == 0) {
+    inv_rms = rsqrtf(total_sum_sq / hidden + epsilon);
+  }
+  __syncthreads();
+
+  const int64_t branch_offset = (group % branches) * hidden;
+  for (int h = threadIdx.x * ILP; h < hidden; h += blockDim.x * ILP) {
+    const VecT values = *reinterpret_cast<const VecT*>(x + offset + h);
+    VecT outputs;
+#pragma unroll
+    for (int i = 0; i < ILP; ++i) {
+      const int scale_index = h + i;
+      const int64_t scale_offset = shared_scale ? scale_index : branch_offset + scale_index;
+      const float weight = scale == nullptr ? 1.0f : LoadScale(scale, scale_offset, scale_type);
+      outputs.val[i] = from_float<T>(to_float<T>(values.val[i]) * inv_rms * weight);
+    }
+    *reinterpret_cast<VecT*>(y + offset + h) = outputs;
   }
 }
 
@@ -56,10 +81,19 @@ template <typename T>
 Status LaunchMixedScaleBranchwiseRMSNorm(cudaStream_t stream, const T* x, const void* scale,
                                          int scale_type, T* y, int64_t groups, int branches,
                                          int hidden, bool shared_scale, float epsilon) {
-  const int64_t block_count = (groups - 1) / kThreads + 1;
-  ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
-  MixedScaleBranchwiseRMSNormKernel<<<static_cast<int>(block_count), kThreads, 0, stream>>>(
-      x, scale, scale_type, y, groups, branches, hidden, shared_scale, epsilon);
+  ORT_RETURN_IF_NOT(groups <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
+  if constexpr (sizeof(T) == 2) {
+    if (hidden % 2 == 0) {
+      MixedScaleBranchwiseRMSNormKernel<T, 2><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+          x, scale, scale_type, y, groups, branches, hidden, shared_scale, epsilon);
+    } else {
+      MixedScaleBranchwiseRMSNormKernel<T, 1><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+          x, scale, scale_type, y, groups, branches, hidden, shared_scale, epsilon);
+    }
+  } else {
+    MixedScaleBranchwiseRMSNormKernel<T, 1><<<static_cast<int>(groups), kThreads, 0, stream>>>(
+        x, scale, scale_type, y, groups, branches, hidden, shared_scale, epsilon);
+  }
   return CUDA_CALL(cudaGetLastError());
 }
 
