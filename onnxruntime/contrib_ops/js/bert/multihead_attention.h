@@ -26,7 +26,7 @@ class MultiHeadAttention : public JsKernel, AttentionBase {
                                static_cast<int32_t>(num_heads_),
                                static_cast<int32_t>(is_unidirectional_),
                                static_cast<int32_t>(mask_filter_value_),
-                               static_cast<int32_t>(scale_),
+                               static_cast<float>(scale_),
                                static_cast<int32_t>(do_rotary_));
   }
 };
