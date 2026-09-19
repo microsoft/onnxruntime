@@ -633,6 +633,12 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return Status::OK();
+  }
+
   // If scales are prepacked, they are constant initializers.
   if (input_idx == 3) {
     return Status::OK();
@@ -924,6 +930,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
+  fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
+  fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
+  fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
+              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
   ORT_ENFORCE(block_size_ >= 0);
 
@@ -1211,9 +1226,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
-      8 / expert_weight_bits_,
+      moe_helper::MoEWeightPackSizes{8 / fc1_expert_weight_bits_,
+                                     8 / fc2_expert_weight_bits_,
+                                     8 / fc3_expert_weight_bits_},
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Mixed-width QMoE execution is not yet implemented on CPU.");
+  }
 
   if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");

@@ -36,6 +36,12 @@ struct MoEParameters {
 };
 namespace moe_helper {
 
+struct MoEWeightPackSizes {
+  int64_t fc1;
+  int64_t fc2;
+  int64_t fc3;
+};
+
 // Helper to check shape dimensions
 #define ASSERT_SHAPE_DIMENSION(shape_ptr, dim, name)                             \
   if (shape_ptr != nullptr) {                                                    \
@@ -74,10 +80,12 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_bias,                // optional
                    const Tensor* fc3_experts_scales,              // required for qMoE; NULL for MOE
                    const Tensor* fc3_zero_points,                 // optional, for qMoE
-                   const int64_t pack_size,                       // number of weights packed together (like 2 for uint4 packed to uint8)
+                   const MoEWeightPackSizes& pack_sizes,
                    const bool is_fused_swiglu,
                    const int64_t block_size = 0) {  // block size for block-wise quantization
-  ORT_RETURN_IF(pack_size <= 0, "pack_size must be positive, got ", pack_size);
+  ORT_RETURN_IF(pack_sizes.fc1 <= 0 || pack_sizes.fc2 <= 0 || pack_sizes.fc3 <= 0,
+                 "FC pack sizes must be positive, got FC1=", pack_sizes.fc1,
+                 ", FC2=", pack_sizes.fc2, ", FC3=", pack_sizes.fc3, ".");
 
   // Required inputs
   if (input == nullptr) {
@@ -107,20 +115,20 @@ Status CheckInputs(MoEParameters& parameters,
   int64_t hidden_size = input_dims[input_dims.size() - 1];
   int64_t num_experts = router_probs_dims[1];
 
-  ORT_RETURN_IF(hidden_size % pack_size != 0,
-                "hidden_size (", hidden_size, ") must be divisible by pack_size (", pack_size, ").");
+  const bool has_uniform_pack_size = pack_sizes.fc1 == pack_sizes.fc2 && pack_sizes.fc2 == pack_sizes.fc3;
+  ORT_RETURN_IF(has_uniform_pack_size && hidden_size % pack_sizes.fc1 != 0,
+                "hidden_size (", hidden_size, ") must be divisible by pack_size (", pack_sizes.fc1, ").");
 
   int64_t local_num_experts = fc1_experts_weights_shape->GetDims()[0];
 
   const int64_t inter_size_numerator = SafeInt<int64_t>(fc2_experts_weights_shape->GetDims()[1]) *
-                                       fc2_experts_weights_shape->GetDims()[2] * pack_size;
+                                       fc2_experts_weights_shape->GetDims()[2] * pack_sizes.fc2;
   ORT_RETURN_IF(inter_size_numerator % hidden_size != 0,
                 "Unable to infer inter_size from fc2_experts_weights shape ",
                 *fc2_experts_weights_shape, " and hidden_size ", hidden_size, ".");
   int64_t inter_size = inter_size_numerator / hidden_size;
-  ORT_RETURN_IF(inter_size % pack_size != 0,
-                "inter_size (", inter_size, ") must be divisible by pack_size (", pack_size, ").");
-
+  ORT_RETURN_IF(has_uniform_pack_size && inter_size % pack_sizes.fc1 != 0,
+                "inter_size (", inter_size, ") must be divisible by pack_size (", pack_sizes.fc1, ").");
   bool legacy_shape = false;
   const auto& fc2_experts_weights_dims = fc2_experts_weights_shape->GetDims();
   const auto& fc1_experts_weights_dims = fc1_experts_weights_shape->GetDims();
@@ -129,17 +137,22 @@ Status CheckInputs(MoEParameters& parameters,
 
   // Fused swiglu doubles the output dimension of FC1 since it fused two GEMMs into one.
   const int64_t fc1_inter_size = is_fused_swiglu ? (inter_size + inter_size) : inter_size;
-  const int64_t zp_pack_size = pack_size;  // Zero points packing (1 for 8-bit, 2 for 4-bit)
 
   if (legacy_shape) {
     // legacy shape does not match column major memory layout. This is for backward compatibility.
-    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, hidden_size, fc1_inter_size / pack_size);
-    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, inter_size, hidden_size / pack_size);
-    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, hidden_size, inter_size / pack_size);
+    ORT_RETURN_IF(fc1_inter_size % pack_sizes.fc1 != 0 || hidden_size % pack_sizes.fc2 != 0 ||
+                      inter_size % pack_sizes.fc3 != 0,
+                  "Expert dimensions must be divisible by their FC pack sizes for the legacy weight layout.");
+    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, hidden_size, fc1_inter_size / pack_sizes.fc1);
+    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, inter_size, hidden_size / pack_sizes.fc2);
+    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, hidden_size, inter_size / pack_sizes.fc3);
   } else {
-    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, fc1_inter_size, hidden_size / pack_size);
-    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, hidden_size, inter_size / pack_size);
-    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, inter_size, hidden_size / pack_size);
+    ORT_RETURN_IF(hidden_size % pack_sizes.fc1 != 0 || inter_size % pack_sizes.fc2 != 0 ||
+                      hidden_size % pack_sizes.fc3 != 0,
+                  "Expert dimensions must be divisible by their FC pack sizes.");
+    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, fc1_inter_size, hidden_size / pack_sizes.fc1);
+    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, hidden_size, inter_size / pack_sizes.fc2);
+    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, inter_size, hidden_size / pack_sizes.fc3);
   }
 
   CHECK_TENSOR_SHAPE(router_probs, num_rows, num_experts);
@@ -171,9 +184,9 @@ Status CheckInputs(MoEParameters& parameters,
     CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, fc3_blocks_per_row);
 
     // Validate zero-point tensors (block-wise)
-    const int64_t fc1_zp_blocks = (fc1_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
-    const int64_t fc2_zp_blocks = (fc2_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
-    const int64_t fc3_zp_blocks = (fc3_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+    const int64_t fc1_zp_blocks = (fc1_blocks_per_row + pack_sizes.fc1 - 1) / pack_sizes.fc1;
+    const int64_t fc2_zp_blocks = (fc2_blocks_per_row + pack_sizes.fc2 - 1) / pack_sizes.fc2;
+    const int64_t fc3_zp_blocks = (fc3_blocks_per_row + pack_sizes.fc3 - 1) / pack_sizes.fc3;
 
     CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, fc1_inter_size, fc1_zp_blocks);
     CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, hidden_size, fc2_zp_blocks);
@@ -185,10 +198,10 @@ Status CheckInputs(MoEParameters& parameters,
       const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
       if (fc1_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
-        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + pack_sizes.fc1 - 1) / pack_sizes.fc1);
       } else if (fc1_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, 1);
-        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + pack_sizes.fc1 - 1) / pack_sizes.fc1);
       } else {
         ORT_THROW("fc1_experts_scales must be 2D or 3D tensor");
       }
@@ -198,10 +211,10 @@ Status CheckInputs(MoEParameters& parameters,
       const auto& fc2_scales_dims = fc2_experts_scales->Shape().GetDims();
       if (fc2_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
-        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + pack_sizes.fc2 - 1) / pack_sizes.fc2);
       } else if (fc2_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, 1);
-        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + pack_sizes.fc2 - 1) / pack_sizes.fc2);
       } else {
         ORT_THROW("fc2_experts_scales must be 2D or 3D tensor");
       }
@@ -211,10 +224,10 @@ Status CheckInputs(MoEParameters& parameters,
       const auto& fc3_scales_dims = fc3_experts_scales->Shape().GetDims();
       if (fc3_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
-        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + pack_sizes.fc3 - 1) / pack_sizes.fc3);
       } else if (fc3_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, 1);
-        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + pack_sizes.fc3 - 1) / pack_sizes.fc3);
       } else {
         ORT_THROW("fc3_experts_scales must be 2D or 3D tensor");
       }
@@ -257,6 +270,23 @@ Status CheckInputs(MoEParameters& parameters,
 
 template <typename Tensor>
 Status CheckInputs(MoEParameters& parameters,
+                   const Tensor* input, const Tensor* router_probs,
+                   const TensorShape* fc1_experts_weights_shape, const Tensor* fc1_experts_bias,
+                   const Tensor* fc1_experts_scales, const Tensor* fc1_zero_points,
+                   const TensorShape* fc2_experts_weights_shape, const Tensor* fc2_experts_bias,
+                   const Tensor* fc2_experts_scales, const Tensor* fc2_zero_points,
+                   const TensorShape* fc3_experts_weights_shape, const Tensor* fc3_experts_bias,
+                   const Tensor* fc3_experts_scales, const Tensor* fc3_zero_points,
+                   const int64_t pack_size, const bool is_fused_swiglu, const int64_t block_size = 0) {
+  return CheckInputs(parameters, input, router_probs,
+                     fc1_experts_weights_shape, fc1_experts_bias, fc1_experts_scales, fc1_zero_points,
+                     fc2_experts_weights_shape, fc2_experts_bias, fc2_experts_scales, fc2_zero_points,
+                     fc3_experts_weights_shape, fc3_experts_bias, fc3_experts_scales, fc3_zero_points,
+                     MoEWeightPackSizes{pack_size, pack_size, pack_size}, is_fused_swiglu, block_size);
+}
+
+template <typename Tensor>
+Status CheckInputs(MoEParameters& parameters,
                    const Tensor* input,                // required
                    const Tensor* router_probs,         // required
                    const Tensor* fc1_experts_weights,  // required
@@ -271,7 +301,7 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_bias,     // optional
                    const Tensor* fc3_experts_scales,   // required for qMoE; NULL for MOE
                    const Tensor* fc3_zero_points,      // optional, for qMoE
-                   const int64_t pack_size,            // number of weights packed together (like 2 for uint4 packed to uint8)
+                   const MoEWeightPackSizes& pack_sizes,
                    const bool is_fused_swiglu,
                    const int64_t block_size = 0) {  // block size for block-wise quantization
 
@@ -282,7 +312,24 @@ Status CheckInputs(MoEParameters& parameters,
   return CheckInputs(parameters, input, router_probs, fc1_shape, fc1_experts_bias, fc1_experts_scales, fc1_zero_points,
                      fc2_shape, fc2_experts_bias, fc2_experts_scales, fc2_zero_points,
                      fc3_shape, fc3_experts_bias, fc3_experts_scales, fc3_zero_points,
-                     pack_size, is_fused_swiglu, block_size);
+                     pack_sizes, is_fused_swiglu, block_size);
+}
+
+template <typename Tensor>
+Status CheckInputs(MoEParameters& parameters,
+                   const Tensor* input, const Tensor* router_probs,
+                   const Tensor* fc1_experts_weights, const Tensor* fc1_experts_bias,
+                   const Tensor* fc1_experts_scales, const Tensor* fc1_zero_points,
+                   const Tensor* fc2_experts_weights, const Tensor* fc2_experts_bias,
+                   const Tensor* fc2_experts_scales, const Tensor* fc2_zero_points,
+                   const Tensor* fc3_experts_weights, const Tensor* fc3_experts_bias,
+                   const Tensor* fc3_experts_scales, const Tensor* fc3_zero_points,
+                   const int64_t pack_size, const bool is_fused_swiglu, const int64_t block_size = 0) {
+  return CheckInputs(parameters, input, router_probs,
+                     fc1_experts_weights, fc1_experts_bias, fc1_experts_scales, fc1_zero_points,
+                     fc2_experts_weights, fc2_experts_bias, fc2_experts_scales, fc2_zero_points,
+                     fc3_experts_weights, fc3_experts_bias, fc3_experts_scales, fc3_zero_points,
+                     MoEWeightPackSizes{pack_size, pack_size, pack_size}, is_fused_swiglu, block_size);
 }
 
 }  // namespace moe_helper

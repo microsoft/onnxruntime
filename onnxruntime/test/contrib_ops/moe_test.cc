@@ -1939,6 +1939,89 @@ TEST(MoETest, QMoETest_CPU_Int2_InvalidHiddenSize) {
 #endif
 }
 
+static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape) {
+  constexpr int64_t num_rows = 1;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 8;
+  constexpr int64_t inter_size = 8;
+  constexpr int64_t fc1_bits = 2;
+  constexpr int64_t fc2_bits = 4;
+  constexpr int64_t fc1_pack_size = 8 / fc1_bits;
+  constexpr int64_t fc2_pack_size = 8 / fc2_bits;
+
+  const std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  const std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_weights_dims = {num_experts, inter_size, hidden_size / fc1_pack_size};
+  if (invalid_fc1_shape) {
+    ++fc1_weights_dims[2];
+  }
+  const std::vector<int64_t> fc2_weights_dims = {num_experts, hidden_size, inter_size / fc2_pack_size};
+  const std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  const std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("expert_weight_bits", fc2_bits);
+  tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+  tester.AddInput<MLFloat16>("input", input_dims, std::vector<MLFloat16>(num_rows * hidden_size));
+  tester.AddInput<MLFloat16>("router_probs", router_probs_dims, std::vector<MLFloat16>(num_rows * num_experts));
+  tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weights_dims,
+                           std::vector<uint8_t>(static_cast<size_t>(fc1_weights_dims[1] * fc1_weights_dims[2])));
+  tester.AddInput<float>("fc1_scales", fc1_scales_dims, std::vector<float>(num_experts * inter_size, 1.0f));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weights_dims,
+                           std::vector<uint8_t>(static_cast<size_t>(fc2_weights_dims[1] * fc2_weights_dims[2])));
+  tester.AddInput<float>("fc2_scales", fc2_scales_dims, std::vector<float>(num_experts * hidden_size, 1.0f));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", input_dims, std::vector<MLFloat16>(num_rows * hidden_size));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             invalid_fc1_shape ? "Input 'fc1_experts_weights' is expected to have shape"
+                               : "Mixed-width QMoE execution is not yet implemented on CPU.",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_MixedWidthContract) {
+  RunQMoEMixedWidthContractTest(false);
+}
+
+TEST(MoETest, QMoETest_MixedWidthInvalidFC1Shape) {
+  RunQMoEMixedWidthContractTest(true);
+}
+
+TEST(MoETest, QMoETest_MixedWidthFusedSwiGLURequiresMatchingFC1AndFC3) {
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddAttribute<int64_t>("fc1_expert_weight_bits", 2);
+  tester.AddAttribute<int64_t>("fc3_expert_weight_bits", 4);
+  tester.AddInput<MLFloat16>("input", {1, 8}, std::vector<MLFloat16>(8));
+  tester.AddInput<MLFloat16>("router_probs", {1, 1}, std::vector<MLFloat16>(1));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {1, 16, 2}, std::vector<uint8_t>(32));
+  tester.AddInput<float>("fc1_scales", {1, 16}, std::vector<float>(16, 1.0f));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {1, 8, 4}, std::vector<uint8_t>(32));
+  tester.AddInput<float>("fc2_scales", {1, 8}, std::vector<float>(8, 1.0f));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, 8}, std::vector<MLFloat16>(8));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.",
+             {}, nullptr, &execution_providers);
+}
+
 // Regression test: row-wise asymmetric 2-bit with dimensions that trigger
 // non-4-aligned parallel dequant block size. Without the alignment fix in
 // GetDequantBlockSize, zero-point lane indexing is incorrect for shards
