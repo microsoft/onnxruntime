@@ -18,12 +18,14 @@ using onnxruntime::webgpu::ShaderHelper;
 
 class KvCacheBlockQuantInt8Program final : public Program<KvCacheBlockQuantInt8Program> {
  public:
-  KvCacheBlockQuantInt8Program(bool has_past, bool kv_BNSH, bool past_present_share_buffer,
+  KvCacheBlockQuantInt8Program(bool has_past, bool kv_BNSH, bool has_qkv_bias,
+                               bool past_present_share_buffer,
                                int head_size, int components, int compressed_head_size_u32,
                                bool prepare_indirect_dispatch, bool use_seqlen_k)
       : Program{"KvCacheBlockQuantInt8Copy"},
         has_past_(has_past),
         kv_BNSH_(kv_BNSH),
+        has_qkv_bias_(has_qkv_bias),
         past_present_share_buffer_(past_present_share_buffer),
         head_size_(head_size),
         components_(components),
@@ -44,11 +46,14 @@ class KvCacheBlockQuantInt8Program final : public Program<KvCacheBlockQuantInt8P
                                           {"past_input_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"key_bias_offset", ProgramUniformVariableDataType::Uint32},
+                                          {"value_bias_offset", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
   bool kv_BNSH_;
+  bool has_qkv_bias_;
   bool past_present_share_buffer_;
   int head_size_;
   int components_;
@@ -61,6 +66,7 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
                                    const WebgpuAttentionParameters& parameters,
                                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                                   const Tensor* qkv_bias,
                                    uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
                                    uint32_t num_q_tiles, const Tensor* total_seqlen);
 
