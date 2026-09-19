@@ -43,6 +43,15 @@ struct IsFpQuantized<Float4E2M1x2> : std::true_type {};
 template <typename T1>
 inline constexpr bool IsFpQuantizedV = IsFpQuantized<T1>::value;
 
+template <typename T1>
+inline constexpr bool IsFp8QuantizedV =
+#if !defined(DISABLE_FLOAT8_TYPES)
+    std::is_same_v<T1, Float8E4M3FN> || std::is_same_v<T1, Float8E4M3FNUZ> ||
+    std::is_same_v<T1, Float8E5M2> || std::is_same_v<T1, Float8E5M2FNUZ>;
+#else
+    false;
+#endif
+
 struct GatherBlockQuantizedParam {
   cudaStream_t stream;
   int64_t after_gather_dim;
