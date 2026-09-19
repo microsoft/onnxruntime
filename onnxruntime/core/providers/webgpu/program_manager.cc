@@ -199,6 +199,7 @@ Status ProgramManager::Build(const ProgramBase& program,
     };
 
     if (shader_dump_fn_) {
+      std::lock_guard<std::mutex> lock(shader_dump_mutex_);
       shader_dump_fn_(shader_content());
     } else {
       LOGS_DEFAULT(VERBOSE) << shader_content();
@@ -310,6 +311,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   auto result = programs_.find(key);
   if (result != programs_.end()) {
     return &result->second;
@@ -319,6 +321,7 @@ const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
 }
 
 const ProgramArtifact* ProgramManager::Set(const std::string& key, ProgramArtifact&& program) {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   return &(programs_.emplace(key, std::move(program)).first->second);
 }
 

@@ -858,19 +858,31 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
 }
 std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = nullptr;
+  const bool instance_transfer = ort_ep_->ort_version_supported >= 31 && ort_ep_->CreateDataTransfer != nullptr;
 
-  if (ep_factory_.CreateDataTransfer != nullptr) {
-    OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
-    if (status != nullptr) {
-      ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
-    }
+  if (instance_transfer) {
+    status = ort_ep_->CreateDataTransfer(ort_ep_.get(), &data_transfer_impl);
+  } else if (ep_factory_.CreateDataTransfer != nullptr) {
+    status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+  }
+
+  if (status != nullptr) {
+    ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
   }
 
   if (data_transfer_impl == nullptr) {
     return {};
   }
 
-  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  auto release_on_failure = gsl::finally([&] {
+    if (data_transfer_impl != nullptr) {
+      data_transfer_impl->Release(data_transfer_impl);
+    }
+  });
+  auto transfer = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl, instance_transfer ? ort_ep_ : nullptr);
+  data_transfer_impl = nullptr;
+  return transfer;
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {

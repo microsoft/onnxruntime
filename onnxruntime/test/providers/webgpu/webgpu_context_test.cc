@@ -3,9 +3,13 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <future>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -62,6 +66,54 @@ bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
 }
 
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+wgpu::Device CreateExternalDevice(webgpu::WebGpuContext& context, bool enable_synchronization) {
+  auto adapter = std::make_shared<wgpu::Adapter>();
+  wgpu::RequestAdapterOptions adapter_options{};
+  adapter_options.backendType = context.AdapterInfo().backendType;
+  ORT_THROW_IF_ERROR(context.Wait(context.Instance().RequestAdapter(
+      &adapter_options, wgpu::CallbackMode::WaitAnyOnly,
+      [adapter](wgpu::RequestAdapterStatus status, wgpu::Adapter result, wgpu::StringView) {
+        if (status == wgpu::RequestAdapterStatus::Success) {
+          *adapter = std::move(result);
+        }
+      })));
+  ORT_ENFORCE(*adapter, "Failed to request the external device's adapter.");
+
+  wgpu::DawnTogglesDescriptor toggles{};
+  const char* disabled_toggles[] = {"skip_validation"};
+  toggles.disabledToggles = disabled_toggles;
+  toggles.disabledToggleCount = std::size(disabled_toggles);
+  wgpu::FeatureName synchronization = wgpu::FeatureName::ImplicitDeviceSynchronization;
+  wgpu::DeviceDescriptor descriptor{};
+  descriptor.nextInChain = &toggles;
+  descriptor.requiredFeatureCount = enable_synchronization ? 1 : 0;
+  descriptor.requiredFeatures = enable_synchronization ? &synchronization : nullptr;
+  auto device = std::make_shared<wgpu::Device>();
+  ORT_THROW_IF_ERROR(context.Wait(adapter->RequestDevice(
+      &descriptor, wgpu::CallbackMode::WaitAnyOnly,
+      [device](wgpu::RequestDeviceStatus status, wgpu::Device result, wgpu::StringView) {
+        if (status == wgpu::RequestDeviceStatus::Success) {
+          *device = std::move(result);
+        }
+      })));
+  ORT_ENFORCE(*device, "Failed to create an external device.");
+  return std::move(*device);
+}
+
+ConfigOptions ExternalDeviceOptions(const webgpu::WebGpuContext& context, const wgpu::Device& device,
+                                    const char* context_id) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kDeviceId, context_id));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(
+      kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(context.Instance().Get())).c_str()));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(
+      kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kValidationMode, kValidationMode_basic));
+  return options;
+}
+#endif
+
 std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,
                                                               WGPUBuffer buffer) {
   constexpr size_t kBufferSize = sizeof(std::array<uint32_t, 16>);
@@ -106,6 +158,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -114,7 +167,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
   allocation = allocator.Alloc(sizeof(nonzero_data));
@@ -123,7 +176,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   EXPECT_EQ(reused_buffer, dirty_buffer);
 
   const auto downloaded_data = ReadBufferWithExternalCommandEncoder(context, reused_buffer);
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(downloaded_data, expected_data);
 
@@ -134,6 +187,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
 
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   webgpu::BufferManager buffer_manager(context,
@@ -144,6 +198,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
 
   std::array<uint32_t, 16> nonzero_data;
@@ -151,19 +206,19 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
-  context.CaptureBegin(&captured_commands, buffer_manager);
+  context.CaptureBegin(&captured_commands, buffer_manager, webgpu_ep->Recording());
   allocation = allocator.Alloc(sizeof(nonzero_data));
   if (allocation == nullptr) {
-    context.CaptureEnd();
+    context.CaptureEnd(webgpu_ep->Recording());
     FAIL() << "Failed to reacquire a device allocation during graph capture.";
   }
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  const Status flush_status = context.Flush(buffer_manager);
-  context.CaptureEnd();
+  const Status flush_status = context.Flush(buffer_manager, webgpu_ep->Recording());
+  context.CaptureEnd(webgpu_ep->Recording());
   if (!flush_status.IsOK()) {
     allocator.Free(allocation);
     FAIL() << flush_status.ErrorMessage();
@@ -188,6 +243,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -196,8 +252,8 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   allocator.Free(allocation);
 
   RunOptions run_options;
@@ -229,6 +285,89 @@ TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
   EXPECT_FALSE(webgpu_ep->IsRunActive());
 }
 
+TEST(WebGpuContextTest, ConcurrentValidationScopesAttributeErrorsToTheirCallingThreads) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "This test exercises the pinned Dawn native error-scope implementation.";
+#else
+  ConfigOptions default_options;
+  auto default_ep = WebGpuProviderFactoryCreator::Create(default_options)->CreateProvider();
+  ASSERT_NE(default_ep, nullptr);
+  auto& default_context = webgpu::WebGpuContextFactory::GetContext(0);
+
+  // A new device is necessary: wrapping the default Release device cannot undo skip_validation.
+  auto device = CreateExternalDevice(default_context, true);
+  auto options = ExternalDeviceOptions(default_context, device, "29851");
+  auto first_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto second_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(first_ep, nullptr);
+  ASSERT_NE(second_ep, nullptr);
+
+  auto* first_webgpu_ep = static_cast<WebGpuExecutionProvider*>(first_ep.get());
+  auto* second_webgpu_ep = static_cast<WebGpuExecutionProvider*>(second_ep.get());
+  auto& context = webgpu::WebGpuContextFactory::GetContext(29851);
+  ASSERT_FALSE(DeviceToggleIsEnabled(context, "skip_validation"));
+  RunOptions run_options;
+
+  auto inject_validation_error = [&] {
+    wgpu::BufferDescriptor descriptor{};
+    descriptor.size = 16;
+    descriptor.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::Storage;
+    auto invalid_buffer = device.CreateBuffer(&descriptor);
+  };
+
+  for (bool error_in_first : {true, false}) {
+    ASSERT_STATUS_OK(first_webgpu_ep->OnRunStart(run_options));
+    if (error_in_first) {
+      inject_validation_error();
+    }
+
+    std::promise<void> second_started;
+    auto second_started_future = second_started.get_future();
+    std::promise<void> first_ended;
+    auto first_ended_future = first_ended.get_future();
+    Status second_start_status;
+    Status second_end_status;
+    Status second_recovery_status;
+    Status second_empty_scope_status;
+    std::thread second_run([&]() {
+      second_start_status = second_webgpu_ep->OnRunStart(run_options);
+      if (second_start_status.IsOK() && !error_in_first) {
+        inject_validation_error();
+      }
+      second_started.set_value();
+      first_ended_future.wait();
+      if (second_start_status.IsOK()) {
+        second_end_status = second_webgpu_ep->OnRunEnd(false, run_options);
+      }
+      second_recovery_status = second_webgpu_ep->OnRunStart(run_options);
+      if (second_recovery_status.IsOK()) {
+        second_recovery_status = second_webgpu_ep->OnRunEnd(false, run_options);
+      }
+      second_empty_scope_status = context.PopErrorScope();
+    });
+
+    // Force A.push -> B.push -> A.pop -> B.pop, retaining an error in exactly one scope.
+    // Timing out still lets A end, so a reintroduced Run-wide lock fails instead of deadlocking.
+    const auto overlap = second_started_future.wait_for(std::chrono::seconds{10});
+    Status first_status = first_webgpu_ep->OnRunEnd(false, run_options);
+    first_ended.set_value();
+    second_run.join();
+
+    EXPECT_EQ(overlap, std::future_status::ready);
+    EXPECT_STATUS_OK(second_start_status);
+    EXPECT_EQ(first_status.IsOK(), !error_in_first) << first_status;
+    EXPECT_EQ(second_end_status.IsOK(), error_in_first) << second_end_status;
+    const auto& error = error_in_first ? first_status : second_end_status;
+    EXPECT_NE(error.ErrorMessage().find("WebGPU validation failed"), std::string::npos);
+    EXPECT_STATUS_OK(second_recovery_status);
+    EXPECT_FALSE(second_empty_scope_status.IsOK());
+    ASSERT_STATUS_OK(first_webgpu_ep->OnRunStart(run_options));
+    EXPECT_STATUS_OK(first_webgpu_ep->OnRunEnd(false, run_options));
+    EXPECT_FALSE(context.PopErrorScope().IsOK());
+  }
+#endif
+}
+
 TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
@@ -239,6 +378,47 @@ TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
 
   EXPECT_TRUE(DeviceToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0),
                                     "lazy_clear_resource_on_first_use"));
+#endif
+}
+
+TEST(WebGpuContextTest, NativeDeviceUsesImplicitSynchronization) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "ImplicitDeviceSynchronization is a native Dawn feature.";
+#else
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(0).DeviceHasFeature(
+      wgpu::FeatureName::ImplicitDeviceSynchronization));
+#endif
+}
+
+TEST(WebGpuContextTest, ExternalDeviceMustEnableImplicitSynchronizationAtCreation) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN) || defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "This test requires Dawn native and exceptions.";
+#else
+  ConfigOptions default_options;
+  auto default_ep = WebGpuProviderFactoryCreator::Create(default_options)->CreateProvider();
+  ASSERT_NE(default_ep, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto unsynchronized_device = CreateExternalDevice(context, false);
+  ASSERT_FALSE(unsynchronized_device.HasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization));
+  auto invalid_options = ExternalDeviceOptions(context, unsynchronized_device, "29853");
+  try {
+    auto invalid_ep = WebGpuProviderFactoryCreator::Create(invalid_options)->CreateProvider();
+    FAIL() << "An unsynchronized external device was accepted.";
+  } catch (const OnnxRuntimeException& e) {
+    EXPECT_NE(std::string_view{e.what()}.find("DeviceDescriptor.requiredFeatures"), std::string_view::npos);
+  }
+
+  auto synchronized_device = CreateExternalDevice(context, true);
+  auto valid_options = ExternalDeviceOptions(context, synchronized_device, "29853");
+  auto valid_ep = WebGpuProviderFactoryCreator::Create(valid_options)->CreateProvider();
+  ASSERT_NE(valid_ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(valid_ep.get());
+  RunOptions run_options;
+  ASSERT_STATUS_OK(webgpu_ep->OnRunStart(run_options));
+  EXPECT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
 #endif
 }
 

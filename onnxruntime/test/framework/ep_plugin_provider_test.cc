@@ -16,14 +16,18 @@
 #include "core/common/logging/sinks/file_sink.h"
 #include "core/common/path_string.h"
 #include "core/framework/config_options.h"
+#include "core/framework/data_transfer.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/api_asserts.h"
@@ -64,6 +68,69 @@ static void CheckFileIsEmpty(const PathString& filename) {
 // The `test_plugin_ep` namespace contains a local implementation intended for unit testing.
 namespace test_plugin_ep {
 
+struct DataTransferTestState {
+  int create_count = 0;
+  int can_copy_count = 0;
+  int copy_count = 0;
+  int release_count = 0;
+  bool return_null = false;
+  bool fail_creation = false;
+};
+
+struct TestDataTransfer : ::OrtDataTransferImpl {
+  explicit TestDataTransfer(std::shared_ptr<DataTransferTestState> state)
+      : ::OrtDataTransferImpl{}, state_{std::move(state)} {
+    ort_version_supported = ORT_API_VERSION;
+    Release = ReleaseImpl;
+    CanCopy = CanCopyImpl;
+    CopyTensors = CopyTensorsImpl;
+  }
+
+  static OrtStatus* Create(const std::shared_ptr<DataTransferTestState>& state,
+                           OrtDataTransferImpl** data_transfer) {
+    ++state->create_count;
+    if (state->fail_creation) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "Test data transfer creation failed");
+    }
+    *data_transfer = state->return_null ? nullptr : std::make_unique<TestDataTransfer>(state).release();
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
+    auto* self = static_cast<TestDataTransfer*>(this_ptr);
+    ++self->state_->release_count;
+    delete self;
+  }
+
+  static bool ORT_API_CALL CanCopyImpl(const OrtDataTransferImpl* this_ptr,
+                                       const OrtMemoryDevice* /*src*/,
+                                       const OrtMemoryDevice* /*dst*/) noexcept {
+    ++static_cast<const TestDataTransfer*>(this_ptr)->state_->can_copy_count;
+    return true;
+  }
+
+  static OrtStatus* ORT_API_CALL CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
+                                                 const OrtValue** src_tensors,
+                                                 OrtValue** dst_tensors,
+                                                 OrtSyncStream** streams,
+                                                 size_t num_tensors) noexcept {
+    ++static_cast<TestDataTransfer*>(this_ptr)->state_->copy_count;
+    for (size_t i = 0; i < num_tensors; ++i) {
+      EXPECT_TRUE(streams == nullptr || streams[i] == nullptr);
+      const auto& src = src_tensors[i]->Get<Tensor>();
+      auto& dst = *dst_tensors[i]->GetMutable<Tensor>();
+      if (src.SizeInBytes() != dst.SizeInBytes()) {
+        return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Test tensor sizes differ");
+      }
+      std::memcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
+    }
+    return nullptr;
+  }
+
+ private:
+  std::shared_ptr<DataTransferTestState> state_;
+};
+
 struct TestOrtEp : ::OrtEp, ApiPtrs {
   TestOrtEp() : ::OrtEp{}, ApiPtrs{} {
     ort_version_supported = ORT_API_VERSION;
@@ -76,6 +143,13 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) noexcept {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
+  }
+
+  std::shared_ptr<DataTransferTestState> data_transfer_state;
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEp* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    return TestDataTransfer::Create(static_cast<TestOrtEp*>(this_ptr)->data_transfer_state, data_transfer);
   }
 
   // OrtMemoryDevice returned by GetDefaultMemoryDeviceImpl. nullptr means "defer to ORT".
@@ -237,6 +311,14 @@ struct TestOrtEpFactoryForCreateProvider : ::OrtEpFactory {
     return release_ep_count_;
   }
 
+  std::shared_ptr<DataTransferTestState> data_transfer_state;
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept {
+    return TestDataTransfer::Create(
+        static_cast<TestOrtEpFactoryForCreateProvider*>(this_ptr)->data_transfer_state, data_transfer);
+  }
+
  private:
   int release_ep_count_ = 0;
   std::unique_ptr<TestOrtEp> next_ep_;
@@ -331,6 +413,179 @@ TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderAcceptsHig
 
   plugin_ep.reset();
   EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
+
+class PluginExecutionProviderDataTransferTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+    ort_ep_ = ort_ep.get();
+    ort_ep->data_transfer_state = ep_state_;
+    ort_ep->CreateDataTransfer = test_plugin_ep::TestOrtEp::CreateDataTransferImpl;
+    context_.ep_factory.SetNextEp(std::move(ort_ep));
+    context_.ep_factory.data_transfer_state = factory_state_;
+    context_.ep_factory.CreateDataTransfer =
+        test_plugin_ep::TestOrtEpFactoryForCreateProvider::CreateDataTransferImpl;
+    ASSERT_STATUS_OK(context_.Create(ep_));
+  }
+
+  std::shared_ptr<test_plugin_ep::DataTransferTestState> ep_state_ =
+      std::make_shared<test_plugin_ep::DataTransferTestState>();
+  std::shared_ptr<test_plugin_ep::DataTransferTestState> factory_state_ =
+      std::make_shared<test_plugin_ep::DataTransferTestState>();
+  test_plugin_ep::CreateProviderTestContext context_;
+  test_plugin_ep::TestOrtEp* ort_ep_ = nullptr;
+  std::unique_ptr<PluginExecutionProvider> ep_;
+};
+
+TEST_F(PluginExecutionProviderDataTransferTest, PrefersEpCallbackAndCopiesSynchronously) {
+  auto transfer = ep_->GetDataTransfer();
+  ASSERT_NE(transfer, nullptr);
+  EXPECT_EQ(ep_state_->create_count, 1);
+  EXPECT_EQ(factory_state_->create_count, 0);
+
+  OrtMemoryInfo memory_info{"Cpu", OrtDeviceAllocator};
+  float src_data[] = {1.0f, 2.0f};
+  float dst_data[] = {0.0f, 0.0f};
+  Tensor src{DataTypeImpl::GetType<float>(), TensorShape{2}, src_data, memory_info};
+  Tensor dst{DataTypeImpl::GetType<float>(), TensorShape{2}, dst_data, memory_info};
+  EXPECT_TRUE(transfer->CanCopy(memory_info.device, memory_info.device));
+  ASSERT_STATUS_OK(transfer->CopyTensor(src, dst));
+  EXPECT_EQ(dst_data[0], src_data[0]);
+  EXPECT_EQ(dst_data[1], src_data[1]);
+  EXPECT_EQ(ep_state_->can_copy_count, 1);
+  EXPECT_EQ(ep_state_->copy_count, 1);
+  EXPECT_EQ(factory_state_->copy_count, 0);
+
+  EXPECT_EQ(ep_state_->release_count, 0);
+  transfer.reset();
+  EXPECT_EQ(ep_state_->release_count, 1);
+  ep_.reset();
+  EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 1);
+  EXPECT_EQ(ep_state_->release_count, 1);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, LegacyVersionUsesFactory) {
+  // Keep the callback non-null so dropping the version guard changes observable behavior.
+  ort_ep_->ort_version_supported = 30;
+  auto transfer = ep_->GetDataTransfer();
+  ASSERT_NE(transfer, nullptr);
+  EXPECT_EQ(ep_state_->create_count, 0);
+  EXPECT_EQ(factory_state_->create_count, 1);
+  transfer.reset();
+  EXPECT_EQ(ep_state_->release_count, 0);
+  EXPECT_EQ(factory_state_->release_count, 1);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, NullCallbackUsesFactory) {
+  ort_ep_->CreateDataTransfer = nullptr;
+  auto transfer = ep_->GetDataTransfer();
+  ASSERT_NE(transfer, nullptr);
+  EXPECT_EQ(ep_state_->create_count, 0);
+  EXPECT_EQ(factory_state_->create_count, 1);
+  transfer.reset();
+  EXPECT_EQ(factory_state_->release_count, 1);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, NullResultDoesNotFallBack) {
+  ep_state_->return_null = true;
+  EXPECT_EQ(ep_->GetDataTransfer(), nullptr);
+  EXPECT_EQ(ep_state_->create_count, 1);
+  EXPECT_EQ(factory_state_->create_count, 0);
+  EXPECT_EQ(ep_state_->release_count, 0);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, TransferKeepsEpAliveUntilRelease) {
+  auto transfer = ep_->GetDataTransfer();
+  ASSERT_NE(transfer, nullptr);
+  std::weak_ptr<test_plugin_ep::DataTransferTestState> state = ep_state_;
+  ep_.reset();
+  ep_state_.reset();
+  EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 0);
+  ASSERT_FALSE(state.expired());
+  EXPECT_TRUE(transfer->CanCopy(OrtDevice{}, OrtDevice{}));
+  transfer.reset();
+  EXPECT_TRUE(state.expired());
+  EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 1);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, MissingCallbacksNeedNoTransfer) {
+  ort_ep_->CreateDataTransfer = nullptr;
+  context_.ep_factory.CreateDataTransfer = nullptr;
+  EXPECT_EQ(ep_->GetDataTransfer(), nullptr);
+  EXPECT_EQ(ep_state_->create_count, 0);
+  EXPECT_EQ(factory_state_->create_count, 0);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, FactoryMayReturnNull) {
+  ort_ep_->CreateDataTransfer = nullptr;
+  factory_state_->return_null = true;
+  EXPECT_EQ(ep_->GetDataTransfer(), nullptr);
+  EXPECT_EQ(ep_state_->create_count, 0);
+  EXPECT_EQ(factory_state_->create_count, 1);
+  EXPECT_EQ(factory_state_->release_count, 0);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST_F(PluginExecutionProviderDataTransferTest, EpErrorDoesNotFallBack) {
+  ep_state_->fail_creation = true;
+  EXPECT_THROW(
+      {
+        try {
+          auto transfer = ep_->GetDataTransfer();
+        } catch (const OnnxRuntimeException& ex) {
+          EXPECT_THAT(ex.what(), ::testing::HasSubstr("Test data transfer creation failed"));
+          throw;
+        }
+      },
+      OnnxRuntimeException);
+  EXPECT_EQ(ep_state_->create_count, 1);
+  EXPECT_EQ(factory_state_->create_count, 0);
+  EXPECT_EQ(ep_state_->release_count, 0);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, FactoryErrorIsPreserved) {
+  ort_ep_->CreateDataTransfer = nullptr;
+  factory_state_->fail_creation = true;
+  EXPECT_THROW(ep_->GetDataTransfer(), OnnxRuntimeException);
+  EXPECT_EQ(ep_state_->create_count, 0);
+  EXPECT_EQ(factory_state_->create_count, 1);
+  EXPECT_EQ(factory_state_->release_count, 0);
+}
+#endif
+
+TEST_F(PluginExecutionProviderDataTransferTest, SessionOwnsTransferUntilDestruction) {
+  {
+    InferenceSession session{SessionOptions{}, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep_)));
+    EXPECT_EQ(ep_state_->create_count, 1);
+    EXPECT_EQ(factory_state_->create_count, 0);
+    EXPECT_EQ(ep_state_->release_count, 0);
+    EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 0);
+  }
+  EXPECT_EQ(ep_state_->release_count, 1);
+  EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 1);
+}
+
+TEST_F(PluginExecutionProviderDataTransferTest, FailedRegistrationKeepsEpAliveForTransfer) {
+  {
+    InferenceSession session{SessionOptions{}, GetEnvironment()};
+    auto first = test_plugin_ep::MakeTestOrtEp();
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(first.ep)));
+
+    // Duplicate registration fails after the instance's transfer has been added to the session.
+    const Status status = session.RegisterExecutionProvider(std::move(ep_));
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("has already been registered"));
+    EXPECT_EQ(ep_state_->create_count, 1);
+    EXPECT_EQ(ep_state_->release_count, 0);
+    EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 0);
+    const auto* transfer = session.GetDataTransferManager().GetDataTransfer(OrtDevice{}, OrtDevice{});
+    ASSERT_NE(transfer, nullptr);
+    EXPECT_TRUE(transfer->CanCopy(OrtDevice{}, OrtDevice{}));
+  }
+  EXPECT_EQ(ep_state_->release_count, 1);
+  EXPECT_EQ(context_.ep_factory.GetReleaseEpCount(), 1);
 }
 
 TEST(PluginExecutionProviderTest, GetPreferredLayout) {

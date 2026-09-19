@@ -2708,6 +2708,36 @@ struct OrtEp {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
+
+  /** \brief Create a data transfer implementation associated with this EP instance.
+   *
+   * ORT prefers this callback over OrtEpFactory::CreateDataTransfer when ort_version_supported is at least 31
+   * and this function pointer is not NULL. Otherwise, ORT uses the factory callback, if provided.
+   * Returning success with a NULL `data_transfer` means this EP instance needs no data transfer implementation;
+   * ORT does not fall back to the factory callback. An error is propagated without invoking the factory callback.
+   *
+   * On success, ownership of the returned transfer is passed to ORT, which calls OrtDataTransferImpl::Release
+   * exactly once when it is no longer needed. ORT keeps `this_ptr` alive until the returned transfer is released,
+   * including when Session registration fails. The transfer may borrow resources owned by this OrtEp, but must
+   * retain any other resources required by its callbacks until Release completes. ORT may request more than
+   * one transfer from an instance; each returned transfer must support an independent Release.
+   *
+   * The returned implementation must follow the OrtDataTransferImpl::CopyTensors contract. If no stream is
+   * provided for a copy (the streams array or the corresponding entry is NULL), that copy must complete before
+   * CopyTensors returns successfully. Associating the transfer with an EP instance does not change stream routing.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] data_transfer The created OrtDataTransferImpl, or NULL if no transfer is required.
+   *                          On failure, leave this output unchanged and release any partially created resources.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. Set it to NULL to preserve factory-based behavior.
+   *
+   * \since Version 1.31.
+   */
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
