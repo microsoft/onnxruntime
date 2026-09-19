@@ -21,6 +21,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #if defined(__APPLE__)
+#include "core/common/pci_vendor_ids.h"
 #include "core/framework/ortdevice.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
@@ -188,7 +189,7 @@ TEST(AutoEpSelection, CoreMLEP) {
   // Verify the CoreML factory's vendor name and vendor ID, along with the hardware vendor ID. The factory reports
   // "Microsoft", like the other internal factories: the factory vendor identifies who provides the EP
   // implementation, not the hardware vendor.
-  // Apple device discovery currently assigns Apple's PCI vendor id (0x106B) to every NPU and GPU it reports. The
+  // Apple device discovery assigns pci_vendor_ids::kApple to every NPU and GPU it reports. The
   // CoreML factory intentionally accepts any discovered GPU regardless of vendor, so this hardware vendor ID
   // assertion must be updated if discovery later reports a non-Apple GPU (see the multi-GPU TODO in
   // core/platform/apple/device_discovery.cc).
@@ -204,7 +205,7 @@ TEST(AutoEpSelection, CoreMLEP) {
     }
 
     EXPECT_STREQ(c_api->EpDevice_EpVendor(ep_device), "Microsoft");
-    EXPECT_EQ(c_api->HardwareDevice_VendorId(c_api->EpDevice_Device(ep_device)), uint32_t{0x106B});
+    EXPECT_EQ(c_api->HardwareDevice_VendorId(c_api->EpDevice_Device(ep_device)), pci_vendor_ids::kApple);
     EXPECT_EQ(ep_device->ep_factory->GetVendorId(ep_device->ep_factory), OrtDevice::VendorIds::MICROSOFT);
   }
 
@@ -493,7 +494,7 @@ namespace {
 OrtHardwareDevice MakeSyntheticHardwareDevice(OrtHardwareDeviceType type) {
   OrtHardwareDevice device{};
   device.type = type;
-  device.vendor_id = 0x106B;  // Apple's PCI vendor ID
+  device.vendor_id = pci_vendor_ids::kApple;
   device.vendor = "Apple";
   return device;
 }
