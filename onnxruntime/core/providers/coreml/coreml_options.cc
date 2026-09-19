@@ -43,10 +43,10 @@ CoreMLOptions::CoreMLOptions(uint32_t coreml_flags) {
 
 void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& options) {
   const std::unordered_map<std::string, COREMLFlags> available_computeunits_options = {
-      {"CPUAndNeuralEngine", COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
-      {"CPUAndGPU", COREML_FLAG_USE_CPU_AND_GPU},
-      {"CPUOnly", COREML_FLAG_USE_CPU_ONLY},
-      {"ALL", COREML_FLAG_USE_NONE},
+      {kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine, COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
+      {kCoremlProviderOption_MLComputeUnits_CPUAndGPU, COREML_FLAG_USE_CPU_AND_GPU},
+      {kCoremlProviderOption_MLComputeUnits_CPUOnly, COREML_FLAG_USE_CPU_ONLY},
+      {kCoremlProviderOption_MLComputeUnits_ALL, COREML_FLAG_USE_NONE},
   };
   const std::unordered_map<std::string, COREMLFlags> available_modelformat_options = {
       {"MLProgram", COREML_FLAG_CREATE_MLPROGRAM},
