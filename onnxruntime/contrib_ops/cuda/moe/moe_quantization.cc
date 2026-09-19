@@ -769,8 +769,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
-               fc2_expert_weight_bits_,
-               fc3_expert_weight_bits_},
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       is_fused_swiglu, block_size_));
   ORT_RETURN_IF(is_mixed_width,
                 "Mixed-width QMoE execution is not yet implemented on CUDA.");

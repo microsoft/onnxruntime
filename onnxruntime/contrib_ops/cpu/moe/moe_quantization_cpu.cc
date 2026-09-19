@@ -1227,8 +1227,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
-               fc2_expert_weight_bits_,
-               fc3_expert_weight_bits_},
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
 

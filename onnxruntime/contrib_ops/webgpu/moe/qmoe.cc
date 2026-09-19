@@ -201,8 +201,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
-               fc2_expert_weight_bits_,
-               fc3_expert_weight_bits_},
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       activation_type_ == MoEActivationType::SwiGLU, block_size_));
 
   if (fc1_expert_weight_bits_ != expert_weight_bits_ ||

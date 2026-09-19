@@ -26,11 +26,11 @@ class QMoE final : public MoE {
     fc2_expert_weight_bits_ = info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
     fc3_expert_weight_bits_ = info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
     ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
-            (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
-            (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
-            "FC-specific expert weight bits must be 2, 4, or 8.");
+                    (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                    (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+                "FC-specific expert weight bits must be 2, 4, or 8.");
     ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
-            "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
+                "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
     block_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("block_size", 0));
   }
 

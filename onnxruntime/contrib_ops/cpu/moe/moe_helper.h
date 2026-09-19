@@ -98,14 +98,14 @@ Status CheckInputs(MoEParameters& parameters,
                    const Tensor* fc3_experts_bias,                // optional
                    const Tensor* fc3_experts_scales,              // required for qMoE; NULL for MOE
                    const Tensor* fc3_zero_points,                 // optional, for qMoE
-                     const MoEWeightBits& weight_bits,
+                   const MoEWeightBits& weight_bits,
                    const bool is_fused_swiglu,
                    const int64_t block_size = 0) {  // block size for block-wise quantization
-            ORT_RETURN_IF(weight_bits.fc1 <= 0 || weight_bits.fc1 > 8 ||
+  ORT_RETURN_IF(weight_bits.fc1 <= 0 || weight_bits.fc1 > 8 ||
                     weight_bits.fc2 <= 0 || weight_bits.fc2 > 8 ||
                     weight_bits.fc3 <= 0 || weight_bits.fc3 > 8,
-                  "FC weight bits must be between 1 and 8, got FC1=", weight_bits.fc1,
-                  ", FC2=", weight_bits.fc2, ", FC3=", weight_bits.fc3, ".");
+                "FC weight bits must be between 1 and 8, got FC1=", weight_bits.fc1,
+                ", FC2=", weight_bits.fc2, ", FC3=", weight_bits.fc3, ".");
 
   // Required inputs
   if (input == nullptr) {
@@ -230,11 +230,11 @@ Status CheckInputs(MoEParameters& parameters,
       if (fc1_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
         CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts,
-               PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
+                           PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
       } else if (fc1_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, 1);
         CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts,
-               PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
+                           PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
       } else {
         ORT_THROW("fc1_experts_scales must be 2D or 3D tensor");
       }
@@ -245,11 +245,11 @@ Status CheckInputs(MoEParameters& parameters,
       if (fc2_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
         CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts,
-               PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
+                           PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
       } else if (fc2_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, 1);
         CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts,
-               PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
+                           PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
       } else {
         ORT_THROW("fc2_experts_scales must be 2D or 3D tensor");
       }
@@ -260,11 +260,11 @@ Status CheckInputs(MoEParameters& parameters,
       if (fc3_scales_dims.size() == 2) {
         CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
         CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts,
-               PackedByteCountWithPadding(inter_size, weight_bits.fc3));
+                           PackedByteCountWithPadding(inter_size, weight_bits.fc3));
       } else if (fc3_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, 1);
         CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts,
-               PackedByteCountWithPadding(inter_size, weight_bits.fc3));
+                           PackedByteCountWithPadding(inter_size, weight_bits.fc3));
       } else {
         ORT_THROW("fc3_experts_scales must be 2D or 3D tensor");
       }
