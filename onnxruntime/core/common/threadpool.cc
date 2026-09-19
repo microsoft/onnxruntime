@@ -20,6 +20,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
+#include "core/common/logging/logging.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include <mutex>
 #if !defined(ORT_MINIMAL_BUILD)
@@ -377,7 +378,7 @@ ThreadPool::ThreadPool(Env* env,
                        int spin_duration_us,
                        bool force_hybrid,
                        unsigned int spin_backoff_max)
-    : thread_options_(thread_options), force_hybrid_(force_hybrid) {
+    : creator_pid_(logging::GetProcessId()), thread_options_(thread_options), force_hybrid_(force_hybrid) {
   // In the current implementation, a thread pool with degree_of_parallelism==1 uses
   // the caller as one of the threads for executing work.  Hence we only create
   // additional thread(s) for degree_of_parallelism>=2.
@@ -405,7 +406,14 @@ ThreadPool::ThreadPool(Env* env,
   }
 }
 
-ThreadPool::~ThreadPool() = default;
+ThreadPool::~ThreadPool() {
+  if (creator_pid_ != logging::GetProcessId()) {
+    // Intentionally abandon this copied pool. Its destructor would touch inherited
+    // synchronization state and thread handles owned by the parent. The OS reclaims
+    // the child's copy when the process exits.
+    extended_eigen_threadpool_.release();
+  }
+}
 
 // Base case for parallel loops, running iterations 0..total, divided into blocks
 // of block_size iterations, and calling into a function that takes a start..end
