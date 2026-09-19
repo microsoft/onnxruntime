@@ -4,7 +4,7 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
-#include <memory>
+#include <string>
 #include <vector>
 
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_impl.h"
@@ -15,12 +15,29 @@ namespace contrib {
 namespace cuda {
 namespace {
 
-TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
+TEST(SparseAttentionIndexerCudaKernelTest, QsaWorkspaceIncludesPreparedQuery) {
+  SparseAttentionIndexerParams params;
+  params.batch_size = 2;
+  params.sequence_length = 3;
+  params.num_heads = 4;
+  params.head_size = 128;
+  params.max_block_count = 2048;
+
+  constexpr size_t kRows = 6;
+  constexpr size_t kPreparedQueryElements = kRows * 4 * 128;
+  constexpr size_t kBlockScoreElements = kRows * 2048;
+  EXPECT_EQ(GetQsaWorkspaceFloatCount(params), kPreparedQueryElements + kBlockScoreElements);
+}
+
+TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) {
   constexpr int kContextLength = 8192;
-  constexpr int kHeadSize = 4;
-  constexpr int kNumHeads = 2;
+  constexpr int kHeadSize = 128;
+  constexpr int kNumHeads = 4;
   constexpr int kTokenBudget = 2048;
   constexpr int kCompressRatio = 4;
+  constexpr int kThreads = 128;
+  constexpr int kWarmupIterations = 10;
+  constexpr int kTimedIterations = 50;
 
   SparseAttentionIndexerParams params;
   params.batch_size = 1;
@@ -47,7 +64,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
   float* weight = nullptr;
   float* cosine = nullptr;
   float* sine = nullptr;
-  bool* mask = nullptr;
+  int64_t* mask = nullptr;
   float* key_cache = nullptr;
   int32_t* selected = nullptr;
   float* float_workspace = nullptr;
@@ -58,7 +75,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
   ASSERT_EQ(cudaSuccess,
             cudaMalloc(reinterpret_cast<void**>(&cosine), kContextLength * kHeadSize * sizeof(float)));
   ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&sine), kContextLength * kHeadSize * sizeof(float)));
-  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&mask), kContextLength * sizeof(bool)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&mask), kContextLength * sizeof(int64_t)));
   ASSERT_EQ(cudaSuccess,
             cudaMalloc(reinterpret_cast<void**>(&key_cache), kContextLength * kHeadSize * sizeof(float)));
   ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&selected), params.capacity * sizeof(int32_t)));
@@ -69,8 +86,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
 
   std::vector<float> ones(kContextLength * kHeadSize, 1.0f);
   std::vector<float> zeros(kContextLength * kHeadSize, 0.0f);
-  std::unique_ptr<bool[]> visible(new bool[kContextLength]);
-  std::fill_n(visible.get(), kContextLength, true);
+  std::vector<int64_t> visible(kContextLength, 1);
   ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(query, ones.data(), kNumHeads * kHeadSize * sizeof(float),
                                          cudaMemcpyHostToDevice, stream));
   ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(key, ones.data(), kHeadSize * sizeof(float),
@@ -81,7 +97,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
                                          cudaMemcpyHostToDevice, stream));
   ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(sine, zeros.data(), zeros.size() * sizeof(float),
                                          cudaMemcpyHostToDevice, stream));
-  ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(mask, visible.get(), kContextLength * sizeof(bool),
+  ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(mask, visible.data(), kContextLength * sizeof(int64_t),
                                          cudaMemcpyHostToDevice, stream));
   ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(key_cache, ones.data(), ones.size() * sizeof(float),
                                          cudaMemcpyHostToDevice, stream));
@@ -89,7 +105,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
 
   const auto launch = [&]() {
     return LaunchQsaSparseAttentionIndexer<float>(
-        stream, params, query, key, weight, cosine, sine, mask, key_cache, selected, key_cache,
+        stream, params, query, key, weight, weight, cosine, sine, mask, key_cache, selected, key_cache,
         float_workspace, int_workspace);
   };
   ASSERT_TRUE(launch().IsOK());
@@ -100,10 +116,58 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
   ASSERT_EQ(cudaSuccess, cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
   ASSERT_TRUE(launch().IsOK());
   ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(stream, &graph));
+
+  size_t node_count = 0;
+  ASSERT_EQ(cudaSuccess, cudaGraphGetNodes(graph, nullptr, &node_count));
+  std::vector<cudaGraphNode_t> nodes(node_count);
+  ASSERT_EQ(cudaSuccess, cudaGraphGetNodes(graph, nodes.data(), &node_count));
+
+  int query_prepare_nodes = 0;
+  int block_score_nodes = 0;
+  for (cudaGraphNode_t node : nodes) {
+    cudaGraphNodeType node_type;
+    ASSERT_EQ(cudaSuccess, cudaGraphNodeGetType(node, &node_type));
+    if (node_type != cudaGraphNodeTypeKernel) {
+      continue;
+    }
+
+    cudaKernelNodeParams kernel_params{};
+    ASSERT_EQ(cudaSuccess, cudaGraphKernelNodeGetParams(node, &kernel_params));
+    if (kernel_params.blockDim.x != kThreads) {
+      continue;
+    }
+
+    const size_t query_prepare_shared_bytes = (kHeadSize + kThreads) * sizeof(float);
+    const size_t block_score_shared_bytes = (2 * kHeadSize + kThreads) * sizeof(float);
+    if (kernel_params.gridDim.x == kNumHeads && kernel_params.sharedMemBytes == query_prepare_shared_bytes) {
+      ++query_prepare_nodes;
+    }
+    if (kernel_params.gridDim.x == params.max_block_count &&
+        kernel_params.sharedMemBytes == block_score_shared_bytes) {
+      ++block_score_nodes;
+    }
+  }
+  EXPECT_EQ(query_prepare_nodes, 1) << "QSA query RMSNorm and RoPE must run once per query head";
+  EXPECT_EQ(block_score_nodes, 1) << "QSA scoring must consume prepared queries without extra shared state";
+
   ASSERT_EQ(cudaSuccess, cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0));
-  ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graph_exec, stream));
-  ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graph_exec, stream));
-  ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+  for (int i = 0; i < kWarmupIterations; ++i) {
+    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graph_exec, stream));
+  }
+
+  cudaEvent_t start = nullptr;
+  cudaEvent_t stop = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaEventCreate(&start));
+  ASSERT_EQ(cudaSuccess, cudaEventCreate(&stop));
+  ASSERT_EQ(cudaSuccess, cudaEventRecord(start, stream));
+  for (int i = 0; i < kTimedIterations; ++i) {
+    ASSERT_EQ(cudaSuccess, cudaGraphLaunch(graph_exec, stream));
+  }
+  ASSERT_EQ(cudaSuccess, cudaEventRecord(stop, stream));
+  ASSERT_EQ(cudaSuccess, cudaEventSynchronize(stop));
+  float elapsed_ms = 0.0f;
+  ASSERT_EQ(cudaSuccess, cudaEventElapsedTime(&elapsed_ms, start, stop));
+  RecordProperty("qsa_8k_decode_us", std::to_string(elapsed_ms * 1000.0f / kTimedIterations));
 
   std::vector<int32_t> actual(params.capacity);
   ASSERT_EQ(cudaSuccess, cudaMemcpy(actual.data(), selected, actual.size() * sizeof(int32_t),
@@ -115,6 +179,8 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaDecodeGraphCaptureAndReplay) {
     EXPECT_EQ(actual[i], -1);
   }
 
+  ASSERT_EQ(cudaSuccess, cudaEventDestroy(stop));
+  ASSERT_EQ(cudaSuccess, cudaEventDestroy(start));
   ASSERT_EQ(cudaSuccess, cudaGraphExecDestroy(graph_exec));
   ASSERT_EQ(cudaSuccess, cudaGraphDestroy(graph));
   ASSERT_EQ(cudaSuccess, cudaFree(int_workspace));
