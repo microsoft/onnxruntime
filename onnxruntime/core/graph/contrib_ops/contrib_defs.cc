@@ -1567,8 +1567,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(2,
                "fc1_experts_weights",
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
-               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
+               "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(3,
                "fc1_scales",
@@ -1586,7 +1588,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
+               "3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(6,
                "fc2_scales",
@@ -1606,7 +1610,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1",
                OpSchema::Optional)
         .Input(9,
@@ -1625,20 +1631,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "fc1_zero_points",
-               "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(fusion_size * inter_size * effective_fc1_bits / 8)), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc1_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(12,
                "fc2_zero_points",
-               "2D tensor with shape (num_experts, hidden_size / pack_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(hidden_size * effective_fc2_bits / 8)), or "
+               "3D tensor with shape (num_experts, hidden_size, "
+               "ceil((inter_size / block_size) * effective_fc2_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(13,
                "fc3_zero_points",
-               "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D optional tensor with shape (num_experts, ceil(inter_size * effective_fc3_bits / 8)), or "
+               "3D optional tensor with shape (num_experts, inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc3_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(14,

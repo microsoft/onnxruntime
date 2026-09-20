@@ -1940,11 +1940,12 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
                                           std::unique_ptr<IExecutionProvider> execution_provider,
                                           const char* provider_name,
                                           bool use_raw_weights = false,
-                                          bool use_float16_scales = false) {
+                                          bool use_float16_scales = false,
+                                          int64_t hidden_size = 8,
+                                          int64_t inter_size = 8,
+                                          bool legacy_layout = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
-  constexpr int64_t hidden_size = 8;
-  constexpr int64_t inter_size = 8;
   constexpr int64_t fc1_bits = 2;
   constexpr int64_t fc2_bits = 4;
   constexpr int64_t fc1_pack_size = 8 / fc1_bits;
@@ -1952,11 +1953,19 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
 
   const std::vector<int64_t> input_dims = {num_rows, hidden_size};
   const std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_weights_dims = {num_experts, inter_size, hidden_size / fc1_pack_size};
+  std::vector<int64_t> fc1_weights_dims = legacy_layout
+                                              ? std::vector<int64_t>{num_experts, hidden_size,
+                                                                     inter_size / fc1_pack_size}
+                                              : std::vector<int64_t>{num_experts, inter_size,
+                                                                     hidden_size / fc1_pack_size};
   if (invalid_fc1_shape) {
     ++fc1_weights_dims[2];
   }
-  const std::vector<int64_t> fc2_weights_dims = {num_experts, hidden_size, inter_size / fc2_pack_size};
+  const std::vector<int64_t> fc2_weights_dims = legacy_layout
+                                                    ? std::vector<int64_t>{num_experts, inter_size,
+                                                                           hidden_size / fc2_pack_size}
+                                                    : std::vector<int64_t>{num_experts, hidden_size,
+                                                                           inter_size / fc2_pack_size};
   const std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
   const std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
 
@@ -2008,6 +2017,11 @@ TEST(MoETest, QMoETest_MixedWidthContract) {
 
 TEST(MoETest, QMoETest_MixedWidthInvalidFC1Shape) {
   RunQMoEMixedWidthContractTest(true, DefaultCpuExecutionProvider(), "CPU");
+}
+
+TEST(MoETest, QMoETest_MixedWidthNonSquareLayouts) {
+  RunQMoEMixedWidthContractTest(false, DefaultCpuExecutionProvider(), "CPU", false, false, 8, 16, false);
+  RunQMoEMixedWidthContractTest(false, DefaultCpuExecutionProvider(), "CPU", false, false, 8, 16, true);
 }
 
 #if defined(USE_CUDA)
