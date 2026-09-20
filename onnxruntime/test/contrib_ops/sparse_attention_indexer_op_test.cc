@@ -94,8 +94,8 @@ struct QsaGraphOptions {
   int64_t token_budget = 4;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
-  bool use_boolean_mask = false;
   bool share_cache = false;
+  bool packed_qk = false;
   std::string policy_mode = sai::kPolicyModeQsa;
 };
 
@@ -106,15 +106,17 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
   NodeArg& empty = builder.graph_.GetOrCreateNodeArg("", nullptr);
   std::vector<NodeArg*> inputs{
       builder.MakeInput<float>(
-          std::vector<int64_t>{options.batch_size, options.sequence_length, options.num_heads * options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, options.head_size}),
+          std::vector<int64_t>{options.batch_size, options.sequence_length,
+                               (options.num_heads + (options.packed_qk ? 1 : 0)) * options.head_size}),
+      options.packed_qk
+          ? &empty
+          : builder.MakeInput<float>(
+                std::vector<int64_t>{options.batch_size, options.sequence_length, options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      options.use_boolean_mask
-          ? builder.MakeInput<bool>(std::vector<int64_t>{options.batch_size, total})
-          : builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
+        builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
   if (options.add_csa_inputs) {
@@ -648,7 +650,7 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
+void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(), bool packed_qk = false) {
   if (!HasCudaProvider()) {
     GTEST_SKIP() << "CUDA execution provider is not available";
   }
@@ -677,9 +679,25 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
   if (problem.scale.has_value()) {
     test.AddAttribute("scale", *problem.scale);
   }
-  test.AddInput<T>("query", {batch_size, sequence_length, problem.num_heads * head_size},
-                   ToElementType<T>(problem.query));
-  test.AddInput<T>("key", {batch_size, sequence_length, head_size}, ToElementType<T>(problem.key));
+  if (packed_qk) {
+    std::vector<float> packed;
+    const size_t query_row_size = static_cast<size_t>(problem.num_heads * problem.head_size);
+    const size_t key_row_size = static_cast<size_t>(problem.head_size);
+    packed.reserve(static_cast<size_t>(batch_size * sequence_length) * (query_row_size + key_row_size));
+    for (int64_t row = 0; row < batch_size * sequence_length; ++row) {
+      packed.insert(packed.end(), problem.query.begin() + row * query_row_size,
+                    problem.query.begin() + (row + 1) * query_row_size);
+      packed.insert(packed.end(), problem.key.begin() + row * key_row_size,
+                    problem.key.begin() + (row + 1) * key_row_size);
+    }
+    test.AddInput<T>("query", {batch_size, sequence_length, (problem.num_heads + 1) * head_size},
+                     ToElementType<T>(packed));
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", {batch_size, sequence_length, problem.num_heads * head_size},
+                     ToElementType<T>(problem.query));
+    test.AddInput<T>("key", {batch_size, sequence_length, head_size}, ToElementType<T>(problem.key));
+  }
   test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {batch_size, total, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
@@ -867,14 +885,14 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndPresentK
               {options.batch_size, options.past_sequence_length + options.sequence_length, options.head_size});
 }
 
-TEST(SparseAttentionIndexerShapeInferenceTest, RejectsBooleanMask) {
+TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQk) {
   QsaGraphOptions options;
-  options.use_boolean_mask = true;
+  options.packed_qk = true;
   std::unique_ptr<Model> model;
-  const Status status = BuildAndResolve([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("Type parameter (TB)"), std::string::npos)
-      << "actual message: " << status.ErrorMessage();
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model));
+  ExpectShape(model->MainGraph(), model->MainGraph().GetOutputs()[0]->Name(),
+              ONNX_NAMESPACE::TensorProto_DataType_INT32,
+              {options.batch_size, options.sequence_length, options.token_budget + options.compress_ratio - 1});
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
@@ -964,6 +982,14 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
                        "query width must be > 0");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsPackedQkWithoutQueryHead) {
+  QsaGraphOptions options;
+  options.packed_qk = true;
+  options.num_heads = 0;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "packed QK input must contain at least one query head and one key");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisibleByCompressRatio) {
   QsaGraphOptions options;
   options.token_budget = 5;
@@ -1016,6 +1042,10 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaBuffer) {
 // ---------------------------------------------------------------------------------------------
 
 TEST(SparseAttentionIndexerTest, QsaFloat) { RunQsaTest<float>(1.0e-5f); }
+
+TEST(SparseAttentionIndexerTest, QsaPackedQkFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), true);
+}
 
 TEST(SparseAttentionIndexerTest, QsaFloat16) { RunQsaTest<MLFloat16>(2.0e-3f); }
 
