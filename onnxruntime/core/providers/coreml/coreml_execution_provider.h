@@ -28,6 +28,8 @@ class CoreMLExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 #endif
 
+  ProviderOptions GetProviderOptions() const override;
+
  private:
   // The bit flags which define bool options for COREML EP, bits are defined as
   // COREMLFlags in include/onnxruntime/core/providers/coreml/coreml_provider_factory.h

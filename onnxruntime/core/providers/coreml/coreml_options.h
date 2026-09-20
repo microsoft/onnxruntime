@@ -5,6 +5,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 
@@ -36,6 +37,10 @@ class CoreMLOptions {
   bool ProfileComputePlan() const { return profile_compute_plan_ && create_mlprogram_; }
 
   std::string_view ModelCacheDirectory() const { return model_cache_directory_; }
+
+  // Returns the effective options for IExecutionProvider::GetProviderOptions using the provider option names
+  // defined in coreml_provider_factory.h. Options supplied through legacy flags are reported in the same format.
+  ProviderOptions ToProviderOptions() const;
   // The options specified by the user are const, but if there's an error setting up caching we disable it
   // so that the EP can still be used. The error is logged for the user to investigate.
   void DisableModelCache() const { model_cache_directory_.clear(); }

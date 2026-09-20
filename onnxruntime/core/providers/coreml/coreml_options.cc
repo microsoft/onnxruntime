@@ -98,4 +98,34 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
     }
   }
 }
+
+ProviderOptions CoreMLOptions::ToProviderOptions() const {
+  // MLComputeUnits uses constants defined in coreml_provider_factory.h. The other strings match
+  // those accepted by ValidateAndParseProviderOption.
+  const char* compute_units = kCoremlProviderOption_MLComputeUnits_ALL;
+  if (ComputeUnits(COREML_FLAG_USE_CPU_ONLY)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUOnly;
+  } else if (ComputeUnits(COREML_FLAG_USE_CPU_AND_GPU)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUAndGPU;
+  } else if (ComputeUnits(COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE)) {
+    compute_units = kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine;
+  }
+
+  ProviderOptions options{
+      {kCoremlProviderOption_MLComputeUnits, compute_units},
+      {kCoremlProviderOption_ModelFormat, create_mlprogram_ ? "MLProgram" : "NeuralNetwork"},
+      {kCoremlProviderOption_RequireStaticInputShapes, require_static_shape_ ? "1" : "0"},
+      {kCoremlProviderOption_EnableOnSubgraphs, enable_on_subgraph_ ? "1" : "0"},
+      {kCoremlProviderOption_SpecializationStrategy, strategy_.empty() ? std::string{"Default"} : strategy_},
+      // The effective value: profiling applies to MLProgram models only.
+      {kCoremlProviderOption_ProfileComputePlan, ProfileComputePlan() ? "1" : "0"},
+      {kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU, allow_low_precision_accumulation_on_gpu_ ? "1" : "0"},
+  };
+
+  if (!model_cache_directory_.empty()) {
+    options[kCoremlProviderOption_ModelCacheDirectory] = model_cache_directory_;
+  }
+
+  return options;
+}
 }  // namespace onnxruntime
