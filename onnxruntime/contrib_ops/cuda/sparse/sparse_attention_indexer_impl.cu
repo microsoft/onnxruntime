@@ -82,9 +82,11 @@ __global__ void RotateQueryKernel(const T* query, const T* query_norm_weight,
     const int token = static_cast<int>((row / params.num_heads) % params.sequence_length);
     const int batch = static_cast<int>(row / (static_cast<int64_t>(params.num_heads) * params.sequence_length));
     const int64_t base = row * params.head_size;
+    const int64_t source_base = (row / params.num_heads) * params.query_row_stride +
+                                (row % params.num_heads) * params.head_size;
 
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-      shared[d] = to_float<T>(query[base + d]);
+      shared[d] = to_float<T>(query[source_base + d]);
     }
     __syncthreads();
 
@@ -147,7 +149,7 @@ __global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttention
     const int batch = static_cast<int>(token_row / params.sequence_length);
     present_key[(static_cast<int64_t>(batch) * params.key_cache_capacity + params.past_sequence_length + token) *
                     params.head_size +
-                d] = key[index];
+                d] = key[token_row * params.key_row_stride + d];
   }
 }
 
