@@ -161,6 +161,18 @@ int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M) {
   return M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg_or_xe_3lpg ? 4 : 8)));
 }
 
+bool CanUseAVec4CooperativeLoad(std::string_view architecture,
+                                uint32_t dim_inner,
+                                int64_t elements_per_thread_y) {
+  // A 32-wide subgroup has four 8-lane cooperative-load groups. Every generated
+  // subgroup-size branch must distribute rows evenly across its lane groups.
+  constexpr int64_t max_lane_groups = 4;
+  return architecture == gpu_arch::kXe3Lpg &&
+         dim_inner % 4 == 0 &&
+         elements_per_thread_y > 0 &&
+         elements_per_thread_y % max_lane_groups == 0;
+}
+
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,

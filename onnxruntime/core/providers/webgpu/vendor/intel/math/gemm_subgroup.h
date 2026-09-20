@@ -22,6 +22,10 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
 
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M);
 
+bool CanUseAVec4CooperativeLoad(std::string_view architecture,
+                                uint32_t dim_inner,
+                                int64_t elements_per_thread_y);
+
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,

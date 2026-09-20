@@ -23,6 +23,7 @@ struct MatMulAlgorithmSelectionParams {
 struct MatMulAlgorithmPrerequisites {
   bool can_use_subgroup_matrix = false;
   bool has_intel_subgroup_capability = false;
+  bool has_nonzero_k = false;
   bool split_k_configured = false;
   bool deterministic_compute = false;
   bool is_vec4 = false;
@@ -39,13 +40,15 @@ inline bool MeetsMatMulAlgorithmPrerequisites(
     case MatMulAlgorithm::IntelSubgroup:
       return prerequisites.has_intel_subgroup_capability;
     case MatMulAlgorithm::PackedSplitK:
-      return prerequisites.split_k_configured &&
+      return prerequisites.has_nonzero_k &&
+             prerequisites.split_k_configured &&
              !prerequisites.deterministic_compute &&
              prerequisites.is_vec4 &&
              !prerequisites.has_fused_activation &&
              prerequisites.split_k_bias_layout_supported;
-    case MatMulAlgorithm::Naive:
     case MatMulAlgorithm::Packed:
+      return prerequisites.has_nonzero_k;
+    case MatMulAlgorithm::Naive:
       return true;
   }
   return false;
@@ -64,7 +67,7 @@ class MatMulAlgorithmScheduler {
     if (params.can_use_subgroup_matrix) {
       return MatMulAlgorithm::SubgroupMatrix;
     }
-    if (params.n < 8 && params.k < 8) {
+    if (params.k == 0 || (params.n < 8 && params.k < 8)) {
       return MatMulAlgorithm::Naive;
     }
     if (const auto vendor_algorithm = SelectVendorAlgorithm(params); vendor_algorithm.has_value()) {

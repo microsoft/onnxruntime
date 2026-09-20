@@ -107,11 +107,12 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const bool is_vec4 = dim_b_outer % 4 == 0;
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
   const bool is_xe_3lpg = arch == gpu_arch::kXe3Lpg;
-  // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
-  const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
+  // Fall back to scalar A loads when rows cannot be distributed evenly among
+  // the cooperative vec4 lane groups (for example, forced low-M execution).
+  const bool a_vec4 = CanUseAVec4CooperativeLoad(arch, dim_inner, elements_per_thread[1]);
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));

@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
 
 namespace onnxruntime {
@@ -72,6 +73,15 @@ TEST(MatMulAlgorithmSchedulerTest, NaiveUsesStrictSmallDimensionBoundaries) {
   EXPECT_EQ(scheduler.Select(k_boundary), MatMulAlgorithm::Packed);
 }
 
+TEST(MatMulAlgorithmSchedulerTest, ZeroContractionDimensionUsesNaive) {
+  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.n = 8;
+  params.k = 0;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Naive);
+}
+
 TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerAppliesCurrentVendorRule) {
   intel::IntelMatMulAlgorithmScheduler scheduler;
   MatMulAlgorithmSelectionParams params{};
@@ -100,6 +110,7 @@ TEST(MatMulAlgorithmSchedulerTest, SplitKPrecedesPackedFallback) {
 
 TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
   MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.has_nonzero_k = true;
   prerequisites.split_k_configured = true;
   prerequisites.is_vec4 = true;
   prerequisites.split_k_bias_layout_supported = true;
@@ -119,6 +130,28 @@ TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
 
   prerequisites.split_k_bias_layout_supported = false;
   EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, PackedAlgorithmsRejectZeroContractionDimension) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.split_k_configured = true;
+  prerequisites.is_vec4 = true;
+  prerequisites.split_k_bias_layout_supported = true;
+
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Packed, prerequisites));
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+
+  prerequisites.has_nonzero_k = true;
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Packed, prerequisites));
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread) {
+  EXPECT_FALSE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXe3Lpg, 32, 1));
+  EXPECT_FALSE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXe3Lpg, 32, 2));
+  EXPECT_TRUE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXe3Lpg, 32, 4));
+  EXPECT_FALSE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXe3Lpg, 31, 4));
+  EXPECT_FALSE(intel::CanUseAVec4CooperativeLoad(intel::gpu_arch::kXeLpg, 32, 4));
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {

@@ -403,6 +403,7 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
   prerequisites.has_intel_subgroup_capability = has_intel_subgroup_capability;
+  prerequisites.has_nonzero_k = helper.K() > 0;
   prerequisites.split_k_configured = context->GetSplitKConfig().GetSplitDimInner() != 0;
   prerequisites.deterministic_compute = context->KernelContext().GetUseDeterministicCompute();
   prerequisites.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;

@@ -236,8 +236,14 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedPacked) {
   RunTestTyped<float>({2, 2}, {2, 2}, false, webgpu::MatMulAlgorithm::Packed);
 }
 
+TEST(WebGpuMatMulAlgorithmTest, ForcedPackedRejectsZeroContractionDimension) {
+  RunTestTyped<float>({1, 0}, {0, 1}, false, webgpu::MatMulAlgorithm::Packed,
+                      OpTester::ExpectResult::kExpectFailure,
+                      "MatMul algorithm packed");
+}
+
 TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroup) {
-  RunTestTyped<float>({64, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::IntelSubgroup);
+  RunTestTyped<float>({8, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::IntelSubgroup);
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitK) {
