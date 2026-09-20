@@ -65,6 +65,53 @@ struct Inputs {
   std::vector<int32_t> state_update_active;
 };
 
+void VerifyPackedQkvShapeInference(const std::vector<int64_t>& packed_qkv_shape,
+                                   const std::vector<int64_t>& expected_output_shape) {
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  Model model("gated_delta_net_packed_qkv", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto packed_qkv_type;
+  packed_qkv_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (int64_t dim : packed_qkv_shape) {
+    packed_qkv_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  ONNX_NAMESPACE::TypeProto state_type;
+  state_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t dim : {2, 48, 128, 128}) {
+    state_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+
+  auto& packed_qkv = graph.GetOrCreateNodeArg("packed_qkv", &packed_qkv_type);
+  auto& initial_state = graph.GetOrCreateNodeArg("initial_state", &state_type);
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
+  graph.AddNode("gdn", "GatedDeltaNet", "packed QKV shape inference",
+                {&packed_qkv, &empty, &empty, &empty, &empty, &empty, &initial_state},
+                {&output, &final_state}, nullptr, kMSDomain);
+  graph.SetOutputs({&output, &final_state});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(output.Shape()->dim_size(), static_cast<int>(expected_output_shape.size()));
+  for (int i = 0; i < output.Shape()->dim_size(); ++i) {
+    ASSERT_TRUE(output.Shape()->dim(i).has_dim_value());
+    EXPECT_EQ(output.Shape()->dim(i).dim_value(), expected_output_shape[static_cast<size_t>(i)]);
+  }
+  ASSERT_EQ(final_state.Shape()->dim_size(), state_type.tensor_type().shape().dim_size());
+  for (int i = 0; i < final_state.Shape()->dim_size(); ++i) {
+    ASSERT_TRUE(final_state.Shape()->dim(i).has_dim_value());
+    EXPECT_EQ(final_state.Shape()->dim(i).dim_value(), state_type.tensor_type().shape().dim(i).dim_value());
+  }
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkv) {
+  VerifyPackedQkvShapeInference({5, 10240}, {5, 48, 128});
+  VerifyPackedQkvShapeInference({2, 5, 10240}, {2, 5, 48, 128});
+}
+
 Inputs MakeInputs(const Geometry& g, uint32_t seed, bool with_state = true) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<float> u(-1.0f, 1.0f);
