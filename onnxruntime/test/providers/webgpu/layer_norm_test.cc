@@ -9,6 +9,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
+#include "core/graph/model.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -106,24 +107,31 @@ template <typename V, typename U>
 void CheckLayerNormKernelTypes(const KernelRegistry& kernel_registry, bool simplified, bool expect_supported) {
   SCOPED_TRACE(MakeString("simplified=", simplified, ", V=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<V>()),
                           ", U=", DataTypeImpl::ToString(DataTypeImpl::GetTensorType<U>())));
-  OpTester test(simplified ? "SimplifiedLayerNormalization" : "LayerNormalization", 15);
-  test.AddAttribute<int64_t>("stash_type", std::is_same_v<U, double> ? ONNX_NAMESPACE::TensorProto_DataType_DOUBLE
-                                                                     : ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  test.AddInput<float>("X", {1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<V>("Scale", {4}, {V(1.0f), V(1.0f), V(1.0f), V(1.0f)});
-  test.AddOutput<V>("Y", {1, 4}, {V(0.0f), V(0.0f), V(0.0f), V(0.0f)});
+  // Kernel registration checks need a graph without an OpTester inference run.
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("LayerNormKernelTypes", false, ModelMetaData{}, PathString{}, IOnnxRuntimeOpSchemaRegistryList{},
+              {{kOnnxDomain, 15}}, {}, logger);
+  auto& graph = model.MainGraph();
+  auto& x = graph.GetOrCreateNodeArg("X", DataTypeImpl::GetTensorType<float>()->GetTypeProto());
+  const auto* v_type = DataTypeImpl::GetTensorType<V>()->GetTypeProto();
+  const auto* u_type = DataTypeImpl::GetTensorType<U>()->GetTypeProto();
+  auto& scale = graph.GetOrCreateNodeArg("Scale", v_type);
+  InlinedVector<NodeArg*> outputs{&graph.GetOrCreateNodeArg("Y", v_type)};
   if (!simplified) {
-    test.AddOutput<U>("Mean", {1, 1}, {U(0.0f)});
+    outputs.push_back(&graph.GetOrCreateNodeArg("Mean", u_type));
   }
-  test.AddOutput<U>("InvStdDev", {1, 1}, {U(0.0f)});
+  outputs.push_back(&graph.GetOrCreateNodeArg("InvStdDev", u_type));
+  auto& node = graph.AddNode("LayerNorm", simplified ? "SimplifiedLayerNormalization" : "LayerNormalization", "",
+                             {&x, &scale}, outputs);
+  node.AddAttribute("stash_type", static_cast<int64_t>(std::is_same_v<U, double>
+                                                           ? ONNX_NAMESPACE::TensorProto_DataType_DOUBLE
+                                                           : ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
 
-  auto& graph = test.BuildModel().MainGraph();
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_EQ(graph.NumberOfNodes(), 1u);
   const KernelCreateInfo* kernel_create_info = nullptr;
-  const auto status = kernel_registry.TryFindKernel(*graph.Nodes().begin(), kWebGpuExecutionProvider,
-                                                    OpSchemaKernelTypeStrResolver{},
-                                                    DefaultLoggingManager().DefaultLogger(), &kernel_create_info);
+  const auto status = kernel_registry.TryFindKernel(node, kWebGpuExecutionProvider,
+                                                    OpSchemaKernelTypeStrResolver{}, logger, &kernel_create_info);
   EXPECT_EQ(status.IsOK(), expect_supported) << status.ErrorMessage();
   EXPECT_EQ(kernel_create_info != nullptr, expect_supported);
 }
