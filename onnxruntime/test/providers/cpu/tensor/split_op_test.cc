@@ -935,6 +935,22 @@ TEST(SplitOperatorTest, Split3Inner) {
   do_test(splits);
 }
 
+TEST(SplitOperatorTest, Split4InnerUnequal) {
+  constexpr int64_t axis = -1;
+  ShapeAndFloatData input = {{2, 10},
+                             {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f,
+                              10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f}};
+  std::vector<ShapeAndFloatData> outputs = {
+      {{2, 4}, {0.f, 1.f, 2.f, 3.f, 10.f, 11.f, 12.f, 13.f}},
+      {{2, 1}, {4.f, 14.f}},
+      {{2, 2}, {5.f, 6.f, 15.f, 16.f}},
+      {{2, 3}, {7.f, 8.f, 9.f, 17.f, 18.f, 19.f}},
+  };
+
+  RunTest<float>(axis, {4, 1, 2, 3}, input, outputs,
+                 {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true);
+}
+
 TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_Axis0) {
   // Force CPU-only execution: the negative-value guard lives in the CPU Split kernel
   // Other EPs (CUDA, TensorRT, etc.) have their own Split implementations
