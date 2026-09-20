@@ -1940,7 +1940,7 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
                                           std::unique_ptr<IExecutionProvider> execution_provider,
                                           const char* provider_name,
                                           bool use_raw_weights = false,
-                                          bool disable_cpu_fallback = false) {
+                                          bool use_float16_scales = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
   constexpr int64_t hidden_size = 8;
@@ -1972,28 +1972,33 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
   tester.AddInput<MLFloat16>("router_probs", router_probs_dims, std::vector<MLFloat16>(num_rows * num_experts));
   tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weights_dims,
                            std::vector<uint8_t>(static_cast<size_t>(fc1_weights_dims[1] * fc1_weights_dims[2])));
-  tester.AddInput<float>("fc1_scales", fc1_scales_dims, std::vector<float>(num_experts * inter_size, 1.0f));
+  if (use_float16_scales) {
+    tester.AddInput<MLFloat16>("fc1_scales", fc1_scales_dims,
+                               std::vector<MLFloat16>(num_experts * inter_size, MLFloat16(1.0f)));
+  } else {
+    tester.AddInput<float>("fc1_scales", fc1_scales_dims, std::vector<float>(num_experts * inter_size, 1.0f));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weights_dims,
                            std::vector<uint8_t>(static_cast<size_t>(fc2_weights_dims[1] * fc2_weights_dims[2])));
-  tester.AddInput<float>("fc2_scales", fc2_scales_dims, std::vector<float>(num_experts * hidden_size, 1.0f));
+  if (use_float16_scales) {
+    tester.AddInput<MLFloat16>("fc2_scales", fc2_scales_dims,
+                               std::vector<MLFloat16>(num_experts * hidden_size, MLFloat16(1.0f)));
+  } else {
+    tester.AddInput<float>("fc2_scales", fc2_scales_dims, std::vector<float>(num_experts * hidden_size, 1.0f));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddOptionalInputEdge<uint8_t>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddOutput<MLFloat16>("output", input_dims, std::vector<MLFloat16>(num_rows * hidden_size));
 
-  SessionOptions session_options;
-  if (disable_cpu_fallback) {
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-        kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(execution_provider));
   const std::string expected_error =
       invalid_fc1_shape ? "Input 'fc1_experts_weights' is expected to have shape"
                         : MakeString("Mixed-width QMoE execution is not yet implemented on ", provider_name, ".");
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
              expected_error, {}, nullptr, &execution_providers);
 }
 
@@ -2020,7 +2025,7 @@ TEST(MoETest, QMoETest_MixedWidthContract_WebGPU) {
   if (!execution_provider) {
     GTEST_SKIP() << "WebGPU execution provider not available";
   }
-  RunQMoEMixedWidthContractTest(false, std::move(execution_provider), "WebGPU", false, true);
+  RunQMoEMixedWidthContractTest(false, std::move(execution_provider), "WebGPU");
 }
 #endif
 
