@@ -810,9 +810,10 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
 // to [-128, 127] so |a*b| <= 16256 and one pair fits, which is exactly one
 // chunk. 4-bit B is (nibble - zero point): [-8, 7] without zero points, so
 // |a*b| <= 1016 and 16 pairs fit; up to [-15, 15] with them, so |a*b| <= 1905
-// and 8 pairs fit. A lane collects one pair per chunk and a block has at most
-// 16 chunks (BlkLen 256 on VLEN 128), so only the zero-point case with more
-// than kMidFoldChunks chunks per block needs a fold inside the block.
+// and 8 pairs fit. A lane collects one pair per register-wide piece of a
+// chunk, so the 4-bit tile folds inside a block once a lane has collected
+// that many pairs; the driver counts the pieces with the executing core's
+// VLMAX, since a layout packed on a wider core has more pieces per chunk.
 //
 // Two tile shapes cover the two chunk regimes of CompInt8Geometry:
 //  - BlkLen >= ChunkElems (one segment per chunk): MTILE x NTILE tiles share
@@ -826,7 +827,9 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
 // to BlkLen by the quantizer, so a chunk can always run at its full width.
 //
 
-constexpr size_t kMidFoldChunks = 8;
+// Pairs of int8 x 4-bit products an int16 lane can hold.
+constexpr size_t kMaxInt16PairsSym = 16;
+constexpr size_t kMaxInt16PairsAsym = 8;
 
 #define MLAS_UNROLL_LOOP _Pragma("GCC unroll 8")
 #define MLAS_SCHED_BARRIER asm volatile("" ::: "memory");
@@ -898,9 +901,10 @@ QuantARowData(const std::byte* row, size_t BlockCountK)
 }
 
 // MTILE rows x NTILE columns of the SQ4 CompInt8 GEMM, BlkLen >= ChunkElems.
-// Columns >= n_cols alias column 0. MidFold folds the int16 partials every
-// kMidFoldChunks chunks within a block (see the int16 bound above); the
-// driver only asks for it when a block has more chunks than that.
+// Columns >= n_cols alias column 0. MidFold folds the int16 partials inside a
+// block whenever a lane has collected as many pairs as int16 holds (see the
+// bound above); the driver only asks for it when a block has more pieces
+// than that.
 template <bool HasZeroPoint, size_t MTILE, size_t NTILE, bool MidFold>
 MLAS_FORCEINLINE void
 SQ4BitGemmKernel_CompInt8_Tile(
@@ -993,6 +997,8 @@ SQ4BitGemmKernel_CompInt8_Tile(
         }                                          \
     } while (0)
 
+        [[maybe_unused]] size_t pairs = 0;  // pairs collected per lane since the last fold (MidFold only)
+
         for (size_t sub = 0; sub < ChunksPerBlock; ++sub) {
             {
                 const size_t chunk = b * ChunksPerBlock + sub;
@@ -1044,20 +1050,21 @@ SQ4BitGemmKernel_CompInt8_Tile(
 #undef SQ4_COL
 
                     k += vl;
-                }
-            }
 
-            if constexpr (MidFold) {
-                if ((sub + 1) % kMidFoldChunks == 0 && sub + 1 < ChunksPerBlock) {
-                    SQ4_FOLD_PARTIALS();
-                    p0 = __riscv_vmv_v_x_i16m1(0, partvl);
-                    p1 = p0;
-                    p2 = p0;
-                    p3 = p0;
-                    p4 = p0;
-                    p5 = p0;
-                    p6 = p0;
-                    p7 = p0;
+                    if constexpr (MidFold) {
+                        if (++pairs == (HasZeroPoint ? kMaxInt16PairsAsym : kMaxInt16PairsSym)) {
+                            SQ4_FOLD_PARTIALS();
+                            p0 = __riscv_vmv_v_x_i16m1(0, partvl);
+                            p1 = p0;
+                            p2 = p0;
+                            p3 = p0;
+                            p4 = p0;
+                            p5 = p0;
+                            p6 = p0;
+                            p7 = p0;
+                            pairs = 0;
+                        }
+                    }
                 }
             }
         }
@@ -1248,8 +1255,11 @@ SQ4BitGemmKernel_CompInt8_Impl(
     MLAS_UNREFERENCED_PARAMETER(CountK);
 
     const CompInt8Geometry Geom(BlkLen, BlockCountK);
-    // With zero points the int16 partials hold at most kMidFoldChunks chunks.
-    const bool MidFold = HasZeroPoint && Geom.ChunksPerBlock > kMidFoldChunks;
+    // A lane collects one pair per register-wide piece of a chunk; fold inside
+    // a block when that exceeds what int16 holds. The piece count uses this
+    // core's VLMAX: a layout packed on a wider core has several per chunk.
+    const size_t PiecesPerChunk = MlasDivRoundup(Geom.SegHalf, __riscv_vsetvlmax_e8mf2());
+    const bool MidFold = Geom.ChunksPerBlock * PiecesPerChunk > (HasZeroPoint ? kMaxInt16PairsAsym : kMaxInt16PairsSym);
     const size_t lda = BlockCountK * Q8BlkSize(BlkLen);
     const size_t ldb = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
