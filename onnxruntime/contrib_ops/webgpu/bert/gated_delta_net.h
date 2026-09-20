@@ -197,6 +197,18 @@ class GatedDeltaNetCopyProgram final : public Program<GatedDeltaNetCopyProgram> 
       {"element_count", ProgramUniformVariableDataType::Uint32});
 };
 
+class GatedDeltaNetUnpackQkvProgram final : public Program<GatedDeltaNetUnpackQkvProgram> {
+ public:
+  GatedDeltaNetUnpackQkvProgram() : Program{"GatedDeltaNetUnpackQkv"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"query_size", ProgramUniformVariableDataType::Uint32},
+      {"value_size", ProgramUniformVariableDataType::Uint32});
+};
+
 class GatedDeltaNet final : public WebGpuKernel {
  public:
   explicit GatedDeltaNet(const OpKernelInfo& info);

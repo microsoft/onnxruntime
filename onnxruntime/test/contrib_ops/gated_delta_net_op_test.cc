@@ -544,6 +544,26 @@ TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
                       /*omit_final_state=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, PackedQkvPrefillAndDecode) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  Geometry prefill{128, 2, 2, 6, 8, 5};
+  Options prefill_options;
+  prefill_options.update_rule = "linear";
+  RunTypedCase<float>(prefill, prefill_options, MakeInputs(prefill, 215), 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                      /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+
+  Geometry decode{2, 2, 2, 6, 8, 5};
+  RunTypedCase<float>(decode, Options{}, MakeInputs(decode, 216), 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                      /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+}
+
 #ifdef USE_WEBGPU
 TEST(GatedDeltaNetWebGpuTest, PackedQkvAndParamsWithSegmentedBacking) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {

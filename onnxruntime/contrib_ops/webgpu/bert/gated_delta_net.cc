@@ -207,6 +207,33 @@ Status GatedDeltaNetCopyProgram::GenerateShaderCode(ShaderHelper& shader) const 
   return Status::OK();
 }
 
+Status GatedDeltaNetUnpackQkvProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& packed_qkv = shader.AddInput("packed_qkv");
+  const auto& unpacked_qkv = shader.AddOutput("unpacked_qkv");
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes(
+             "uniforms.total_tokens * (2u * uniforms.query_size + uniforms.value_size)")
+      << "  let query_elements = uniforms.total_tokens * uniforms.query_size;\n"
+      << "  let value_base = 2u * query_elements;\n"
+      << "  var token: u32;\n"
+      << "  var offset: u32;\n"
+      << "  if (global_idx < query_elements) {\n"
+      << "    token = global_idx / uniforms.query_size;\n"
+      << "    offset = global_idx % uniforms.query_size;\n"
+      << "  } else if (global_idx < value_base) {\n"
+      << "    let key_idx = global_idx - query_elements;\n"
+      << "    token = key_idx / uniforms.query_size;\n"
+      << "    offset = uniforms.query_size + key_idx % uniforms.query_size;\n"
+      << "  } else {\n"
+      << "    let value_idx = global_idx - value_base;\n"
+      << "    token = value_idx / uniforms.value_size;\n"
+      << "    offset = 2u * uniforms.query_size + value_idx % uniforms.value_size;\n"
+      << "  }\n"
+      << "  let packed_offset = token * (2u * uniforms.query_size + uniforms.value_size) + offset;\n"
+      << "  " << unpacked_qkv.SetByOffset("global_idx", packed_qkv.GetByOffset("packed_offset")) << "\n";
+  return Status::OK();
+}
+
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* query = context.Input(0);
   const auto* key = context.Input(1);
@@ -224,7 +251,10 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                            update_rule_ == GatedDeltaNetUpdateRule::GatedDelta;
   const bool needs_beta = update_rule_ == GatedDeltaNetUpdateRule::Delta ||
                           update_rule_ == GatedDeltaNetUpdateRule::GatedDelta;
-  ORT_RETURN_IF_NOT(query && key && value, "query, key and value are required");
+  ORT_RETURN_IF_NOT(query != nullptr, "query is required");
+  const bool input_is_packed_qkv = key == nullptr && value == nullptr;
+  ORT_RETURN_IF_NOT(input_is_packed_qkv || (key != nullptr && value != nullptr),
+                    "key and value must be both present or both absent");
   if (initial_state != nullptr) {
     ORT_RETURN_IF_NOT(initial_state->Shape().NumDimensions() == 4,
                       "initial_state must be rank 4 [batch, num_heads_v, head_size_v, head_size_qk]");
@@ -238,23 +268,59 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
 
   const auto& q_shape = query->Shape();
-  const auto& k_shape = key->Shape();
-  const auto& v_shape = value->Shape();
   const size_t rank = q_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(rank == 3 || rank == 4, "query, key and value must be rank 3 or 4");
-  ORT_RETURN_IF_NOT(k_shape.NumDimensions() == rank && v_shape.NumDimensions() == rank,
-                    "query, key and value must have the same rank");
-  const size_t token_dims = rank - 2;
+  ORT_RETURN_IF_NOT(input_is_packed_qkv ? (rank == 2 || rank == 3) : (rank == 3 || rank == 4),
+                    input_is_packed_qkv
+                        ? "packed QKV must be rank 2 [total_tokens, packed_size] or rank 3 "
+                          "[batch, sequence, packed_size]"
+                        : "query, key and value must be rank 3 or 4");
+  const size_t token_dims = rank - (input_is_packed_qkv ? 1 : 2);
   const int64_t total_tokens = q_shape.SizeToDimension(token_dims);
-  ORT_RETURN_IF_NOT(total_tokens > 0 && k_shape.SizeToDimension(token_dims) == total_tokens &&
-                        v_shape.SizeToDimension(token_dims) == total_tokens,
-                    "query, key and value must agree on a positive total_tokens");
-  const int64_t hq = q_shape[token_dims], hk = k_shape[token_dims], hv = v_shape[token_dims];
-  const int64_t dk = q_shape[token_dims + 1], dv = v_shape[token_dims + 1];
   constexpr int64_t kMaxInt32 = std::numeric_limits<int32_t>::max();
   constexpr int64_t kMaxUint32 = std::numeric_limits<uint32_t>::max();
-  ORT_RETURN_IF_NOT(hq > 0 && hq == hk && hv > 0 && hv % hq == 0 && dk > 0 && dv > 0 &&
-                        k_shape[token_dims + 1] == dk,
+  ORT_RETURN_IF_NOT(total_tokens > 0, "total_tokens must be positive");
+
+  int64_t hq = 0;
+  int64_t hk = 0;
+  int64_t hv = 0;
+  int64_t dk = 0;
+  int64_t dv = 0;
+  if (input_is_packed_qkv) {
+    ORT_RETURN_IF_NOT(initial_state != nullptr,
+                      "initial_state is required to derive packed QKV dimensions");
+    const auto& state_shape = initial_state->Shape();
+    ORT_RETURN_IF_NOT(state_shape[1] > 0 && state_shape[1] <= kMaxInt32 &&
+                          state_shape[2] > 0 && state_shape[2] <= kMaxInt32 &&
+                          state_shape[3] > 0 && state_shape[3] <= kMaxInt32,
+                      "packed QKV head counts and head sizes must be positive and fit in int32");
+    hv = state_shape[1];
+    dv = state_shape[2];
+    dk = state_shape[3];
+    const int64_t packed_size = q_shape[token_dims];
+    const int64_t value_size = hv * dv;
+    ORT_RETURN_IF_NOT(hv > 0 && dv > 0 && dk > 0 && packed_size > value_size &&
+                          (packed_size - value_size) % (2 * dk) == 0,
+                      "packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                      "num_heads_v * head_size_v");
+    hq = (packed_size - value_size) / (2 * dk);
+    hk = hq;
+  } else {
+    const auto& k_shape = key->Shape();
+    const auto& v_shape = value->Shape();
+    ORT_RETURN_IF_NOT(k_shape.NumDimensions() == rank && v_shape.NumDimensions() == rank,
+                      "query, key and value must have the same rank");
+    ORT_RETURN_IF_NOT(k_shape.SizeToDimension(token_dims) == total_tokens &&
+                          v_shape.SizeToDimension(token_dims) == total_tokens,
+                      "query, key and value must agree on a positive total_tokens");
+    hq = q_shape[token_dims];
+    hk = k_shape[token_dims];
+    hv = v_shape[token_dims];
+    dk = q_shape[token_dims + 1];
+    dv = v_shape[token_dims + 1];
+    ORT_RETURN_IF_NOT(k_shape[token_dims + 1] == dk,
+                      "key head_size must equal query head_size");
+  }
+  ORT_RETURN_IF_NOT(hq > 0 && hq == hk && hv > 0 && hv % hq == 0 && dk > 0 && dv > 0,
                     "query/key heads must match and value heads must be a positive multiple of query heads");
   ORT_RETURN_IF_NOT(total_tokens <= kMaxInt32 && hq <= kMaxInt32 && hv <= kMaxInt32 &&
                         dk <= kMaxInt32 && dv <= kMaxInt32,
@@ -266,11 +332,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
   int64_t batch = 1;
   if (cu_seqlens != nullptr) {
-    ORT_RETURN_IF_NOT(rank == 3 && cu_seqlens->Shape().NumDimensions() == 1 &&
+    ORT_RETURN_IF_NOT(token_dims == 1 && cu_seqlens->Shape().NumDimensions() == 1 &&
                           cu_seqlens->Shape()[0] >= 2,
-                      "cu_seqlens requires rank-3 inputs and must have at least two elements");
+                      "cu_seqlens requires one leading token dimension and must have at least two elements");
     batch = cu_seqlens->Shape()[0] - 1;
-  } else if (rank == 4) {
+  } else if (token_dims == 2) {
     batch = q_shape[0];
   } else {
     ORT_RETURN_IF_NOT(initial_state != nullptr,
@@ -288,6 +354,14 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     ORT_RETURN_IF_NOT(initial_state->Shape() == state_shape,
                       "initial_state must be [batch, num_heads_v, head_size_v, head_size_qk] (V-major)");
   }
+
+  TensorShapeVector query_dims(q_shape.GetDims().begin(), q_shape.GetDims().begin() + token_dims);
+  query_dims.insert(query_dims.end(), {hq, dk});
+  TensorShapeVector value_dims(q_shape.GetDims().begin(), q_shape.GetDims().begin() + token_dims);
+  value_dims.insert(value_dims.end(), {hv, dv});
+  const TensorShape query_view_shape(query_dims);
+  const TensorShape key_view_shape(query_dims);
+  const TensorShape value_view_shape(value_dims);
   if (decay != nullptr) {
     ORT_RETURN_IF_NOT(decay->Shape().NumDimensions() == token_dims + 1 &&
                           decay->Shape().SizeToDimension(token_dims) == total_tokens &&
@@ -325,21 +399,27 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     const uint64_t max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
     return onnxruntime::narrow<uint32_t>((tensor->SizeInBytes() + max_binding_size - 1) / max_binding_size);
   };
-  uint32_t direct_binding_count = binding_count(query) + binding_count(key) + binding_count(value) +
+  const uint32_t source_qkv_binding_count = input_is_packed_qkv
+                                                ? binding_count(query)
+                                                : binding_count(query) + binding_count(key) + binding_count(value);
+  uint32_t direct_binding_count = source_qkv_binding_count +
                                   binding_count(cu_seqlens) + binding_count(decay) + binding_count(beta) +
                                   binding_count(initial_state) + binding_count(a_log) + binding_count(dt_bias) +
                                   binding_count(output) + binding_count(final_state);
   if (state_alias) direct_binding_count -= binding_count(initial_state);
   const uint32_t max_storage_buffers = context.DeviceLimits().maxStorageBuffersPerShaderStage;
-  const uint32_t qkv_binding_count = binding_count(query) + binding_count(key) + binding_count(value);
+  const uint32_t qkv_binding_count = source_qkv_binding_count;
   const uint64_t qkv_element_count =
-      static_cast<uint64_t>(query->Shape().Size()) + key->Shape().Size() + value->Shape().Size();
-  const uint64_t qkv_size_in_bytes = query->SizeInBytes() + key->SizeInBytes() + value->SizeInBytes();
+      static_cast<uint64_t>(query_view_shape.Size()) + key_view_shape.Size() + value_view_shape.Size();
+  const uint64_t qkv_size_in_bytes = input_is_packed_qkv
+                                         ? query->SizeInBytes()
+                                         : query->SizeInBytes() + key->SizeInBytes() + value->SizeInBytes();
   const uint32_t packed_qkv_binding_count =
       onnxruntime::narrow<uint32_t>((qkv_size_in_bytes + context.DeviceLimits().maxStorageBufferBindingSize - 1) /
                                     context.DeviceLimits().maxStorageBufferBindingSize);
-  const uint32_t largest_qkv_binding_count =
-      std::max({binding_count(query), binding_count(key), binding_count(value)});
+  const uint32_t largest_qkv_binding_count = input_is_packed_qkv
+                                                 ? binding_count(query)
+                                                 : std::max({binding_count(query), binding_count(key), binding_count(value)});
   const bool needs_dynamic_params = qwen_gate_ || (needs_decay && needs_beta);
   uint32_t dynamic_param_binding_count = 0;
   if (needs_decay) dynamic_param_binding_count += binding_count(decay);
@@ -356,38 +436,55 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const bool can_copy_qkv =
       qkv_element_count <= kMaxUint32 &&
       largest_qkv_binding_count + packed_qkv_binding_count <= max_storage_buffers;
-  const bool use_packed_qkv =
-      direct_binding_count > max_storage_buffers &&
-      can_copy_qkv &&
-      (direct_binding_count - qkv_binding_count + packed_qkv_binding_count <= max_storage_buffers ||
-       (can_pack_params &&
-        direct_binding_count - qkv_binding_count + packed_qkv_binding_count - dynamic_param_binding_count +
-                packed_params_binding_count <=
-            max_storage_buffers));
+  ORT_RETURN_IF_NOT(!input_is_packed_qkv || can_copy_qkv,
+                    "packed QKV input exceeds WebGPU buffer binding limits");
+  const bool use_packed_qkv = input_is_packed_qkv ||
+                              (direct_binding_count > max_storage_buffers &&
+                               can_copy_qkv &&
+                               (direct_binding_count - qkv_binding_count + packed_qkv_binding_count <=
+                                    max_storage_buffers ||
+                                (can_pack_params &&
+                                 direct_binding_count - qkv_binding_count + packed_qkv_binding_count -
+                                         dynamic_param_binding_count + packed_params_binding_count <=
+                                     max_storage_buffers)));
   std::optional<Tensor> packed_qkv;
   if (use_packed_qkv) {
     packed_qkv.emplace(
         context.CreateGPUTensor(query->DataType(), TensorShape{onnxruntime::narrow<int64_t>(qkv_element_count)}));
-    uint32_t packed_offset = 0;
-    const auto copy_to_packed_qkv = [&](const Tensor* source) -> Status {
-      GatedDeltaNetCopyProgram copy_program;
-      copy_program
-          .AddInput({source, ProgramTensorMetadataDependency::Type})
-          .AddOutput(ProgramOutput::BufferView(&*packed_qkv,
-                                               ProgramTensorMetadataDependency::Type,
-                                               source->Shape(),
-                                               packed_offset))
-          .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(source->Shape().Size()) + WORKGROUP_SIZE - 1) /
+    if (input_is_packed_qkv) {
+      GatedDeltaNetUnpackQkvProgram unpack_program;
+      unpack_program
+          .AddInput({query, ProgramTensorMetadataDependency::Type})
+          .AddOutput({&*packed_qkv, ProgramTensorMetadataDependency::Type})
+          .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(qkv_element_count) + WORKGROUP_SIZE - 1) /
                                 WORKGROUP_SIZE)
           .SetWorkgroupSize(WORKGROUP_SIZE)
-          .AddUniformVariable({onnxruntime::narrow<uint32_t>(source->Shape().Size())});
-      ORT_RETURN_IF_ERROR(context.RunProgram(copy_program));
-      packed_offset += onnxruntime::narrow<uint32_t>(source->Shape().Size());
-      return Status::OK();
-    };
-    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(query));
-    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(key));
-    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(value));
+          .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
+                                {onnxruntime::narrow<uint32_t>(hq * dk)},
+                                {onnxruntime::narrow<uint32_t>(hv * dv)}});
+      ORT_RETURN_IF_ERROR(context.RunProgram(unpack_program));
+    } else {
+      uint32_t packed_offset = 0;
+      const auto copy_to_packed_qkv = [&](const Tensor* source) -> Status {
+        GatedDeltaNetCopyProgram copy_program;
+        copy_program
+            .AddInput({source, ProgramTensorMetadataDependency::Type})
+            .AddOutput(ProgramOutput::BufferView(&*packed_qkv,
+                                                 ProgramTensorMetadataDependency::Type,
+                                                 source->Shape(),
+                                                 packed_offset))
+            .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(source->Shape().Size()) + WORKGROUP_SIZE - 1) /
+                                  WORKGROUP_SIZE)
+            .SetWorkgroupSize(WORKGROUP_SIZE)
+            .AddUniformVariable({onnxruntime::narrow<uint32_t>(source->Shape().Size())});
+        ORT_RETURN_IF_ERROR(context.RunProgram(copy_program));
+        packed_offset += onnxruntime::narrow<uint32_t>(source->Shape().Size());
+        return Status::OK();
+      };
+      ORT_RETURN_IF_ERROR(copy_to_packed_qkv(query));
+      ORT_RETURN_IF_ERROR(copy_to_packed_qkv(key));
+      ORT_RETURN_IF_ERROR(copy_to_packed_qkv(value));
+    }
   }
   const uint32_t binding_count_after_qkv =
       direct_binding_count - (use_packed_qkv ? qkv_binding_count - packed_qkv_binding_count : 0);
@@ -423,19 +520,19 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const auto add_qkv_inputs = [&](auto& program) {
     if (use_packed_qkv) {
       const uint32_t query_offset = 0;
-      const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query->Shape().Size());
-      const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key->Shape().Size());
+      const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
+      const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
       program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
                                                   ProgramTensorMetadataDependency::Type,
-                                                  query->Shape(),
+                                                  query_view_shape,
                                                   query_offset),
                          ProgramInput::BufferView(&*packed_qkv,
                                                   ProgramTensorMetadataDependency::Type,
-                                                  key->Shape(),
+                                                  key_view_shape,
                                                   key_offset),
                          ProgramInput::BufferView(&*packed_qkv,
                                                   ProgramTensorMetadataDependency::Type,
-                                                  value->Shape(),
+                                                  value_view_shape,
                                                   value_offset)});
       return;
     }
@@ -446,15 +543,15 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const uint32_t sequence_length = onnxruntime::narrow<uint32_t>(total_tokens / batch);
   const auto add_key_value_inputs = [&](auto& program) {
     if (use_packed_qkv) {
-      const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query->Shape().Size());
-      const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key->Shape().Size());
+      const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
+      const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
       program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
                                                   ProgramTensorMetadataDependency::Type,
-                                                  key->Shape(),
+                                                  key_view_shape,
                                                   key_offset),
                          ProgramInput::BufferView(&*packed_qkv,
                                                   ProgramTensorMetadataDependency::Type,
-                                                  value->Shape(),
+                                                  value_view_shape,
                                                   value_offset)});
       return;
     }
