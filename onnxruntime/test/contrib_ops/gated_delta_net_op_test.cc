@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numeric>
@@ -1060,10 +1061,13 @@ TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
            {}, nullptr, &eps);
 }
 
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
 TEST(GatedDeltaNetTest, RejectsStateUpdateWidthOverflow) {
   struct Case {
-    std::initializer_list<int64_t> query_dims;
-    std::initializer_list<int64_t> value_dims;
+    std::array<int64_t, 3> query_dims;
+    std::array<int64_t, 3> value_dims;
     int64_t state_update_capacity;
   };
 
@@ -1095,7 +1099,7 @@ TEST(GatedDeltaNetTest, RejectsStateUpdateWidthOverflow) {
 
     std::vector<ONNX_NAMESPACE::TypeProto> types;
     types.reserve(6);
-    auto tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
+    auto tensor_type = [&](int elem_type, const auto& dims) {
       types.emplace_back();
       auto* type = &types.back();
       type->mutable_tensor_type()->set_elem_type(elem_type);
@@ -1108,15 +1112,15 @@ TEST(GatedDeltaNetTest, RejectsStateUpdateWidthOverflow) {
     auto& query_arg = graph.GetOrCreateNodeArg(
         "query", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, test_case.query_dims));
     auto& key_arg = graph.GetOrCreateNodeArg(
-        "key", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, 1}));
+        "key", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 3>{1, 1, 1}));
     auto& value_arg = graph.GetOrCreateNodeArg(
         "value", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, test_case.value_dims));
     auto& output_arg = graph.GetOrCreateNodeArg(
-        "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {}));
+        "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
     auto& final_state_arg = graph.GetOrCreateNodeArg(
-        "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {}));
+        "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
     auto& state_update_arg = graph.GetOrCreateNodeArg(
-        "state_update", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {}));
+        "state_update", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
 
     auto& node = graph.AddNode("node", "GatedDeltaNet", "", {&query_arg, &key_arg, &value_arg},
                                {&output_arg, &final_state_arg, &state_update_arg}, nullptr, kMSDomain);
@@ -1125,6 +1129,7 @@ TEST(GatedDeltaNetTest, RejectsStateUpdateWidthOverflow) {
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "overflows int64");
   }
 }
+#endif  // !ORT_NO_EXCEPTIONS
 
 TEST(GatedDeltaNetTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
   if (NeedSkipGatedDeltaNetTest()) return;

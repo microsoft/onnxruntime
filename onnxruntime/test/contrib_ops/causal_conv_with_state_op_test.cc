@@ -1100,6 +1100,9 @@ TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "state_window must be in [0, 8]");
 }
 
+// These tests exercise shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so these tests must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
 // ndim outside [1, 3] range is rejected.
 TEST(CausalConvWithStateTest, NdimOutOfRangeIsRejected) {
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
@@ -1156,6 +1159,7 @@ TEST(CausalConvWithStateTest, ChannelsLastInputRankBelowThreeIsRejected) {
   test.AddOutput<float>("present_state", {1, 1, 1}, {0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure, "channels_last input must have rank >= 3");
 }
+#endif  // !ORT_NO_EXCEPTIONS
 
 #ifdef USE_CUDA
 TEST(CausalConvWithStateTest, StateWindowRejectsEmptySequence) {

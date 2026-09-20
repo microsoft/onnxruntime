@@ -871,6 +871,9 @@ TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
       /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
 
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
 // total_sequence_length constant must have a single element.
 TEST(GroupQueryAttentionTest, EmptyTotalSequenceLengthInitializerRejected) {
   RunGQASeqlensKTest(
@@ -887,6 +890,7 @@ TEST(GroupQueryAttentionTest, EmptyTotalSequenceLengthInitializerRejected) {
       /*total_seq_len_data=*/std::vector<int32_t>{},
       /*total_seq_len_is_initializer=*/true);
 }
+#endif  // !ORT_NO_EXCEPTIONS
 
 // Helper to compare two output vectors (non-zero check + element-wise tolerance).
 static void ExpectOutputsMatch(const std::vector<float>& a, const std::vector<float>& b,
