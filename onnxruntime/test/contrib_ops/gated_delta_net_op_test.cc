@@ -302,7 +302,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
                   bool use_webgpu = false, bool omit_final_state = false,
                   [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr,
-                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0) {
+                  [[maybe_unused]] uint64_t test_max_storage_buffer_binding_size = 0,
+                  bool packed_qkv = false) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -345,9 +346,26 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
     return s;
   };
 
-  test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
-  test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
-  test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
+  if (packed_qkv) {
+    const size_t query_size = static_cast<size_t>(g.hq) * g.dk;
+    const size_t key_size = query_size;
+    const size_t value_size = static_cast<size_t>(g.hv) * g.dv;
+    std::vector<float> packed;
+    packed.reserve(static_cast<size_t>(g.total_tokens) * (query_size + key_size + value_size));
+    for (int token = 0; token < g.total_tokens; ++token) {
+      packed.insert(packed.end(), in.q.begin() + token * query_size, in.q.begin() + (token + 1) * query_size);
+      packed.insert(packed.end(), in.k.begin() + token * key_size, in.k.begin() + (token + 1) * key_size);
+      packed.insert(packed.end(), in.v.begin() + token * value_size, in.v.begin() + (token + 1) * value_size);
+    }
+    test.AddInput<T>("query", shaped({static_cast<int64_t>(query_size + key_size + value_size)}),
+                     ToTensorType<T>(packed));
+    test.AddOptionalInputEdge<T>();
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", shaped({g.hq, g.dk}), ToTensorType<T>(in.q));
+    test.AddInput<T>("key", shaped({g.hq, g.dk}), ToTensorType<T>(in.k));
+    test.AddInput<T>("value", shaped({g.hv, g.dv}), ToTensorType<T>(in.v));
+  }
   if (in.cu_seqlens.empty()) {
     test.AddOptionalInputEdge<int32_t>();
   } else {
@@ -745,6 +763,15 @@ TEST(GatedDeltaNetTest, Chunked_UniformBatch) {
   RunCase(g, Options{}, MakeInputs(g, 19), 3e-2f, 3e-2f);
 }
 
+TEST(GatedDeltaNetTest, Chunked_PackedQkv) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{64, 1, 16, 48, kDim, kDim};
+  RunTypedCase<MLFloat16>(g, Options{}, MakeInputs(g, 21), 3e-2f, 3e-2f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/false,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
+}
+
 // The rank-4 [batch, sequence, heads, head_size] spelling must match the packed one exactly.
 TEST(GatedDeltaNetTest, Rank4BatchSequenceMatchesPacked) {
   if (NeedSkipGatedDeltaNetTest()) return;
@@ -827,6 +854,15 @@ TEST(GatedDeltaNetTest, Recurrent_SingleToken) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{1, 1, 1, 2, kDim, kDim};
   RunCase(g, Options{}, MakeInputs(g, 23), 2e-2f, 2e-2f);
+}
+
+TEST(GatedDeltaNetTest, Recurrent_PackedQkvDecode) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{2, 2, 16, 48, kDim, kDim};
+  RunTypedCase<MLFloat16>(g, Options{}, MakeInputs(g, 27), 2e-2f, 2e-2f,
+                          /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/false,
+                          /*omit_final_state=*/false, /*webgpu_config=*/nullptr,
+                          /*test_max_storage_buffer_binding_size=*/0, /*packed_qkv=*/true);
 }
 
 TEST(GatedDeltaNetTest, Recurrent_VerifyBatch) {
