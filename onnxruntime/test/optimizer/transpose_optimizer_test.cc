@@ -1966,6 +1966,346 @@ TEST(TransposeOptimizerTests, TestSlice) {
                     /*opset_version*/ 7);
 }
 
+// Builds op -> transpose_1 -+-> slice_1 -> transpose_2
+//                           +-> slice_2   (only when share_transpose_1)
+//                           +-> slice_3   (only when share_transpose_1)
+// When transpose_1 is shared, pushing it through slice_1 leaves it in place for slice_2 and slice_3, so the push is
+// only worth doing when transpose_2 cancels the Transpose that lands on slice_1's output. When transpose_1 is not
+// shared it disappears into slice_1, so even a merge with transpose_2 turns two Transposes into one.
+void BuildSharedTransposeSliceModel(ModelTestBuilder& builder, const std::vector<int64_t>& transpose_2_perm,
+                                    bool share_transpose_1) {
+  auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+  auto* op_out_0 = builder.MakeIntermediate();
+  auto* transpose_1_out_0 = builder.MakeIntermediate();
+  auto* slice_1_out_0 = builder.MakeIntermediate();
+  auto* transpose_2_out_0 = builder.MakeOutput();
+
+  builder.AddNode("Sigmoid", {input0_arg}, {op_out_0});
+  auto& transpose_1 = builder.AddNode("Transpose", {op_out_0}, {transpose_1_out_0});
+  transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+  auto& slice_1 = builder.AddNode("Slice", {transpose_1_out_0}, {slice_1_out_0});
+  slice_1.AddAttribute("axes", std::vector<int64_t>{2});
+  slice_1.AddAttribute("starts", std::vector<int64_t>{1});
+  slice_1.AddAttribute("ends", std::vector<int64_t>{-1});
+
+  if (share_transpose_1) {
+    auto& slice_2 = builder.AddNode("Slice", {transpose_1_out_0}, {builder.MakeOutput()});
+    slice_2.AddAttribute("axes", std::vector<int64_t>{1});
+    slice_2.AddAttribute("starts", std::vector<int64_t>{0});
+    slice_2.AddAttribute("ends", std::vector<int64_t>{2});
+    auto& slice_3 = builder.AddNode("Slice", {transpose_1_out_0}, {builder.MakeOutput()});
+    slice_3.AddAttribute("axes", std::vector<int64_t>{3});
+    slice_3.AddAttribute("starts", std::vector<int64_t>{0});
+    slice_3.AddAttribute("ends", std::vector<int64_t>{3});
+  }
+
+  auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
+  transpose_2.AddAttribute("perm", transpose_2_perm);
+}
+
+// transpose_2 is the inverse of transpose_1, so pushing transpose_1 through slice_1 removes transpose_2.
+TEST(TransposeOptimizerTests, TestSliceSharedTransposeCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    BuildSharedTransposeSliceModel(builder, /*transpose_2_perm*/ {0, 2, 3, 1}, /*share_transpose_1*/ true);
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 1) << "transpose_2 should have cancelled with the pushed Transpose";
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+
+      // The survivor is transpose_1, still serving the two Slices it was not pushed through. slice_1 now reads the
+      // op output directly.
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      EXPECT_EQ(producer->OpType(), "Sigmoid");
+      EXPECT_EQ(graph.GetConsumerNodes(node.OutputDefs()[0]->Name()).size(), size_t(2));
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 7);
+}
+
+// transpose_2 has the same perm as transpose_1 rather than the inverse, so pushing transpose_1 through slice_1 would
+// only merge the two into one Transpose while leaving transpose_1 for slice_2 and slice_3. Nothing is gained.
+TEST(TransposeOptimizerTests, TestSliceSharedTransposeNoCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    BuildSharedTransposeSliceModel(builder, /*transpose_2_perm*/ {0, 3, 1, 2}, /*share_transpose_1*/ true);
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+    EXPECT_EQ(EstimateTransposeCost(graph), 8);
+
+    int shared_transposes = 0;
+    int transposes_after_slice = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      if (producer->OpType() == "Sigmoid") {
+        // transpose_1 is untouched and still feeds all three Slices.
+        EXPECT_EQ(graph.GetConsumerNodes(node.OutputDefs()[0]->Name()).size(), size_t(3));
+        ++shared_transposes;
+      } else if (producer->OpType() == "Slice") {
+        ++transposes_after_slice;
+      }
+    }
+
+    EXPECT_EQ(shared_transposes, 1);
+    EXPECT_EQ(transposes_after_slice, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 7);
+}
+
+// Same non-cancelling perms as above, but slice_1 is the only consumer of transpose_1. Pushing makes transpose_1
+// disappear into slice_1 and merges the pushed Transpose with transpose_2, so two Transposes become one and the push
+// must still happen. This is what keeps the "don't push a shared Transpose" rule from becoming "never merge".
+TEST(TransposeOptimizerTests, TestSliceUnsharedTransposeNoCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    BuildSharedTransposeSliceModel(builder, /*transpose_2_perm*/ {0, 3, 1, 2}, /*share_transpose_1*/ false);
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 1) << "the pushed Transpose should have merged with transpose_2";
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+        ASSERT_NE(producer, nullptr);
+        EXPECT_EQ(producer->OpType(), "Slice") << "the merged Transpose should sit below slice_1";
+      }
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 7);
+}
+
+// Builds the fully quantized equivalent of BuildSharedTransposeSliceModel:
+//   op -> q -> dq_tr -> transpose_1 -> q_tr -+-> dq -> slice_1 -> q -> dq -> transpose_2
+//                                            +-> dq -> slice_2 -> q -> dq
+//                                            +-> dq -> slice_3 -> q -> dq
+// transpose_1's only consumer is the q_tr that closes its QDQ node unit, so the only push the optimizer can even
+// consider is transpose_1 through q_tr. slice_2 and slice_3 never reach a Transpose, so giving up the node unit is
+// only worth it when transpose_2 cancels what lands on the slice_1 branch.
+void BuildQDQSharedTransposeSliceModel(ModelTestBuilder& builder, const std::vector<int64_t>& transpose_2_perm) {
+  constexpr float kScale = 0.05f;
+  constexpr uint8_t kZeroPoint = 128;
+
+  auto add_qdq_pair = [&](NodeArg* input) {
+    auto* q_out = builder.MakeIntermediate();
+    auto* dq_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input, kScale, kZeroPoint, q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(q_out, kScale, kZeroPoint, dq_out);
+    return dq_out;
+  };
+
+  auto add_slice = [&](NodeArg* input, int64_t axis, int64_t start, int64_t end) {
+    auto* slice_out = builder.MakeIntermediate();
+    builder.AddNode("Slice",
+                    {input, builder.Make1DInitializer<int64_t>({start}), builder.Make1DInitializer<int64_t>({end}),
+                     builder.Make1DInitializer<int64_t>({axis})},
+                    {slice_out});
+    return slice_out;
+  };
+
+  auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0f, 1.0f);
+  auto* op_out_0 = builder.MakeIntermediate();
+  builder.AddNode("Sigmoid", {input0_arg}, {op_out_0});
+
+  auto* transpose_1_in = add_qdq_pair(op_out_0);
+  auto* transpose_1_out = builder.MakeIntermediate();
+  auto& transpose_1 = builder.AddNode("Transpose", {transpose_1_in}, {transpose_1_out});
+  transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+  auto* slices_in = add_qdq_pair(transpose_1_out);
+
+  // Only the slice_1 branch carries a Transpose.
+  auto* transpose_2_in = add_qdq_pair(add_slice(slices_in, /*axis*/ 2, /*start*/ 1, /*end*/ -1));
+  auto* transpose_2_out = builder.MakeIntermediate();
+  auto& transpose_2 = builder.AddNode("Transpose", {transpose_2_in}, {transpose_2_out});
+  transpose_2.AddAttribute("perm", transpose_2_perm);
+  builder.AddQuantizeLinearNode<uint8_t>(transpose_2_out, kScale, kZeroPoint, builder.MakeOutput());
+
+  builder.AddQuantizeLinearNode<uint8_t>(add_slice(slices_in, /*axis*/ 1, /*start*/ 0, /*end*/ 2), kScale, kZeroPoint,
+                                         builder.MakeOutput());
+  builder.AddQuantizeLinearNode<uint8_t>(add_slice(slices_in, /*axis*/ 3, /*start*/ 0, /*end*/ 3), kScale, kZeroPoint,
+                                         builder.MakeOutput());
+}
+
+// transpose_2 cancels transpose_1, so the QDQ node unit is worth giving up: transpose_1 moves into the quantized
+// domain, the copy that reaches slice_1 is cancelled by transpose_2, and copies stay on the slice_2/slice_3 branches.
+TEST(TransposeOptimizerTests, TestQDQSharedTransposeSliceCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    BuildQDQSharedTransposeSliceModel(builder, /*transpose_2_perm*/ {0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 1) << "transpose_2 should have cancelled the copy on the slice_1 branch";
+
+    const Node* transpose = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        transpose = &node;
+      }
+    }
+    ASSERT_NE(transpose, nullptr);
+
+    // transpose_1 now lives in the quantized domain, shared by the two branches that never reach transpose_2.
+    const Node* q_tr = graph.GetProducerNode(transpose->InputDefs()[0]->Name());
+    ASSERT_NE(q_tr, nullptr);
+    EXPECT_EQ(q_tr->OpType(), "QuantizeLinear");
+
+    std::vector<const Node*> transpose_consumers = graph.GetConsumerNodes(transpose->OutputDefs()[0]->Name());
+    EXPECT_EQ(transpose_consumers.size(), size_t(2));
+    for (const Node* consumer : transpose_consumers) {
+      EXPECT_EQ(consumer->OpType(), "DequantizeLinear");
+    }
+
+    // slice_1's branch reads the same Q directly, with no Transpose left on it.
+    int branches_without_transpose = 0;
+    for (const Node* consumer : graph.GetConsumerNodes(q_tr->OutputDefs()[0]->Name())) {
+      if (consumer->OpType() == "DequantizeLinear") {
+        ++branches_without_transpose;
+      }
+    }
+    EXPECT_EQ(branches_without_transpose, 1) << "slice_1's branch should have lost its Transpose";
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 19);
+}
+
+// transpose_2 would only merge, so nothing is gained by breaking the node unit. transpose_1 must stay put.
+TEST(TransposeOptimizerTests, TestQDQSharedTransposeSliceNoCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    BuildQDQSharedTransposeSliceModel(builder, /*transpose_2_perm*/ {0, 3, 1, 2});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      EXPECT_EQ(producer->OpType(), "DequantizeLinear") << "Transpose left its QDQ node unit";
+      for (const Node* consumer : graph.GetConsumerNodes(node.OutputDefs()[0]->Name())) {
+        EXPECT_EQ(consumer->OpType(), "QuantizeLinear") << "Transpose left its QDQ node unit";
+      }
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 19);
+}
+
+// A Transpose sitting in a complete DQ -> Transpose -> Q node unit must not be pushed through its own Q when the
+// relocated Transpose has nowhere to cancel or merge. That would leave Q -> Transpose -> DQ, which is outside any
+// QDQ node unit and which FixQDQNodeUnits cannot repair, without removing a single Transpose.
+TEST(TransposeOptimizerTests, TestQDQTransposeNotPushedThroughOwnQ) {
+  constexpr float kScale = 0.05f;
+  constexpr uint8_t kZeroPoint = 128;
+
+  auto add_qdq_pair = [&](ModelTestBuilder& builder, NodeArg* input) {
+    auto* q_out = builder.MakeIntermediate();
+    auto* dq_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input, kScale, kZeroPoint, q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(q_out, kScale, kZeroPoint, dq_out);
+    return dq_out;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 8}, 0.0f, 1.0f);
+
+    auto* transpose_in = add_qdq_pair(builder, input0_arg);
+    auto* transpose_out = builder.MakeIntermediate();
+    auto& transpose = builder.AddNode("Transpose", {transpose_in}, {transpose_out});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+    auto* branch_in = add_qdq_pair(builder, transpose_out);
+
+    // One branch reaches another Transpose, which is what makes the optimizer consider the push worthwhile.
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto& transpose_1 = builder.AddNode("Transpose", {branch_in}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+    auto* transpose_1_q_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(transpose_1_out, kScale, kZeroPoint, transpose_1_q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(transpose_1_q_out, kScale, kZeroPoint, builder.MakeOutput());
+
+    // The other branch ends at MatMul, which has no handler, so a pushed Transpose would be stranded there.
+    auto* weight = add_qdq_pair(builder, builder.MakeInitializer<float>({8, 3}, 0.0f, 1.0f));
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMul", {branch_in, weight}, {matmul_out});
+    auto* matmul_q_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(matmul_out, kScale, kZeroPoint, matmul_q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(matmul_q_out, kScale, kZeroPoint, builder.MakeOutput());
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr) << "Transpose '" << node.Name() << "' is not fed by a DequantizeLinear";
+      EXPECT_EQ(producer->OpType(), "DequantizeLinear") << "Transpose '" << node.Name() << "' left its QDQ node unit";
+
+      for (const Node* consumer : graph.GetConsumerNodes(node.OutputDefs()[0]->Name())) {
+        EXPECT_EQ(consumer->OpType(), "QuantizeLinear") << "Transpose '" << node.Name() << "' left its QDQ node unit";
+      }
+    }
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 19);
+}
+
 TEST(TransposeOptimizerTests, TestSliceNoAxes) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);

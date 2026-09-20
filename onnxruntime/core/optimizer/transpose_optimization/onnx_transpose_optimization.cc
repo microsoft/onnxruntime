@@ -2892,6 +2892,101 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& exten
   return nullptr;
 }
 
+// Recursive worker for PushedTransposeCancels. Returns false as soon as a Transpose that would merge rather than
+// cancel is reached, or, when `tolerate_stranded_branches` is false, as soon as a branch ends without a Transpose.
+// Sets `found` when a cancelling Transpose is reached.
+static bool PushedTransposeCancelsImpl(const api::GraphRef& graph, std::string_view value,
+                                       const std::vector<int64_t>& cancel_perm,
+                                       const HandlerMap& extended_handlers, bool tolerate_stranded_branches,
+                                       std::unordered_set<std::string>& visited, bool& found) {
+  std::string value_str(value);
+  if (!visited.insert(value_str).second) {
+    return true;
+  }
+
+  const auto consumers = graph.GetValueConsumers(value);
+  if (consumers->nodes.empty()) {
+    return tolerate_stranded_branches;
+  }
+
+  for (auto& consumer : consumers->nodes) {
+    if (consumer->IsOp("Transpose")) {
+      if (GetPermAttrIfValid(*consumer) != cancel_perm) {
+        return false;
+      }
+      found = true;
+      continue;
+    }
+
+    const HandlerInfo* info = GetHandler(*consumer, extended_handlers);
+    if (info == nullptr || !info->transposes_outputs) {
+      if (!tolerate_stranded_branches) {
+        return false;
+      }
+      continue;
+    }
+
+    for (auto out : consumer->Outputs()) {
+      if (out.empty()) {
+        continue;
+      }
+      if (!PushedTransposeCancelsImpl(graph, out, cancel_perm, extended_handlers, tolerate_stranded_branches, visited,
+                                      found)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+// Follows outputs through handlers that transpose their outputs to find the Transposes that a Transpose pushed onto
+// `value` would eventually meet. Returns true only if at least one is reached and all of them have perm `cancel_perm`,
+// so the pushed Transpose is cancelled rather than merged into a Transpose that stays in the graph.
+//
+// `tolerate_stranded_branches` decides what a branch that ends without a Transpose means. With false the query fails,
+// which is what the cost model wants: the pushed Transpose has to be consumed everywhere to be free. With true the
+// branch is ignored and the pushed Transpose is left sitting on it.
+static bool PushedTransposeCancels(const api::GraphRef& graph, std::string_view value,
+                                   const std::vector<int64_t>& cancel_perm, const HandlerMap& extended_handlers,
+                                   bool tolerate_stranded_branches) {
+  std::unordered_set<std::string> visited;
+  bool found = false;
+  return PushedTransposeCancelsImpl(graph, value, cancel_perm, extended_handlers, tolerate_stranded_branches, visited,
+                                    found) &&
+         found;
+}
+
+// True if every Transpose providing `perm` to `node` has `node` as its only consumer.
+// Pushing then merging with a later Transpose is a win in that case (two Transposes become one).
+// If the incoming Transpose is shared, merging does not remove it and is not an improvement.
+static bool IncomingTransposeIsSolelyConsumedByNode(const api::GraphRef& graph, const api::NodeRef& node,
+                                                    const std::vector<int64_t>& perm) {
+  bool saw_matching_transpose = false;
+  for (std::string_view inp : node.Inputs()) {
+    if (inp.empty()) {
+      continue;
+    }
+
+    std::unique_ptr<api::NodeRef> producer = graph.GetNodeProducingOutput(inp);
+    if (producer && producer->OpType() == "DequantizeLinear") {
+      producer = graph.GetNodeProducingOutput(producer->Inputs()[0]);
+    }
+
+    if (producer == nullptr || !producer->IsOp("Transpose") || GetPermAttrIfValid(*producer) != perm) {
+      continue;
+    }
+
+    saw_matching_transpose = true;
+    const auto consumers = graph.GetValueConsumers(producer->Outputs()[0]);
+    if (!consumers->comprehensive || consumers->nodes.size() != 1) {
+      return false;
+    }
+  }
+
+  return saw_matching_transpose;
+}
+
 static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
                          const std::vector<int64_t>& perm,
                          const std::unordered_set<std::string>& outputs_leading_to_transpose,
@@ -2906,19 +3001,30 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
 
   if (cost < 0 && info.transposes_outputs) {
     // If the output will be transposed and won't ultimately cancel, factor in that cost.
-    bool has_output_leading_to_transpose = false;
+    // A downstream Transpose only makes the inserted output Transpose free when:
+    //   - it would cancel with the pushed perm, or
+    //   - the incoming Transpose is unique to this node, so merging still drops a Transpose.
+    // Shared incoming Transpose + merge is a no-op on Transpose count (the shared Transpose remains).
+    bool has_beneficial_downstream_transpose = false;
     auto outputs = node.Outputs();
     int out_cost = 0;
+    const std::vector<int64_t> cancel_perm = InvertPerm(perm);
     // Having multiple outputs is rare. When it happens (Split), the total size of the outputs isn't much larger
     // than the largest input. Cost is rank currently, so just use the largest cost (rank) over all outputs.
     for (auto out : outputs) {
       out_cost = std::max(out_cost, EstimateValueRank(graph, out));
-      if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
-        has_output_leading_to_transpose = true;
+      if (outputs_leading_to_transpose.find(std::string(out)) == outputs_leading_to_transpose.end()) {
+        continue;
+      }
+
+      if (PushedTransposeCancels(graph, out, cancel_perm, extended_handlers,
+                                 /*tolerate_stranded_branches*/ false) ||
+          IncomingTransposeIsSolelyConsumedByNode(graph, node, perm)) {
+        has_beneficial_downstream_transpose = true;
       }
     }
 
-    if (!has_output_leading_to_transpose) {
+    if (!has_beneficial_downstream_transpose) {
       cost += out_cost;
     }
   }
@@ -2940,6 +3046,36 @@ static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   int cost = CalculateCost(graph, node, perm, outputs_leading_to_transpose, info, transposable_input_indices,
                            extended_handlers);
   return cost < 0;
+}
+
+// True if pushing `transpose` through `node` would dismantle the QDQ node unit the Transpose already sits in.
+//
+// A Transpose in a complete DQ -> Transpose -> Q unit can be pushed through its own Q, giving DQ -> Q -> Transpose.
+// That relocates the Transpose into the quantized domain, outside any QDQ node unit, and FixQDQNodeUnits has no
+// repair for Q -> Transpose -> DQ, so the unit is lost for good.
+//
+// Giving the unit up only buys something if the relocated Transpose is cancelled downstream. Merging is not enough:
+// the merged Transpose stays in the graph, so the unit is spent for nothing. Branches that never reach a Transpose
+// are accepted, since the relocated Transpose simply rides along on them.
+static bool PushBreaksTransposeQDQNodeUnit(const OptimizerCtx& ctx, const api::NodeRef& transpose,
+                                           const api::NodeRef& node, const std::vector<int64_t>& perm) {
+  if (node.OpType() != "QuantizeLinear") {
+    return false;
+  }
+
+  auto dq_node = ctx.graph.GetNodeProducingOutput(transpose.Inputs()[0]);
+  if (dq_node == nullptr || dq_node->OpType() != "DequantizeLinear") {
+    return false;
+  }
+
+  // The Q only closes the Transpose's node unit if it is the Transpose's sole consumer.
+  auto transpose_consumers = ctx.graph.GetValueConsumers(transpose.Outputs()[0]);
+  if (!transpose_consumers->comprehensive || transpose_consumers->nodes.size() != 1) {
+    return false;
+  }
+
+  return !PushedTransposeCancels(ctx.graph, node.Outputs()[0], InvertPerm(perm), ctx.extended_handlers,
+                                 /*tolerate_stranded_branches*/ true);
 }
 
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
@@ -2964,10 +3100,10 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    cost = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices,
-                            ctx.extended_handlers)
-               ? CostCheckResult::kPushTranspose
-               : CostCheckResult::kStop;
+    const bool push = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices,
+                                       ctx.extended_handlers) &&
+                      !PushBreaksTransposeQDQNodeUnit(ctx, transpose, node, perm);
+    cost = push ? CostCheckResult::kPushTranspose : CostCheckResult::kStop;
   }
 
   if (cost == CostCheckResult::kStop) {
