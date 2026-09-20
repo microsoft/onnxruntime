@@ -21,7 +21,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #if defined(__APPLE__)
+#include "core/common/logging/logging.h"
 #include "core/common/pci_vendor_ids.h"
+#include "core/framework/execution_provider.h"
 #include "core/framework/ortdevice.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
@@ -35,6 +37,7 @@
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
+#include "test/util/include/asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -481,7 +484,7 @@ TEST(AutoEpSelection, CoreMLEPUnknownComputeUnitsRejectedByProvider) {
   }
 }
 
-// The two tests below call CoreMLEpFactory through its EpFactoryInternal wrapper using synthetic hardware devices.
+// The tests below call CoreMLEpFactory through its EpFactoryInternal wrapper using synthetic hardware devices.
 // Device advertising depends only on the device type and runtime Core ML version, so the tests require no physical
 // accelerator and can run on Intel Macs that meet the version requirement. Any published OrtEpDevice instances are
 // released through the EP API.
@@ -495,6 +498,28 @@ OrtHardwareDevice MakeSyntheticHardwareDevice(OrtHardwareDeviceType type) {
   device.vendor_id = pci_vendor_ids::kApple;
   device.vendor = "Apple";
   return device;
+}
+
+// Creates the CoreML EP for the given devices through CoreMLEpFactory::CreateIExecutionProvider and writes
+// its reported MLComputeUnits value to compute_units. If requested_compute_units is non-null, it is passed through
+// the session options so the factory validates it against the selection instead of deriving a default.
+void GetMLComputeUnitsForSelection(gsl::span<const OrtHardwareDevice* const> devices,
+                                   const char* requested_compute_units, std::string& compute_units) {
+  EpFactoryInternal factory{std::make_unique<CoreMLEpFactory>()};
+
+  OrtSessionOptions session_options{};
+  if (requested_compute_units != nullptr) {
+    const std::string key = OrtSessionOptions::GetProviderOptionPrefix(kCoreMLExecutionProvider) +
+                            kCoremlProviderOption_MLComputeUnits;
+    ASSERT_STATUS_OK(session_options.value.config_options.AddConfigEntry(key.c_str(), requested_compute_units));
+  }
+
+  std::unique_ptr<IExecutionProvider> ep;
+  ASSERT_ORTSTATUS_OK(factory.CreateIExecutionProvider(devices.data(), nullptr, devices.size(), &session_options,
+                                                       logging::LoggingManager::DefaultLogger().ToExternal(), &ep));
+  ASSERT_NE(ep, nullptr);
+
+  compute_units = ep->GetProviderOptions().at(kCoremlProviderOption_MLComputeUnits);
 }
 
 // Number of calls to the injected GetVersion callback.
@@ -612,6 +637,40 @@ TEST(AutoEpSelection, CoreMLEPGetSupportedDevicesRollsBackOnCreateFailure) {
       << "GetVersion must be called for both device creation attempts.";
   EXPECT_THAT(ep_devices, ::testing::Each(&untouched_marker));
   EXPECT_EQ(num_ep_devices, size_t{42});
+}
+
+// Verifies that CreateIExecutionProvider derives MLComputeUnits from the selected devices and preserves a
+// caller-provided value compatible with the selection. Synthetic devices let these cases run without physical
+// accelerators.
+TEST(AutoEpSelection, CoreMLEPDerivedMLComputeUnits) {
+  const OrtHardwareDevice npu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_NPU);
+  const OrtHardwareDevice gpu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_GPU);
+  const std::array<const OrtHardwareDevice*, 1> npu_only{&npu};
+  const std::array<const OrtHardwareDevice*, 1> gpu_only{&gpu};
+  const std::array<const OrtHardwareDevice*, 2> npu_and_gpu{&npu, &gpu};
+  std::string compute_units;
+
+  ASSERT_NO_FATAL_FAILURE(GetMLComputeUnitsForSelection(npu_only, nullptr, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine);
+
+  ASSERT_NO_FATAL_FAILURE(GetMLComputeUnitsForSelection(gpu_only, nullptr, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_CPUAndGPU);
+
+  ASSERT_NO_FATAL_FAILURE(GetMLComputeUnitsForSelection(npu_and_gpu, nullptr, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_ALL);
+
+  // The caller can disable some or all selected accelerators. The factory keeps the provided MLComputeUnits value.
+  ASSERT_NO_FATAL_FAILURE(
+      GetMLComputeUnitsForSelection(gpu_only, kCoremlProviderOption_MLComputeUnits_CPUOnly, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_CPUOnly);
+
+  ASSERT_NO_FATAL_FAILURE(
+      GetMLComputeUnitsForSelection(npu_and_gpu, kCoremlProviderOption_MLComputeUnits_CPUAndGPU, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_CPUAndGPU);
+
+  ASSERT_NO_FATAL_FAILURE(GetMLComputeUnitsForSelection(
+      npu_and_gpu, kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine, compute_units));
+  EXPECT_EQ(compute_units, kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine);
 }
 
 #endif  // defined(__APPLE__)
