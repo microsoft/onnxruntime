@@ -42,31 +42,27 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
 // Given the indices of the (up to 4) input dims that Resize actually changes,
 // determine the two axes WebNN's resample2d should operate on.
-// WebNN restricts resample2d axes to one of the consecutive pairs [0,1], [1,2] or [2,3].
-// This lets us support both NCHW (scaling axes 2,3) and NHWC (scaling axes 1,2)
-// layouts without assuming which two dims are spatial.
-// Returns false if the changed dims cannot be mapped to a supported consecutive pair.
-bool GetResample2dConsecutiveAxes(const std::vector<int64_t>& changed_dims,
-                                  std::vector<int64_t>& axes,
-                                  const logging::Logger& logger) {
-  // changed_dims is expected to be sorted ascending (built by scanning dims 0..3).
-  if (changed_dims.size() > 2) {
+// resample2d always resamples exactly 2 axes (its scales/sizes/axes are length-2 lists),
+// so at most two dims may change. WebNN spec allows those two axes to be any two
+// distinct dims of the input.
+// Returns false only if more than two dims change, which resample2d cannot express.
+bool GetResample2dAxes(const std::vector<int64_t>& changed_axes,
+                       std::vector<int64_t>& axes,
+                       const logging::Logger& logger) {
+  // changed_axes is expected to be sorted ascending (built by scanning dims 0..3).
+  if (changed_axes.size() > 2) {
     LOGS(logger, VERBOSE) << "Resize: WebNN resample2d can resample at most 2 axes, but "
-                          << changed_dims.size() << " dims are being resized";
+                          << changed_axes.size() << " dims are being resized";
     return false;
   }
 
-  if (changed_dims.size() == 2) {
-    if (changed_dims[1] - changed_dims[0] != 1) {
-      LOGS(logger, VERBOSE) << "Resize: WebNN resample2d only supports resampling two consecutive axes, "
-                            << "but the resized axes " << changed_dims[0] << " and " << changed_dims[1]
-                            << " are not consecutive";
-      return false;
-    }
-    axes = changed_dims;
-  } else if (changed_dims.size() == 1) {
-    // Only one dim is scaled; pair it with an adjacent dim (whose scale is 1) to form a valid pair.
-    const int64_t a = changed_dims[0];
+  if (changed_axes.size() == 2) {
+    axes = changed_axes;
+  } else if (changed_axes.size() == 1) {
+    // Only one dim is scaled; pad with an adjacent axis so axes has the required length 2.
+    // Resampling an axis whose scale is 1 / size is unchanged is a no-op, so the partner is
+    // arbitrary; an adjacent one keeps the common single-spatial-axis case on the trailing axes.
+    const int64_t a = changed_axes[0];
     axes = (a < 3) ? std::vector<int64_t>{a, a + 1} : std::vector<int64_t>{a - 1, a};
   } else {
     // No dim changes (identity resize); default to the trailing spatial axes.
@@ -120,14 +116,14 @@ bool GetResizeScalesAndAxes(const GraphViewer& graph_viewer,
     // Infer the two axes to resample from whichever dims are actually scaled (scale != 1),
     // so that both NCHW ([1,1,sh,sw]) and NHWC ([1,sh,sw,1]) layouts are supported.
     std::vector<float> onnx_scales{scales_data, scales_data + 4};
-    std::vector<int64_t> changed_dims;
+    std::vector<int64_t> changed_axes;
     for (size_t i = 0; i < 4; ++i) {
       if (onnx_scales[i] != 1.0f) {
-        changed_dims.push_back(static_cast<int64_t>(i));
+        changed_axes.push_back(static_cast<int64_t>(i));
       }
     }
 
-    if (!GetResample2dConsecutiveAxes(changed_dims, axes, logger)) {
+    if (!GetResample2dAxes(changed_axes, axes, logger)) {
       return false;
     }
 
@@ -181,16 +177,16 @@ bool GetResizeSizesAndAxes(const GraphViewer& graph_viewer,
     // Infer the two axes to resample from whichever dims actually change size,
     // so that both NCHW and NHWC layouts are supported.
     std::vector<int64_t> onnx_sizes{sizes_data, sizes_data + 4};
-    std::vector<int64_t> changed_dims;
+    std::vector<int64_t> changed_axes;
     for (size_t i = 0; i < 4; ++i) {
       // input_shape[i] may be -1 for a dynamic dim; such a dim is treated as changed
       // since we can't prove it stays the same.
       if (onnx_sizes[i] != input_shape[i]) {
-        changed_dims.push_back(static_cast<int64_t>(i));
+        changed_axes.push_back(static_cast<int64_t>(i));
       }
     }
 
-    if (!GetResample2dConsecutiveAxes(changed_dims, axes, logger)) {
+    if (!GetResample2dAxes(changed_axes, axes, logger)) {
       return false;
     }
 
