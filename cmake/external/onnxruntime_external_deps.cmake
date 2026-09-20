@@ -825,8 +825,7 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
           #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
           #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
-          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
-          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
