@@ -153,41 +153,42 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
 }
 
 template <typename T>
-__global__ void _Split3InnerKernel(const int64_t size0_in_byte,
-                                   const int64_t size1_in_byte,
-                                   const int64_t size2_in_byte,
-                                   const void* input_data,
-                                   void* output_data0,
-                                   void* output_data1,
-                                   void* output_data2,
-                                   const int64_t inner_size_in_byte) {
-  // each block copy one row of input data
-  auto size0 = size0_in_byte / sizeof(T);
-  auto size1 = size1_in_byte / sizeof(T);
-  auto size2 = size2_in_byte / sizeof(T);
+__global__ void _SplitSmallInnerKernel(TArray<int64_t, kMaxSmallInnerSplitOutputs> split_sizes_in_byte,
+                                       const void* input_data,
+                                       TArray<void*, kMaxSmallInnerSplitOutputs> output_data,
+                                       const int64_t inner_size_in_byte,
+                                       const CUDA_LONG N) {
   auto inner_size = inner_size_in_byte / sizeof(T);
-  auto output0_vec = reinterpret_cast<T*>(output_data0) + blockIdx.x * size0;
-  auto output1_vec = reinterpret_cast<T*>(output_data1) + blockIdx.x * size1;
-  auto output2_vec = reinterpret_cast<T*>(output_data2) + blockIdx.x * size2;
-  auto input_vec = reinterpret_cast<const T*>(input_data) + blockIdx.x * inner_size;
-  // all size and pointer are aligned to sizeof(T)
-  // so here use all threads in the block to do vectorized copy
+  auto input_vec = reinterpret_cast<const T*>(input_data);
 
-  for (auto tid = threadIdx.x; tid < inner_size; tid += blockDim.x) {
-    auto data = input_vec[tid];
-    if (tid < size0) {
-      output0_vec[tid] = data;
-    } else if (tid < (size0 + size1)) {
-      output1_vec[tid - size0] = data;
-    } else {
-      output2_vec[tid - size0 - size1] = data;
+  CUDA_LONG id = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
+#pragma unroll
+  for (int i = 0; i < kNumElementsPerThread; ++i) {
+    if (id >= N) {
+      return;
     }
+
+    const auto outer_index = id / inner_size;
+    const auto inner_index = id % inner_size;
+    int64_t output_start = 0;
+    for (int output_index = 0; output_index < split_sizes_in_byte.Size(); ++output_index) {
+      const int64_t output_size = split_sizes_in_byte[output_index] / sizeof(T);
+      if (inner_index < output_start + output_size) {
+        auto output_vec = reinterpret_cast<T*>(output_data[output_index]);
+        output_vec[outer_index * output_size + inner_index - output_start] = input_vec[id];
+        break;
+      }
+      output_start += output_size;
+    }
+    id += kNumThreadsPerBlock;
   }
 }
 
-Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
-                   const int64_t size2, const void* input_data, void* output_data0, void* output_data1,
-                   void* output_data2, const gsl::span<const int64_t>& input_shape) {
+Status SplitSmallInner(cudaStream_t stream, const size_t element_size,
+                       const TArray<int64_t, kMaxSmallInnerSplitOutputs>& split_sizes,
+                       const void* input_data,
+                       const TArray<void*, kMaxSmallInnerSplitOutputs>& output_data,
+                       const gsl::span<const int64_t>& input_shape) {
   CUDA_LONG outer_size = 1;
   for (size_t i = 0; i < input_shape.size() - 1; ++i) {
     outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
@@ -209,35 +210,21 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
   };
 
   auto input_v = reinterpret_cast<size_t>(input_data);
-  auto output_v0 = reinterpret_cast<size_t>(output_data0);
-  auto output_v1 = reinterpret_cast<size_t>(output_data1);
-  auto output_v2 = reinterpret_cast<size_t>(output_data2);
-  auto size0_in_byte = size0 * element_size;
-  auto size1_in_byte = size1 * element_size;
-  auto size2_in_byte = size2 * element_size;
-
-  auto VEC_SIZE = std::min(select(size0_in_byte), std::min(select(size1_in_byte), select(size2_in_byte)));
-  auto min_output_vec_size = std::min(select(output_v0), std::min(select(output_v1), select(output_v2)));
-  VEC_SIZE = std::min(VEC_SIZE, std::min(select(input_v), min_output_vec_size));
-
-  // determine threads based on the size of the output
-  auto threadsPerBlock = kNumThreadsPerBlock;
-  if ((inner_size_in_byte / VEC_SIZE) <= 128) {
-    // use less threads when the size is small
-    threadsPerBlock = 128;
+  auto VEC_SIZE = select(input_v);
+  TArray<int64_t, kMaxSmallInnerSplitOutputs> split_sizes_in_byte(split_sizes.Size());
+  for (int i = 0; i < split_sizes.Size(); ++i) {
+    split_sizes_in_byte[i] = split_sizes[i] * element_size;
+    VEC_SIZE = std::min(VEC_SIZE, select(split_sizes_in_byte[i]));
+    VEC_SIZE = std::min(VEC_SIZE, select(reinterpret_cast<size_t>(output_data[i])));
   }
 
+  const CUDA_LONG N = outer_size * inner_size_in_byte / VEC_SIZE;
+  const int blocks_per_grid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
+
   switch (VEC_SIZE) {
-#define CASE_ELEMENT_TYPE(type)                                         \
-  _Split3InnerKernel<type><<<outer_size, threadsPerBlock, 0, stream>>>( \
-      size0_in_byte,                                                    \
-      size1_in_byte,                                                    \
-      size2_in_byte,                                                    \
-      input_data,                                                       \
-      output_data0,                                                     \
-      output_data1,                                                     \
-      output_data2,                                                     \
-      inner_size_in_byte)
+#define CASE_ELEMENT_TYPE(type)                                                      \
+  _SplitSmallInnerKernel<type><<<blocks_per_grid, kNumThreadsPerBlock, 0, stream>>>( \
+      split_sizes_in_byte, input_data, output_data, inner_size_in_byte, N)
     case 16:
       CASE_ELEMENT_TYPE(int4);
       break;
