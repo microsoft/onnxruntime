@@ -114,6 +114,8 @@ SparseAttentionIndexer<T>::SparseAttentionIndexer(const OpKernelInfo& info) : Cu
 template <typename T>
 Status SparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context) const {
   const bool is_qsa = policy_ == sai::Policy::kQsa;
+  ORT_RETURN_IF(!is_qsa && context->Input<Tensor>(sai::kKey) == nullptr,
+                "SparseAttentionIndexer: key is required for policy_mode 'csa'");
   for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                     sai::kPositionIds, sai::kPastProjBuffer}) {
     const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
@@ -153,7 +155,11 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const int64_t head_size = query_norm_shape[0];
   ORT_RETURN_IF_NOT(query_shape[2] > 0 && query_shape[2] % head_size == 0,
                     "SparseAttentionIndexer: query width must be positive and divisible by head_size");
-  const int64_t num_heads = query_shape[2] / head_size;
+  const bool packed_qk = key == nullptr;
+  const int64_t packed_head_count = query_shape[2] / head_size;
+  ORT_RETURN_IF(packed_qk && packed_head_count < 2,
+                "SparseAttentionIndexer: packed QK input must contain at least one query head and one key");
+  const int64_t num_heads = packed_head_count - (packed_qk ? 1 : 0);
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
   ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
@@ -194,7 +200,9 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                 "SparseAttentionIndexer: total_sequence_length must not exceed key_cache_capacity when "
                 "past_sequence_length is provided");
 
-  ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, head_size}));
+  if (!packed_qk) {
+    ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, head_size}));
+  }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
 
@@ -210,6 +218,8 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   params.sequence_length = static_cast<int>(sequence_length);
   params.num_heads = static_cast<int>(num_heads);
   params.head_size = static_cast<int>(head_size);
+  params.query_row_stride = static_cast<int>(query_shape[2]);
+  params.key_row_stride = packed_qk ? static_cast<int>(query_shape[2]) : static_cast<int>(head_size);
   params.rotary_width = static_cast<int>(rotary_width);
   params.max_rotary_length = static_cast<int>(max_rotary_length);
   params.compress_ratio = static_cast<int>(compress_ratio_);
@@ -238,10 +248,13 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   auto float_workspace = GetScratchBuffer<float>(GetQsaWorkspaceFloatCount(params), GetComputeStream(context));
   auto int_workspace = GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params), GetComputeStream(context));
 
+  const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
+  const CudaT* key_data = packed_qk ? query_data + num_heads * head_size
+                                    : reinterpret_cast<const CudaT*>(key->Data<T>());
   return LaunchQsaSparseAttentionIndexer<CudaT>(
       Stream(context), params,
-      reinterpret_cast<const CudaT*>(query->Data<T>()),
-      reinterpret_cast<const CudaT*>(key->Data<T>()),
+      query_data,
+      key_data,
       reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
@@ -361,6 +374,8 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   params.sequence_length = static_cast<int>(sequence_length);
   params.num_heads = static_cast<int>(num_heads);
   params.head_size = static_cast<int>(head_size);
+  params.query_row_stride = static_cast<int>(query_shape[2]);
+  params.key_row_stride = static_cast<int>(key->Shape()[2]);
   params.rotary_width = static_cast<int>(rotary_width);
   params.max_rotary_length = static_cast<int>(max_rotary_length);
   params.compress_ratio = static_cast<int>(compress_ratio_);
