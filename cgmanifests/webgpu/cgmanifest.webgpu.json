@@ -27,7 +27,7 @@
           "tag": "v1.8.2502"
         }
       },
-      "comments": "runtime; redistributed by Windows WebGPU plugin packages as dxil.dll and dxcompiler.dll. Release zip: https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip; SHA256: 70B1913A1BFCE4A3E1A5311D16246F4ECDF3A3E613ABEC8AA529E57668426F85.",
+      "comments": "runtime; redistributed by Windows WebGPU plugin packages as dxcompiler.dll. Release zip: https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip; SHA256: 70B1913A1BFCE4A3E1A5311D16246F4ECDF3A3E613ABEC8AA529E57668426F85.",
       "detectedComponentLocations": [
         "{SourceFileRoot}/tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml",
         "{SourceFileRoot}/plugin-ep-webgpu/csharp/pack_nuget.py",
