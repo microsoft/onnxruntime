@@ -19,6 +19,8 @@ struct SparseAttentionIndexerParams {
   int sequence_length = 0;
   int num_heads = 0;
   int head_size = 0;
+  int query_row_stride = 0;
+  int key_row_stride = 0;
   int rotary_width = 0;
   int max_rotary_length = 0;
   int rotary_cache_batch_stride = 0;
