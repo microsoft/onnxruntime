@@ -120,43 +120,75 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr),
                     "beta input presence must match update_rule");
 
-  ORT_RETURN_IF_NOT(query != nullptr && key != nullptr && value != nullptr,
-                    "query, key and value are required");
+  ORT_RETURN_IF_NOT(query != nullptr, "query is required");
+  const bool is_packed_qkv = key == nullptr && value == nullptr;
+  ORT_RETURN_IF_NOT(is_packed_qkv || (key != nullptr && value != nullptr),
+                    "key and value must be both present or both absent");
 
   const auto& q_shape = query->Shape();
-  const auto& k_shape = key->Shape();
-  const auto& v_shape = value->Shape();
   const size_t qkv_rank = q_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(qkv_rank == 3 || qkv_rank == 4,
-                    "query, key and value must be rank 3 [total_tokens, num_heads, head_size] or "
-                    "rank 4 [batch, sequence, num_heads, head_size]");
-  ORT_RETURN_IF_NOT(k_shape.NumDimensions() == qkv_rank && v_shape.NumDimensions() == qkv_rank,
-                    "query, key and value must have the same rank");
+  ORT_RETURN_IF_NOT(is_packed_qkv ? (qkv_rank == 2 || qkv_rank == 3) : (qkv_rank == 3 || qkv_rank == 4),
+                    is_packed_qkv
+                        ? "packed QKV must be rank 2 [total_tokens, packed_size] or rank 3 "
+                          "[batch, sequence, packed_size]"
+                        : "query, key and value must be rank 3 [total_tokens, num_heads, head_size] or "
+                          "rank 4 [batch, sequence, num_heads, head_size]");
 
   // Leading token axes: one when packed, two when the batch and sequence axes are explicit.
   // Both spellings have the identical token-major memory layout, so only the shapes differ.
-  const size_t token_dims = qkv_rank - 2;
+  const size_t token_dims = qkv_rank - (is_packed_qkv ? 1 : 2);
   const int64_t total_tokens = q_shape.SizeToDimension(token_dims);
-  ORT_RETURN_IF_NOT(k_shape.SizeToDimension(token_dims) == total_tokens &&
-                        v_shape.SizeToDimension(token_dims) == total_tokens,
-                    "query, key and value must agree on total_tokens");
   const int64_t max_int = std::numeric_limits<int>::max();
   ORT_RETURN_IF_NOT(total_tokens > 0 && total_tokens <= max_int,
                     "total_tokens must be positive and fit in int32");
 
-  // Head counts are derived from the shapes; there are no head-count attributes.
-  ORT_RETURN_IF_NOT(q_shape[token_dims] <= max_int && k_shape[token_dims] <= max_int &&
-                        v_shape[token_dims] <= max_int && q_shape[token_dims + 1] <= max_int &&
-                        v_shape[token_dims + 1] <= max_int,
-                    "head counts and head sizes must fit in int32");
-  const int num_heads_q = static_cast<int>(q_shape[token_dims]);
-  const int num_heads_k = static_cast<int>(k_shape[token_dims]);
-  const int num_heads_v = static_cast<int>(v_shape[token_dims]);
-  const int head_size_qk = static_cast<int>(q_shape[token_dims + 1]);
-  const int head_size_v = static_cast<int>(v_shape[token_dims + 1]);
+  int num_heads_q = 0;
+  int num_heads_k = 0;
+  int num_heads_v = 0;
+  int head_size_qk = 0;
+  int head_size_v = 0;
+  if (is_packed_qkv) {
+    ORT_RETURN_IF_NOT(initial_state != nullptr,
+                      "initial_state is required to derive packed QKV dimensions");
+    const auto& state_shape = initial_state->Shape();
+    ORT_RETURN_IF_NOT(state_shape.NumDimensions() == 4,
+                      "initial_state must be rank 4 [batch, num_heads_v, head_size_v, head_size_qk]");
+    ORT_RETURN_IF_NOT(state_shape[1] > 0 && state_shape[1] <= max_int &&
+                          state_shape[2] > 0 && state_shape[2] <= max_int &&
+                          state_shape[3] > 0 && state_shape[3] <= max_int,
+                      "packed QKV head counts and head sizes must be positive and fit in int32");
+    num_heads_v = static_cast<int>(state_shape[1]);
+    head_size_v = static_cast<int>(state_shape[2]);
+    head_size_qk = static_cast<int>(state_shape[3]);
+    const int64_t packed_size = q_shape[token_dims];
+    const int64_t value_size = static_cast<int64_t>(num_heads_v) * head_size_v;
+    ORT_RETURN_IF_NOT(packed_size > value_size &&
+                          (packed_size - value_size) % (2 * head_size_qk) == 0,
+                      "packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                      "num_heads_v * head_size_v");
+    num_heads_q = static_cast<int>((packed_size - value_size) / (2 * head_size_qk));
+    num_heads_k = num_heads_q;
+  } else {
+    const auto& k_shape = key->Shape();
+    const auto& v_shape = value->Shape();
+    ORT_RETURN_IF_NOT(k_shape.NumDimensions() == qkv_rank && v_shape.NumDimensions() == qkv_rank,
+                      "query, key and value must have the same rank");
+    ORT_RETURN_IF_NOT(k_shape.SizeToDimension(token_dims) == total_tokens &&
+                          v_shape.SizeToDimension(token_dims) == total_tokens,
+                      "query, key and value must agree on total_tokens");
+    ORT_RETURN_IF_NOT(q_shape[token_dims] <= max_int && k_shape[token_dims] <= max_int &&
+                          v_shape[token_dims] <= max_int && q_shape[token_dims + 1] <= max_int &&
+                          v_shape[token_dims + 1] <= max_int,
+                      "head counts and head sizes must fit in int32");
+    num_heads_q = static_cast<int>(q_shape[token_dims]);
+    num_heads_k = static_cast<int>(k_shape[token_dims]);
+    num_heads_v = static_cast<int>(v_shape[token_dims]);
+    head_size_qk = static_cast<int>(q_shape[token_dims + 1]);
+    head_size_v = static_cast<int>(v_shape[token_dims + 1]);
+    ORT_RETURN_IF_NOT(k_shape[token_dims + 1] == head_size_qk,
+                      "key head_size must equal query head_size");
+  }
 
-  ORT_RETURN_IF_NOT(k_shape[token_dims + 1] == head_size_qk,
-                    "key head_size must equal query head_size");
   ORT_RETURN_IF_NOT(num_heads_q == num_heads_k,
                     "num_heads_q (", num_heads_q, ") must equal num_heads_k (", num_heads_k, ")");
   ORT_RETURN_IF_NOT(num_heads_v > 0 && num_heads_q > 0 && num_heads_v % num_heads_q == 0,
@@ -172,12 +204,12 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
 
   int64_t batch_dim = 1;
   if (cu_seqlens != nullptr) {
-    ORT_RETURN_IF_NOT(qkv_rank == 3,
+    ORT_RETURN_IF_NOT(token_dims == 1,
                       "cu_seqlens describes ragged packing, so query/key/value must be rank 3");
     ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,
                       "cu_seqlens must be rank 1 with at least 2 elements");
     batch_dim = cu_seqlens->Shape()[0] - 1;
-  } else if (qkv_rank == 4) {
+  } else if (token_dims == 2) {
     batch_dim = q_shape[0];
   } else {
     // Uniform packing. The batch size comes from the state, which GenAI always binds.
@@ -328,10 +360,48 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                       prop.sharedMemPerBlockOptin);
   }
 
+  const size_t query_row_bytes = static_cast<size_t>(num_heads_q) * head_size_qk * sizeof(T);
+  const size_t key_row_bytes = static_cast<size_t>(num_heads_k) * head_size_qk * sizeof(T);
+  const size_t value_row_bytes = static_cast<size_t>(num_heads_v) * head_size_v * sizeof(T);
+  const size_t unpacked_qkv_bytes = is_packed_qkv
+                                        ? static_cast<size_t>(total_tokens) *
+                                              (query_row_bytes + key_row_bytes + value_row_bytes)
+                                        : 0;
+  IAllocatorUniquePtr<uint8_t> workspace;
+  if (unpacked_qkv_bytes + plan.workspace_bytes > 0) {
+    workspace = GetScratchBuffer<uint8_t>(unpacked_qkv_bytes + plan.workspace_bytes,
+                                          GetComputeStream(context));
+  }
+
+  const cudaStream_t stream = Stream(context);
+  const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
+  const CudaT* key_data = key != nullptr ? reinterpret_cast<const CudaT*>(key->Data<T>()) : nullptr;
+  const CudaT* value_data = value != nullptr ? reinterpret_cast<const CudaT*>(value->Data<T>()) : nullptr;
+  if (is_packed_qkv) {
+    const size_t packed_row_bytes = query_row_bytes + key_row_bytes + value_row_bytes;
+    auto* unpacked_query = workspace.get();
+    auto* unpacked_key = unpacked_query + static_cast<size_t>(total_tokens) * query_row_bytes;
+    auto* unpacked_value = unpacked_key + static_cast<size_t>(total_tokens) * key_row_bytes;
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_query, query_row_bytes,
+                                           query_data, packed_row_bytes, query_row_bytes,
+                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_key, key_row_bytes,
+                                           reinterpret_cast<const uint8_t*>(query_data) + query_row_bytes,
+                                           packed_row_bytes, key_row_bytes,
+                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(unpacked_value, value_row_bytes,
+                                           reinterpret_cast<const uint8_t*>(query_data) + query_row_bytes + key_row_bytes,
+                                           packed_row_bytes, value_row_bytes,
+                                           static_cast<size_t>(total_tokens), cudaMemcpyDeviceToDevice, stream));
+    query_data = reinterpret_cast<const CudaT*>(unpacked_query);
+    key_data = reinterpret_cast<const CudaT*>(unpacked_key);
+    value_data = reinterpret_cast<const CudaT*>(unpacked_value);
+  }
+
   gdn::VariantPack<CudaT> pack{};
-  pack.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  pack.key = reinterpret_cast<const CudaT*>(key->Data<T>());
-  pack.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  pack.query = query_data;
+  pack.key = key_data;
+  pack.value = value_data;
   pack.cu_seqlens = cu_seqlens != nullptr ? cu_seqlens->Data<int32_t>() : nullptr;
   pack.capture_count = desc.state_update_active ? capture_count->Data<int32_t>() : nullptr;
   pack.decay = decay != nullptr ? decay->Data<float>() : nullptr;
@@ -343,7 +413,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   pack.final_state = final_state != nullptr ? final_state->MutableData<float>() : nullptr;
   pack.state_update = state_update != nullptr ? state_update->MutableData<float>() : nullptr;
 
-  const cudaStream_t stream = Stream(context);
   // Only the inactive case is cleared. While capture is active the kernels write just the
   // captured prefix, and the schema declares the remaining entries unspecified.
   if (state_update != nullptr && state_update_capacity_ > 0 && !desc.state_update_active) {
@@ -351,10 +420,8 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   }
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size_qk));
 
-  IAllocatorUniquePtr<uint8_t> workspace;
   if (plan.workspace_bytes > 0) {
-    workspace = GetScratchBuffer<uint8_t>(plan.workspace_bytes, GetComputeStream(context));
-    pack.workspace = workspace.get();
+    pack.workspace = workspace.get() + unpacked_qkv_bytes;
   }
 
   return gdn::LaunchGatedDeltaNet<CudaT>(
