@@ -61,3 +61,24 @@
 +                            (void)ex;
                              LOG_ERROR("Unhandled exception in worker task: %s", ex.what());
                          }
+
+--- a/cmake/MatsdkFetchCurl.cmake
++++ b/cmake/MatsdkFetchCurl.cmake
+@@ -33,5 +33,4 @@
+       MBEDTLS_FATAL_WARNINGS
+       USE_SHARED_MBEDTLS_LIBRARY
+-      LINK_WITH_PTHREAD
+       BUILD_CURL_EXE
+       BUILD_EXAMPLES
+@@ -85,3 +84,4 @@
+   if(MATSDK_CURL_TLS_BACKEND_UPPER STREQUAL "MBEDTLS")
++    set(LINK_WITH_PTHREAD ON)
+     set(USE_STATIC_MBEDTLS_LIBRARY ON)
+     set(CURL_USE_MBEDTLS ON)
+@@ -96,3 +96,6 @@
+     foreach(target mbedtls mbedx509 mbedcrypto)
+       matsdk_configure_fetched_static_target("${target}")
++      target_compile_definitions("${target}" PRIVATE
++        MBEDTLS_THREADING_C
++        MBEDTLS_THREADING_PTHREAD)
+     endforeach()

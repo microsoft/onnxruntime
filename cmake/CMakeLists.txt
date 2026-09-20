@@ -1982,6 +1982,19 @@ else()
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
+    if(onnxruntime_USE_TELEMETRY AND APPLE
+       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
+      string(APPEND PROJECT_CONFIG_CONTENT
+        "if(NOT TARGET MSTelemetry::sqlite_dependency)\n\
+        add_library(MSTelemetry::sqlite_dependency INTERFACE IMPORTED)\n\
+        set_property(TARGET MSTelemetry::sqlite_dependency PROPERTY INTERFACE_LINK_LIBRARIES sqlite3)\n\
+        endif()\n\
+        if(NOT TARGET MSTelemetry::zlib_dependency)\n\
+        add_library(MSTelemetry::zlib_dependency INTERFACE IMPORTED)\n\
+        set_property(TARGET MSTelemetry::zlib_dependency PROPERTY INTERFACE_LINK_LIBRARIES z)\n\
+        endif()\n\
+        ")
+    endif()
     if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
        AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
        AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
