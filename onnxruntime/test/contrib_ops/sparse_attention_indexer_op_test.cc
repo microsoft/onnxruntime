@@ -1142,6 +1142,10 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaPackedQkFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu, true);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
 }
