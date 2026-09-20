@@ -2018,6 +2018,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                                     sai::kPositionIds, sai::kPastProjBuffer};
   for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
+    if (is_qsa && index == sai::kKey) {
+      continue;
+    }
     if (!SparseAttentionIndexerHasInput(ctx, index)) {
       fail_shape_inference("SparseAttentionIndexer: input ", index, " is required for every policy_mode");
     }
@@ -2047,6 +2050,7 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
   updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
 
+  const bool has_key = SparseAttentionIndexerHasInput(ctx, sai::kKey);
   (void)SparseAttentionIndexerShape(ctx, sai::kKey, 3);
   (void)SparseAttentionIndexerShape(ctx, sai::kKeyNormWeight, 1);
   (void)SparseAttentionIndexerRotaryCacheShape(ctx, sai::kCosCache);
@@ -2070,9 +2074,15 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   if (head_size_dim.has_dim_value() && head_size_dim.dim_value() <= 0) {
     fail_shape_inference("SparseAttentionIndexer: head_size must be > 0, got ", head_size_dim.dim_value());
   }
-  if (query_width_dim.has_dim_value() && head_size_dim.has_dim_value() && head_size_dim.dim_value() > 0 &&
-      query_width_dim.dim_value() % head_size_dim.dim_value() != 0) {
-    fail_shape_inference("SparseAttentionIndexer: query width must be divisible by head_size");
+  if (query_width_dim.has_dim_value() && head_size_dim.has_dim_value() && head_size_dim.dim_value() > 0) {
+    const int64_t query_width = query_width_dim.dim_value();
+    const int64_t head_size = head_size_dim.dim_value();
+    if (query_width % head_size != 0) {
+      fail_shape_inference("SparseAttentionIndexer: query width must be divisible by head_size");
+    }
+    if (is_qsa && !has_key && query_width / head_size < 2) {
+      fail_shape_inference("SparseAttentionIndexer: packed QK input must contain at least one query head and one key");
+    }
   }
   if (!is_qsa && head_size_dim.has_dim_value() && head_size_dim.dim_value() > std::numeric_limits<int64_t>::max() / 2) {
     fail_shape_inference("SparseAttentionIndexer: 2 * head_size exceeds INT64_MAX");
@@ -2255,14 +2265,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "query",
                "Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before "
-               "normalization, logical reshape, and rotary embedding.",
+           "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
+           "this input instead packs query followed by key along the last dimension and has shape "
+           "(batch_size, sequence_length, (num_heads + 1) * head_size).",
                "T")
         .Input(1,
                "key",
                "Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) "
                "for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', "
-               "where the first head_size channels are the Ca series and the last head_size channels the Cb series.",
-               "T")
+                 "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
+                 "May be omitted for policy_mode 'qsa' when query contains packed QK.",
+                 "T",
+                 OpSchema::Optional)
         .Input(2,
                "query_norm_weight",
                "Effective RMSNorm multiplier of the queries, with shape (head_size).",
