@@ -29,7 +29,7 @@ struct SubgroupMatrixMatMulNBitsTiling {
       return false;
     }
 
-    // TODO: Support arbitrary M/N/K shapes via input pre-packing or padded output buffers.
+    // TODO: Support arbitrary M/N/K shapes via input pre-packing or extra tail buffer.
     return M % output_m_multiple == 0 &&
            N % output_n_multiple == 0 &&
            K % chunk_size_k == 0;
@@ -361,7 +361,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  // TODO: Clean up the weight_idx_indirect in shaders.
+  // TODO: Support weight_idx_indirect.
   if (has_weight_idx_indirect) {
     return false;
   }
