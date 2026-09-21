@@ -6697,7 +6697,7 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_HandleNegativeDqAxis) {
   test_case(true);
 }
 
-TEST(QDQTransformerTests, WeightBiasQuantization_SkipUnknownWeightShape) {
+TEST(QDQTransformerTests, WeightBiasQuantization_NonNegativeAxisWithUnknownWeightShape) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     constexpr int64_t channels = 24;
     NodeArg* input_arg = builder.MakeInput<uint8_t>({1, channels, 8, 8}, 0, 255);
