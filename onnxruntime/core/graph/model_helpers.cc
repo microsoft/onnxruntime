@@ -101,6 +101,94 @@ void CollectLocalFunctionCalls(
   }
 }
 
+bool FunctionReferencesAttribute(const ONNX_NAMESPACE::FunctionProto& function_proto,
+                                 std::string_view attribute_name) {
+  InlinedVector<const ONNX_NAMESPACE::GraphProto*> pending_graphs;
+
+  auto process_nodes = [&](const auto& nodes) {
+    for (const auto& node : nodes) {
+      for (const auto& attr : node.attribute()) {
+        if (attr.ref_attr_name() == attribute_name) {
+          return true;
+        }
+        if (attr.has_g()) {
+          pending_graphs.push_back(&attr.g());
+        }
+        for (const auto& graph : attr.graphs()) {
+          pending_graphs.push_back(&graph);
+        }
+      }
+    }
+    return false;
+  };
+
+  if (process_nodes(function_proto.node())) {
+    return true;
+  }
+
+  while (!pending_graphs.empty()) {
+    const auto* graph = pending_graphs.back();
+    pending_graphs.pop_back();
+    if (process_nodes(graph->node())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void AddReferencedGraphAttributeCalls(
+    const Graph& main_graph,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    LocalFunctionCallGraph& call_graph) {
+  InlinedVector<const Graph*> pending_graphs{&main_graph};
+
+  while (!pending_graphs.empty()) {
+    const auto* graph = pending_graphs.back();
+    pending_graphs.pop_back();
+
+    for (const auto& node : graph->Nodes()) {
+      const auto function_id = function_utils::GetFunctionIdentifier(
+          node.Domain(), node.OpType(), node.Overload());
+      const auto function_it = model_local_functions.find(function_id);
+      const bool is_local_function_call = function_it != model_local_functions.end();
+
+      for (const auto& [attr_name, attr] : node.GetAttributes()) {
+        const Graph* subgraph = nullptr;
+        if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+          subgraph = node.GetGraphAttribute(attr_name);
+          if (subgraph != nullptr) {
+            pending_graphs.push_back(subgraph);
+          }
+        }
+
+        if (!is_local_function_call ||
+            !FunctionReferencesAttribute(*function_it->second, attr_name)) {
+          continue;
+        }
+
+        InlinedHashSet<std::string_view> seen_calls;
+        InlinedVector<std::string_view> attribute_calls;
+        if (subgraph != nullptr) {
+          CollectLocalFunctionCalls(*subgraph, model_local_functions, seen_calls, attribute_calls);
+        } else if (attr.has_g()) {
+          CollectLocalFunctionCalls(attr.g().node(), model_local_functions, seen_calls, attribute_calls);
+        }
+        for (const auto& attribute_graph : attr.graphs()) {
+          CollectLocalFunctionCalls(attribute_graph.node(), model_local_functions, seen_calls, attribute_calls);
+        }
+
+        auto& callees = call_graph.at(function_it->first);
+        for (const auto callee : attribute_calls) {
+          if (std::find(callees.begin(), callees.end(), callee) == callees.end()) {
+            callees.push_back(callee);
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 Status BuildLocalFunctionCallGraph(
@@ -297,6 +385,8 @@ Status ValidateModelLocalFunctionCallDepth(
 
   LocalFunctionCallGraph call_graph;
   ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
+  AddReferencedGraphAttributeCalls(main_graph, model_local_functions, call_graph);
+  ORT_RETURN_IF_ERROR(ValidateCallGraphAcyclic(call_graph));
   InlinedHashSet<std::string_view> seen_calls;
   InlinedVector<std::string_view> root_calls;
   CollectLocalFunctionCalls(main_graph, model_local_functions, seen_calls, root_calls);

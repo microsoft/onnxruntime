@@ -656,6 +656,81 @@ static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_dept
   return model_proto;
 }
 
+static void WrapLocalFunctionChainInReferencedGraphAttribute(ONNX_NAMESPACE::ModelProto& model_proto) {
+  auto* graph = model_proto.mutable_graph();
+  auto* condition = graph->add_input();
+  condition->set_name("condition");
+  condition->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  auto* root_node = graph->mutable_node(0);
+  root_node->set_op_type("wrapper");
+  root_node->clear_input();
+  root_node->add_input("x");
+  root_node->add_input("condition");
+
+  auto* body_attr = root_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* body_graph = body_attr->mutable_g();
+  body_graph->set_name("body");
+  auto* function_call = body_graph->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+  function_call->add_input("x");
+  function_call->add_output("body_output");
+  auto* body_output = body_graph->add_output();
+  body_output->set_name("body_output");
+  body_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* wrapper = model_proto.add_functions();
+  wrapper->set_domain("local");
+  wrapper->set_name("wrapper");
+  wrapper->add_input("x");
+  wrapper->add_input("condition");
+  wrapper->add_output("y");
+  wrapper->add_attribute("body");
+  auto* wrapper_onnx_opset = wrapper->add_opset_import();
+  wrapper_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  wrapper_onnx_opset->set_version(16);
+
+  auto* if_node = wrapper->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("y");
+  auto* then_attr = if_node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  then_attr->set_ref_attr_name("body");
+  auto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* else_graph = else_attr->mutable_g();
+  else_graph->set_name("else");
+  auto* identity = else_graph->add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("x");
+  identity->add_output("else_output");
+  auto* else_output = else_graph->add_output();
+  else_output->set_name("else_output");
+  else_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+}
+
+TEST(FunctionTest, ReferencedGraphAttributeContributesToLocalFunctionDepth) {
+  auto accepted_model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth - 1);
+  WrapLocalFunctionChainInReferencedGraphAttribute(accepted_model_proto);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model accepted_model(std::move(accepted_model_proto), nullptr, logger);
+  ASSERT_STATUS_OK(accepted_model.MainGraph().Resolve());
+
+  auto rejected_model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  WrapLocalFunctionChainInReferencedGraphAttribute(rejected_model_proto);
+  Model rejected_model(std::move(rejected_model_proto), nullptr, logger);
+  const auto status = rejected_model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
 TEST(FunctionTest, LoadFromBytes_ExcessiveLocalFunctionDepthReturnsStatus) {
   auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
   std::string serialized_model;
