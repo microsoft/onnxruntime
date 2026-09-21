@@ -265,6 +265,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
                                 Tensor* output_tensor,
                                 bool is_channels_last,
                                 const MatMulComputeHelper& helper,
+                                const MatMulPackedConfiguration& configuration,
                                 bool use_split_k) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
@@ -299,19 +300,26 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  InlinedVector<int64_t> elements_per_thread = dim_a_outer <= 8
-                                                   ? InlinedVector<int64_t>({4, 1, 1})
-                                                   : InlinedVector<int64_t>({4, 4, 1});
-  const uint32_t dispatch_x = narrow<uint32_t>(
-      (dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
-      (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>(
-      (dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
-      (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  uint32_t dispatch_z = narrow<uint32_t>(
-      (static_cast<uint32_t>(batch_size) +
-       MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-      (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  ORT_RETURN_IF_NOT(IsMatMulPackedConfigurationValid(configuration, use_split_k),
+                    "MatMul packed configuration is invalid for ",
+                    use_split_k ? "Split-K." : "the packed algorithm.");
+  InlinedVector<int64_t> elements_per_thread{
+      configuration.elements_per_thread[0],
+      configuration.elements_per_thread[1],
+      configuration.elements_per_thread[2]};
+  const auto dispatch_x_value = TryGetMatMulPackedDispatchGroupCount(
+      dim_b_outer, configuration.workgroup_size[0], configuration.elements_per_thread[0]);
+  const auto dispatch_y_value = TryGetMatMulPackedDispatchGroupCount(
+      dim_a_outer, configuration.workgroup_size[1], configuration.elements_per_thread[1]);
+  const auto dispatch_z_value = TryGetMatMulPackedDispatchGroupCount(
+      batch_size, configuration.workgroup_size[2], configuration.elements_per_thread[2]);
+  ORT_RETURN_IF_NOT(dispatch_x_value.has_value() &&
+                        dispatch_y_value.has_value() &&
+                        dispatch_z_value.has_value(),
+                    "MatMul packed dispatch dimensions exceed uint32 limits.");
+  const uint32_t dispatch_x = *dispatch_x_value;
+  const uint32_t dispatch_y = *dispatch_y_value;
+  uint32_t dispatch_z = *dispatch_z_value;
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp =
@@ -328,7 +336,7 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   if (use_split_k) {
     ORT_RETURN_IF(context.KernelContext().GetUseDeterministicCompute(),
                   "MatMul algorithm packed_split_k does not support deterministic compute.");
-    ORT_RETURN_IF_NOT(context.GetSplitKConfig().GetSplitDimInner() != 0,
+    ORT_RETURN_IF_NOT(configuration.split_dim_inner > 1,
                       "MatMul algorithm packed_split_k is not configured for this adapter.");
     ORT_RETURN_IF_NOT(is_vec4,
                       "MatMul algorithm packed_split_k requires vec4 packing.");
@@ -342,8 +350,12 @@ static Status ApplyMatMulPacked(ComputeContext& context,
         /*output_components=*/4, output_shape_temp, narrow<uint32_t>(batch_size));
     ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
     use_bias_in_matmul = false;
-    split_dim_inner = context.GetSplitKConfig().GetSplitDimInner();
-    splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+    split_dim_inner = configuration.split_dim_inner;
+    const auto splits_per_batch_value = TryGetMatMulPackedDispatchGroupCount(
+        dim_inner, split_dim_inner, 1);
+    ORT_RETURN_IF_NOT(splits_per_batch_value.has_value(),
+                      "MatMul packed Split-K count exceeds uint32 limits.");
+    splits_per_batch = *splits_per_batch_value;
     const uint64_t dispatch_z_u64 =
         static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(splits_per_batch);
     ORT_RETURN_IF_NOT(dispatch_z_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
@@ -353,18 +365,20 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   }
 
   MatMulProgram program{activation, use_bias_in_matmul, is_vec4, elements_per_thread,
-                        is_channels_last, split_dim_inner};
+                        is_channels_last, split_dim_inner, configuration.tile_inner};
   program
       .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
-                 std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
+                 absl::StrJoin(configuration.workgroup_size, "-"),
+                 std::to_string(is_vec4), components, is_channels_last,
+                 split_dim_inner, configuration.tile_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X,
-                        MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y,
-                        MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
+      .SetWorkgroupSize(configuration.workgroup_size[0],
+                        configuration.workgroup_size[1],
+                        configuration.workgroup_size[2])
       .AddOutput(std::move(output));
   AppendActivationUniformsData(activation, program);
 
@@ -400,25 +414,60 @@ Status ComputeMatMul(ComputeContext* context,
   const bool use_split_k =
       ShouldUsePackedSplitK(*context, activation, inputs, is_channels_last, helper);
 
+  const int64_t batch_a =
+      logical_a_shape.NumDimensions() > 2
+          ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 2)
+          : 1;
+  const int64_t batch_b =
+      logical_b_shape.NumDimensions() > 2
+          ? logical_b_shape.SizeToDimension(logical_b_shape.NumDimensions() - 2)
+          : 1;
+  const TensorShape& logical_output_shape = helper.OutputShape();
+  const uint64_t batch_size = logical_output_shape.NumDimensions() > 2
+                                  ? narrow<uint64_t>(logical_output_shape.SizeToDimension(
+                                        logical_output_shape.NumDimensions() - 2))
+                                  : 1;
+  const bool folds_batch_into_m = batch_a != 1 && batch_b == 1;
+
   MatMulAlgorithmSelectionParams selection_params{};
   selection_params.m = helper.M();
   selection_params.n = helper.N();
   selection_params.k = helper.K();
+  selection_params.packed_m = folds_batch_into_m
+                                  ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 1)
+                                  : helper.M();
+  selection_params.batch_size = batch_size;
+  selection_params.packed_batch_size = folds_batch_into_m ? 1 : batch_size;
+  selection_params.adapter_architecture = context->AdapterInfo().architecture;
+  selection_params.a_data_type = a->GetElementType();
+  selection_params.b_data_type = b->GetElementType();
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
   selection_params.has_intel_subgroup_capability = has_intel_subgroup_capability;
-  selection_params.use_split_k = use_split_k;
+  selection_params.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
+  selection_params.deterministic_compute = context->KernelContext().GetUseDeterministicCompute();
+  selection_params.has_fused_activation = activation.activation_kind_ != ActivationKind::None;
+  selection_params.has_bias = has_bias;
+  selection_params.is_channels_last = is_channels_last;
+  selection_params.common_use_split_k = use_split_k;
+  selection_params.split_dim_inner = context->GetSplitKConfig().GetSplitDimInner();
 
-  const MatMulAlgorithm algorithm =
-      cache.GetOrCreateScheduler(*context).Select(selection_params, context->ForcedMatMulAlgorithm());
+  const MatMulExecutionPlan plan = cache.GetOrCreateScheduler(*context).CreateExecutionPlan(
+      selection_params, context->ForcedMatMulAlgorithm());
+  const MatMulAlgorithm algorithm = plan.algorithm;
+  ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),
+                    "MatMul algorithm ", MatMulAlgorithmName(algorithm),
+                    " received an incompatible vendor configuration.");
+  const auto* packed_configuration = std::get_if<MatMulPackedConfiguration>(&plan.configuration);
 
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
   prerequisites.has_intel_subgroup_capability = has_intel_subgroup_capability;
   prerequisites.has_nonzero_k = helper.K() > 0;
-  prerequisites.split_k_configured = context->GetSplitKConfig().GetSplitDimInner() != 0;
-  prerequisites.deterministic_compute = context->KernelContext().GetUseDeterministicCompute();
-  prerequisites.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
-  prerequisites.has_fused_activation = activation.activation_kind_ != ActivationKind::None;
+  prerequisites.split_k_configured =
+      packed_configuration != nullptr && packed_configuration->split_dim_inner > 1;
+  prerequisites.deterministic_compute = selection_params.deterministic_compute;
+  prerequisites.is_vec4 = selection_params.is_vec4;
+  prerequisites.has_fused_activation = selection_params.has_fused_activation;
   prerequisites.split_k_bias_layout_supported = !has_bias || is_channels_last;
   ORT_RETURN_IF_NOT(MeetsMatMulAlgorithmPrerequisites(algorithm, prerequisites),
                     "MatMul algorithm ", MatMulAlgorithmName(algorithm),
@@ -439,10 +488,12 @@ Status ComputeMatMul(ComputeContext* context,
     case MatMulAlgorithm::Packed:
       return ApplyMatMulPacked(
           *context, activation, inputs, output_tensor, is_channels_last, helper,
+          *packed_configuration,
           /*use_split_k=*/false);
     case MatMulAlgorithm::PackedSplitK:
       return ApplyMatMulPacked(
           *context, activation, inputs, output_tensor, is_channels_last, helper,
+          *packed_configuration,
           /*use_split_k=*/true);
   }
 

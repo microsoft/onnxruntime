@@ -13,6 +13,9 @@ class IntelMatMulAlgorithmScheduler final : public MatMulAlgorithmScheduler {
  protected:
   std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
       const MatMulAlgorithmSelectionParams& params) const override {
+    if (params.can_use_subgroup_matrix) {
+      return MatMulAlgorithm::SubgroupMatrix;
+    }
     if (params.has_intel_subgroup_capability &&
         params.m >= 64 && params.n >= 512 && params.k >= 32) {
       return MatMulAlgorithm::IntelSubgroup;

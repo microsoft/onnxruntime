@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 
 #include "core/providers/webgpu/math/matmul_algorithm.h"
@@ -11,6 +13,59 @@
 namespace onnxruntime {
 namespace webgpu {
 namespace test {
+
+namespace {
+
+class AlwaysPackedVendorScheduler final : public MatMulAlgorithmScheduler {
+ protected:
+  std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
+      const MatMulAlgorithmSelectionParams& /*params*/) const override {
+    return MatMulAlgorithm::Packed;
+  }
+};
+
+class TunedPackedVendorScheduler final : public MatMulAlgorithmScheduler {
+ protected:
+  std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
+      const MatMulAlgorithmSelectionParams& /*params*/) const override {
+    return MatMulAlgorithm::Naive;
+  }
+
+  std::optional<MatMulAlgorithmConfiguration> SelectVendorConfiguration(
+      MatMulAlgorithm algorithm,
+      const MatMulAlgorithmSelectionParams& params) const override {
+    const bool is_packed_algorithm = algorithm == MatMulAlgorithm::Packed ||
+                                     algorithm == MatMulAlgorithm::PackedSplitK;
+    if (!is_packed_algorithm ||
+        params.adapter_architecture != "test-architecture" ||
+        params.a_data_type != 10 || params.b_data_type != 10) {
+      return std::nullopt;
+    }
+
+    MatMulPackedConfiguration configuration{};
+    configuration.workgroup_size = {16, 4, 1};
+    configuration.elements_per_thread = {4, 2, 1};
+    configuration.tile_inner = 16;
+    configuration.split_dim_inner = 128;
+    return configuration;
+  }
+};
+
+class VendorSplitKThresholdScheduler final : public MatMulAlgorithmScheduler {
+ protected:
+  std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
+      const MatMulAlgorithmSelectionParams& params) const override {
+    if (params.batch_size <= 16 && params.is_vec4 &&
+        !params.deterministic_compute && !params.has_fused_activation &&
+        (!params.has_bias || params.is_channels_last) &&
+        params.split_dim_inner != 0) {
+      return MatMulAlgorithm::PackedSplitK;
+    }
+    return std::nullopt;
+  }
+};
+
+}  // namespace
 
 TEST(MatMulAlgorithmParsingTest, RoundTripsEveryAlgorithmName) {
   struct TestCase {
@@ -38,22 +93,141 @@ TEST(MatMulAlgorithmParsingTest, RejectsUnknownAlgorithmName) {
 }
 
 TEST(MatMulAlgorithmSchedulerTest, ForcedAlgorithmTakesPrecedence) {
-  MatMulAlgorithmScheduler scheduler;
+  AlwaysPackedVendorScheduler scheduler;
   MatMulAlgorithmSelectionParams params{};
   params.can_use_subgroup_matrix = true;
 
-  EXPECT_EQ(scheduler.Select(params, MatMulAlgorithm::Packed), MatMulAlgorithm::Packed);
+  EXPECT_EQ(scheduler.Select(params, MatMulAlgorithm::Naive), MatMulAlgorithm::Naive);
 }
 
-TEST(MatMulAlgorithmSchedulerTest, SubgroupMatrixTakesAutomaticPrecedence) {
+TEST(MatMulAlgorithmSchedulerTest, VendorCanTuneForcedAlgorithmConfiguration) {
+  TunedPackedVendorScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.adapter_architecture = "test-architecture";
+  params.a_data_type = 10;
+  params.b_data_type = 10;
+
+  const MatMulExecutionPlan plan =
+      scheduler.CreateExecutionPlan(params, MatMulAlgorithm::Packed);
+
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::Packed);
+  const auto& configuration =
+      std::get<MatMulPackedConfiguration>(plan.configuration);
+  EXPECT_EQ(configuration.workgroup_size,
+            (std::array<uint32_t, 3>{16, 4, 1}));
+  EXPECT_EQ(configuration.elements_per_thread,
+            (std::array<uint32_t, 3>{4, 2, 1}));
+  EXPECT_EQ(configuration.tile_inner, 16u);
+  EXPECT_EQ(configuration.split_dim_inner, 128u);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, VendorCanSetIndependentSplitKThresholds) {
+  VendorSplitKThresholdScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 32;
+  params.n = 64;
+  params.k = 1024;
+  params.batch_size = 16;
+  params.is_vec4 = true;
+  params.is_channels_last = true;
+  params.split_dim_inner = 128;
+  params.common_use_split_k = false;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::PackedSplitK);
+
+  params.batch_size = 17;
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, CommonPackedConfigurationPreservesCurrentTuning) {
+  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 8;
+  params.packed_m = 8;
+  params.n = 64;
+  params.k = 64;
+
+  const MatMulExecutionPlan small_m_plan = scheduler.CreateExecutionPlan(params);
+  const auto& small_m_configuration =
+      std::get<MatMulPackedConfiguration>(small_m_plan.configuration);
+  EXPECT_EQ(small_m_configuration.workgroup_size,
+            (std::array<uint32_t, 3>{8, 8, 1}));
+  EXPECT_EQ(small_m_configuration.elements_per_thread,
+            (std::array<uint32_t, 3>{4, 1, 1}));
+  EXPECT_EQ(small_m_configuration.tile_inner, 32u);
+
+  params.m = 9;
+  params.packed_m = 9;
+  const MatMulExecutionPlan large_m_plan = scheduler.CreateExecutionPlan(params);
+  const auto& large_m_configuration =
+      std::get<MatMulPackedConfiguration>(large_m_plan.configuration);
+  EXPECT_EQ(large_m_configuration.elements_per_thread,
+            (std::array<uint32_t, 3>{4, 4, 1}));
+}
+
+TEST(MatMulAlgorithmConfigurationTest, PackedConfigurationKeepsBatchAxesUntiled) {
+  MatMulPackedConfiguration configuration{};
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+
+  configuration.workgroup_size[2] = 2;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+
+  configuration.workgroup_size[2] = 1;
+  configuration.elements_per_thread[2] = 2;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
+}
+
+TEST(MatMulAlgorithmConfigurationTest, SplitKConfigurationRequiresTileAlignedSplits) {
+  MatMulPackedConfiguration configuration{};
+  configuration.tile_inner = 32;
+  configuration.split_dim_inner = 64;
+  EXPECT_TRUE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/true));
+
+  configuration.split_dim_inner = 48;
+  EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/true));
+}
+
+TEST(MatMulAlgorithmConfigurationTest, PackedDispatchArithmeticIsOverflowSafe) {
+  const auto maximum_tuning_dispatch = TryGetMatMulPackedDispatchGroupCount(
+      std::numeric_limits<uint32_t>::max(),
+      std::numeric_limits<uint32_t>::max(),
+      std::numeric_limits<uint32_t>::max());
+  ASSERT_TRUE(maximum_tuning_dispatch.has_value());
+  EXPECT_EQ(*maximum_tuning_dispatch, 1u);
+
+  EXPECT_EQ(TryGetMatMulPackedDispatchGroupCount(
+                std::numeric_limits<uint64_t>::max(), 1, 1),
+            std::nullopt);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, CommonFallbackPrefersSubgroupMatrix) {
   MatMulAlgorithmScheduler scheduler;
   MatMulAlgorithmSelectionParams params{};
   params.n = 4;
   params.k = 4;
   params.can_use_subgroup_matrix = true;
-  params.use_split_k = true;
+  params.common_use_split_k = true;
 
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, VendorPolicyPrecedesCommonHeuristics) {
+  AlwaysPackedVendorScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.n = 4;
+  params.k = 4;
+  params.can_use_subgroup_matrix = true;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, ZeroContractionDimensionPrecedesVendorPolicy) {
+  AlwaysPackedVendorScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.n = 8;
+  params.k = 0;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Naive);
 }
 
 TEST(MatMulAlgorithmSchedulerTest, NaiveUsesStrictSmallDimensionBoundaries) {
@@ -96,15 +270,27 @@ TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerAppliesCurrentVendorRule) {
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
 }
 
+TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerPreservesSubgroupMatrixPrecedence) {
+  intel::IntelMatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 64;
+  params.n = 512;
+  params.k = 32;
+  params.can_use_subgroup_matrix = true;
+  params.has_intel_subgroup_capability = true;
+
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
+}
+
 TEST(MatMulAlgorithmSchedulerTest, SplitKPrecedesPackedFallback) {
   MatMulAlgorithmScheduler scheduler;
   MatMulAlgorithmSelectionParams params{};
   params.n = 64;
   params.k = 1024;
-  params.use_split_k = true;
+  params.common_use_split_k = true;
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::PackedSplitK);
 
-  params.use_split_k = false;
+  params.common_use_split_k = false;
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
 }
 

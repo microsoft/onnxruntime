@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make every `ComputeMatMul` implementation path explicit and independently testable without changing the default runtime behavior. Selection policy must be separated from execution, preserve the current rule order, and allow vendor-specific policy to extend the common rules.
+Make every `ComputeMatMul` implementation path explicit and independently testable. Selection policy must be separated from execution, retain the existing common rules as a fallback, and allow vendor-specific policy to override any performance heuristic.
 
 ## Algorithms
 
@@ -18,17 +18,25 @@ There is no `Auto` algorithm value. Automatic versus forced selection is represe
 
 ## Selection Architecture
 
-Add a `MatMulAlgorithmScheduler` base class. Its common rule order mirrors the existing `ComputeMatMul` condition order:
+Add a `MatMulAlgorithmScheduler` base class. Automatic selection uses this order:
 
-1. Select `SubgroupMatrix` when its implementation reports that it can handle the problem.
-2. Select `Naive` when `K == 0` or when `N < 8 && K < 8`.
-3. Ask a virtual vendor-policy hook for a vendor algorithm.
-4. Select `PackedSplitK` when the existing `SplitKConfig::UseSplitK` rule succeeds.
-5. Fall back to `Packed`.
+1. Select `Naive` when `K == 0`. This is a correctness rule and cannot be overridden by vendor policy.
+2. Ask the virtual `SelectVendorAlgorithm` policy hook for any algorithm. A vendor may use its own thresholds for every algorithm, not only vendor-specific implementations.
+3. If the vendor returns no selection, call the private, non-virtual `SelectCommonAlgorithm` fallback. It selects `SubgroupMatrix` when supported, `Naive` when `N < 8 && K < 8`, `PackedSplitK` when the existing `SplitKConfig::UseSplitK` rule succeeds, and otherwise `Packed`.
 
-An Intel-derived scheduler implements the vendor hook and selects `IntelSubgroup` under the current Intel subgroup rule. Other vendors use the base scheduler unchanged. Future vendor policies can derive from the base scheduler without adding vendor conditionals to `ComputeMatMul`.
+An Intel-derived scheduler implements the vendor hook. It preserves the original policy by selecting `SubgroupMatrix` first when applicable, then selecting `IntelSubgroup` under the current Intel subgroup rule. Other vendors use the base scheduler unchanged. Future vendor policies can derive from the base scheduler, override as many performance ranges as needed, and return no selection to delegate the remaining ranges to the common fallback without adding vendor conditionals to `ComputeMatMul`.
 
-The scheduler accepts already-computed selection facts rather than owning tensor execution. This keeps it deterministic and unit-testable without a WebGPU device. Vendor policy may inspect dimensions and device-derived capability facts, but it must return only a `MatMulAlgorithm`.
+The scheduler accepts immutable problem facts rather than mutable policy decisions: logical and packed dimensions, batch sizes, adapter architecture, input types, packing and layout facts, deterministic-compute state, activation and bias facts, device capabilities, and the configured Split-K size. The common `SplitKConfig::UseSplitK` result is passed separately as the common fallback recommendation. A vendor may ignore that recommendation and apply independent thresholds from the raw facts. This keeps the scheduler deterministic and unit-testable without a WebGPU device.
+
+## Execution Configuration
+
+Algorithm selection and execution tuning are separate decisions. After selecting one enum, the scheduler creates a `MatMulExecutionPlan` containing that enum and a typed algorithm configuration. It first asks the protected `SelectVendorConfiguration` hook for tuning, then uses private common defaults when the vendor declines. The tuning hook runs for both automatic and forced algorithms, so the test-only forcing option controls the implementation path without disabling real device tuning.
+
+The packed configuration initially contains workgroup size, elements per thread, inner tile size, and Split-K size. `ApplyMatMulPacked` consumes those values directly and includes shader-affecting values in its cache key. The common configuration preserves the existing `8x8x1` workgroup, `4x1x1` or `4x4x1` elements-per-thread rule, inner tile size 32, and adapter Split-K size. A vendor may replace any of these values without changing `ComputeMatMul` or the packed implementation.
+
+Packed tuning is validated at the execution boundary. The current shader requires both Z workgroup dimensions to remain one because Z identifies a batch or Split-K slice rather than a tiled output axis. Split-K sizes must be greater than one and aligned to the inner tile so adjacent workgroups cannot overlap their K ranges. Dispatch counts use widened, overflow-safe arithmetic and are range-checked before conversion to WebGPU's 32-bit dimensions.
+
+Configuration is represented by an algorithm-specific variant rather than a bag of unrelated optional fields. The dispatcher rejects an algorithm/configuration type mismatch before execution. Empty configuration types reserve the same typed boundary for algorithms whose tuning remains inside their existing implementation. In particular, subgroup-matrix MatMul already receives a vendor-specific `SubgroupMatrixTilingSelector`; that existing selector continues to choose tile M, tile N, and split K without coupling the scheduler to device or shader classes.
 
 ## Forced Test Selection
 
@@ -42,7 +50,7 @@ Invalid option strings fail during WebGPU provider creation and list accepted va
 
 ## Dispatch and Implementation Boundaries
 
-`ComputeMatMul` computes shared shape facts once, asks the scheduler for exactly one enum, and switches directly to the matching implementation. Algorithm bodies are extracted into focused helpers where necessary. The generic packed helper takes an explicit Split-K mode; it does not re-run the selection heuristic.
+`ComputeMatMul` computes shared shape facts once, asks the scheduler for one execution plan, validates its hard prerequisites and configuration type, and switches directly to the matching implementation. Algorithm bodies are extracted into focused helpers where necessary. The generic packed helper takes an explicit Split-K mode and packed configuration; it does not re-run selection or tuning heuristics.
 
 The subgroup-matrix optional implementation gains a non-mutating applicability query and an execution method that no longer communicates selection through a `handled` output. This removes trial execution as a dispatch mechanism.
 
@@ -50,13 +58,13 @@ The existing per-kernel cache continues to own device-dependent subgroup-matrix 
 
 ## Compatibility
 
-With no forcing option, the selected algorithm and precedence remain equivalent to the current code. Existing call sites keep using `ComputeMatMul`; the refactor does not change the operator API or model semantics.
+With no forcing option or vendor override, the common scheduler remains equivalent to the previous selection order. Existing call sites keep using `ComputeMatMul`; the refactor does not change the operator API or model semantics.
 
 The option is intentionally internal and test-only: it is declared with WebGPU provider options for configuration plumbing but is not added to public user documentation.
 
 ## Testing
 
-- Add device-independent scheduler unit tests covering every common branch, precedence, Intel override, default fallback, and forced override.
+- Add device-independent scheduler unit tests covering every common branch, forced-over-vendor precedence, the zero-K correctness guard, vendor-over-common precedence, Intel override, default fallback, independent vendor thresholds, common packed defaults, and vendor tuning of a forced algorithm.
 - Add parser/configuration tests for every accepted value and invalid input.
 - Add WebGPU MatMul tests that choose shapes which normally select a different path, force a compatible algorithm, and verify numerical output. Hardware-specific forced algorithms are tested only when their hard capabilities are present; strict-failure tests cover unsupported forced choices.
 - Build Dawn and the WebGPU provider on Windows with the Vulkan backend enabled and D3D12 disabled. Tests explicitly request `dawnBackendType=Vulkan`.
