@@ -1017,9 +1017,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph) if self.moe_onnx_graph else None
         return self.ort_sess is not None
 
-    def parity_check(self):
-        model_updated = self.recreate_onnx_model()
-        if not model_updated:
+    def parity_check(self, recreate_model=True):
+        if recreate_model and not self.recreate_onnx_model():
             raise AssertionError("Model update failed")
 
         dtype = onnx_to_torch_type_map.get(self.onnx_dtype, torch.float32)
@@ -1564,7 +1563,8 @@ class TestPhiQMoE(unittest.TestCase):
             use_asymmetric_quant=False,
         )
 
-        packed_moe.parity_check()
+        self.assertIsNotNone(packed_moe.ort_sess)
+        packed_moe.parity_check(recreate_model=False)
 
     @parameterized.expand(phi3_test_cases)
     def test_phi3_qmoe_parity(self, batch_size, sequence_length, quant_bits):
