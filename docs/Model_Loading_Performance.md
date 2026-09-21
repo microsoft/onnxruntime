@@ -104,8 +104,9 @@ session_options.AddConfigEntry("session.prepack.enable_parallel", "1");
 
 Ort::CUDAProviderOptions cuda_options;
 cuda_options.Update({{"external_data_loader_reading_threads", "4"}});
-session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
+session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "model_loading");
 Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 ```
 
