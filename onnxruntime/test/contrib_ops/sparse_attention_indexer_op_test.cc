@@ -317,6 +317,7 @@ struct QsaProblem {
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
   bool shared_rotary_cache = false;
+  bool cache_block_representatives = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -431,6 +432,36 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
       const int tail_start = block_count * problem.compress_ratio;
       for (size_t t = static_cast<size_t>(tail_start); t < visible.size(); ++t) {
         out_row[emitted * problem.compress_ratio + static_cast<int>(t) - tail_start] = visible[t];
+      }
+    }
+  }
+
+  if (problem.cache_block_representatives) {
+    const int completed_blocks = problem.TotalSequenceLength() / problem.compress_ratio;
+    for (int b = 0; b < problem.batch_size; ++b) {
+      const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
+      const float* cos_base =
+          problem.cos_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
+      const float* sin_base =
+          problem.sin_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
+      for (int block = 0; block < completed_blocks; ++block) {
+        const int first_position = block * problem.compress_ratio;
+        std::vector<float> pooled(static_cast<size_t>(head_size), 0.0f);
+        for (int token = 0; token < problem.compress_ratio; ++token) {
+          for (int d = 0; d < head_size; ++d) {
+            pooled[static_cast<size_t>(d)] +=
+                present_key[(static_cast<size_t>(b) * present_capacity + first_position + token) * head_size + d];
+          }
+        }
+        for (float& value : pooled) {
+          value /= static_cast<float>(problem.compress_ratio);
+        }
+        pooled = RmsNormalize(pooled, problem.key_norm_weight, problem.epsilon);
+        pooled = LeadingRope(pooled, problem.rotary_width, cos_base + first_position * problem.rotary_width,
+                             sin_base + first_position * problem.rotary_width);
+        std::copy(pooled.begin(), pooled.end(),
+                  present_key.begin() +
+                      (static_cast<size_t>(b) * present_capacity + first_position) * head_size);
       }
     }
   }
@@ -1253,6 +1284,56 @@ TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKFloat16) {
 
 TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) {
   RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopK) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 8191;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopKTies) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 65535;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  std::fill(problem.query.begin(), problem.query.end(), 0.0f);
+  std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
+  std::fill(problem.key.begin(), problem.key.end(), 0.0f);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSharedBlockRepresentatives) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 8;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 0;
+  problem.key_cache_capacity = 16;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 8;
+  problem.cache_block_representatives = true;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
 }
 
 TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
