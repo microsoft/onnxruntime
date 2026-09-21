@@ -118,11 +118,15 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 
 ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count,
                                        AllocatePinnedBufferFn allocate_pinned_buffer,
-                                       CreateStreamFn create_stream)
+                                       CreateStreamFn create_stream,
+                                       bool use_gds,
+                                       GdsLoader::CreateFn create_gds_loader)
     : device_id_(device_id),
       reading_thread_count_(reading_thread_count),
       allocate_pinned_buffer_(allocate_pinned_buffer),
-      create_stream_(create_stream) {}
+      create_stream_(create_stream),
+      use_gds_(use_gds),
+      create_gds_loader_(create_gds_loader) {}
 
 ExternalDataLoader::~ExternalDataLoader() {
   reader_pool_.reset();
@@ -165,6 +169,8 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
       cudaGetDevice(&previous_device) == cudaSuccess &&
       previous_device != device_id_ &&
       cudaSetDevice(device_id_) == cudaSuccess;
+
+  gds_loader_.reset();
 
   for (auto& stream : streams_) {
     if (stream != nullptr) {
@@ -210,6 +216,33 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   std::lock_guard<std::mutex> lock(mutex_);
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+
+  if (use_gds_ && !gds_disabled_ &&
+      std::endian::native == std::endian::little &&
+      !tensor.IsDataType<bool>()) {
+    Status gds_status = Status::OK();
+    if (!gds_loader_) {
+      gds_status = create_gds_loader_(device_id_, gds_loader_);
+    }
+    if (gds_status.IsOK()) {
+      gds_status = gds_loader_->Load(data_file_path, data_offset, length, tensor);
+    }
+    if (gds_status.IsOK()) {
+      return Status::OK();
+    }
+
+    gds_disabled_ = true;
+    gds_loader_.reset();
+    LOGS_DEFAULT(WARNING) << "GPUDirect Storage could not load external data; falling back to the CUDA "
+                          << (reading_thread_count_ == 0 ? "pageable-buffer" : "pinned-buffer")
+                          << " loader. "
+                          << gds_status.ErrorMessage();
+  }
+
+  if (reading_thread_count_ == 0) {
+    return LoadWithPageableBuffer(*file, data_offset, length, tensor, 1, reader_pool_);
+  }
+
   const auto resource_status = EnsureResources();
   if (!resource_status.IsOK()) {
     // TODO: Remember setup failures during initialization and report the first CUDA error

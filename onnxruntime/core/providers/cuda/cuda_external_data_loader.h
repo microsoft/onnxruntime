@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "core/framework/external_data_loader.h"
+#include "core/providers/cuda/cuda_external_data_loader_gds.h"
 #include "cuda_pch.h"
 
 namespace onnxruntime {
@@ -69,7 +70,9 @@ class ExternalDataLoader final : public IExternalDataLoader {
 
   ExternalDataLoader(int device_id, size_t reading_thread_count,
                      AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
-                     CreateStreamFn create_stream = cudaStreamCreateWithFlags);
+                     CreateStreamFn create_stream = cudaStreamCreateWithFlags,
+                     bool use_gds = false,
+                     GdsLoader::CreateFn create_gds_loader = GdsLoader::Create);
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
@@ -91,6 +94,10 @@ class ExternalDataLoader final : public IExternalDataLoader {
   const size_t reading_thread_count_;
   const AllocatePinnedBufferFn allocate_pinned_buffer_;
   const CreateStreamFn create_stream_;
+  const bool use_gds_;
+  const GdsLoader::CreateFn create_gds_loader_;
+  mutable bool gds_disabled_{false};
+  mutable std::unique_ptr<GdsLoader> gds_loader_;
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 

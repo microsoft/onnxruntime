@@ -193,6 +193,17 @@ TEST(CudaExternalDataLoaderTest, DisablesLoaderWhenConfiguredWithZeroReadingThre
   EXPECT_EQ(execution_provider->GetExternalDataLoader(), nullptr);
 }
 
+TEST(CudaExternalDataLoaderTest, EnablesLoaderForGdsWithZeroFallbackReadingThreads) {
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.external_data_loader_reading_threads = 0;
+  provider_options.external_data_loader_use_gds = 1;
+  auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
+  ASSERT_NE(execution_provider, nullptr);
+  EXPECT_NE(execution_provider->GetExternalDataLoader(), nullptr);
+}
+
 TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.external_data_loader_reading_threads =
@@ -213,6 +224,20 @@ TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) 
   EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
 }
 
+TEST(CudaExternalDataLoaderTest, RejectsInvalidGdsOptionFromStructOptions) {
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.external_data_loader_use_gds = 2;
+  Ort::SessionOptions session_options;
+  try {
+    session_options.AppendExecutionProvider_CUDA_V2(provider_options);
+    FAIL() << "Expected an invalid external_data_loader_use_gds value to be rejected.";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(), testing::HasSubstr("external_data_loader_use_gds"));
+  }
+
+  EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+}
+
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
   VerifyLoad(2 * cuda::kExternalDataLoaderBufferSize + 1, 2);
 }
@@ -223,6 +248,127 @@ cudaError_t FailPinnedBufferAllocation(void**, size_t) {
 
 cudaError_t FailStreamCreation(cudaStream_t*, unsigned int) {
   return cudaErrorInitializationError;
+}
+
+class TestGdsLoader final : public cuda::GdsLoader {
+ public:
+  explicit TestGdsLoader(uint8_t value) : value_(value) {}
+
+  Status Load(const std::filesystem::path&, int64_t, size_t data_length,
+              Tensor& tensor) const override {
+    const auto result = cudaMemset(tensor.MutableDataRaw(), value_, data_length);
+    ORT_RETURN_IF(result != cudaSuccess, "cudaMemset failed: ", cudaGetErrorString(result));
+    return Status::OK();
+  }
+
+ private:
+  uint8_t value_;
+};
+
+Status CreateTestGdsLoader(int, std::unique_ptr<cuda::GdsLoader>& loader) {
+  loader = std::make_unique<TestGdsLoader>(0x5a);
+  return Status::OK();
+}
+
+Status FailTestGdsLoaderCreation(int, std::unique_ptr<cuda::GdsLoader>&) {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GDS unavailable for test");
+}
+
+size_t gds_create_attempt_count = 0;
+
+Status CountAndFailTestGdsLoaderCreation(int, std::unique_ptr<cuda::GdsLoader>&) {
+  ++gds_create_attempt_count;
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GDS unavailable for test");
+}
+
+TEST(CudaExternalDataLoaderTest, UsesGdsWithoutAllocatingPinnedBuffers) {
+  constexpr size_t kLength = 1024;
+  PathString path;
+  CreateExternalDataFile(kLength, path);
+  ScopedFileDeleter file_deleter{path};
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({kLength}), *allocator);
+
+  cuda::ExternalDataLoader loader(
+      0, 4, FailPinnedBufferAllocation,
+      static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
+      true, CreateTestGdsLoader);
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+
+  std::array<uint8_t, kLength> output{};
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](uint8_t value) { return value == 0x5a; }));
+}
+
+TEST(CudaExternalDataLoaderTest, FallsBackToPinnedBuffersWhenGdsIsUnavailable) {
+  constexpr size_t kLength = 1024;
+  PathString path;
+  CreateExternalDataFile(kLength, path);
+  ScopedFileDeleter file_deleter{path};
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({kLength}), *allocator);
+
+  cuda::ExternalDataLoader loader(
+      0, 4,
+      static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
+      static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
+      true, FailTestGdsLoaderCreation);
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+
+  std::array<uint8_t, kLength> output{};
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < output.size(); ++i) {
+    ASSERT_EQ(TestValue(i), output[i]) << "Mismatch at byte " << i;
+  }
+}
+
+TEST(CudaExternalDataLoaderTest, DoesNotRetryGdsAfterFailure) {
+  constexpr size_t kLength = 1024;
+  PathString path;
+  CreateExternalDataFile(kLength, path);
+  ScopedFileDeleter file_deleter{path};
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({kLength}), *allocator);
+
+  gds_create_attempt_count = 0;
+  cuda::ExternalDataLoader loader(
+      0, 4,
+      static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
+      static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
+      true, CountAndFailTestGdsLoaderCreation);
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+  EXPECT_EQ(gds_create_attempt_count, 1U);
 }
 
 TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
