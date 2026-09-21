@@ -7,24 +7,55 @@
 
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
-class WebGpuExecutionProvider;
 namespace webgpu {
 
 class BufferManager;
 struct CommandRecordingState;
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
-CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream);
-common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
-                                        bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
-#endif
-
-// Low-level data transfer implementation that operates on raw pointers.
-// Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
+// Object layers ("outer" is the IDataTransfer object held by a manager):
+// - Built-in Session and plugin-internal adapter:
+//     onnxruntime::webgpu::DataTransfer
+//       -> onnxruntime::webgpu::DataTransferImpl (impl_ member, stored by value).
+// - Built-in Env, plugin Env, and plugin framework Session:
+//     onnxruntime::plugin_ep::DataTransfer (core/framework/plugin_data_transfer.h)
+//       -> onnxruntime::WebGpuDataTransferImpl (derived from OrtDataTransferImpl)
+//       -> onnxruntime::webgpu::DataTransferImpl (data_transfer_, lazily allocated).
+//   The outer wrapper holds the C API object through an OrtDataTransferImpl&
+//   and releases it via its Release callback. OrtDataTransferImpl is the C API
+//   base/function table, not an additional, separately allocated wrapper.
+//
+// Creation and ownership:
+// In both builds, InferenceSession::RegisterExecutionProvider() calls the EP's
+// GetDataTransfer(); virtual dispatch selects the Session path described below.
+//
+// Built-in WebGPU:
+// - Env: the internal WebGpuEpFactory::CreateDataTransfer() creates a
+//   WebGpuDataTransferImpl via OrtWebGpuCreateDataTransfer().
+// - Session: WebGpuExecutionProvider::GetDataTransfer() creates DataTransfer below,
+//   bound to the EP's BufferManager and recording. Native kernels use this same
+//   Session DataTransferManager rather than creating another transfer.
+//
+// Plugin WebGPU:
+// - Env: library registration calls ep::Factory::CreateDataTransferImpl().
+// - Framework Session: PluginExecutionProvider::GetDataTransfer() calls that same
+//   factory callback. Both routes use OrtWebGpuCreateDataTransfer(), but create
+//   separate WebGpuDataTransferImpl instances for their respective managers.
+// - Inside the plugin: onnxruntime::ep::adapter::Ep also calls
+//   WebGpuExecutionProvider::GetDataTransfer(), creating an EP-bound DataTransfer
+//   for its own adapter DataTransferManager. Adapter kernels use this object,
+//   bypassing the factory's C API wrapper.
+//
+// WebGpuDataTransferImpl, defined in webgpu_provider_factory.cc, owns private
+// recording state for streamless copies. Session-level creation alone does not
+// bind it to the requesting EP. In plugin builds, an explicit-stream copy uses
+// ep/sync_stream.cc to construct a temporary webgpu::DataTransferImpl with the
+// owning EP's BufferManager and recording, rather than the C API wrapper's
+// cached data_transfer_.
+//
+// DataTransferImpl is the shared raw-pointer copy implementation used by both
+// DataTransfer (IDataTransfer subclass) and the C API wrapper.
 class DataTransferImpl {
  public:
   DataTransferImpl(const BufferManager& buffer_manager, CommandRecordingState& recording)

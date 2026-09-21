@@ -7,8 +7,11 @@
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -66,7 +69,7 @@ void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
   if (stream == nullptr) {
     return Alloc(size);
   }
-  ORT_ENFORCE(&GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
+  ORT_ENFORCE(&ep::GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
               "WebGPU allocator and stream belong to different Sessions.");
   return Allocate(size, false);
 }

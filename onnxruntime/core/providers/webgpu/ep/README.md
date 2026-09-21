@@ -2,6 +2,10 @@
 
 The current folder contains the implementation of EP ABI adapter for WebGPU.
 
+The Session stream and notification bridge lives in `sync_stream.h` and `sync_stream.cc`.
+Shared buffer management and data-transfer implementations remain in the parent directory.
+Native builds exclude this folder.
+
 ### Design considerations
 
 To ensure both static library and dynamic library builds work, we need to make as few changes to existing code as possible. A few design decisions are as below:
@@ -52,7 +56,8 @@ remaining work. This conservative implementation prioritizes correctness over ov
 
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
 copies, mixed feed copies, CPU outputs bound to GPU, concurrent Sessions, and same-Session and
-dedicated-Session allocator concurrency are covered by AutoEP tests.
+dedicated-Session allocator concurrency are covered by the tests in
+`onnxruntime/test/providers/webgpu/plugin`, built into `onnxruntime_provider_test`.
 Concurrent graph capture, concurrent profiling, cross-device transfer, and arbitrary foreign
 stream overrides are not established by these tests. Performance must be measured separately.
 

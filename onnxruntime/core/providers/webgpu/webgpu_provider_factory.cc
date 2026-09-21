@@ -16,6 +16,10 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/providers/webgpu/data_transfer.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/sync_stream.h"
+#endif
+
 using namespace onnxruntime::webgpu;
 using namespace onnxruntime::webgpu::options;
 
@@ -504,7 +508,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 #endif
 #if defined(ORT_USE_EP_API_ADAPTERS)
       auto status = streams != nullptr && streams[idx] != nullptr
-                        ? CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
+                        ? webgpu::ep::CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
                         : impl.data_transfer_->CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
 #else
       ORT_UNUSED_PARAMETER(streams);

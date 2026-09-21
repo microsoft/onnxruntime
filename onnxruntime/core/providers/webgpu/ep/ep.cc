@@ -4,12 +4,12 @@
 #include "ep.h"
 
 #include "factory.h"
+#include "sync_stream.h"
 
 #include "core/framework/run_options.h"
 #include "core/framework/kernel_registry.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
