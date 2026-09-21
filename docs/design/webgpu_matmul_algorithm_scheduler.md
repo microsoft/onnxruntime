@@ -21,7 +21,7 @@ There is no `Auto` algorithm value. Automatic versus forced selection is represe
 Add a `MatMulAlgorithmScheduler` base class. Its common rule order mirrors the existing `ComputeMatMul` condition order:
 
 1. Select `SubgroupMatrix` when its implementation reports that it can handle the problem.
-2. Select `Naive` when `N < 8 && K < 8`.
+2. Select `Naive` when `K == 0` or when `N < 8 && K < 8`.
 3. Ask a virtual vendor-policy hook for a vendor algorithm.
 4. Select `PackedSplitK` when the existing `SplitKConfig::UseSplitK` rule succeeds.
 5. Fall back to `Packed`.

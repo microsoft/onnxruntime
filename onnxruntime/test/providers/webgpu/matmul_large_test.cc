@@ -118,6 +118,9 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
       if (!has_required_config) {
         return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup size 32.";
       }
+      if (!context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+        return "subgroup_matrix requires the WebGPU SubgroupSizeControl feature.";
+      }
       break;
     }
     case webgpu::MatMulAlgorithm::Naive:
