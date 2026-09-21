@@ -221,6 +221,67 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16Input) {
             kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
 }
 
+TEST(LayerNormTest, LayerNorm_Float16_OptimizedRowWithStats) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU EP not available in this build.";
+  }
+
+  constexpr size_t row_count = 2;
+  constexpr size_t norm_size = 31;
+  constexpr float epsilon = 1e-5f;
+  std::vector<float> input(row_count * norm_size);
+  std::vector<float> scale(norm_size);
+  std::vector<float> bias(norm_size);
+  for (size_t i = 0; i < norm_size; ++i) {
+    scale[i] = 0.5f + static_cast<float>(i % 7) * 0.125f;
+    bias[i] = static_cast<float>(static_cast<int>(i % 5) - 2) * 0.25f;
+  }
+
+  std::vector<float> expected(row_count * norm_size);
+  std::vector<float> expected_mean(row_count);
+  std::vector<float> expected_inv_std(row_count);
+  for (size_t row = 0; row < row_count; ++row) {
+    double sum = 0.0;
+    for (size_t i = 0; i < norm_size; ++i) {
+      const float value = static_cast<float>(static_cast<int>((row * 11 + i * 3) % 17) - 8) * 0.25f;
+      input[row * norm_size + i] = value;
+      sum += static_cast<double>(value);
+    }
+
+    const float mean = static_cast<float>(sum / static_cast<double>(norm_size));
+    float variance = 0.0f;
+    for (size_t i = 0; i < norm_size; ++i) {
+      const float delta = input[row * norm_size + i] - mean;
+      variance += delta * delta;
+    }
+
+    const float inv_std = 1.0f / std::sqrt(variance / static_cast<float>(norm_size) + epsilon);
+    expected_mean[row] = mean;
+    expected_inv_std[row] = inv_std;
+    for (size_t i = 0; i < norm_size; ++i) {
+      expected[row * norm_size + i] =
+          (input[row * norm_size + i] - mean) * inv_std * scale[i] + bias[i];
+    }
+  }
+
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<MLFloat16>("X", {static_cast<int64_t>(row_count), static_cast<int64_t>(norm_size)},
+                           ToFloat16(input));
+  test.AddInput<MLFloat16>("Scale", {static_cast<int64_t>(norm_size)}, ToFloat16(scale), true);
+  test.AddInput<MLFloat16>("Bias", {static_cast<int64_t>(norm_size)}, ToFloat16(bias), true);
+  test.AddOutput<MLFloat16>("Y", {static_cast<int64_t>(row_count), static_cast<int64_t>(norm_size)},
+                            ToFloat16(expected));
+  test.AddOutput<float>("Mean", {static_cast<int64_t>(row_count), 1}, expected_mean);
+  test.AddOutput<float>("InvStdDev", {static_cast<int64_t>(row_count), 1}, expected_inv_std);
+  test.SetOutputAbsErr("Y", 1e-3f);
+  test.SetOutputAbsErr("Mean", 1e-5f);
+  test.SetOutputAbsErr("InvStdDev", 1e-4f);
+  test.ConfigEp(std::move(cpu_ep)).RunWithConfig();
+}
+
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);

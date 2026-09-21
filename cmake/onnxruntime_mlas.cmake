@@ -847,7 +847,7 @@ else()
         set(mlas_platform_srcs_avx2
           ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}

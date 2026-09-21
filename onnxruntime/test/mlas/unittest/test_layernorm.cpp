@@ -194,16 +194,14 @@ TEST(MlasLayerNormF16Test, MatchesFloatReference) {
         float actual_inv_std = 0.0f;
         ASSERT_TRUE(MlasLayerNormF16(
             input.data(), scale.data(), has_bias ? bias.data() : nullptr, actual.data(),
-            simplified ? nullptr : &actual_mean, &actual_inv_std, n, epsilon, simplified));
+            &actual_mean, &actual_inv_std, n, epsilon, simplified));
 
         for (size_t i = 0; i < n; ++i) {
           const float actual_value = MLAS_Half2Float(actual[i]);
           const float tolerance = 1e-3f + std::abs(expected[i]) * 5e-3f;
           EXPECT_NEAR(actual_value, expected[i], tolerance) << "i=" << i;
         }
-        if (!simplified) {
-          EXPECT_NEAR(actual_mean, expected_mean, 1e-5f);
-        }
+        EXPECT_NEAR(actual_mean, expected_mean, 1e-5f);
         EXPECT_NEAR(actual_inv_std, expected_inv_std,
                     1e-4f + std::abs(expected_inv_std) * 5e-3f);
       }
