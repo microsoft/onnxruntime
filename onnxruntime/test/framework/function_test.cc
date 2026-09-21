@@ -255,7 +255,16 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
 TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
   auto model = CreateFunctionExpansionModel(2, 20);
   auto* function = model.mutable_functions(0);
-  function->mutable_node(0)->set_doc_string(std::string(256 * 1024, 'x'));
+  auto* payload_node = function->add_node();
+  payload_node->set_op_type("Constant");
+  payload_node->add_output("payload");
+  auto* payload_attribute = payload_node->add_attribute();
+  payload_attribute->set_name("value");
+  payload_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* payload_tensor = payload_attribute->mutable_t();
+  payload_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  payload_tensor->add_dims(256 * 1024);
+  payload_tensor->set_raw_data(std::string(256 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
   ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
