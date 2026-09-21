@@ -16,6 +16,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
@@ -222,7 +223,8 @@ static ONNX_NAMESPACE::ModelProto CreateRecursiveFunctionExpansionModel(size_t b
 }
 
 static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
-                                               std::vector<std::string>& log_messages) {
+                                               std::vector<std::string>& log_messages,
+                                               bool claim_first_function_call = false) {
   std::string serialized_model;
   ORT_RETURN_IF_NOT(model.SerializeToString(&serialized_model),
                     "Failed to serialize function expansion model.");
@@ -237,6 +239,36 @@ static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
   ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), environment));
 
   InferenceSession session{session_options, *environment};
+  if (claim_first_function_call) {
+    class FirstFunctionCallExecutionProvider final
+        : public internal_testing_ep::InternalTestingExecutionProvider {
+     public:
+      FirstFunctionCallExecutionProvider()
+          : InternalTestingExecutionProvider({}, {}, DataLayout::NCHW) {}
+
+      std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+          const GraphViewer& graph_view,
+          const IKernelLookup&,
+          const GraphOptimizerRegistry&,
+          IResourceAccountant*) const override {
+        for (const auto node_index : graph_view.GetNodesInTopologicalOrder()) {
+          const auto* node = graph_view.GetNode(node_index);
+          if (node != nullptr && node->CanBeInlined()) {
+            return {utils::MakeComputeCapability(
+                graph_view, std::vector<const Node*>{node},
+                [node_index]() { return "FirstFunctionCall_" + std::to_string(node_index); },
+                Type(), false)};
+          }
+        }
+
+        return {};
+      }
+    };
+
+    ORT_RETURN_IF_ERROR(session.RegisterExecutionProvider(
+        std::make_unique<FirstFunctionCallExecutionProvider>()));
+  }
+
   std::istringstream stream(serialized_model);
   ORT_RETURN_IF_ERROR(session.Load(stream));
   const auto status = session.Initialize();
@@ -252,6 +284,15 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
+}
+
+TEST(FunctionTest, AotInliningLimitsUnclaimedCallsSharingClaimedFunction) {
+  auto model = CreateRecursiveFunctionExpansionModel(20, 14);
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages, true);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
+  EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
 }
 
 TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {

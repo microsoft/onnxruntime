@@ -1450,7 +1450,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     if (node != nullptr) {
       if (claimed_by_ep.count(node_index) == 0) {
         auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
-        if (not_inlined.count(function_id) != 0) {
+        if (budget_limited_functions.count(function_id) != 0) {
           continue;
         }
 
