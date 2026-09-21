@@ -18,12 +18,14 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#if defined(__linux__) && __has_include(<cufile.h>)
+#if defined(__linux__) && defined(__has_include)
+#if __has_include(<cufile.h>)
 #define ORT_CUDA_GDS_AVAILABLE 1
 #include <cufile.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 #endif
 
 namespace onnxruntime {

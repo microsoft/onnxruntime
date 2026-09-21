@@ -228,7 +228,15 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
       gds_status = create_gds_loader_(device_id_, gds_loader_);
     }
     if (gds_status.IsOK()) {
-      gds_status = gds_loader_->Load(file->GetFileDescriptor(), data_offset, length, tensor);
+#if defined(ORT_NO_RTTI)
+      constexpr int file_descriptor = -1;
+#else
+      const auto* descriptor_provider = dynamic_cast<const PosixFileDescriptorProvider*>(file.get());
+      const int file_descriptor =
+          descriptor_provider == nullptr ? -1 : descriptor_provider->GetFileDescriptor();
+#endif
+      gds_status = gds_loader_->Load(
+          file_descriptor, data_offset, length, tensor);
     }
     if (gds_status.IsOK()) {
       return Status::OK();

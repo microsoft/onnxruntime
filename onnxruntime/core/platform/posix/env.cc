@@ -130,7 +130,7 @@ common::Status GetFileLength(int fd, size_t& file_size) {
   return common::Status::OK();
 }
 
-class PosixRandomAccessFile final : public RandomAccessFile {
+class PosixRandomAccessFile final : public RandomAccessFile, public PosixFileDescriptorProvider {
  public:
   PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
       : descriptor_(std::move(descriptor)), path_(std::move(path)) {}

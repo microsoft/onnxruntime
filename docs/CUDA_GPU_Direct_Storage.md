@@ -15,7 +15,7 @@ external-data file -> registered CUDA staging buffer -> CUDA arena initializer
                           cuFileRead                    device-to-device copy
 ```
 
-The reusable staging buffer bounds additional GPU memory to 64 MiB per CUDA external-data loader. Each
+The reusable staging buffer bounds additional GPU memory usage to 64 MiB per CUDA external-data loader. Each
 device-to-device copy completes before that buffer is reused. String and Boolean initializers retain the existing
 loading path because they require host-side conversion.
 

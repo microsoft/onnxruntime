@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -235,6 +236,7 @@ TEST(CudaExternalDataLoaderTest, RejectsInvalidGdsOptionFromStructOptions) {
     FAIL() << "Expected an invalid external_data_loader_use_gds value to be rejected.";
   } catch (const Ort::Exception& ex) {
     EXPECT_THAT(ex.what(), testing::HasSubstr("external_data_loader_use_gds"));
+    EXPECT_THAT(ex.what(), testing::HasSubstr("got 2"));
   }
 
   EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
@@ -256,8 +258,13 @@ class TestGdsLoader final : public cuda::GdsLoader {
  public:
   explicit TestGdsLoader(uint8_t value) : value_(value) {}
 
-  Status Load(int, int64_t, size_t data_length,
+  Status Load(int file_descriptor, int64_t, size_t data_length,
               Tensor& tensor) const override {
+#ifdef __linux__
+    ORT_RETURN_IF(file_descriptor < 0, "Expected a POSIX file descriptor.");
+#else
+    ORT_UNUSED_PARAMETER(file_descriptor);
+#endif
     const auto result = cudaMemset(tensor.MutableDataRaw(), value_, data_length);
     ORT_RETURN_IF(result != cudaSuccess, "cudaMemset failed: ", cudaGetErrorString(result));
     return Status::OK();
@@ -276,8 +283,8 @@ Status FailTestGdsLoaderCreation(int, std::unique_ptr<cuda::GdsLoader>&) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GDS unavailable for test");
 }
 
-size_t gds_create_attempt_count = 0;
-size_t gds_load_attempt_count = 0;
+std::atomic<size_t> gds_create_attempt_count{0};
+std::atomic<size_t> gds_load_attempt_count{0};
 
 Status CreateCountingTestGdsLoader(int, std::unique_ptr<cuda::GdsLoader>& loader) {
   ++gds_create_attempt_count;
@@ -390,8 +397,8 @@ TEST(CudaExternalDataLoaderTest, DoesNotRetryGdsAfterFailure) {
       Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
   ASSERT_STATUS_OK(loader.LoadTensor(
       Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
-  EXPECT_EQ(gds_create_attempt_count, 1U);
-  EXPECT_EQ(gds_load_attempt_count, 1U);
+  EXPECT_EQ(gds_create_attempt_count.load(), 1U);
+  EXPECT_EQ(gds_load_attempt_count.load(), 1U);
 
   std::array<uint8_t, kLength> output{};
   ASSERT_EQ(cudaSuccess, cudaMemcpy(
@@ -428,10 +435,10 @@ TEST(CudaExternalDataLoaderTest, UnalignedRangeDoesNotDisableGds) {
       true, CreateCountingTestGdsLoader);
   ASSERT_STATUS_OK(loader.LoadTensor(
       Env::Default(), unaligned_path, kFilePrefixSize, kLength, tensor));
-  EXPECT_EQ(gds_create_attempt_count, 0U);
+  EXPECT_EQ(gds_create_attempt_count.load(), 0U);
   ASSERT_STATUS_OK(loader.LoadTensor(
       Env::Default(), aligned_path, cuda::kGdsIoAlignment, kLength, tensor));
-  EXPECT_EQ(gds_create_attempt_count, 1U);
+  EXPECT_EQ(gds_create_attempt_count.load(), 1U);
 
   std::array<uint8_t, kLength> output{};
   ASSERT_EQ(cudaSuccess, cudaMemcpy(

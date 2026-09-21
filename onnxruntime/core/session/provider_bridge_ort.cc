@@ -2960,9 +2960,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
   }
   if (cuda_options->external_data_loader_use_gds != 0 &&
       cuda_options->external_data_loader_use_gds != 1) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_use_gds got ",
+        cuda_options->external_data_loader_use_gds,
+        "; must be 0 or 1.");
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
-        "external_data_loader_use_gds must be 0 or 1.");
+        message.c_str());
   }
 
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
