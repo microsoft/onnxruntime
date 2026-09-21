@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
@@ -15,6 +16,11 @@ namespace webgpu {
 namespace test {
 
 namespace {
+
+static_assert(!std::is_copy_constructible_v<MatMulAlgorithmScheduler>);
+static_assert(!std::is_copy_assignable_v<MatMulAlgorithmScheduler>);
+static_assert(!std::is_move_constructible_v<MatMulAlgorithmScheduler>);
+static_assert(!std::is_move_assignable_v<MatMulAlgorithmScheduler>);
 
 class AlwaysPackedVendorScheduler final : public MatMulAlgorithmScheduler {
  protected:

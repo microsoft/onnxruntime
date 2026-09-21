@@ -231,6 +231,11 @@ TEST(MatMulProgramTest, VectorFallbackExecution) {
 
 #if defined(_WIN32)
 TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
+  ConfigOptions valid_config_options{};
+  if (!WebGpuExecutionProviderWithOptions(valid_config_options)) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable in this build.";
+  }
+
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kForceMatMulAlgorithm, "unknown"));
   EXPECT_THROW(WebGpuExecutionProviderWithOptions(config_options), OnnxRuntimeException);

@@ -11,6 +11,7 @@
 #include <utility>
 #include <variant>
 
+#include "core/common/common.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 
 namespace onnxruntime {
@@ -149,7 +150,9 @@ inline bool MeetsMatMulAlgorithmPrerequisites(
 
 class MatMulAlgorithmScheduler {
  public:
+  MatMulAlgorithmScheduler() = default;
   virtual ~MatMulAlgorithmScheduler() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulAlgorithmScheduler);
 
   MatMulAlgorithm Select(
       const MatMulAlgorithmSelectionParams& params,
