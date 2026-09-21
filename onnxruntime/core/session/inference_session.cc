@@ -1068,16 +1068,16 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
-  if (p_external_data_loader) {
-    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
-    if (!st.IsOK()) {
-      return st;
-    }
 #if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-    ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
-#endif
+  if (provider_type == onnxruntime::kWebGpuExecutionProvider) {
+    auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
+    if (p_external_data_loader) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader)));
+      ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
+    }
   }
+#endif
 
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
@@ -2905,6 +2905,12 @@ common::Status InferenceSession::Initialize() {
 
     auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
     for (const auto& provider : execution_providers_) {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      if (provider->Type() == onnxruntime::kWebGpuExecutionProvider &&
+          external_data_loader_mgr_.HasPreloader()) {
+        continue;
+      }
+#endif
       if (auto loader = provider->GetExternalDataLoader()) {
         ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
       }
