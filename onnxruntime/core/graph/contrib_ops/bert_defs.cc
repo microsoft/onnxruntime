@@ -471,7 +471,7 @@ void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
-                                              /*total_sequence_length_index=*/7);
+                                               /*total_sequence_length_index=*/7);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
