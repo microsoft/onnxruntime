@@ -8,6 +8,7 @@
 #include <winsock2.h>
 #include <iphlpapi.h>
 #include <Windows.h>
+#include <winternl.h>
 #endif
 
 #include "core/platform/posix/telemetry.h"
@@ -700,6 +701,22 @@ std::string PosixTelemetry::GetPlatformInfo() const {
 // Get detailed OS version string (e.g., "macOS 15.2", "Ubuntu 22.04 LTS")
 std::string PosixTelemetry::GetOsDescription() const {
 #if defined(_WIN32)
+  using RtlGetVersionFn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+  const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+  const auto rtl_get_version =
+      ntdll == nullptr ? nullptr
+                       : reinterpret_cast<RtlGetVersionFn>(::GetProcAddress(ntdll, "RtlGetVersion"));
+  if (rtl_get_version != nullptr) {
+    RTL_OSVERSIONINFOW version_info{};
+    version_info.dwOSVersionInfoSize = sizeof(version_info);
+    if (rtl_get_version(&version_info) == 0) {
+      std::array<char, 64> description{};
+      std::snprintf(description.data(), description.size(), "Windows %lu.%lu (Build %lu)",
+                    version_info.dwMajorVersion, version_info.dwMinorVersion,
+                    version_info.dwBuildNumber);
+      return description.data();
+    }
+  }
   return "Windows";
 #elif defined(__APPLE__)
   char version[64] = {};
@@ -934,7 +951,7 @@ std::string PosixTelemetry::GetProcessName() {
 
 // Get the CPU architecture the binary was compiled for
 std::string PosixTelemetry::GetArchitecture() {
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC))
   return "x86_64";
 #elif defined(__i386__) || defined(_M_IX86)
   return "x86";
