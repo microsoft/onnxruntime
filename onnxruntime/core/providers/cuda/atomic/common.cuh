@@ -17,6 +17,9 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
+#include <cuda/std/bit>
+#include <cuda/std/type_traits>
+
 #include "cuda.h"
 #include "cuda_fp16.h"
 #include "cuda_runtime.h"
@@ -136,7 +139,42 @@ class AtomicCasType<int8_t> {
 };
 
 template <>
+class AtomicCasType<uint8_t> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffu;
+};
+
+template <>
+class AtomicCasType<bool> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffu;
+};
+
+template <>
+class AtomicCasType<int16_t> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffffu;
+};
+
+template <>
+class AtomicCasType<uint16_t> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffffu;
+};
+
+template <>
 class AtomicCasType<half> {
+ public:
+  using type = unsigned short int;
+  static const unsigned int mask = 0xffffu;
+};
+
+template <>
+class AtomicCasType<BFloat16> {
  public:
   using type = unsigned short int;
   static const unsigned int mask = 0xffffu;
@@ -164,7 +202,21 @@ class AtomicCasType<int> {
 };
 
 template <>
+class AtomicCasType<uint32_t> {
+ public:
+  using type = unsigned int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
+template <>
 class AtomicCasType<int64_t> {
+ public:
+  using type = unsigned long long int;
+  static const unsigned int mask = 0xffffffffu;
+};
+
+template <>
+class AtomicCasType<uint64_t> {
  public:
   using type = unsigned long long int;
   static const unsigned int mask = 0xffffffffu;
@@ -352,6 +404,16 @@ __device__ __forceinline__ void atomic_binary_func(ValueType* address, ValueType
 struct AddFunc {
   template <typename T>
   __device__ __forceinline__ T operator()(T a, T b) const {
+    if constexpr (::cuda::std::is_integral_v<T> && !::cuda::std::is_same_v<T, bool>) {
+      using UnsignedT = ::cuda::std::make_unsigned_t<T>;
+      using ArithmeticT =
+          ::cuda::std::conditional_t<(sizeof(UnsignedT) < sizeof(unsigned int)), unsigned int, UnsignedT>;
+      const auto result = static_cast<UnsignedT>(
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) +
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
+      return ::cuda::std::bit_cast<T>(result);
+    }
+
     return a + b;
   }
 };
@@ -359,6 +421,16 @@ struct AddFunc {
 struct MulFunc {
   template <typename T>
   __device__ __forceinline__ T operator()(T a, T b) const {
+    if constexpr (::cuda::std::is_integral_v<T> && !::cuda::std::is_same_v<T, bool>) {
+      using UnsignedT = ::cuda::std::make_unsigned_t<T>;
+      using ArithmeticT =
+          ::cuda::std::conditional_t<(sizeof(UnsignedT) < sizeof(unsigned int)), unsigned int, UnsignedT>;
+      const auto result = static_cast<UnsignedT>(
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) *
+          static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
+      return ::cuda::std::bit_cast<T>(result);
+    }
+
     return a * b;
   }
 };
@@ -377,6 +449,18 @@ struct MinFunc {
   }
 };
 
+struct BoolOrFunc {
+  __device__ __forceinline__ bool operator()(bool a, bool b) const {
+    return a || b;
+  }
+};
+
+struct BoolAndFunc {
+  __device__ __forceinline__ bool operator()(bool a, bool b) const {
+    return a && b;
+  }
+};
+
 __device__ __forceinline__ void atomic_add(int8_t* address, int8_t value) {
   atomic_byte_func_with_unit32_cas(address, value, AddFunc());
 }
@@ -388,6 +472,110 @@ __device__ __forceinline__ void atomic_max(int8_t* address, int8_t value) {
 }
 __device__ __forceinline__ void atomic_min(int8_t* address, int8_t value) {
   atomic_byte_func_with_unit32_cas(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(uint8_t* address, uint8_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(uint8_t* address, uint8_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(uint8_t* address, uint8_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(uint8_t* address, uint8_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(bool* address, bool value) {
+  atomic_byte_func_with_unit32_cas(address, value, BoolOrFunc());
+}
+__device__ __forceinline__ void atomic_mul(bool* address, bool value) {
+  atomic_byte_func_with_unit32_cas(address, value, BoolAndFunc());
+}
+__device__ __forceinline__ void atomic_max(bool* address, bool value) {
+  atomic_byte_func_with_unit32_cas(address, value, BoolOrFunc());
+}
+__device__ __forceinline__ void atomic_min(bool* address, bool value) {
+  atomic_byte_func_with_unit32_cas(address, value, BoolAndFunc());
+}
+
+__device__ __forceinline__ void atomic_add(int16_t* address, int16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(int16_t* address, int16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(int16_t* address, int16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(int16_t* address, int16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(uint16_t* address, uint16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(uint16_t* address, uint16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(uint16_t* address, uint16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(uint16_t* address, uint16_t value) {
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(int32_t* address, int32_t value) {
+  atomic_binary_func(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(int32_t* address, int32_t value) {
+  atomic_binary_func(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(int32_t* address, int32_t value) {
+  atomic_binary_func(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(int32_t* address, int32_t value) {
+  atomic_binary_func(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(uint32_t* address, uint32_t value) {
+  atomic_binary_func(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(uint32_t* address, uint32_t value) {
+  atomic_binary_func(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(uint32_t* address, uint32_t value) {
+  atomic_binary_func(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(uint32_t* address, uint32_t value) {
+  atomic_binary_func(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(int64_t* address, int64_t value) {
+  atomic_binary_func(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(int64_t* address, int64_t value) {
+  atomic_binary_func(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(int64_t* address, int64_t value) {
+  atomic_binary_func(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(int64_t* address, int64_t value) {
+  atomic_binary_func(address, value, MinFunc());
+}
+
+__device__ __forceinline__ void atomic_add(uint64_t* address, uint64_t value) {
+  atomic_binary_func(address, value, AddFunc());
+}
+__device__ __forceinline__ void atomic_mul(uint64_t* address, uint64_t value) {
+  atomic_binary_func(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(uint64_t* address, uint64_t value) {
+  atomic_binary_func(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(uint64_t* address, uint64_t value) {
+  atomic_binary_func(address, value, MinFunc());
 }
 
 __device__ __forceinline__ void atomic_mul(half* address, half value) {
@@ -410,6 +598,16 @@ __device__ __forceinline__ void atomic_min(half* address, half value) {
 #else
   atomic_byte_func_with_unit32_cas(address, value, MinFunc());
 #endif
+}
+
+__device__ __forceinline__ void atomic_mul(BFloat16* address, BFloat16 value) {
+  atomic_byte_func_with_unit32_cas(address, value, MulFunc());
+}
+__device__ __forceinline__ void atomic_max(BFloat16* address, BFloat16 value) {
+  atomic_byte_func_with_unit32_cas(address, value, MaxFunc());
+}
+__device__ __forceinline__ void atomic_min(BFloat16* address, BFloat16 value) {
+  atomic_byte_func_with_unit32_cas(address, value, MinFunc());
 }
 
 __device__ __forceinline__ void atomic_mul(float* address, float value) {

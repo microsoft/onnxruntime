@@ -137,6 +137,7 @@ class GQAAttentionBase {
                         const T* V,                                 // V data with shape BxN_kvxSxH
                         const T* head_sink,                         // Head sink for smooth softmax, nullptr if not used
                         const Tensor* attention_bias,               // Attention bias to add to QxK'
+                        const int32_t* attention_bias_offsets,      // Per-batch absolute KV origin, or nullptr
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
                         Tensor* output,                             // output tensor
@@ -188,7 +189,8 @@ class GQAAttentionBase {
     const T* attention_bias_data = attention_bias != nullptr ? attention_bias->Data<T>() : nullptr;
     auto attention_bias_shape = attention_bias != nullptr ? attention_bias->Shape().GetDims() : gsl::span<const int64_t>{};
 
-    bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
+    const bool past_key_shared = past_key_data == present_key_data;
+    const bool past_value_shared = past_value_data == present_value_data;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
@@ -196,29 +198,31 @@ class GQAAttentionBase {
 
     if (gqa_mlas_supported) {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
+                            attention_bias_offsets,
                             batch_size, sequence_length, kv_sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
+                            past_key_shared, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
       ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(attention_probs), v,
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, kv_sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
-                              hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
+                              hidden_size, past_value_data, present_value_data, past_value_shared, packed_qkv,
                               is_prompt, tp, allocator);
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
+                            attention_bias_offsets,
                             batch_size, sequence_length, kv_sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
+                            past_key_shared, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
       ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v,
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, kv_sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
-                              hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
+                              hidden_size, past_value_data, present_value_data, past_value_shared, packed_qkv,
                               is_prompt, tp, allocator);
     }
 
@@ -229,16 +233,17 @@ class GQAAttentionBase {
   // quantized present K/V (uint8_t storage).
   template <typename T>
   Status ApplyAttentionQuantized(
-      const T* Q,                    // Q data [B, N, S, H] BNSH
-      const T* K,                    // K data [B, N_kv, L, H] or nullptr for packed_qkv
-      const T* V,                    // V data [B, N_kv, L, H] or nullptr for packed_qkv
-      const T* head_sink,            // smooth softmax sink per head, or nullptr
-      const Tensor* attention_bias,  // additive bias or nullptr
-      const Tensor* past_key,        // past K (uint8_t)
-      const Tensor* past_value,      // past V (uint8_t)
-      Tensor* output,                // output [B, S, N*H] T
-      Tensor* present_key,           // present K (uint8_t)
-      Tensor* present_value,         // present V (uint8_t)
+      const T* Q,                             // Q data [B, N, S, H] BNSH
+      const T* K,                             // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const T* V,                             // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const T* head_sink,                     // smooth softmax sink per head, or nullptr
+      const Tensor* attention_bias,           // additive bias or nullptr
+      const int32_t* attention_bias_offsets,  // per-batch absolute KV origin, or nullptr
+      const Tensor* past_key,                 // past K (uint8_t)
+      const Tensor* past_value,               // past V (uint8_t)
+      Tensor* output,                         // output [B, S, N*H] T
+      Tensor* present_key,                    // present K (uint8_t)
+      Tensor* present_value,                  // present V (uint8_t)
       Tensor* output_qk,
       const Tensor* seqlens_k,
       const float* k_scale,
@@ -306,8 +311,8 @@ class GQAAttentionBase {
                                     ? attention_bias->Shape().GetDims()
                                     : gsl::span<const int64_t>{};
 
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_key_shared = past_key_data == present_key_data;
+    const bool past_value_shared = past_value_data == present_value_data;
 
     const bool per_channel = (quant_type == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
                               quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
@@ -334,7 +339,7 @@ class GQAAttentionBase {
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
     // ---- Concat K + QK^T + Softmax ----
-    if (present_key_data && !past_present_share_buffer) {
+    if (present_key_data && !past_key_shared) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
     }
@@ -391,7 +396,7 @@ class GQAAttentionBase {
               past_key_data, k_new, present_key_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_k_scale, past_present_share_buffer, kv_head_flat);
+              quant_type, head_k_scale, past_key_shared, kv_head_flat);
 
           // Q pointer
           const T* q;
@@ -439,6 +444,9 @@ class GQAAttentionBase {
             }
             if (attention_bias_shape[1] != 1) {
               bias_offset += SafeInt<ptrdiff_t>(head_index) * bias_matrix_size;
+            }
+            if (attention_bias_offsets != nullptr) {
+              bias_offset += attention_bias_offsets[batch_index];
             }
             attn_bias = attention_bias_data + bias_offset;
           }
@@ -513,7 +521,7 @@ class GQAAttentionBase {
     }
 
     // ---- Concat V + S*V ----
-    if (!past_present_share_buffer) {
+    if (!past_value_shared) {
       memset(present_value_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
     }
@@ -565,7 +573,7 @@ class GQAAttentionBase {
               past_value_data, v_new, present_value_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_v_scale, past_present_share_buffer, kv_head_flat);
+              quant_type, head_v_scale, past_value_shared, kv_head_flat);
 
           // S*V GEMM with quantized V cache
           ptrdiff_t probs_offset =
@@ -596,15 +604,16 @@ class GQAAttentionBase {
   // Uses online softmax with KV block tiling for reduced memory usage.
   template <typename T>
   Status ApplyAttentionQuantizedFlash(
-      const T* Q,                    // Q data [B, N, S, H] BNSH
-      const T* K,                    // K data [B, N_kv, L, H] or nullptr for packed_qkv
-      const T* V,                    // V data [B, N_kv, L, H] or nullptr for packed_qkv
-      const Tensor* attention_bias,  // additive bias [B|1, N|1, S, T] or nullptr
-      const Tensor* past_key,        // past K (uint8_t)
-      const Tensor* past_value,      // past V (uint8_t)
-      Tensor* output,                // output [B, S, N*H] T
-      Tensor* present_key,           // present K (uint8_t)
-      Tensor* present_value,         // present V (uint8_t)
+      const T* Q,                             // Q data [B, N, S, H] BNSH
+      const T* K,                             // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const T* V,                             // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const Tensor* attention_bias,           // additive bias [B|1, N|1, S, T] or nullptr
+      const int32_t* attention_bias_offsets,  // per-batch absolute KV origin, or nullptr
+      const Tensor* past_key,                 // past K (uint8_t)
+      const Tensor* past_value,               // past V (uint8_t)
+      Tensor* output,                         // output [B, S, N*H] T
+      Tensor* present_key,                    // present K (uint8_t)
+      Tensor* present_value,                  // present V (uint8_t)
       const Tensor* seqlens_k,
       const float* k_scale,
       const float* v_scale,
@@ -657,8 +666,8 @@ class GQAAttentionBase {
       present_value_data = reinterpret_cast<uint8_t*>(present_value->MutableData<int8_t>());
     }
 
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_key_shared = past_key_data == present_key_data;
+    const bool past_value_shared = past_value_data == present_value_data;
 
     const bool per_channel = (quant_type == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
                               quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
@@ -691,9 +700,11 @@ class GQAAttentionBase {
 
     // ---- Phase 1: Concat new K/V into present cache ----
     // We must do this first so the flash attention kernel can read the full present cache.
-    if (present_key_data && !past_present_share_buffer) {
+    if (present_key_data && !past_key_shared) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
+    }
+    if (!past_value_shared) {
       memset(present_value_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
     }
@@ -743,7 +754,7 @@ class GQAAttentionBase {
               past_key_data, k_new, present_key_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_k_scale, past_present_share_buffer, kv_idx);
+              quant_type, head_k_scale, past_key_shared, kv_idx);
 
           // Concat V
           const T* v_new;
@@ -757,7 +768,7 @@ class GQAAttentionBase {
               past_value_data, v_new, present_value_data,
               present_buff_chunk_bytes, past_buff_chunk_bytes,
               past_chunk_bytes, kv_sequence_length, head_size, head_size,
-              quant_type, head_v_scale, past_present_share_buffer, kv_idx);
+              quant_type, head_v_scale, past_value_shared, kv_idx);
         }
       });
     }
@@ -795,8 +806,14 @@ class GQAAttentionBase {
       min_total_seqlen = std::min(min_total_seqlen, total_sl);
     }
     const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
+    bool ragged_bias_offsets = false;
+    if (attention_bias_data != nullptr && attention_bias_offsets != nullptr) {
+      for (int b = 1; b < batch_size; ++b) {
+        ragged_bias_offsets = ragged_bias_offsets || attention_bias_offsets[b] != attention_bias_offsets[0];
+      }
+    }
 
-    if (ragged_seqlens) {
+    if (ragged_seqlens || ragged_bias_offsets) {
       // Ragged seqlens: each batch item has its own total_seqlen (and therefore
       // past_seqlen). Must use per-batch invocation regardless of past_key/prompt state.
       common_past_seqlen = -1;  // sentinel: per-batch
@@ -818,9 +835,11 @@ class GQAAttentionBase {
     thread_count = std::max(thread_count, 1);
 
     // Flash decoding: for decode (sequence_length==1), partition KV across threads
-    // to improve parallelism when batch*heads < thread_count.
+    // to improve parallelism when batch*heads < thread_count. The per-batch fallback
+    // uses the regular tiled kernel and therefore needs its larger scratch layout.
     const int kv_chunk_count = (max_total_seqlen + kv_block_size - 1) / kv_block_size;
     const bool use_flash_decoding = (sequence_length == 1 &&
+                                     common_past_seqlen >= 0 &&
                                      batch_size * num_heads_ < thread_count &&
                                      kv_chunk_count > 1);
 
@@ -885,10 +904,14 @@ class GQAAttentionBase {
       args.v_scale = v_scale;
       if constexpr (std::is_same_v<T, float>) {
         args.output = output->MutableData<float>();
-        args.attention_bias = attention_bias_data;
+        args.attention_bias = attention_bias_data == nullptr
+                                  ? nullptr
+                                  : attention_bias_data + (attention_bias_offsets == nullptr ? 0 : attention_bias_offsets[0]);
       } else {
         args.output_fp16 = output->MutableData<T>();
-        args.attention_bias_fp16 = attention_bias_data;
+        args.attention_bias_fp16 = attention_bias_data == nullptr
+                                       ? nullptr
+                                       : attention_bias_data + (attention_bias_offsets == nullptr ? 0 : attention_bias_offsets[0]);
       }
       args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
       args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
@@ -958,6 +981,9 @@ class GQAAttentionBase {
           const size_t bias_head_extent = attention_bias_broadcast_head ? 1 : static_cast<size_t>(num_heads_);
           batch_bias += static_cast<size_t>(SafeInt<size_t>(b) * bias_head_extent * sequence_length * attention_bias_seqlen_stride);
         }
+        if (batch_bias != nullptr && attention_bias_offsets != nullptr) {
+          batch_bias += attention_bias_offsets[b];
+        }
         if constexpr (std::is_same_v<T, float>) {
           args.attention_bias = batch_bias;
         } else {
@@ -980,15 +1006,16 @@ class GQAAttentionBase {
   // Concatenates new K/V into the FP32 present cache, then runs the tiled
   // online-softmax kernel MlasFlashAttentionGQA (QK^T + softmax + S*V fused).
   Status ApplyAttentionFlash(
-      const float* Q,                // Q data [B, N, S, H] BNSH
-      const float* K,                // K data [B, N_kv, L, H] or nullptr for packed_qkv
-      const float* V,                // V data [B, N_kv, L, H] or nullptr for packed_qkv
-      const Tensor* attention_bias,  // additive bias [B|1, N|1, S, T] or nullptr
-      const Tensor* past_key,        // past K (float)
-      const Tensor* past_value,      // past V (float)
-      Tensor* output,                // output [B, S, N*H] float
-      Tensor* present_key,           // present K (float)
-      Tensor* present_value,         // present V (float)
+      const float* Q,                         // Q data [B, N, S, H] BNSH
+      const float* K,                         // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* V,                         // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const Tensor* attention_bias,           // additive bias [B|1, N|1, S, T] or nullptr
+      const int32_t* attention_bias_offsets,  // per-batch absolute KV origin, or nullptr
+      const Tensor* past_key,                 // past K (float)
+      const Tensor* past_value,               // past V (float)
+      Tensor* output,                         // output [B, S, N*H] float
+      Tensor* present_key,                    // present K (float)
+      Tensor* present_value,                  // present V (float)
       const Tensor* seqlens_k,
       GroupQueryAttentionParameters& parameters,
       AllocatorPtr allocator,
@@ -1025,8 +1052,8 @@ class GQAAttentionBase {
     const float* past_value_data = past_value != nullptr ? past_value->Data<float>() : nullptr;
     float* present_value_data = present_value->MutableData<float>();
 
-    bool past_present_share_buffer = (past_key_data == present_key_data) &&
-                                     (past_value_data == present_value_data);
+    const bool past_key_shared = past_key_data == present_key_data;
+    const bool past_value_shared = past_value_data == present_value_data;
 
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
 
@@ -1056,9 +1083,11 @@ class GQAAttentionBase {
 
     // ---- Phase 1: Concat new K/V into present cache ----
     // We must do this first so the flash attention kernel can read the full present cache.
-    if (present_key_data && !past_present_share_buffer) {
+    if (present_key_data && !past_key_shared) {
       memset(present_key_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
+    }
+    if (!past_value_shared) {
       memset(present_value_data, 0,
              SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
     }
@@ -1100,7 +1129,7 @@ class GQAAttentionBase {
           ConcatStateChunkGQA(past_key_data, k_new, present_key_data,
                               present_buff_chunk_length, past_buff_chunk_length,
                               past_chunk_length, kv_input_chunk_length,
-                              past_present_share_buffer, kv_idx);
+                              past_key_shared, kv_idx);
 
           // Concat V
           const float* v_new;
@@ -1113,7 +1142,7 @@ class GQAAttentionBase {
           ConcatStateChunkGQA(past_value_data, v_new, present_value_data,
                               present_buff_chunk_length, past_buff_chunk_length,
                               past_chunk_length, kv_input_chunk_length,
-                              past_present_share_buffer, kv_idx);
+                              past_value_shared, kv_idx);
         }
       });
     }
@@ -1139,8 +1168,14 @@ class GQAAttentionBase {
       min_total_seqlen = std::min(min_total_seqlen, total_sl);
     }
     const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
+    bool ragged_bias_offsets = false;
+    if (attention_bias_data != nullptr && attention_bias_offsets != nullptr) {
+      for (int b = 1; b < batch_size; ++b) {
+        ragged_bias_offsets = ragged_bias_offsets || attention_bias_offsets[b] != attention_bias_offsets[0];
+      }
+    }
 
-    if (ragged_seqlens) {
+    if (ragged_seqlens || ragged_bias_offsets) {
       common_past_seqlen = -1;  // sentinel: per-batch
     } else if (past_key == nullptr || is_prompt) {
       common_past_seqlen = 0;
@@ -1229,7 +1264,9 @@ class GQAAttentionBase {
       args.k_cache = present_key_data;
       args.v_cache = present_value_data;
       args.output = output->MutableData<float>();
-      args.attention_bias = attention_bias_data;
+      args.attention_bias = attention_bias_data == nullptr
+                                ? nullptr
+                                : attention_bias_data + (attention_bias_offsets == nullptr ? 0 : attention_bias_offsets[0]);
       args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
       args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
       args.attention_bias_broadcast_head = attention_bias_broadcast_head;
@@ -1283,6 +1320,9 @@ class GQAAttentionBase {
           const size_t bias_head_extent = attention_bias_broadcast_head ? 1 : static_cast<size_t>(num_heads_);
           batch_bias += static_cast<size_t>(b) * bias_head_extent * sequence_length * attention_bias_seqlen_stride;
         }
+        if (batch_bias != nullptr && attention_bias_offsets != nullptr) {
+          batch_bias += attention_bias_offsets[b];
+        }
         args.attention_bias = batch_bias;
         args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
         args.attention_bias_broadcast_batch = true;  // batch offset handled above
@@ -1309,6 +1349,7 @@ class GQAAttentionBase {
                              const T* head_sink,                                   // smooth softmax sink per head, or nullptr
                              const int32_t* seqlens_k,                             // total_sequence_length - 1 per batch
                              const T* attention_bias,                              // additive bias [B|1, N|1, S, T], or nullptr
+                             const int32_t* attention_bias_offsets,                // per-batch absolute KV origin, or nullptr
                              const size_t batch_size,                              // batch size
                              const size_t sequence_length,                         // Q sequence length (new tokens)
                              const size_t kv_sequence_length,                      // K/V input sequence length; 0 for shared KV
@@ -1407,6 +1448,9 @@ class GQAAttentionBase {
           }
           if (attention_bias_shape[1] != 1) {
             attention_bias_offset += SafeInt<ptrdiff_t>(head_index) * attention_matrix_size;
+          }
+          if (attention_bias_offsets != nullptr) {
+            attention_bias_offset += attention_bias_offsets[batch_index];
           }
 
           attention_bias_thread = attention_bias + attention_bias_offset;

@@ -60,9 +60,7 @@ jobs:
     clean: all
   pool: ${{ parameters.machine_pool }}
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - template: setup-feeds-and-python-steps.yml
     parameters:

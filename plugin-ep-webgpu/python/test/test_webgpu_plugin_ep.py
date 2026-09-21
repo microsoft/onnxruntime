@@ -12,7 +12,7 @@ Tests:
 4. Inference with a simple Mul model (requires WebGPU-capable hardware)
 
 The inference test is skipped gracefully if no WebGPU device is available
-(e.g., on CPU-only build agents).
+(e.g., on CPU-only build agents), unless ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled.
 """
 
 import os
@@ -29,6 +29,7 @@ from onnx import TensorProto, helper
 import onnxruntime as ort
 
 VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
+REQUIRE_EP_DEVICE = os.environ.get("ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE", "").strip().lower() in ("1", "true", "yes")
 
 
 def debug_print(*args, **kwargs):
@@ -132,6 +133,8 @@ def test_registration_and_inference():
         print(f"Found {len(webgpu_ep_devices)} WebGPU EP device(s)")
 
         if not webgpu_ep_devices:
+            if REQUIRE_EP_DEVICE:
+                raise RuntimeError("No WebGPU EP devices available, but ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE is enabled")
             print("SKIP: No WebGPU EP devices available — skipping inference test")
             return
 

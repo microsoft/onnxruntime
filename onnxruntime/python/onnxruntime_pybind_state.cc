@@ -27,6 +27,7 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
@@ -91,6 +92,25 @@ using namespace onnxruntime::logging;
 namespace {
 
 constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
+
+std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
+                                                const std::vector<int64_t>& shape,
+                                                MLDataType element_type,
+                                                const OrtDevice& device) {
+  // Accessing session state enforces that initialization has completed.
+  (void)session->GetSessionHandle()->GetSessionState();
+
+  const char* allocator_name = GetDeviceAllocatorName(device);
+  OrtMemoryInfo memory_info{allocator_name, OrtDeviceAllocator, device};
+  auto allocator = session->GetSessionHandle()->GetAllocator(memory_info);
+  if (!allocator) {
+    throw std::runtime_error("No session allocator found for " + device.ToString());
+  }
+
+  auto ort_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ort_value);
+  return ort_value;
+}
 
 struct AdaptedProviderOptions {
   std::vector<std::string> keys;
@@ -538,6 +558,13 @@ const char* GetDeviceName(const OrtDevice& device) {
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
+}
+
+const char* GetDeviceAllocatorName(const OrtDevice& device) {
+  if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NONE) {
+    return WEBGPU_BUFFER;
+  }
+  return GetDeviceName(device);
 }
 
 py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager) {
@@ -3121,6 +3148,42 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("is_webgpu_graph_capture_enabled", [](const PyInferenceSession* sess) {
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr && webgpu_ep->IsGraphCaptureEnabled(); })
+      .def("webgpu_context_id", [](const PyInferenceSession* sess) {
+        // WebGpuExecutionProvider::GetDeviceId() returns its WebGPU context id. Context 0 is the
+        // default context, which is the only one the environment-registered shared data transfer
+        // can serve; a caller-supplied instance/device gets a context id > 0.
+        // Returns -1 when the session has no WebGPU EP.
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr ? webgpu_ep->GetDeviceId() : -1; })
+      .def("create_ortvalue_from_shape_and_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, NumpyTypeToOnnxRuntimeTensorType(type_num), device); }, py::keep_alive<0, 1>())
+      .def("create_ortvalue_from_shape_and_onnx_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) {
+        if (onnx_element_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, OnnxTypeToOnnxRuntimeTensorType(onnx_element_type), device); }, py::keep_alive<0, 1>())
+      .def("release_captured_graph", [](PyInferenceSession* sess, int graph_annotation_id) {
+        py::gil_scoped_release release;
+        OrtPybindThrowIfError(sess->GetSessionHandle()->ReleaseCapturedGraph(graph_annotation_id)); })
       .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
         const auto* inference_session = sess->GetSessionHandle();

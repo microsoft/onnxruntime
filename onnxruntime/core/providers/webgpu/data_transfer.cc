@@ -36,10 +36,23 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
   return Status::OK();
 }
 
-bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+bool DataTransfer::IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device) {
+  // WebGPU allocations carry VendorIds::NONE. A vendor-tagged GPU handle belongs to another EP, and
+  // reinterpreting it as a WGPUBuffer would be unsafe. The plugin EP transfer applies the same rule.
+  if (src_device.Type() == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NONE) {
+    return false;
+  }
+  if (dst_device.Type() == OrtDevice::GPU && dst_device.Vendor() != OrtDevice::VendorIds::NONE) {
+    return false;
+  }
+
   return (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::CPU) ||
          (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::GPU) ||
          (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
+}
+
+bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return IsSupportedDevicePair(src_device, dst_device);
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
