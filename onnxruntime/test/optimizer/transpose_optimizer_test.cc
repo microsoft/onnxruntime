@@ -5444,6 +5444,47 @@ TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermut
   EXPECT_EQ(identity->Inputs()[0], dq_output->Name());
 }
 
+TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformPreflightsAllInputsBeforeMutation", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* valid_input = builder.MakeInput<float>({1, 1}, {1.0f});
+  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3}, {uint8_t{1, 2, 3}});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>(std::nullopt);
+  auto* output = builder.MakeOutput<float>(std::nullopt);
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Add", {valid_input, dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  onnx_transpose_optimization::api::NodeRef* add = nullptr;
+  for (auto& node : api_graph->Nodes()) {
+    if (node->OpType() == "Add") {
+      add = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(add, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_FALSE(layout_transformation::WrapTransposesAroundNode(*api_graph, *add, {&perm, &perm}, {}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.count("Transpose"), 0);
+  EXPECT_EQ(add->Inputs()[0], valid_input->Name());
+  EXPECT_EQ(add->Inputs()[1], dq_output->Name());
+}
+
 // Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
 // After the core transpose optimization loop, the test model contains the following "constant foldable" sequence:
 //

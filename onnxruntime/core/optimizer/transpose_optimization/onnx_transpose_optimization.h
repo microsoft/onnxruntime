@@ -81,6 +81,9 @@ bool HandleReduceOps(HandlerArgs& args);
 bool HandleReshape(HandlerArgs& args);
 bool HandleResize([[maybe_unused]] HandlerArgs& args);
 
+bool CanTransposeInput(const api::GraphRef& graph, const api::NodeRef& node, size_t i,
+                       const std::vector<int64_t>& perm_inv);
+
 bool TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,
                     const std::vector<int64_t>& perm_inv);

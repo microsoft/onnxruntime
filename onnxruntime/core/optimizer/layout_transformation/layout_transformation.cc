@@ -226,6 +226,13 @@ bool WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
                               const std::vector<const std::vector<int64_t>*>& output_perms) {
   for (size_t i = 0; i < input_perms.size(); ++i) {
     const std::vector<int64_t>* input_perm = input_perms[i];
+    if (input_perm != nullptr && !CanTransposeInput(graph, node, i, InvertPerm(*input_perm))) {
+      return false;
+    }
+  }
+
+  for (size_t i = 0; i < input_perms.size(); ++i) {
+    const std::vector<int64_t>* input_perm = input_perms[i];
     if (input_perm != nullptr &&
         !TransposeInput(graph, node, i, *input_perm, InvertPerm(*input_perm))) {
       return false;

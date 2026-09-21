@@ -1189,13 +1189,18 @@ static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::Ten
   }
 }
 
+bool CanTransposeInput(const api::GraphRef& graph, const api::NodeRef& node, size_t i,
+                       const std::vector<int64_t>& perm_inv) {
+  return CanTransposeInputWithQDQ(graph, node.Inputs()[i], perm_inv);
+}
+
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
 static bool TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t i,
                                const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   std::string_view input = node.Inputs()[i];
 
-  if (!CanTransposeInputWithQDQ(graph, input, perm_inv)) {
+  if (!CanTransposeInput(graph, node, i, perm_inv)) {
     return false;
   }
 
@@ -1397,7 +1402,7 @@ bool TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 
 static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
                            const std::vector<int64_t>& perm_inv) {
-  ORT_IGNORE_RETURN_VALUE(TransposeInputImpl(ctx.graph, node, i, perm, perm_inv));
+  static_cast<void>(TransposeInputImpl(ctx.graph, node, i, perm, perm_inv));
 }
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
