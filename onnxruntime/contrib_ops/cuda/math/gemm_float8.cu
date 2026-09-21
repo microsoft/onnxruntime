@@ -80,7 +80,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   input_B = ctx->Input<Tensor>(1);
   if (n_inputs == 3) {
     input_C = ctx->Input<Tensor>(2);
-    has_bias = true;
+    has_bias = input_C != nullptr;
   } else if (n_inputs > 3) {
     ORT_ENFORCE(n_inputs >= 5, "Unexpected number of inputs=", n_inputs, ".");
     has_scales = true;

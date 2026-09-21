@@ -200,8 +200,13 @@ TEST(GemmFloat8OpTest, ScaledFloat8E4M3FNToFloat8E4M3FNWithoutC) {
       true, false, false);
 }
 
-#endif
+TEST(GemmFloat8OpTest, Float8E4M3FNToFloat8E4M3FNWithoutC) {
+  TestGemmFloat8WithFloat8<Float8E4M3FN, MLFloat16, Float8E4M3FN>(
+      static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN),
+      false, false, false);
+}
 
+#endif
 #endif
 
 }  // namespace test
