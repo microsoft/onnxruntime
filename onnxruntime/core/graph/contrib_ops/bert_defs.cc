@@ -240,7 +240,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
                                                   int past_key_index = -1,
                                                   int use_max_past_present_buffer = -1,
                                                   int output_qk_index = -1,
-                                                  int total_sequence_length_index = 6) {
+                                                  int total_sequence_length_index = -1) {
   // Type inference for outputs
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);  // output
 
@@ -353,8 +353,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
           present_shape.add_dim()->set_dim_value(present_sequence_length);
         } else {
           // Cannot compute exact present_sequence_length.
-          if (ctx.getNumInputs() > static_cast<size_t>(total_sequence_length_index) &&
-              past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
+          if (ctx.getNumInputs() > 6 && past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
             // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
             // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
             present_shape.add_dim();
