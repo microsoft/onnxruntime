@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits>
 #include <math.h>
+#include <type_traits>
 
 #if defined(USE_WEBGPU)
 // Pull in the deviceless shared-trailing-dimension helper from the WebGPU EP so it can be
@@ -4918,6 +4919,93 @@ TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
   test.AddInput<uint8_t>("X", {2}, {64, 32});
   test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
+  test.Run();
+}
+
+template <typename T>
+void TestSignedBitShiftOpset28() {
+  constexpr T bit_width = static_cast<T>(std::numeric_limits<std::make_unsigned_t<T>>::digits);
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "LEFT");
+    test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, std::numeric_limits<T>::max(), T{-2}, T{2}});
+    test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{1}, T{-1}, bit_width});
+    test.AddOutput<T>("Z", {6}, {T{-16}, T{-12}, T{8}, T{-2}, T{0}, T{0}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "RIGHT");
+    test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, T{-2}, T{-2}, T{2}});
+    test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{-1}, bit_width, bit_width});
+    test.AddOutput<T>("Z", {6}, {T{-4}, T{-1}, T{0}, T{-1}, T{-1}, T{0}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "RIGHT");
+    test.AddInput<T>("X", {1}, {T{-8}});
+    test.AddInput<T>("Y", {4}, {T{1}, T{2}, bit_width, T{-1}});
+    test.AddOutput<T>("Z", {4}, {T{-4}, T{-2}, T{-1}, T{-1}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "LEFT");
+    test.AddInput<T>("X", {2}, {std::numeric_limits<T>::max(), T{-8}});
+    test.AddInput<T>("Y", {1}, {T{1}});
+    test.AddOutput<T>("Z", {2}, {T{-2}, T{-16}});
+    test.Run();
+  }
+}
+
+TEST(BitShiftOpTest, SignedInt8Opset28) {
+  TestSignedBitShiftOpset28<int8_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt16Opset28) {
+  TestSignedBitShiftOpset28<int16_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt32Opset28) {
+  TestSignedBitShiftOpset28<int32_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt64Opset28) {
+  TestSignedBitShiftOpset28<int64_t>();
+}
+
+template <typename T>
+void TestUnsignedBitShiftRegistration(int opset) {
+  OpTester test("BitShift", opset);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<T>("X", {2}, {T{1}, T{3}});
+  test.AddInput<T>("Y", {2}, {T{1}, T{2}});
+  test.AddOutput<T>("Z", {2}, {T{2}, T{12}});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, Uint16Opset11) {
+  TestUnsignedBitShiftRegistration<uint16_t>(11);
+}
+
+TEST(BitShiftOpTest, UnsignedTypesOpset28) {
+  TestUnsignedBitShiftRegistration<uint8_t>(28);
+  TestUnsignedBitShiftRegistration<uint16_t>(28);
+  TestUnsignedBitShiftRegistration<uint32_t>(28);
+  TestUnsignedBitShiftRegistration<uint64_t>(28);
+}
+
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64Opset28) {
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
   test.Run();
 }
 

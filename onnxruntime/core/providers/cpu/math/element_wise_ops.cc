@@ -12,6 +12,9 @@
 #include "core/mlas/inc/mlas.h"
 
 #include <cmath>
+#include <cstring>
+#include <limits>
+#include <type_traits>
 
 namespace onnxruntime {
 // Supported types for operators that have type reduction enabled
@@ -489,10 +492,18 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 13, float, Mean_8);
 
-REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
-// REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
-REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
-REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(BitShift, 11, 27, uint8_t, BitShift);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(BitShift, 11, 27, uint16_t, BitShift);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(BitShift, 11, 27, uint32_t, BitShift);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(BitShift, 11, 27, uint64_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, int8_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, int16_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, int32_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, int64_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, uint8_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, uint16_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, uint32_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 28, uint64_t, BitShift);
 
 REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int8_t, BitwiseAnd);
 REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int16_t, BitwiseAnd);
@@ -1334,17 +1345,54 @@ BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
 }
 
-// Shifting by >= the bit width of an unsigned type is undefined behavior in C++.
-// On x86, 64-bit shifts mask the shift amount to 6 bits, so shift by 64 acts like shift by 0.
-// Guard against this by returning 0 when the shift amount >= the bit width.
+template <typename T>
+T FromUnsignedBits(std::make_unsigned_t<T> bits) {
+  static_assert(std::is_integral_v<T>);
+  T value;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+template <typename T>
+inline bool IsInvalidShift(T shift) {
+  using UnsignedT = std::make_unsigned_t<T>;
+  constexpr UnsignedT bit_width = std::numeric_limits<UnsignedT>::digits;
+  return (std::is_signed_v<T> && shift < 0) || static_cast<UnsignedT>(shift) >= bit_width;
+}
+
 template <typename T>
 inline T SafeShiftLeft(T value, T shift) {
-  return shift >= sizeof(T) * 8 ? T{0} : value << shift;
+  if (IsInvalidShift(shift)) {
+    return T{0};
+  }
+
+  using UnsignedT = std::make_unsigned_t<T>;
+  const auto result = static_cast<UnsignedT>(value) << static_cast<UnsignedT>(shift);
+  if constexpr (std::is_signed_v<T>) {
+    return FromUnsignedBits<T>(result);
+  }
+
+  return result;
 }
 
 template <typename T>
 inline T SafeShiftRight(T value, T shift) {
-  return shift >= sizeof(T) * 8 ? T{0} : value >> shift;
+  if (IsInvalidShift(shift)) {
+    return std::is_signed_v<T> && value < 0 ? T{-1} : T{0};
+  }
+
+  using UnsignedT = std::make_unsigned_t<T>;
+  constexpr UnsignedT bit_width = std::numeric_limits<UnsignedT>::digits;
+  const auto shift_amount = static_cast<UnsignedT>(shift);
+  auto result = static_cast<UnsignedT>(value) >> shift_amount;
+  if constexpr (std::is_signed_v<T>) {
+    if (value < 0 && shift_amount != 0) {
+      result |= std::numeric_limits<UnsignedT>::max() << (bit_width - shift_amount);
+    }
+    return FromUnsignedBits<T>(result);
+  }
+
+  return result;
 }
 
 template <typename T>
