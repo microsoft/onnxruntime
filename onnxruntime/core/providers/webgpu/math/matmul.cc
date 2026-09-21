@@ -73,13 +73,17 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
 }
 
 Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
-                                           ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
-                                           ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-
-  const int a_components = a.NumComponents();
-  const int components = b.NumComponents();  // components of N
+  const ShaderVariableHelper* a = nullptr;
+  const ShaderVariableHelper* b = nullptr;
+  int a_components = 1;
+  if (!is_zero_k_) {
+    a = &shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                                  ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    b = &shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                                  ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    a_components = a->NumComponents();
+  }
+  const int components = NumberOfComponents(Outputs()[0].var_type);  // components of N
 
   std::string process_bias;
   if (has_bias_) {
@@ -93,32 +97,34 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
                                                       ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
-  const auto& batch_dims = shader.AddIndices("batch_dims");
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let col = (global_idx % (uniforms.N / " << components << ")) * " << components << ";\n"
                             << "var index1 = global_idx / (uniforms.N / " << components << ");\n"
                             << "let stride1 = uniforms.M / " << output_number_ << ";\n"
                             << "let row = (index1 % stride1) * " << output_number_ << ";\n"
-                            << "let batch = index1 / stride1;\n";
-  if (output_rank_ != 2) {
-    shader.MainFunctionBody() << "let batch_indices = " << batch_dims.OffsetToIndices("batch") << ";\n";
+                            << "let batch = index1 / stride1;\n"
+                            << "var values: array<output_value_t, " << output_number_ << ">;\n";
+  if (!is_zero_k_) {
+    const auto& batch_dims = shader.AddIndices("batch_dims");
+    if (output_rank_ != 2) {
+      shader.MainFunctionBody() << "let batch_indices = " << batch_dims.OffsetToIndices("batch") << ";\n";
+    }
+    shader.MainFunctionBody() << "var a_indices: a_indices_t;\n"
+                              << ConvertOutputBatchIndicesToInputBatchIndices("a", *a, a->Rank() - 2, batch_dims.Rank(), "batch_indices")
+                              << a->IndicesSet("a_indices", a->Rank() - 2, 0) << "\n"
+                              << a->IndicesSet("a_indices", a->Rank() - 1, 0) << "\n"
+                              << "let a_offset = " << a->IndicesToOffset("a_indices") << "*" << a_components << ";\n"
+                              << "var b_indices: b_indices_t;\n"
+                              << ConvertOutputBatchIndicesToInputBatchIndices("b", *b, b->Rank() - 2, batch_dims.Rank(), "batch_indices")
+                              << b->IndicesSet("b_indices", b->Rank() - 2, 0) << "\n"
+                              << b->IndicesSet("b_indices", b->Rank() - 1, 0) << "\n"
+                              << "let b_offset = " << b->IndicesToOffset("b_indices") << " * " << components << ";\n"
+                              << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
+                              << CalcResult(components, a_components, output_number_) << "\n"
+                              << "}\n";
   }
-  shader.MainFunctionBody() << "var a_indices: a_indices_t;\n"
-                            << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
-                            << a.IndicesSet("a_indices", a.Rank() - 2, 0) << "\n"
-                            << a.IndicesSet("a_indices", a.Rank() - 1, 0) << "\n"
-                            << "let a_offset = " << a.IndicesToOffset("a_indices") << "*" << a_components << ";\n"
-                            << "var b_indices: b_indices_t;\n"
-                            << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
-                            << b.IndicesSet("b_indices", b.Rank() - 2, 0) << "\n"
-                            << b.IndicesSet("b_indices", b.Rank() - 1, 0) << "\n"
-                            << "let b_offset = " << b.IndicesToOffset("b_indices") << " * " << components << ";\n"
-                            << "var values: array<output_value_t, " << output_number_ << ">;\n"
-                            << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
-                            << CalcResult(components, a_components, output_number_) << "\n"
-                            << "}\n"
-                            << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
+  shader.MainFunctionBody() << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"
                             << process_bias << "\n"
                             << apply_activation << "\n"
@@ -180,8 +186,9 @@ static Status ApplyMatMulNaive(ComputeContext& context,
   const uint32_t m = narrow<uint32_t>(helper.M());
   const uint32_t n = narrow<uint32_t>(helper.N());
   const uint32_t k = narrow<uint32_t>(helper.K());
+  const bool is_zero_k = k == 0;
   const int components = GetMaxComponents(n);
-  const int a_components = GetMaxComponents(k);
+  const int a_components = is_zero_k ? 1 : GetMaxComponents(k);
   const int64_t output_number = GetMaxComponents(m);
   const TensorShape& logical_output_shape = helper.OutputShape();
   const size_t output_rank = logical_output_shape.NumDimensions();
@@ -193,13 +200,18 @@ static Status ApplyMatMulNaive(ComputeContext& context,
   const uint32_t output_size =
       narrow<uint32_t>(logical_output_shape.Size() / components / output_number);
 
-  MatMulNaiveProgram program{activation, output_rank, output_number, has_bias, is_channels_last};
+  MatMulNaiveProgram program{activation, output_rank, output_number, has_bias,
+                             is_channels_last, is_zero_k};
   program
       .CacheHint(activation.CacheKey(), std::to_string(components),
                  std::to_string(a_components), std::to_string(output_number),
-                 std::to_string(is_channels_last))
-      .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
+                 std::to_string(is_channels_last), std::to_string(is_zero_k));
+  if (!is_zero_k) {
+    program
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}})
+        .AddIndices(outer_dims);
+  }
   if (has_bias) {
     const int bias_components = is_channels_last ? components : 1;
     program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank, bias_components});
@@ -208,7 +220,6 @@ static Status ApplyMatMulNaive(ComputeContext& context,
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None,
                     output_program_shape, components}})
       .SetDispatchGroupSize(CeilDiv(output_size, 64u))
-      .AddIndices(outer_dims)
       .AddUniformVariables({{output_size}, {m}, {n}, {k}});
   AppendActivationUniformsData(activation, program);
   return context.RunProgram(program);

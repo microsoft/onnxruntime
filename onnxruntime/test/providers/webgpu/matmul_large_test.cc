@@ -217,6 +217,10 @@ TEST(MatMulNaiveProgramTest, VectorExecution) {
   RunTestTyped<float>({3}, {3});
 }
 
+TEST(MatMulNaiveProgramTest, ZeroContractionDimensionExecution) {
+  RunTestTyped<float>({1, 0}, {0, 8});
+}
+
 TEST(MatMulProgramTest, VectorFallbackExecution) {
   RunTestTyped<float>({8}, {8, 3});
   RunTestTyped<float>({2, 8}, {8});
