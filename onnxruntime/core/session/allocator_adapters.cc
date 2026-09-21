@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "allocator_adapters.h"
+#include <utility>
+
 #include "core/common/parse_string.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_ep_stream.h"
@@ -119,17 +121,22 @@ std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator:
   // Allocators which does not implement GetStats() will return empty stats
   std::unordered_map<std::string, std::string> entries;
   if (stats.num_allocs > 0 || stats.bytes_limit != 0) {
-    entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
-    entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
-    entries.insert_or_assign("RequestedInUse", std::to_string(stats.bytes_requested_in_use));
-    entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
-    entries.insert_or_assign("ReservedBytes", std::to_string(stats.reserved_bytes));
-    entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
-    entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));
-    entries.insert_or_assign("NumReserves", std::to_string(stats.num_reserves));
-    entries.insert_or_assign("NumArenaExtensions", std::to_string(stats.num_arena_extensions));
-    entries.insert_or_assign("NumArenaShrinkages", std::to_string(stats.num_arena_shrinkages));
-    entries.insert_or_assign("MaxAllocSize", std::to_string(stats.max_alloc_size));
+    const std::pair<const char*, int64_t> stat_entries[] = {
+        {"Limit", stats.bytes_limit},
+        {"InUse", stats.bytes_in_use},
+        {"RequestedInUse", stats.bytes_requested_in_use},
+        {"TotalAllocated", stats.total_allocated_bytes},
+        {"ReservedBytes", stats.reserved_bytes},
+        {"MaxInUse", stats.max_bytes_in_use},
+        {"NumAllocs", stats.num_allocs},
+        {"NumReserves", stats.num_reserves},
+        {"NumArenaExtensions", stats.num_arena_extensions},
+        {"NumArenaShrinkages", stats.num_arena_shrinkages},
+        {"MaxAllocSize", stats.max_alloc_size},
+    };
+    for (const auto& [key, value] : stat_entries) {
+      entries.insert_or_assign(key, std::to_string(value));
+    }
   }
   return entries;
 }
