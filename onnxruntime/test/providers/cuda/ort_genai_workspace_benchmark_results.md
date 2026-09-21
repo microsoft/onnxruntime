@@ -30,9 +30,12 @@ The measurements below used:
 
 ## Results at a glance
 
-Each latency value is the median of six fresh-process 10% trimmed means. Peak
-VRAM is the median device-wide `nvidia-smi memory.used` value from six
-fresh-process runs.
+These long-context results use one fresh process per dispatch and workspace
+mode. Each latency process performs one warmup followed by three measured
+requests. Peak VRAM comes from a separate fresh process that performs one
+warmup and one measured request while polling device-wide
+`nvidia-smi memory.used`. The peak values are therefore approximate WDDM
+device totals, not process-attributed allocator measurements.
 
 Terminology:
 
@@ -41,49 +44,91 @@ Terminology:
 - **fpA-intB** uses floating-point activations and integer weights directly.
   Runtime profiling selects between eligible fpA-intB GEMV and CUTLASS GEMM
   tactics; only the CUTLASS tactic requires workspace.
-- **TTFT** is the end-to-end time to the first generated token, including
-  generator setup, prompt prefill, and first-token sampling.
-- **Scenario** is the end-to-end request time for the 1,024-token prompt and
-  all 128 generated tokens.
+- **Prompt** is the number of input tokens: 4K = 4,096, 8K = 8,192, and
+  12K = 12,288.
+- **TTFT** is median end-to-end request time to the first generated token,
+  including generator setup, prompt prefill, and first-token sampling.
+- **Scenario** is median end-to-end request time for the listed prompt and all
+  128 generated tokens.
 - **TPOT** is the trimmed mean time for each of the 127 decode model
   evaluations after the first token. It excludes prompt prefill and is not
   calculated by dividing scenario time by 128.
-- **Scratch** disables static workspace preallocation for both operators.
-- **MatMulNBits planned** enables static workspace preallocation for
+- **Peak VRAM** is the maximum device-wide memory usage sampled during the
+  separate memory run.
+- **S (scratch)** disables static workspace preallocation for both operators.
+- **M (MatMulNBits planned)** enables static workspace preallocation for
   `MatMulNBits` only; GQA continues to use scratch allocations.
-- **Combined planned** enables static workspace preallocation for both
-  `MatMulNBits` and GQA.
+- **C (combined planned)** enables static workspace preallocation for both
+  `MatMulNBits` and GQA. The bound scales with prompt capacity, so this mode
+  can reserve substantially more VRAM at long context.
 
-### Qwen 2.5 1.5B
+### Qwen 2.5 1.5B — legacy
 
-| Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Scratch | 63.284 ms | 997.656 ms | 7.012 ms | 4,067 MiB | 74.866 ms | 1,309.432 ms | 9.794 ms | 4,943 MiB |
-| MatMulNBits planned | 63.635 ms | 987.188 ms | 6.845 ms | 4,099 MiB | 60.079 ms | 1,052.767 ms | 7.514 ms | 4,940 MiB |
-| Combined planned | 63.813 ms | 968.611 ms | 6.832 ms | 4,005 MiB | 61.900 ms | 1,493.837 ms | 10.627 ms | 4,942 MiB |
+| Prompt | Mode | TTFT | Scenario | TPOT | Peak VRAM |
+|---:|:---:|---:|---:|---:|---:|
+| 4K | S | 0.252 s | 1.101 s | 6.642 ms | 8,676 MiB |
+| 4K | M | 0.265 s | 1.173 s | 7.039 ms | 8,936 MiB |
+| 4K | C | 0.256 s | 1.112 s | 6.437 ms | 10,854 MiB |
+| 8K | S | 0.541 s | 1.580 s | 8.102 ms | 14,952 MiB |
+| 8K | M | 0.538 s | 1.517 s | 7.747 ms | 15,220 MiB |
+| 8K | C | 0.539 s | 1.555 s | 7.859 ms | 23,140 MiB |
+| 12K | S | 0.876 s | 2.028 s | 9.075 ms | 16,228 MiB |
+| 12K | M | 0.851 s | 2.008 s | 9.018 ms | 16,228 MiB |
+| 12K | C | 0.851 s | 2.031 s | 9.250 ms | 24,036 MiB |
 
-### Qwen 2.5 7B
+### Qwen 2.5 1.5B — fpA-intB
 
-| Configuration | Legacy TTFT | Legacy scenario | Legacy TPOT | Legacy peak VRAM | fpA-intB TTFT | fpA-intB scenario | fpA-intB TPOT | fpA-intB peak VRAM |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Scratch | 278.844 ms | 1,598.665 ms | 10.373 ms | 8,189 MiB | 240.027 ms | 1,582.895 ms | 10.587 ms | 12,101 MiB |
-| MatMulNBits planned | 279.053 ms | 1,620.927 ms | 10.539 ms | 8,164 MiB | 238.276 ms | 1,532.977 ms | 10.234 ms | 11,339 MiB |
-| Combined planned | 279.232 ms | 1,618.198 ms | 10.478 ms | 8,175 MiB | 239.995 ms | 1,530.203 ms | 10.197 ms | 12,102 MiB |
+| Prompt | Mode | TTFT | Scenario | TPOT | Peak VRAM |
+|---:|:---:|---:|---:|---:|---:|
+| 4K | S | 0.232 s | 1.340 s | 10.471 ms | 9,614 MiB |
+| 4K | M | 0.242 s | 2.755 s | 17.829 ms | 9,618 MiB |
+| 4K | C | 0.240 s | 1.428 s | 10.918 ms | 11,662 MiB |
+| 8K | S | 0.535 s | 1.596 s | 8.197 ms | 16,146 MiB |
+| 8K | M | 0.533 s | 2.587 s | 19.076 ms | 15,890 MiB |
+| 8K | C | 0.531 s | 2.095 s | 12.819 ms | 24,014 MiB |
+| 12K | S | 0.887 s | 2.209 s | 9.886 ms | 17,232 MiB |
+| 12K | M | 0.896 s | 2.144 s | 9.718 ms | 17,166 MiB |
+| 12K | C | 0.911 s | 2.234 s | 10.259 ms | 24,024 MiB |
+
+### Qwen 2.5 7B — legacy
+
+| Prompt | Mode | TTFT | Scenario | TPOT | Peak VRAM |
+|---:|:---:|---:|---:|---:|---:|
+| 4K | S | 0.985 s | 2.540 s | 12.242 ms | 12,900 MiB |
+| 4K | M | 0.972 s | 2.502 s | 12.098 ms | 12,910 MiB |
+| 4K | C | 0.967 s | 2.522 s | 12.110 ms | 21,094 MiB |
+| 8K | S | 2.075 s | 3.950 s | 14.734 ms | 22,134 MiB |
+| 8K | M | 2.043 s | 3.925 s | 14.726 ms | 22,372 MiB |
+| 8K | C | 2.027 s | 3.898 s | 14.594 ms | 24,036 MiB |
+
+### Qwen 2.5 7B — fpA-intB
+
+| Prompt | Mode | TTFT | Scenario | TPOT | Peak VRAM |
+|---:|:---:|---:|---:|---:|---:|
+| 4K | S | 0.969 s | 2.701 s | 15.546 ms | 17,860 MiB |
+| 4K | M | 0.985 s | 2.634 s | 13.310 ms | 16,842 MiB |
+| 4K | C | 0.994 s | 2.751 s | 14.805 ms | 23,956 MiB |
+| 8K | S | 2.090 s | 6.603 s | 32.711 ms | 24,006 MiB |
+| 8K | M | 22.714 s | 24.553 s | 14.488 ms | 24,002 MiB |
+| 8K | C | 20.128 s | 22.006 s | 14.761 ms | 24,010 MiB |
 
 ## Benchmark design
 
 The script creates a temporary `genai_config.json` for each mode and never
-modifies the model package. The controller launches every mode in a fresh
-worker process and rotates the six possible mode orders:
+modifies the model package. For the original 1,024-token results detailed
+below, the controller launches every mode in a fresh worker process and
+rotates the six possible mode orders:
 
 - `scratch`: static workspace preallocation is disabled.
 - `matmul`: static preallocation is enabled without the non-windowed GQA bound.
 - `combined`: static preallocation is enabled for both `MatMulNBits` and GQA.
 
-The tested workload uses batch 1, a 1,024-token prompt, and up to 128 generated
-tokens. The GQA upper bound and KV-cache capacity are 1,152 tokens. Add
-`--fpa-intb` to set `ep.cuda.fpa_intb_gemm=1`; the default
-`--no-fpa-intb` setting uses the legacy `MatMulNBits` path.
+That workload uses batch 1, a 1,024-token prompt, and up to 128 generated
+tokens. The GQA upper bound and KV-cache capacity are 1,152 tokens. The
+long-context summary above instead uses 4K, 8K, or 12K prompts and sets the
+bound and cache capacity to prompt length plus 128. Add `--fpa-intb` to set
+`ep.cuda.fpa_intb_gemm=1`; the default `--no-fpa-intb` setting uses the legacy
+`MatMulNBits` path.
 
 The report includes:
 
@@ -103,12 +148,15 @@ in the report.
 
 Each dispatch and workspace configuration runs in a separate fresh process so
 arena state, memory patterns, and tactic profiling from another mode cannot
-affect it. The controller uses six order-balanced blocks, one for each
-permutation of the three workspace modes.
+affect it. The original 1,024-token results use six order-balanced blocks, one
+for each permutation of the three workspace modes. The long-context summary
+uses one block and therefore does not provide the same process-level
+replication or order balancing.
 
-An absolute latency is the median of the six process-level 10% trimmed means.
-Paired percentage changes are computed between adjacent processes within each
-block and reported as median `[minimum, maximum]`.
+For the original balanced results, an absolute latency is the median of the
+six process-level 10% trimmed means. Paired percentage changes are computed
+between adjacent processes within each block and reported as median
+`[minimum, maximum]`.
 
 A stall is a sample greater than three times the median for that process.
 Scenario trimming removes the lowest and highest 10% of complete requests.
@@ -152,6 +200,12 @@ latency processes:
 The memory phase samples device-wide rather than process-attributed usage. The
 GPU must otherwise be idle. The C++ benchmark should be used when exact
 process-local WDDM and ORT arena statistics are required.
+
+Models configured for paged dynamic batching use the ORT GenAI `Engine` API
+instead of `Generator`. For Engine workers, `append_tokens_ms` measures
+`begin_turn()` admission rather than prefill, and `sampling_ms` includes Engine
+execution from admission through the first token, including prefill. Request
+and model TTFT retain their definitions above.
 
 ## Runtime preallocated-workspace verification
 
@@ -341,6 +395,71 @@ decode tactic outliers moved the aggregate medians substantially. Qwen 7B
 still shows the repeatable fpA-intB prefill advantage, while scenario and TPOT
 remain sensitive to process-level tactic selection.
 
+## Preliminary Qwen 2.5 long-context TTFT
+
+The Qwen 2.5 long-context runs used fpA-intB dispatch and one fresh process per
+workspace mode. At 8K for both models and 16K for Qwen 1.5B, each process used
+one warmup and three measured requests. These runs do not use the six-block
+order-balanced methodology of the main results.
+
+| Model | Prompt | Scratch request TTFT | MatMulNBits planned | Combined planned |
+|---|---:|---:|---:|---:|
+| Qwen 2.5 1.5B | 8,192 | 0.516 s | 0.523 s (+1.2%) | 0.564 s (+9.3%) |
+| Qwen 2.5 1.5B | 16,384 | 50.396 s | 53.700 s (+6.6%) | 17.015 s (-66.2%) |
+| Qwen 2.5 7B | 8,192 | 18.735 s | 24.692 s (+31.8%) | 24.460 s (+30.6%) |
+
+The different direction and magnitude by model and mode do not establish a
+workspace-planning latency effect. Fresh processes independently profile and
+select fpA-intB tactics. The Qwen 1.5B 16K combined result therefore requires
+order-balanced fresh-process reproduction before it can be attributed to
+workspace planning. All modes produced matching output hashes.
+
+Qwen 7B at 16K completed one warmup but OOMed on its first measured request.
+A cold single request per fresh process completed at 211.626/477.533/212.132
+seconds for scratch/MatMulNBits-planned/combined. Those values include lazy
+runtime tactic profiling and are not comparable to the warm TTFT rows above;
+they show only that a single 16K request fits. Repeating the request in the
+same process does not fit with the current allocator state.
+
+At 32K, a maximum-valid 32,767-token prompt requested approximately 19.9 GiB
+for attention and failed GPU allocation even in scratch mode. A 64K prompt
+exceeds the exported models' 32,768-token context and rotary-cache capacity.
+No valid 32K or 64K latency comparison is available for these model packages
+on this GPU.
+
+## Preliminary Qwen 3.8 27B long-context TTFT
+
+Qwen 3.8 27B used the ORT GenAI `Engine` API, fpA-intB dispatch, dynamic
+batching, and an INT8 paged KV cache. The model has 433 `MatMulNBits` nodes and
+16 `PagedAttention` nodes, but no GQA nodes. Consequently, scratch and
+MatMulNBits-planned are the only distinct workspace modes; combined planning
+would be equivalent to MatMulNBits-only planning.
+
+These runs are deliberately preliminary because one request took 14 to 77
+minutes. Each mode used only one fresh process. The 16K value is the median of
+three measured requests after one warmup in that process; the 32K and 64K
+values each contain one measured request without a warmup.
+
+| Prompt length | Scratch request TTFT | MatMulNBits planned | Planned vs scratch |
+|---|---:|---:|---:|
+| 16,384 | 861.240 s | 829.303 s | -3.708% |
+| 32,768 | 1,892.226 s | 1,948.282 s | +2.962% |
+| 65,536 | 4,405.860 s | 4,631.681 s | +5.125% |
+
+The direction reverses between 16K and 32K/64K, so these single-process
+measurements do not establish either a workspace-planning speedup or
+regression. Fresh processes independently profile fpA-intB tactics, and the
+cost prevented the order-balanced repeated-process methodology used above.
+Scratch and planned runs produced matching output hashes at every prompt
+length.
+
+The model's default 50% paged-cache allocation and a 90% allocation both
+rejected the 64K request as `REQUEST_UNSERVICEABLE`. An explicit 258-block
+pool was also insufficient. Both modes completed with 512 blocks, which
+requires approximately 4 GiB of raw main-model INT8 KV-cache storage. This
+shows that the earlier rejection was an Engine admission-capacity constraint,
+not the model's 262,144-token context limit.
+
 ## Conclusions
 
 - Legacy warm TTFT remained neutral. fpA-intB Qwen 7B was also effectively
@@ -355,6 +474,9 @@ remain sensitive to process-level tactic selection.
 - Device-wide `nvidia-smi` memory is too quantized and process-variable for
   precise workspace attribution on this WDDM system. Use the separate C++
   benchmark report for process-local WDDM and ORT arena measurements.
+- Preliminary Qwen 3.8 27B long-context TTFT changed by -3.7%, +3.0%, and
+  +5.1% at 16K, 32K, and 64K respectively. The opposite directions and
+  one-process methodology do not support a latency attribution.
 - The strict Qwen 7B sampled hash-set checks failed in two legacy phases and
   the fpA-intB memory phase. Additional fresh-process diagnostics reproduced
   omitted hashes while every individual worker remained internally stable;

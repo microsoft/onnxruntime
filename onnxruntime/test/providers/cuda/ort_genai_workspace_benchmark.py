@@ -169,14 +169,13 @@ def make_prompt_tokens(config: dict[str, Any], length: int, seed: int) -> np.nda
 def build_max_shape_override(config: dict[str, Any], prompt_tokens: int, capacity: int) -> str:
     decoder = config["model"]["decoder"]
     inputs = decoder["inputs"]
+    if "attention_mask" not in inputs:
+        return f"{inputs['input_ids']}:[{prompt_tokens}]"
+
+    shapes = [f"{inputs['input_ids']}:[1,{prompt_tokens}]", f"{inputs['attention_mask']}:[1,{capacity}]"]
     num_layers = int(decoder["num_hidden_layers"])
     num_kv_heads = int(decoder["num_key_value_heads"])
     head_size = int(decoder["head_size"])
-
-    shapes = [
-        f"{inputs['input_ids']}:[1,{prompt_tokens}]",
-        f"{inputs['attention_mask']}:[1,{capacity}]",
-    ]
     past_key_pattern = inputs["past_key_names"]
     past_value_pattern = inputs["past_value_names"]
     cache_shape = f":[1,{num_kv_heads},{capacity},{head_size}]"
@@ -218,13 +217,14 @@ def create_benchmark_config(
         session_options["ep.cuda.gqa_workspace_max_total_sequence_length"] = str(capacity)
 
     search = config.setdefault("search", {})
+    use_engine = "engine" in config
     search.update(
         {
             "batch_size": 1,
             "do_sample": False,
             "early_stopping": False,
             "max_length": capacity,
-            "min_length": capacity,
+            "min_length": 0 if use_engine else capacity,
             "num_beams": 1,
             "num_return_sequences": 1,
             "past_present_share_buffer": True,
@@ -362,6 +362,70 @@ def run_generation(
     return result
 
 
+def run_engine_generation(
+    og: Any,
+    engine: Any,
+    prompt: np.ndarray,
+    generated_tokens: int,
+) -> dict[str, float | list[float] | int]:
+    request_start = time.perf_counter()
+    request_options = og.RequestOptions()
+    request_options.set_max_session_tokens(len(prompt) + generated_tokens)
+    request = engine.create_request(options=request_options)
+    turn_options = og.TurnOptions(request)
+    turn_options.set_do_sample(False)
+    turn_options.set_min_generated_tokens(generated_tokens)
+    turn_options.set_max_generated_tokens(generated_tokens)
+    turn_options.set_seed(0)
+
+    append_start = time.perf_counter()
+    request.begin_turn(prompt, turn_options)
+    append_end = time.perf_counter()
+    first_token_end: float | None = None
+    decode_ms: list[float] = []
+    output_tokens: list[int] = []
+    event_buffer = engine.create_event_buffer(8)
+
+    try:
+        while engine.has_pending_requests():
+            token_start = time.perf_counter()
+            events = engine.run(event_buffer)
+            token_end = time.perf_counter()
+            for event in events:
+                if event.flags & og.EngineEventFlags.FAILED:
+                    raise RuntimeError(f"Engine generation failed; error_code={event.error_code}")
+                if event.request is not request:
+                    raise RuntimeError("Engine returned an event for an unexpected request")
+                if event.flags & og.EngineEventFlags.TOKEN:
+                    output_tokens.append(int(event.token))
+                    if first_token_end is None:
+                        first_token_end = token_end
+                    else:
+                        decode_ms.append((token_end - token_start) * 1000.0)
+    finally:
+        request.close()
+
+    if first_token_end is None:
+        raise RuntimeError("Engine request completed without producing a token")
+
+    scenario_end = time.perf_counter()
+    sequence = np.concatenate((prompt, np.asarray(output_tokens, dtype=np.int32)))
+    result = {
+        "generator_setup_ms": (append_start - request_start) * 1000.0,
+        "append_tokens_ms": (append_end - append_start) * 1000.0,
+        "sampling_ms": (first_token_end - append_end) * 1000.0,
+        "request_ttft_ms": (first_token_end - request_start) * 1000.0,
+        "model_ttft_ms": (first_token_end - append_start) * 1000.0,
+        "request_scenario_ms": (scenario_end - request_start) * 1000.0,
+        "model_scenario_ms": (scenario_end - append_start) * 1000.0,
+        "decode_ms": decode_ms,
+        "output_hash": hashlib.sha256(sequence.tobytes()).hexdigest(),
+        "output_length": len(sequence),
+    }
+    gc.collect()
+    return result
+
+
 def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     try:
         og = importlib.import_module("onnxruntime_genai")
@@ -390,10 +454,17 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         )
         model_load_start = time.perf_counter()
         model = og.Model(str(config_path.parent))
+        use_engine = "engine" in source_config
+        engine = og.Engine(model) if use_engine else None
         model_load_ms = (time.perf_counter() - model_load_start) * 1000.0
+        generate = (
+            (lambda: run_engine_generation(og, engine, prompt, args.generated_tokens))
+            if engine is not None
+            else (lambda: run_generation(og, model, prompt, args.generated_tokens))
+        )
 
         for _ in range(args.warmups):
-            run_generation(og, model, prompt, args.generated_tokens)
+            generate()
 
         samples: list[dict[str, Any]] = []
         memory: dict[str, int] | None = None
@@ -402,7 +473,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             sampler.start()
             try:
                 baseline_mib = sampler.reset_peak()
-                samples.append(run_generation(og, model, prompt, args.generated_tokens))
+                samples.append(generate())
             finally:
                 peak_mib = sampler.stop()
             memory = {
@@ -412,7 +483,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             }
         else:
             for _ in range(args.iterations):
-                samples.append(run_generation(og, model, prompt, args.generated_tokens))
+                samples.append(generate())
 
         generator_setup = [float(sample["generator_setup_ms"]) for sample in samples]
         append_tokens = [float(sample["append_tokens_ms"]) for sample in samples]
@@ -434,6 +505,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "fpa_intb": args.fpa_intb,
             "prompt_tokens": args.prompt_tokens,
             "generated_tokens": args.generated_tokens,
+            "generation_api": "engine" if use_engine else "generator",
             "warmups": args.warmups,
             "iterations": len(samples),
             "model_load_ms": model_load_ms,
