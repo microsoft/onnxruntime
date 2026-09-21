@@ -1020,7 +1020,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
 
   if (WIN32)
-    # This full-session test is compiled directly into onnxruntime_provider_test on Windows.
+    # Windows uses the bridge-free chain tests in providers/cuda instead of this provider-internal session test.
     list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
       "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc")
   endif()
@@ -1466,6 +1466,11 @@ block()
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
+
+  if (NOT WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    # The dlopen'd CUDA test module runs full sessions and resolves their core symbols from this executable.
+    set_target_properties(onnxruntime_provider_test PROPERTIES ENABLE_EXPORTS 1)
+  endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     target_compile_definitions(onnxruntime_provider_test PRIVATE

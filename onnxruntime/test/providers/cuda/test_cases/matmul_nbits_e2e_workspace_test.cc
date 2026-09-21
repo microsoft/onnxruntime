@@ -239,7 +239,6 @@ std::string BuildMatMulNBitsChainModelBytes(size_t node_count) {
     }
     input_name = output_name;
     input_width = kE2eN;
-    input_width = kE2eN;
   }
 
   auto* output = graph->add_output();
@@ -981,6 +980,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
             << " bytes, Level2=empty, runtime(request)=" << zero_m_runtime << " bytes" << std::endl;
   EXPECT_EQ(zero_m_runtime, 0u)
       << "The same kernel must replace its prior positive capture with zero for an m == 0 run.";
+  EXPECT_FALSE(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(op_kernel))
+      << "An empty-output run must clear the preceding run's planned-workspace usage.";
 }
 
 TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {

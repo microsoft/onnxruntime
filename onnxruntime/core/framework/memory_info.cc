@@ -54,6 +54,10 @@ void MemoryInfo::Init(const SequentialExecutionPlan* execution_plan,
 void MemoryInfo::RecordMemoryPatternInfo(const MemoryPatternGroup& mem_patterns, MapType type) {
   for (const auto& location : mem_patterns.locations) {
     for (const auto& p : mem_patterns.GetPatterns(location)->GetPatternsMap()) {
+      // Synthetic workspace IDs have no OrtValue or tensor allocation metadata.
+      if (p.first < 0) {
+        continue;
+      }
       ORT_ENFORCE(AllocPlan(p.first));
       tensors_memory_info_map_.at(location)[type].AddPlannedMemory(p.first, p.second);
     }

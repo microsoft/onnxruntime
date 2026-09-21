@@ -512,7 +512,7 @@ static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
 /// Enables workspace integration with ORT's run-scoped activation memory pattern. The default value is "0".
 /// When set to "1", ORT requires sequential execution and includes opted-in kernel workspace lifetimes
 /// in memory-pattern planning when memory-pattern optimization is active. Runtime requests larger than
-/// the declaration retain dynamic allocation.
+/// the declaration retain dynamic allocation. Workspace declarations are unavailable in minimal builds.
 static const char* const kOrtSessionOptionsEnableStaticWorkspacePreallocation =
     "session.enable_static_workspace_preallocation";
 

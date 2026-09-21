@@ -1164,6 +1164,15 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD)
+    // The static training planner only knows activation lifetimes. Let the execution frame
+    // trace opted-in workspace too, rather than caching an activation-only pattern forever.
+    const auto* execution_plan = GetExecutionPlan();
+    if (execution_plan != nullptr && !execution_plan->workspace_allocation_plan.empty()) {
+      return nullptr;
+    }
+#endif
+
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
@@ -2068,8 +2077,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
   // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
-  // This collects workspace slot requirements for future offset planning.
-  // Requirements are reported per graph but are not yet persisted in a workspace plan.
+  // Opted-in kernels also register synthetic workspace slots for run-scoped memory-pattern planning.
   {
     SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;

@@ -1043,7 +1043,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (trace_preallocated_workspace) {
     std::cerr << "[cuda_workspace_check] op=GroupQueryAttention"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
               << " node_index=" << this->Node().Index()
+#endif
               << " node_name=" << this->Node().Name()
               << " phase=" << (parameters.sequence_length == 1 ? "decode" : "prefill")
               << " root="

@@ -4,12 +4,15 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
-#include <iostream>
 #include <type_traits>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include <iostream>
 #include "core/platform/env_var_utils.h"
+#endif
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 
 std::mutex& DiagnosticArenaRegistryMutex() {
@@ -62,6 +65,7 @@ void LogDiagnosticArenaStats(const char* checkpoint,
 }
 
 }  // namespace
+#endif
 
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
@@ -131,13 +135,17 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   if (ParseEnvironmentVariableWithDefault<int>("ORT_ARENA_DIAGNOSTICS", 0) != 0) {
     RegisterDiagnosticArena(this);
   }
+#endif
 }
 
 BFCArena::~BFCArena() {
+#if !defined(ORT_MINIMAL_BUILD)
   UnregisterDiagnosticArena(this);
+#endif
 
   for (const auto& region : region_manager_.regions()) {
     device_allocator_->Free(region.ptr());
@@ -618,6 +626,7 @@ Status BFCArena::Shrink() {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status LogAndShrinkRegisteredGpuArenas(const char* checkpoint,
                                        bool shrink,
                                        int64_t* reclaimed_bytes,
@@ -660,6 +669,7 @@ Status LogAndShrinkRegisteredGpuArenas(const char* checkpoint,
             << std::endl;
   return Status::OK();
 }
+#endif
 
 void BFCArena::DeallocateRawInternal(void* ptr) {
   // Find the chunk from the ptr.

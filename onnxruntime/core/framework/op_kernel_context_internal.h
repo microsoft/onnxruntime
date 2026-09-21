@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include <functional>
+#if !defined(ORT_MINIMAL_BUILD)
 #include <algorithm>
 #include <atomic>
-#include <functional>
 #include <iostream>
-#if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -15,12 +15,12 @@
 
 #include "core/common/json_utils.h"
 #include "core/framework/run_instrumentation.h"
+#include "core/platform/env_var_utils.h"
 #endif
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
-#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
@@ -181,7 +181,9 @@ class OpKernelContextInternal : public OpKernelContext {
                         ),
 #endif
         session_state_(session_state),
+#if !defined(ORT_MINIMAL_BUILD)
         execution_frame_(frame),
+#endif
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -205,6 +207,7 @@ class OpKernelContextInternal : public OpKernelContext {
 #endif
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   ~OpKernelContextInternal() override {
     for (const auto* workspace_plan : active_workspace_plans_) {
       execution_frame_.ReleasePlannedWorkspace(workspace_plan->pattern_id, workspace_plan->location);
@@ -288,6 +291,7 @@ class OpKernelContextInternal : public OpKernelContext {
     }
     return Status::OK();
   }
+#endif
 
   bool GetUseDeterministicCompute() const override {
     return session_state_.GetUseDeterministicCompute();
@@ -384,11 +388,15 @@ class OpKernelContextInternal : public OpKernelContext {
 #endif
 
   const SessionState& session_state_;
+#if !defined(ORT_MINIMAL_BUILD)
   IExecutionFrame& execution_frame_;
+#endif
   const bool& terminate_flag_;
   profiling::Profiler* run_profiler_;
   std::vector<const OrtValue*> implicit_input_values_;
+#if !defined(ORT_MINIMAL_BUILD)
   InlinedVector<const SequentialExecutionPlan::WorkspaceAllocationPlan*> active_workspace_plans_;
+#endif
 };
 
 }  // namespace onnxruntime

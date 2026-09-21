@@ -736,7 +736,7 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 // takes a cached workspace-free fpA_intB GEMV tactic or a size formula overflows.
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
-    gsl::span<const WorkspaceInputShape> input_shapes,
+    [[maybe_unused]] gsl::span<const WorkspaceInputShape> input_shapes,
     /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
 #if USE_FPA_INTB_GEMM
@@ -807,11 +807,10 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
-#if USE_FPA_INTB_GEMM
   // TEST verification hook only. Record every invocation, including validation failures, empty
   // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
   last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
-#endif
+  last_compute_used_preallocated_workspace_.store(false, std::memory_order_relaxed);
 
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {
@@ -879,11 +878,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
 
-  last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
-  last_compute_used_preallocated_workspace_.store(false, std::memory_order_relaxed);
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   static const bool trace_preallocated_workspace =
       ParseEnvironmentVariableWithDefault<int>(
           "ORT_CUDA_TRACE_PREALLOCATED_WORKSPACE", 0) != 0;
+#endif
 
   DUMP_TENSOR_INIT();
 

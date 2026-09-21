@@ -3,11 +3,13 @@
 
 #include "core/framework/execution_frame.h"
 
-#include <atomic>
-#include <iostream>
 #include <sstream>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include <atomic>
+#include <iostream>
 #include "core/platform/env_var_utils.h"
+#endif
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -29,6 +31,7 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 
 bool WorkspaceLookupTraceEnabled() {
@@ -41,6 +44,7 @@ bool WorkspaceLookupTraceEnabled() {
 std::atomic<size_t> workspace_trace_frame_id{0};
 
 }  // namespace
+#endif
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
@@ -451,6 +455,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
     // if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
+#if !defined(ORT_MINIMAL_BUILD)
       if (WorkspaceLookupTraceEnabled()) {
         const size_t frame_id =
             workspace_trace_frame_id.fetch_add(1, std::memory_order_relaxed);
@@ -461,6 +466,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                     << std::endl;
         }
       }
+#endif
       // if no existing patterns, generate one in this execution frame
       if (!mem_patterns_) {
         planner_.emplace(*session_state.GetExecutionPlan());
@@ -1003,6 +1009,7 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status ExecutionFrame::GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
                                            size_t allocation_bytes, size_t alignment_bytes,
                                            void** workspace) {
@@ -1115,6 +1122,7 @@ void ExecutionFrame::ReleasePlannedWorkspace(int pattern_id, const OrtDevice& lo
     }
   }
 }
+#endif
 
 // generate memory pattern based on the tracing of memory allocation/free in current execution
 // return error if the planner is not setup.
