@@ -25,6 +25,9 @@ static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::v
   const auto M = helper.M();
   const auto K = helper.K();
   const auto N = helper.N();
+  if (K == 0) {
+    return;
+  }
   const auto& left_offsets = helper.LeftOffsets();
   const auto& right_offsets = helper.RightOffsets();
   const auto& output_offsets = helper.OutputOffsets();
@@ -100,8 +103,10 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
               device_config.M == required_config.M &&
               device_config.N == required_config.N &&
               device_config.K == required_config.K &&
-              adapter_info.subgroupMinSize == required_config.subgroupMinSize &&
-              adapter_info.subgroupMaxSize == required_config.subgroupMaxSize) {
+              webgpu::IsSubgroupSizeSupported(
+                  adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
+                  required_config.subgroupSize,
+                  context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl))) {
             has_required_config = true;
             break;
           }
@@ -111,10 +116,7 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
         }
       }
       if (!has_required_config) {
-        return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup range 16-32.";
-      }
-      if (!context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-        return "subgroup_matrix requires the WebGPU SubgroupSizeControl feature.";
+        return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup size 32.";
       }
       break;
     }
@@ -244,6 +246,12 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedPackedRejectsZeroContractionDimension) {
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroup) {
   RunTestTyped<float>({8, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::IntelSubgroup);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroupRejectsZeroContractionDimension) {
+  RunTestTyped<float>({1, 0}, {0, 1}, false, webgpu::MatMulAlgorithm::IntelSubgroup,
+                      OpTester::ExpectResult::kExpectFailure,
+                      "MatMul algorithm intel_subgroup");
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitK) {

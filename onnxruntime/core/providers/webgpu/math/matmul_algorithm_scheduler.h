@@ -38,7 +38,8 @@ inline bool MeetsMatMulAlgorithmPrerequisites(
     case MatMulAlgorithm::SubgroupMatrix:
       return prerequisites.can_use_subgroup_matrix;
     case MatMulAlgorithm::IntelSubgroup:
-      return prerequisites.has_intel_subgroup_capability;
+      return prerequisites.has_intel_subgroup_capability &&
+             prerequisites.has_nonzero_k;
     case MatMulAlgorithm::PackedSplitK:
       return prerequisites.has_nonzero_k &&
              prerequisites.split_k_configured &&

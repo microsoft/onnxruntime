@@ -5,7 +5,7 @@
 
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
-#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
 
 namespace onnxruntime {
@@ -157,6 +157,7 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread)
 TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.has_intel_subgroup_capability = true;
+  prerequisites.has_nonzero_k = true;
   EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
 
   MatMulAlgorithmSelectionParams below_heuristic_threshold{};
@@ -166,6 +167,16 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThre
   below_heuristic_threshold.has_intel_subgroup_capability = true;
   intel::IntelMatMulAlgorithmScheduler scheduler;
   EXPECT_NE(scheduler.Select(below_heuristic_threshold), MatMulAlgorithm::IntelSubgroup);
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, IntelSubgroupRejectsZeroContractionDimension) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.has_intel_subgroup_capability = true;
+
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
+
+  prerequisites.has_nonzero_k = true;
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
 }
 
 }  // namespace test

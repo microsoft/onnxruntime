@@ -4,15 +4,11 @@
 #pragma once
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
 namespace intel {
-
-namespace gpu_arch {
-inline constexpr std::string_view kXeLpg = "xe-lpg";
-inline constexpr std::string_view kXe3Lpg = "xe-3lpg";
-}  // namespace gpu_arch
 
 const uint32_t kSubgroupLogicalWorkGroupSizeX = 32;
 const uint32_t kSubgroupLogicalWorkGroupSizeY = 8;
@@ -21,10 +17,6 @@ const uint32_t kSubgroupLogicalWorkGroupSizeZ = 1;
 bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA = false, bool transB = false);
 
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M);
-
-bool CanUseAVec4CooperativeLoad(std::string_view architecture,
-                                uint32_t dim_inner,
-                                int64_t elements_per_thread_y);
 
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
