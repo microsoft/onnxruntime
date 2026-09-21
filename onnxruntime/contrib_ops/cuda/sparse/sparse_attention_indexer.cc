@@ -277,7 +277,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const CudaT* key_data = packed_qk ? query_data + num_heads * head_size
                                     : reinterpret_cast<const CudaT*>(key->Data<T>());
   return LaunchQsaSparseAttentionIndexer<CudaT>(
-      this, Stream(context), GetComputeStream(context), params,
+      Stream(context), params,
       query_data,
       key_data,
       reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
