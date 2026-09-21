@@ -462,22 +462,60 @@ not the model's 262,144-token context limit.
 
 ## Conclusions
 
-- Legacy warm TTFT remained neutral. fpA-intB Qwen 7B was also effectively
-  neutral across workspace modes; Qwen 1.5B request TTFT was dominated by
-  fresh-process setup outliers.
-- Scenario and TPOT differences remain smaller than, or inseparable from,
-  fresh-process/tactic variation. Combined planning did not show an
-  incremental latency benefit over MatMulNBits-only planning.
-- The runtime trace proved that every planned `MatMulNBits` and GQA node
-  consumed slot-0 preallocated memory after warmup, with no GQA subregion
-  fallback.
-- Device-wide `nvidia-smi` memory is too quantized and process-variable for
-  precise workspace attribution on this WDDM system. Use the separate C++
-  benchmark report for process-local WDDM and ORT arena measurements.
-- Preliminary Qwen 3.8 27B long-context TTFT changed by -3.7%, +3.0%, and
-  +5.1% at 16K, 32K, and 64K respectively. The opposite directions and
-  one-process methodology do not support a latency attribution.
-- The strict Qwen 7B sampled hash-set checks failed in two legacy phases and
-  the fpA-intB memory phase. Additional fresh-process diagnostics reproduced
-  omitted hashes while every individual worker remained internally stable;
-  the reports retain these failures instead of treating them as green.
+For these GenAI workloads, the current implementation has not demonstrated a
+repeatable latency or peak-VRAM improvement:
+
+- **MatMulNBits-only planning** is effectively neutral for peak VRAM and
+  latency after excluding non-reproducible fpA-intB tactic variation.
+- **Combined MatMulNBits and GQA planning** often increases peak VRAM because
+  GQA reserves workspace for the configured maximum sequence length. At 8K to
+  12K, that reservation leaves little headroom on this 24 GiB GPU and can
+  trigger WDDM paging.
+- The CUDA arena already reuses scratch allocations efficiently, so replacing
+  them with planned buffers does not necessarily lower the device high-water
+  mark.
+- Preliminary Qwen 3.8 27B TTFT changed in opposite directions at 16K, 32K,
+  and 64K. Those single-process results likewise do not support a latency
+  attribution.
+
+The mechanism still provides infrastructure benefits that are not captured by
+median latency or device-wide peak-memory measurements:
+
+1. **Predictable memory requirements.** Kernels declare workspace sizes before
+   execution, allowing a deployment planner to determine whether a graph fits
+   without relying on a general safety multiplier.
+2. **Stable workspace addresses and reuse.** Sequential kernels can reuse
+   planned memory instead of repeatedly requesting temporary buffers from the
+   arena.
+3. **Less allocator churn and fragmentation.** This may improve tail latency
+   in long-running, concurrent, or highly fragmented sessions even when median
+   latency is unchanged.
+4. **Earlier capacity decisions.** A constrained execution provider can reject
+   or offload nodes based on workspace requirements rather than encountering
+   an unexpected runtime OOM.
+
+Those benefits are weak in this benchmark because it runs one sequential
+request at a time, a case where the CUDA arena already reuses memory well.
+Device-wide `nvidia-smi` reports residency rather than allocator fragmentation.
+GQA planning reserves a conservative maximum while scratch allocation uses the
+exact runtime requirement. The memory pattern is learned and materialized
+after warmup, so it does not protect the first run from OOM. Finally,
+fresh-process fpA-intB tactic variation is substantially larger than any
+allocation-overhead saving observed here.
+
+This work should therefore be described as **workspace-accounting and
+memory-predictability infrastructure**, not as a proven performance
+optimization. On this 24 GiB GPU, combined GQA planning should be avoided at
+long context; MatMulNBits-only planning is safer but currently has no clear
+user-visible benefit. The next useful validation should measure allocator
+calls, ORT arena high-water and fragmentation, and latency percentiles over a
+long-running or concurrent workload instead of another small median-latency
+comparison.
+
+The runtime trace did verify the mechanism itself: every planned
+`MatMulNBits` and GQA node consumed slot-0 preallocated memory after warmup,
+with no GQA subregion fallback. The strict Qwen 7B sampled hash-set checks
+failed in two legacy phases and the fpA-intB memory phase; additional
+fresh-process diagnostics reproduced omitted hashes while every individual
+worker remained internally stable, so the reports retain those failures
+instead of treating them as green.
