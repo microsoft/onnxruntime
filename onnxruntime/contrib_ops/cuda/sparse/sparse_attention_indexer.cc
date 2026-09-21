@@ -144,6 +144,9 @@ Status SparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context) cons
                 "SparseAttentionIndexer: key is required for policy_mode 'csa'");
   for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                     sai::kPositionIds, sai::kPastProjBuffer}) {
+    if (is_qsa && index == sai::kMask) {
+      continue;
+    }
     const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
     const bool provided = index < context->InputCount() && context->Input<Tensor>(index) != nullptr;
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
@@ -224,12 +227,14 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
 
-  const auto& mask_shape = mask->Shape();
-  ORT_RETURN_IF_NOT(
-      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_sequence_length,
-      "SparseAttentionIndexer: mask must be INT64 with shape (batch_size, total_sequence_length), with "
-      "total_sequence_length=",
-      total_sequence_length, ", got ", mask_shape.ToString());
+  if (mask != nullptr) {
+    const auto& mask_shape = mask->Shape();
+    ORT_RETURN_IF_NOT(
+        mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_sequence_length,
+        "SparseAttentionIndexer: mask must be INT64 with shape (batch_size, total_sequence_length), with "
+        "total_sequence_length=",
+        total_sequence_length, ", got ", mask_shape.ToString());
+  }
 
   SparseAttentionIndexerParams params;
   params.batch_size = static_cast<int>(batch_size);
@@ -265,7 +270,8 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                 "SparseAttentionIndexer: policy_mode 'qsa' requires both selected_indices and present_key outputs");
 
   auto float_workspace = GetScratchBuffer<float>(GetQsaWorkspaceFloatCount(params), GetComputeStream(context));
-  auto int_workspace = GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params), GetComputeStream(context));
+  auto int_workspace =
+      GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params, mask != nullptr), GetComputeStream(context));
 
   const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
   const CudaT* key_data = packed_qk ? query_data + num_heads * head_size
@@ -278,7 +284,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
-      mask->Data<int64_t>(),
+      mask == nullptr ? nullptr : mask->Data<int64_t>(),
       reinterpret_cast<const CudaT*>(past_key->Data<T>()),
       selected_indices->MutableData<int32_t>(),
       reinterpret_cast<CudaT*>(present_key->MutableData<T>()),
