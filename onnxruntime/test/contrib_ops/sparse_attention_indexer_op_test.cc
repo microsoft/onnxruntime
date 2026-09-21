@@ -1228,6 +1228,34 @@ TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKTies) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+template <typename T>
+void RunQsaQwenSpecializedScoreAndPartialTopK(float tolerance) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.head_size = 128;
+  problem.past_sequence_length = 4095;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 2048;
+  problem = MakeQsaProblem(std::move(problem));
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<T>(tolerance, std::move(problem), ProviderKind::Cuda, false, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKFloat) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<float>(1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKFloat16) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<MLFloat16>(2.0e-3f);
+}
+
+TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) {
+  RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
+}
+
 TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
   QsaProblem problem = MakeQsaProblem();
   problem.scale = 0.0f;
