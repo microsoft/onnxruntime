@@ -7,6 +7,7 @@
 
 #include "core/common/narrow.h"
 #include "core/framework/kernel_registry.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -560,6 +561,59 @@ TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_Relu_NegativePreActivation) {
 
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+#endif
+}
+
+TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_KleidiAiDisabledFallback) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "Float NHWC depthwise fast-path requires Arm64.";
+#else
+  constexpr int64_t height = 8;
+  constexpr int64_t width = 8;
+  constexpr int64_t channels = 2;
+  const vector<int64_t> input_shape = {1, height, width, channels};
+  const vector<int64_t> weight_shape = {channels, 1, 3, 3};
+  const vector<int64_t> pads = {1, 1, 1, 1};
+  const vector<int64_t> strides = {1, 1};
+
+  if (!HasFloatNhwcNoTransposeSupport(input_shape, weight_shape, pads, strides, channels)) {
+    GTEST_SKIP() << "Float NHWC depthwise fast-path is not available on this configuration.";
+  }
+
+  vector<float> input;
+  vector<float> expected_output;
+  input.reserve(height * width * channels);
+  expected_output.reserve(height * width * channels);
+  for (int64_t pixel = 0; pixel < height * width; ++pixel) {
+    const float channel_zero = static_cast<float>(pixel + 1);
+    const float channel_one = static_cast<float>(pixel + 101);
+    input.push_back(channel_zero);
+    input.push_back(channel_one);
+    expected_output.push_back(2.0f * channel_zero);
+    expected_output.push_back(3.0f * channel_one);
+  }
+
+  vector<float> weights(channels * 3 * 3, 0.0f);
+  weights[4] = 2.0f;
+  weights[9 + 4] = 3.0f;
+
+  OpTester test("NhwcFusedConv", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("group", channels);
+  test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
+  test.AddAttribute("pads", pads);
+  test.AddAttribute("strides", strides);
+  test.AddAttribute("activation", "Relu");
+  test.AddInput<float>("X", input_shape, input);
+  test.AddInput<float>("W", weight_shape, weights, true);
+  test.AddOutput<float>("Y", input_shape, expected_output);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1"));
+  test.Config(session_options);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 #endif
 }
 #endif
