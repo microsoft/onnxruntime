@@ -746,6 +746,27 @@ static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_dept
   return model_proto;
 }
 
+static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t call_depth) {
+  auto model_proto = CreateLocalFunctionChainModel(call_depth);
+  for (int i = 0; i + 1 < model_proto.functions_size(); ++i) {
+    auto* function = model_proto.mutable_functions(i);
+    function->mutable_node(0)->set_output(0, "unused");
+
+    auto* repeated_call = function->add_node();
+    repeated_call->set_domain("local");
+    repeated_call->set_op_type("function_" + std::to_string(i + 1));
+    repeated_call->add_input("x");
+    repeated_call->add_output("y");
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
+  Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
+  ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
+}
+
 static void WrapLocalFunctionChainInReferencedGraphAttribute(ONNX_NAMESPACE::ModelProto& model_proto) {
   auto* graph = model_proto.mutable_graph();
   auto* condition = graph->add_input();
