@@ -792,7 +792,9 @@ if(onnxruntime_USE_JSEP)
 endif()
 
 if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_src_patterns
+    ${TEST_SRC_DIR}/providers/webgpu/*
+    ${TEST_SRC_DIR}/providers/webgpu/math/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
@@ -1035,6 +1037,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   endif()
   if(TARGET onnxruntime_providers_cuda_flash_attention)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_flash_attention)
+  endif()
+  if(TARGET onnxruntime_providers_cuda_xqa)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_xqa)
   endif()
   if(TARGET onnxruntime_providers_cuda_llm)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm)

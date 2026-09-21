@@ -235,6 +235,7 @@ ops without translation.
 | `kv_num_heads` | INT | required | existing |
 | `scale` | FLOAT | `1/sqrt(head_size)` | existing — mandatory in `LATENT` (§12.6) |
 | `softcap` | FLOAT | `0.0` | existing |
+| `is_causal` | INT | `1` | `0` removes the right-hand causal bound on all CUDA backends |
 | `local_window_size` | INT | `-1` | existing — §9 |
 | `do_rotary` | INT | `0` | existing |
 | `rotary_interleaved` | INT | `0` | existing |
@@ -1630,6 +1631,16 @@ These block the feature work and should land ahead of it.
    > falls back to the memory-efficient backend, which gathers pages into a dense buffer first and
    > therefore accepts any block size. The op only errors when neither backend is eligible.
    > Lifting this properly requires teaching the Flash paged loader to split a tile across pages.
+   >
+   > **Non-causal attention.** `is_causal=0` works with all CUDA backends: FlashAttention,
+   > memory-efficient attention, paged decode (including XQA), and latent attention. In particular,
+   > a native cache with `head_size=128` and 16-, 32-, or 64-token pages uses MEA for prefill/multi-token
+   > drafting and paged decode for decode-shaped batches, without requiring Flash-compatible pages.
+   > Each query can attend through the sequence's full live KV length (`past_seqlens + query_length`).
+   > A positive `local_window_size` still bounds the left side at `query_position - window_size + 1`;
+   > the right side remains unbounded. XQA's speculative mask admits every live draft
+   > token when non-causal; its single-token kernel needs no different mask. Other backend eligibility
+   > constraints, including XQA's page alignment and MEA's lack of attention-sink support, are unchanged.
 2. **Out-of-bounds binary search.** The binary search over `cumulative_seqlens_q` in
    `ReshapeAndCache` and `GatherAndExpandPagedKVCache` can yield `batch_id == batch_size` when
    `token_id >= cumulative_seqlens_q[batch_size]`, producing OOB reads of `past_seqlens` and
