@@ -239,7 +239,8 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                   int past_key_index = -1,
                                                   int use_max_past_present_buffer = -1,
-                                                  int output_qk_index = -1) {
+                                                  int output_qk_index = -1,
+                                                  int total_sequence_length_index = 6) {
   // Type inference for outputs
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);  // output
 
@@ -301,11 +302,12 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     int64_t total_sequence_length_value = 0;
-    const auto* total_sequence_length_data = ctx.getInputData(6);
+    const auto* total_sequence_length_data = ctx.getInputData(total_sequence_length_index);
     if (total_sequence_length_data != nullptr) {
       const auto& data = ParseData<int32_t>(total_sequence_length_data);
       if (data.size() != 1) {
-        fail_shape_inference("Input 6 (total_sequence_length) must contain exactly one element");
+        fail_shape_inference("Input ", total_sequence_length_index,
+                             " (total_sequence_length) must contain exactly one element");
       }
       total_sequence_length_value = static_cast<int64_t>(data[0]);
     }
@@ -351,7 +353,8 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
           present_shape.add_dim()->set_dim_value(present_sequence_length);
         } else {
           // Cannot compute exact present_sequence_length.
-          if (ctx.getNumInputs() > 6 && past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
+          if (ctx.getNumInputs() > static_cast<size_t>(total_sequence_length_index) &&
+              past_dims[2].has_dim_value() && past_dims[2].dim_value() == 0) {
             // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
             // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
             present_shape.add_dim();
@@ -460,13 +463,15 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
   // the past buffer's own sequence dimension instead of growing with the total sequence length.
   const int64_t sliding_window_cache = getAttribute(ctx, "sliding_window_cache", 0);
   BaseGroupQueryAttentionTypeAndShapeInference(
-      ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index);
+      ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index,
+      /*total_sequence_length_index=*/6);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
+                                              /*total_sequence_length_index=*/7);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(

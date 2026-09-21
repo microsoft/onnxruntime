@@ -226,6 +226,30 @@ TEST(SparseAttentionTest, AcceptsPromptKeyTotalSequenceLengthsForPaddedBatch) {
   RunSparseAttentionPromptInputTest({5, 2}, 2, 5, 5);
 }
 
+TEST(SparseAttentionTest, RejectsEmptyTotalSequenceLengthInitializer) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 2);
+  test.AddAttribute<int64_t>("kv_num_heads", 2);
+  test.AddAttribute<int64_t>("sparse_block_size", 1);
+
+  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("past_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddInput<float>("past_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddInput<int32_t>("block_row_indices", {1, 5}, {0, 1, 2, 3, 4});
+  test.AddInput<int32_t>("block_col_indices", {1, 4}, {0, 1, 2, 3});
+  test.AddInput<int32_t>("total_sequence_length", {0}, {}, /*is_initializer=*/true);
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {4});
+
+  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddOutput<float>("present_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddOutput<float>("present_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 7 (total_sequence_length) must contain exactly one element");
+}
+
 TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
   OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("num_heads", 4);
