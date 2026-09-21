@@ -274,7 +274,7 @@
         "type": "git",
         "git": {
           "commitHash": "70510081984cfcdb14a15b3e08dfe9776dc7ed37",
-          "repositoryUrl": "https://github.com/llvm/llvm-project/clang/tools/clang-format.git"
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git"
         }
       },
       "comments": "build-tool; Dawn DEPS third_party/clang-format/script, condition: dawn_standalone.",
@@ -314,7 +314,7 @@
         "type": "git",
         "git": {
           "commitHash": "97b436da4c33663581d394f4ee0a5977fc38c2f4",
-          "repositoryUrl": "https://github.com/llvm/llvm-project/libcxx.git"
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git"
         }
       },
       "comments": "build-tool; Dawn DEPS third_party/libc++/src, condition: dawn_standalone.",
@@ -334,7 +334,7 @@
         "type": "git",
         "git": {
           "commitHash": "14024f8f89421ba73a3d28c9b8f9fbd745d92dff",
-          "repositoryUrl": "https://github.com/llvm/llvm-project/libcxxabi.git"
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git"
         }
       },
       "comments": "build-tool; Dawn DEPS third_party/libc++abi/src, condition: dawn_standalone.",
@@ -354,7 +354,7 @@
         "type": "git",
         "git": {
           "commitHash": "91b3328166da1db7db15cb49c714d59198e56cab",
-          "repositoryUrl": "https://github.com/llvm/llvm-project/libc.git"
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git"
         }
       },
       "comments": "build-tool; Dawn DEPS third_party/llvm-libc/src required by libc++, condition: dawn_standalone.",
@@ -534,7 +534,7 @@
         "type": "git",
         "git": {
           "commitHash": "adc3407201e641a73a551d2f1181c684c33eea56",
-          "repositoryUrl": "https://github.com/llvm/llvm-project/compiler-rt/lib/fuzzer.git"
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/compiler-rt/lib/fuzzer.git"
         }
       },
       "comments": "test-only; Dawn DEPS third_party/libFuzzer/src, condition: dawn_standalone.",
