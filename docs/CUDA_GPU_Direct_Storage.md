@@ -27,7 +27,8 @@ GDS requires:
 - external weights stored in a file that can be opened with `O_DIRECT`.
 
 ONNX Runtime loads `libcufile` dynamically, so enabling the option does not add a mandatory runtime dependency for
-users who keep GDS disabled.
+users who keep GDS disabled. It also disables cuFile compatibility mode: if the storage stack cannot provide the
+direct GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
 
 ## Configuration
 

@@ -58,6 +58,7 @@ class LinuxGdsLoader final : public GdsLoader {
   using HandleDeregisterFn = decltype(&cuFileHandleDeregister);
   using BufferRegisterFn = decltype(&cuFileBufRegister);
   using BufferDeregisterFn = decltype(&cuFileBufDeregister);
+  using SetBoolParameterFn = decltype(&cuFileSetParameterBool);
   using ReadFn = decltype(&cuFileRead);
 
   ~LinuxGdsLoader() override {
@@ -146,8 +147,12 @@ class LinuxGdsLoader final : public GdsLoader {
     ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileHandleDeregister", handle_deregister_));
     ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileBufRegister", buffer_register_));
     ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileBufDeregister", buffer_deregister_));
+    ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileSetParameterBool", set_bool_parameter_));
     ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileRead", read_));
 
+    ORT_RETURN_IF_ERROR(CheckCuFileStatus(
+        set_bool_parameter_(CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE, false),
+        "Disabling cuFile compatibility mode"));
     ORT_RETURN_IF_ERROR(CheckCuFileStatus(driver_open_(), "cuFileDriverOpen"));
     driver_initialized_ = true;
 
@@ -171,6 +176,7 @@ class LinuxGdsLoader final : public GdsLoader {
   HandleDeregisterFn handle_deregister_{nullptr};
   BufferRegisterFn buffer_register_{nullptr};
   BufferDeregisterFn buffer_deregister_{nullptr};
+  SetBoolParameterFn set_bool_parameter_{nullptr};
   ReadFn read_{nullptr};
 };
 
