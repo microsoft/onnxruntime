@@ -107,6 +107,33 @@ TEST(ShapeInferenceDataPropagationTest, RejectsMalformedInitializerBeforeUnpacki
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count (1) does not match expected count"));
 }
 
+TEST(ShapeInferenceDataPropagationTest, RejectsMalformedInitializerBeforeOnnxShapeInference) {
+  Model model("malformed shape inference initializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  Type data_type({2, 3});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_type.value);
+  auto& shape_arg = graph.GetOrCreateNodeArg("shape", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+
+  graph.SetInputs({&data});
+  graph.SetOutputs({&output});
+
+  TensorProto shape;
+  shape.set_name("shape");
+  shape.set_data_type(TensorProto_DataType_INT64);
+  shape.add_dims(2);
+  shape.add_int64_data(6);
+  graph.AddInitializedTensor(shape);
+  graph.AddNode("reshape", "Reshape", "", {&data, &shape_arg}, {&output});
+
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count (1) does not match expected count"));
+}
+
 TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
   {
     // Model #1
