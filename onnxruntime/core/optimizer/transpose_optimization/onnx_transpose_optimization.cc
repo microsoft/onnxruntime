@@ -1191,9 +1191,13 @@ static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::Ten
 
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
-static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t i,
+static bool TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t i,
                                const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   std::string_view input = node.Inputs()[i];
+
+  if (!CanTransposeInputWithQDQ(graph, input, perm_inv)) {
+    return false;
+  }
 
   // Only local constants are editable
   std::unique_ptr<api::TensorRef> constant = graph.GetLocalConstant(input);
@@ -1242,7 +1246,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
     // If there is only one element return early as the transpose won't change the data
     if (constant->NumElements() == 1) {
-      return;
+      return true;
     }
 
     // This is a special case where the constant is 1D with length == perm.
@@ -1263,7 +1267,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
       // unset updated input so reconnect_nodes doesn't change it back
       input = "";
-      return;
+      return true;
     }
 
     if (consumers->nodes.size() > 0) {
@@ -1284,7 +1288,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
       constant_dq_input = "";  // DQ input was already updated so we don't need reconnect_nodes to handle it
     }
 
-    return;
+    return true;
   }
 
   // Case 2: input is a Transpose node
@@ -1325,7 +1329,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
           graph.RemoveNode(*inp_node);
         }
 
-        return;
+        return true;
       }
 
       if (!dq_to_look_past) {
@@ -1345,7 +1349,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
         node.SetInput(i, transpose_out);
 
-        return;
+        return true;
       } else {
         // fall through to regular processing if the Transpose prior to the DQ doesn't cancel out cleanly
       }
@@ -1362,7 +1366,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   for (auto& consumer : consumers->nodes) {
     if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer) == perm) {
       node.SetInput(i, consumer->Outputs()[0]);
-      return;
+      return true;
     }
   }
 
@@ -1379,19 +1383,21 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     MakeQDQNodeUnit(graph, *inp_node);
   }
+
+  return true;
 }
 
 // this TransposeInput is used by the layout transformer to wrap a node in Transpose ops.
 // there's no OptimizerCtx in that scenario
-void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
+bool TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,
                     const std::vector<int64_t>& perm_inv) {
-  TransposeInputImpl(graph, node, i, perm, perm_inv);
+  return TransposeInputImpl(graph, node, i, perm, perm_inv);
 }
 
 static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
                            const std::vector<int64_t>& perm_inv) {
-  TransposeInputImpl(ctx.graph, node, i, perm, perm_inv);
+  ORT_IGNORE_RETURN_VALUE(TransposeInputImpl(ctx.graph, node, i, perm, perm_inv));
 }
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.

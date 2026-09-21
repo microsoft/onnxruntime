@@ -12,6 +12,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
@@ -5402,6 +5403,45 @@ TEST(TransposeOptimizerTests, PerAxisQAxisExceedsTransposePermNoOpt) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
                                         std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)),
                                         TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermutation) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformRejectsPerAxisDQAxisExceedingPermutation", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* dq_input = builder.MakeInput<uint8_t>({1, 1, 1, 1, 3}, {uint8_t{1, 2, 3}});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>({1, 1, 1, 1, 3});
+  auto* output = builder.MakeOutput<float>({1, 1, 1, 1, 3});
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Identity", {dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  onnx_transpose_optimization::api::NodeRef* identity = nullptr;
+  for (auto& node : api_graph->Nodes()) {
+    if (node->OpType() == "Identity") {
+      identity = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(identity, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_FALSE(layout_transformation::WrapTransposesAroundNode(*api_graph, *identity, {&perm}, {&perm}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.count("Transpose"), 0);
+  EXPECT_EQ(identity->Inputs()[0], dq_output->Name());
 }
 
 // Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
