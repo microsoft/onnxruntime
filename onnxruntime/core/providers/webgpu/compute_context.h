@@ -125,13 +125,15 @@ class ComputeContextBase {
   //
   // Get the logger.
   //
-  inline const logging::Logger& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  inline const onnxruntime::ep::adapter::Logger& Logger() const {
     return ep_.GetEpLogger();
-#else
-    return *ep_.GetLogger();
-#endif
   }
+#else
+  inline const logging::Logger& Logger() const {
+    return *ep_.GetLogger();
+  }
+#endif
 
   //
   // Run a compute shader program.
