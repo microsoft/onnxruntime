@@ -428,7 +428,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
            strides_size_t.data(),
            filter_count_per_group,
            /*Beta*/ 0.0f);
-  const bool nhwc_fastpath = dense_nhwc_fastpath || depthwise_nhwc_fastpath;
+  const bool nhwc_fastpath = mlas_backend_kernel_selector_config_.use_kleidiai &&
+                             (dense_nhwc_fastpath || depthwise_nhwc_fastpath);
 
 #if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
   if (nhwc_fastpath && can_cache_packed_filter_) {
