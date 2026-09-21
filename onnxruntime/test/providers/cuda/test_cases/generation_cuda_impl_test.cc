@@ -8,8 +8,6 @@
 
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
-#include "core/framework/allocator.h"
-#include "core/framework/tensor.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "test/util/include/asserts.h"
 
