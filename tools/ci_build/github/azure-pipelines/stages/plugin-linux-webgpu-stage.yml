@@ -76,6 +76,10 @@ stages:
         env:
           EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
 
+      - template: ../templates/webgpu-component-governance.yml
+        parameters:
+          dawn_source: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/_deps/dawn-src'
+
       - script: |
           set -e -x
           mkdir -p $(Build.ArtifactStagingDirectory)/bin

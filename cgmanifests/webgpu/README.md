@@ -1,61 +1,68 @@
-# WebGPU Component Governance manifest
+# WebGPU Component Governance inventory
 
-This directory contains the WebGPU-specific Component Governance manifest for ONNX Runtime. It covers Dawn and the
-Dawn-derived dependency graph used when building the WebGPU Execution Provider.
+WebGPU plugin packaging generates a `metadata/cgmanifest.json` artifact after
+building on Windows, Linux, and macOS, then explicitly scans that directory.
+The regular pipeline scan excludes `Build.BinariesDirectory`, where Dawn's
+fetched sources normally live.
 
-The manifest is named `cgmanifest.webgpu.json`, not `cgmanifest.json`, so default whole-repository Component
-Governance scans do not pick it up automatically. WebGPU packaging and NOTICE-generation pipelines should stage or copy
-this file as `cgmanifest.json` in the source directory that they scan for WebGPU package notices.
+`generate_webgpu_cgmanifest.py` uses the **same dependency list** as the fetched
+Dawn revision's `tools/fetch_dawn_dependencies.py`. That upstream script fetches
+sources but does not generate a Component Governance manifest. ORT reads its
+literal `required_submodules` list and the corresponding `DEPS` entries without
+executing either Python file. It verifies each fetched Git checkout's actual
+commit against the pin. Missing or stale checkouts fail generation.
 
-## Classification policy
+There is no second list of Dawn dependency names, paths, or commits to maintain.
+New dependencies selected by Dawn's fetcher are included automatically; entries
+not selected by the fetcher are excluded. If upstream changes the metadata
+syntax beyond what the reader supports, generation fails rather than emitting
+an incomplete inventory.
 
-The Component Governance manifest schema provides a `developmentDependency` boolean, but it does not provide separate
-first-class fields for runtime, build-tool, test-only, or conditional dependencies. This manifest uses:
+## Inputs and scope
 
-- no `developmentDependency` field for components that are redistributed, statically linked, or otherwise part of the
-  WebGPU package/runtime dependency closure;
-- `developmentDependency: true` for Dawn dependencies that are only build tools, tests, disabled optional backends, or
-  source inputs that current WebGPU packages do not redistribute;
-- `comments` to preserve the more precise classification and Dawn `DEPS` path/condition.
+- **Dawn:** the archive URL, version, and SHA1 from `cmake/deps.txt`. FetchContent
+  archives have no root Git metadata, so the manifest records an `other`
+  archive component instead of requiring a separately maintained tag-to-commit
+  mapping or a network lookup.
+- **Fetched dependencies:** public repository URLs from Dawn's DEPS and verified
+  checkout commits. GitHub mirror URLs are normalized to GitHub; authenticated
+  CI Git redirects are not read or emitted.
+- **Redistributed DXC (Windows only):** a separate archive component derived
+  from the packaging pipeline's existing URL and SHA256. This is distinct from
+  the DXC source checkout used during the build.
 
-If a WebGPU package starts redistributing a component currently marked as a development dependency, update that
-registration and explain the packaging path in `comments` and `detectedComponentLocations`.
+This is a fetched **build-input inventory**, including fetched test/build tools.
+It is not a link analysis or a declaration that every fetched component ships
+in every package. It does not automatically mark components as development-only
+or omit unfamiliar components. ORT may also substitute its own Abseil/Protobuf
+inputs for Dawn's fetched copies; those remain covered by ORT's dependency
+inventory. Package license/NOTICE contents still require review against what is
+actually redistributed. This change does not regenerate `ThirdPartyNotices.txt`.
 
-## Maintenance
+## Local use
 
-When rolling Dawn or changing WebGPU packaging:
+Run after configuring a fresh WebGPU build with the matching ORT source pin:
 
-1. Update the Dawn registration to match the `dawn` entry in `cmake/deps.txt`.
-2. Re-audit the Dawn dependency graph for the pinned Dawn commit:
-   - Start from the Dawn commit in `cmake/deps.txt`; do not audit Dawn `main` or a different roll.
-   - Inspect Dawn's `tools/fetch_dawn_dependencies.py` at that commit. For ORT's normal source-fetch path,
-     `cmake/external/onnxruntime_external_deps.cmake` enables `DAWN_FETCH_DEPENDENCIES`, so the script's
-     `required_submodules` list is the primary set of Dawn source dependencies fetched for the build.
-   - Cross-reference each fetched submodule path with Dawn's `DEPS` file to get the public upstream repository URL,
-     commit, and condition. Use public upstream identities in this manifest, not internal mirrors.
-   - Compare that fetched set against this manifest. Add new fetched components, update changed commits or repository
-     URLs, and remove entries that are no longer fetched or relevant unless CG/legal guidance requires keeping them.
-   - Cross-check ORT's Dawn CMake options in `cmake/external/onnxruntime_external_deps.cmake` and Dawn's
-     `third_party/CMakeLists.txt` before classifying a component. Components that are redistributed, statically linked,
-     or otherwise part of the WebGPU package/runtime closure should not be marked as development dependencies; build
-     tools, test inputs, disabled optional backends, and unfetched conditional dependencies should be marked
-     `developmentDependency: true` if they remain registered.
-   - Verify actual WebGPU package contents, especially platform-specific artifacts. For example, the Windows WebGPU
-     plugin pipeline downloads and redistributes DXC DLLs separately from Dawn's `third_party/dxc` source dependency, so
-     both the Dawn build-input registration and the redistributed DXC release registration may need review.
-   - Keep Dawn-derived registrations connected to the Dawn root with `dependencyRoots`.
-3. If the Windows WebGPU plugin pipeline changes the downloaded DXC release, update the DirectXShaderCompiler release
-   registration to match `tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml`.
-4. Run:
+```powershell
+python cgmanifests/webgpu/generate_webgpu_cgmanifest.py --dawn-source build/Windows/Release/_deps/dawn-src --output build/webgpu-metadata/cgmanifest.json
+```
 
-   ```powershell
-   python cgmanifests/webgpu/validate_webgpu_cgmanifest.py
-   ```
+For the Windows plugin package, additionally pass:
 
-The validator checks for stale Dawn and DXC pins, but it does not replace the manual dependency classification review
-in step 2.
+```text
+--dxc-pipeline tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml
+```
 
-Non-git Dawn toolchain packages from CIPD/GCS, such as GN, Ninja, CMake, Go, Siso, reclient, and sysroots, are
-intentionally not registered here unless they become redistributed or CG/legal guidance requires build input coverage.
-They do not have stable public upstream source identities in the Dawn `DEPS` file and are not part of current WebGPU
-package contents.
+`--deps-file` can select another `cmake/deps.txt` when inspecting a build from a
+different revision. It must describe the Dawn archive that populated the source
+directory. `--output` can be repeated to write identical copies. Custom or external
+Dawn builds must supply matching metadata and fetched checkouts; arbitrary
+prebuilt Dawn packages are outside this generator's scope.
+
+Run the regression tests with:
+
+```powershell
+python cgmanifests/webgpu/test_generate_webgpu_cgmanifest.py
+```
+
+The platform packaging templates run these tests before inventory generation.
