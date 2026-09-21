@@ -33,6 +33,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "mlas_float16.h"
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
 
@@ -236,6 +237,146 @@ MlasLayerNormKernelAvx2(
         }
         for (; i < n; i++) {
             Output[i] = (Input[i] - mean_val) * inv_denom * Scale[i] + Bias[i];
+        }
+    }
+
+    if (MeanOut != nullptr) {
+        *MeanOut = mean_val;
+    }
+    if (InvStdDevOut != nullptr) {
+        *InvStdDevOut = inv_denom;
+    }
+}
+
+void MLASCALL
+MlasLayerNormKernelF16Avx2(
+    const uint16_t* Input,
+    const float* Scale,
+    const float* Bias,
+    uint16_t* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified)
+{
+    assert(!Simplified || Bias == nullptr);
+
+    const size_t n = NormSize;
+    float mean_val = 0.0f;
+    float inv_denom;
+
+    if (Simplified) {
+        __m256 vsumsq = _mm256_setzero_ps();
+        size_t i = 0;
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            vsumsq = _mm256_fmadd_ps(vx, vx, vsumsq);
+        }
+
+        __m128 r = _mm_add_ps(
+            _mm256_castps256_ps128(vsumsq),
+            _mm256_extractf128_ps(vsumsq, 1));
+        r = _mm_add_ps(r, _mm_movehl_ps(r, r));
+        r = _mm_add_ss(r, _mm_movehdup_ps(r));
+        float sumsq = _mm_cvtss_f32(r);
+
+        for (; i < n; ++i) {
+            const float value = MLAS_Half2Float(Input[i]);
+            sumsq += value * value;
+        }
+
+        inv_denom = 1.0f / sqrtf(sumsq / static_cast<float>(n) + Epsilon);
+    } else {
+        __m256d vsum = _mm256_setzero_pd();
+        size_t i = 0;
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            vsum = _mm256_add_pd(vsum, _mm256_cvtps_pd(_mm256_castps256_ps128(vx)));
+            vsum = _mm256_add_pd(vsum, _mm256_cvtps_pd(_mm256_extractf128_ps(vx, 1)));
+        }
+
+        __m128d rd = _mm_add_pd(
+            _mm256_castpd256_pd128(vsum),
+            _mm256_extractf128_pd(vsum, 1));
+        rd = _mm_add_sd(rd, _mm_unpackhi_pd(rd, rd));
+        double sum = _mm_cvtsd_f64(rd);
+
+        for (; i < n; ++i) {
+            sum += static_cast<double>(MLAS_Half2Float(Input[i]));
+        }
+
+        mean_val = static_cast<float>(sum / static_cast<double>(n));
+        const __m256 vmean = _mm256_set1_ps(mean_val);
+        __m256 vvariance = _mm256_setzero_ps();
+        i = 0;
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            const __m256 vd = _mm256_sub_ps(vx, vmean);
+            vvariance = _mm256_fmadd_ps(vd, vd, vvariance);
+        }
+
+        __m128 r = _mm_add_ps(
+            _mm256_castps256_ps128(vvariance),
+            _mm256_extractf128_ps(vvariance, 1));
+        r = _mm_add_ps(r, _mm_movehl_ps(r, r));
+        r = _mm_add_ss(r, _mm_movehdup_ps(r));
+        float variance = _mm_cvtss_f32(r);
+
+        for (; i < n; ++i) {
+            const float delta = MLAS_Half2Float(Input[i]) - mean_val;
+            variance += delta * delta;
+        }
+
+        inv_denom = 1.0f / sqrtf(variance / static_cast<float>(n) + Epsilon);
+    }
+
+    const __m256 vmean = _mm256_set1_ps(mean_val);
+    const __m256 vinv = _mm256_set1_ps(inv_denom);
+    size_t i = 0;
+
+    if (Simplified) {
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            const __m256 vs = _mm256_loadu_ps(Scale + i);
+            const __m256 vy = _mm256_mul_ps(_mm256_mul_ps(vx, vinv), vs);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
+        }
+        for (; i < n; ++i) {
+            Output[i] = MLAS_Float2Half(MLAS_Half2Float(Input[i]) * inv_denom * Scale[i]);
+        }
+    } else if (Bias == nullptr) {
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            const __m256 vs = _mm256_loadu_ps(Scale + i);
+            const __m256 vy = _mm256_mul_ps(_mm256_mul_ps(_mm256_sub_ps(vx, vmean), vinv), vs);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
+        }
+        for (; i < n; ++i) {
+            Output[i] = MLAS_Float2Half(
+                (MLAS_Half2Float(Input[i]) - mean_val) * inv_denom * Scale[i]);
+        }
+    } else {
+        for (; i + 8 <= n; i += 8) {
+            const __m256 vx = _mm256_cvtph_ps(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
+            const __m256 vs = _mm256_loadu_ps(Scale + i);
+            const __m256 vb = _mm256_loadu_ps(Bias + i);
+            const __m256 normalized = _mm256_mul_ps(_mm256_sub_ps(vx, vmean), vinv);
+            const __m256 vy = _mm256_fmadd_ps(normalized, vs, vb);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
+        }
+        for (; i < n; ++i) {
+            Output[i] = MLAS_Float2Half(
+                (MLAS_Half2Float(Input[i]) - mean_val) * inv_denom * Scale[i] + Bias[i]);
         }
     }
 
