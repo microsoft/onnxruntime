@@ -10,8 +10,8 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract variables
-  auto& __var_input_b = *params.var_input_b;
-  auto& __var_output = *params.var_output;
+  auto* __var_input_b = params.var_input_b;
+  auto* __var_output = params.var_output;
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
@@ -41,13 +41,13 @@ ss << __str_219;
 ss << __str_220;
 // 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
 ss << __str_221;
-ss << __var_input_b.GetByOffset(__str_213);
+ss << __var_input_b->GetByOffset(__str_213);
 ss << __str_3;
 // 19 |   }
 ss << __str_222;
 // 20 |   output.setByOffset(global_idx, v);
 ss << __str_216;
-ss << __var_output.SetByOffset(__str_214, __str_215);
+ss << __var_output->SetByOffset(__str_214, __str_215);
 ss << __str_192;
 // 21 | }  // MAIN
 MainFunctionEnd();
