@@ -130,6 +130,10 @@ class RandomAccessFile {
    */
   virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
 
+  // Returns the POSIX file descriptor for the owned open file, or -1 when unavailable.
+  // The descriptor remains owned by this object and is valid only for its lifetime.
+  virtual int GetFileDescriptor() const { return -1; }
+
  protected:
   RandomAccessFile() = default;
 

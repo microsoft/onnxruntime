@@ -163,6 +163,10 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     return common::Status::OK();
   }
 
+  int GetFileDescriptor() const override {
+    return descriptor_.Get();
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PosixRandomAccessFile);
   ScopedFileDescriptor descriptor_;

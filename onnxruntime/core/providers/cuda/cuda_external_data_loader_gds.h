@@ -14,13 +14,15 @@ class Tensor;
 
 namespace cuda {
 
+inline constexpr size_t kGdsIoAlignment = 4096;
+
 class GdsLoader {
  public:
   using CreateFn = common::Status (*)(int device_id, std::unique_ptr<GdsLoader>& loader);
 
   virtual ~GdsLoader() = default;
 
-  virtual common::Status Load(const std::filesystem::path& data_file_path,
+  virtual common::Status Load(int file_descriptor,
                               int64_t data_offset,
                               size_t data_length,
                               Tensor& tensor) const = 0;

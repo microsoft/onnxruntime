@@ -42,13 +42,15 @@ uint8_t TestValue(size_t index, size_t load = 0) {
 
 void CreateExternalDataFile(size_t length, PathString& path,
                             gsl::span<const uint8_t> suffix = {},
-                            size_t load = 0) {
+                            size_t load = 0,
+                            size_t prefix_size = kFilePrefixSize) {
   FILE* file = nullptr;
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
 
   std::vector<uint8_t> chunk(1024 * 1024);
-  ASSERT_EQ(kFilePrefixSize, fwrite(chunk.data(), 1, kFilePrefixSize, file));
+  ASSERT_LE(prefix_size, chunk.size());
+  ASSERT_EQ(prefix_size, fwrite(chunk.data(), 1, prefix_size, file));
   for (size_t offset = 0; offset < length;) {
     const size_t chunk_size = std::min(chunk.size(), length - offset);
     for (size_t i = 0; i < chunk_size; ++i) {
@@ -254,7 +256,7 @@ class TestGdsLoader final : public cuda::GdsLoader {
  public:
   explicit TestGdsLoader(uint8_t value) : value_(value) {}
 
-  Status Load(const std::filesystem::path&, int64_t, size_t data_length,
+  Status Load(int, int64_t, size_t data_length,
               Tensor& tensor) const override {
     const auto result = cudaMemset(tensor.MutableDataRaw(), value_, data_length);
     ORT_RETURN_IF(result != cudaSuccess, "cudaMemset failed: ", cudaGetErrorString(result));
@@ -275,16 +277,35 @@ Status FailTestGdsLoaderCreation(int, std::unique_ptr<cuda::GdsLoader>&) {
 }
 
 size_t gds_create_attempt_count = 0;
+size_t gds_load_attempt_count = 0;
 
-Status CountAndFailTestGdsLoaderCreation(int, std::unique_ptr<cuda::GdsLoader>&) {
+Status CreateCountingTestGdsLoader(int, std::unique_ptr<cuda::GdsLoader>& loader) {
   ++gds_create_attempt_count;
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GDS unavailable for test");
+  loader = std::make_unique<TestGdsLoader>(0x5a);
+  return Status::OK();
+}
+
+class PartialWriteFailingGdsLoader final : public cuda::GdsLoader {
+ public:
+  Status Load(int, int64_t, size_t data_length, Tensor& tensor) const override {
+    ++gds_load_attempt_count;
+    const auto result = cudaMemset(tensor.MutableDataRaw(), 0xee, data_length / 2);
+    ORT_RETURN_IF(result != cudaSuccess, "cudaMemset failed: ", cudaGetErrorString(result));
+    ORT_RETURN_IF(cudaStreamSynchronize(nullptr) != cudaSuccess, "cudaStreamSynchronize failed");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GDS read failed after a partial write");
+  }
+};
+
+Status CreatePartialWriteFailingGdsLoader(int, std::unique_ptr<cuda::GdsLoader>& loader) {
+  ++gds_create_attempt_count;
+  loader = std::make_unique<PartialWriteFailingGdsLoader>();
+  return Status::OK();
 }
 
 TEST(CudaExternalDataLoaderTest, UsesGdsWithoutAllocatingPinnedBuffers) {
-  constexpr size_t kLength = 1024;
+  constexpr size_t kLength = cuda::kGdsIoAlignment;
   PathString path;
-  CreateExternalDataFile(kLength, path);
+  CreateExternalDataFile(kLength, path, {}, 0, cuda::kGdsIoAlignment);
   ScopedFileDeleter file_deleter{path};
 
   auto execution_provider = DefaultCudaExecutionProvider();
@@ -302,7 +323,7 @@ TEST(CudaExternalDataLoaderTest, UsesGdsWithoutAllocatingPinnedBuffers) {
       static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
       true, CreateTestGdsLoader);
   ASSERT_STATUS_OK(loader.LoadTensor(
-      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+      Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
 
   std::array<uint8_t, kLength> output{};
   ASSERT_EQ(cudaSuccess, cudaMemcpy(
@@ -311,9 +332,9 @@ TEST(CudaExternalDataLoaderTest, UsesGdsWithoutAllocatingPinnedBuffers) {
 }
 
 TEST(CudaExternalDataLoaderTest, FallsBackToPinnedBuffersWhenGdsIsUnavailable) {
-  constexpr size_t kLength = 1024;
+  constexpr size_t kLength = cuda::kGdsIoAlignment;
   PathString path;
-  CreateExternalDataFile(kLength, path);
+  CreateExternalDataFile(kLength, path, {}, 0, cuda::kGdsIoAlignment);
   ScopedFileDeleter file_deleter{path};
 
   auto execution_provider = DefaultCudaExecutionProvider();
@@ -332,7 +353,7 @@ TEST(CudaExternalDataLoaderTest, FallsBackToPinnedBuffersWhenGdsIsUnavailable) {
       static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
       true, FailTestGdsLoaderCreation);
   ASSERT_STATUS_OK(loader.LoadTensor(
-      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+      Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
 
   std::array<uint8_t, kLength> output{};
   ASSERT_EQ(cudaSuccess, cudaMemcpy(
@@ -343,10 +364,51 @@ TEST(CudaExternalDataLoaderTest, FallsBackToPinnedBuffersWhenGdsIsUnavailable) {
 }
 
 TEST(CudaExternalDataLoaderTest, DoesNotRetryGdsAfterFailure) {
-  constexpr size_t kLength = 1024;
+  constexpr size_t kLength = cuda::kGdsIoAlignment;
   PathString path;
-  CreateExternalDataFile(kLength, path);
+  CreateExternalDataFile(kLength, path, {}, 0, cuda::kGdsIoAlignment);
   ScopedFileDeleter file_deleter{path};
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({kLength}), *allocator);
+
+  gds_create_attempt_count = 0;
+  gds_load_attempt_count = 0;
+  cuda::ExternalDataLoader loader(
+      0, 4,
+      static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
+      static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
+      true, CreatePartialWriteFailingGdsLoader);
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
+  ASSERT_STATUS_OK(loader.LoadTensor(
+      Env::Default(), path, cuda::kGdsIoAlignment, kLength, tensor));
+  EXPECT_EQ(gds_create_attempt_count, 1U);
+  EXPECT_EQ(gds_load_attempt_count, 1U);
+
+  std::array<uint8_t, kLength> output{};
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < output.size(); ++i) {
+    ASSERT_EQ(TestValue(i), output[i]) << "Mismatch at byte " << i;
+  }
+}
+
+TEST(CudaExternalDataLoaderTest, UnalignedRangeDoesNotDisableGds) {
+  constexpr size_t kLength = cuda::kGdsIoAlignment;
+  PathString unaligned_path;
+  CreateExternalDataFile(kLength, unaligned_path);
+  ScopedFileDeleter unaligned_file_deleter{unaligned_path};
+  PathString aligned_path;
+  CreateExternalDataFile(kLength, aligned_path, {}, 0, cuda::kGdsIoAlignment);
+  ScopedFileDeleter aligned_file_deleter{aligned_path};
 
   auto execution_provider = DefaultCudaExecutionProvider();
   ASSERT_NE(execution_provider, nullptr);
@@ -363,12 +425,18 @@ TEST(CudaExternalDataLoaderTest, DoesNotRetryGdsAfterFailure) {
       0, 4,
       static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
       static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
-      true, CountAndFailTestGdsLoaderCreation);
+      true, CreateCountingTestGdsLoader);
   ASSERT_STATUS_OK(loader.LoadTensor(
-      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+      Env::Default(), unaligned_path, kFilePrefixSize, kLength, tensor));
+  EXPECT_EQ(gds_create_attempt_count, 0U);
   ASSERT_STATUS_OK(loader.LoadTensor(
-      Env::Default(), path, kFilePrefixSize, kLength, tensor));
+      Env::Default(), aligned_path, cuda::kGdsIoAlignment, kLength, tensor));
   EXPECT_EQ(gds_create_attempt_count, 1U);
+
+  std::array<uint8_t, kLength> output{};
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                             output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](uint8_t value) { return value == 0x5a; }));
 }
 
 TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {

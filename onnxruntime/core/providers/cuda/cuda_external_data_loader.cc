@@ -217,7 +217,10 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
 
-  if (use_gds_ && !gds_disabled_ &&
+  const bool gds_range_is_aligned =
+      data_offset % static_cast<FileOffsetType>(kGdsIoAlignment) == 0 &&
+      length % kGdsIoAlignment == 0;
+  if (use_gds_ && !gds_disabled_ && gds_range_is_aligned &&
       std::endian::native == std::endian::little &&
       !tensor.IsDataType<bool>()) {
     Status gds_status = Status::OK();
@@ -225,7 +228,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
       gds_status = create_gds_loader_(device_id_, gds_loader_);
     }
     if (gds_status.IsOK()) {
-      gds_status = gds_loader_->Load(data_file_path, data_offset, length, tensor);
+      gds_status = gds_loader_->Load(file->GetFileDescriptor(), data_offset, length, tensor);
     }
     if (gds_status.IsOK()) {
       return Status::OK();

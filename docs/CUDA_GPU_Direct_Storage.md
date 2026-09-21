@@ -31,6 +31,8 @@ ONNX Runtime loads `libcufile` dynamically, so enabling the option does not add 
 users who keep GDS disabled. It requests PCI P2PDMA, which can provide GDS without `nvidia-fs` on supported recent
 kernels, GPUs, and storage devices. It also disables cuFile compatibility mode: if the storage stack cannot provide
 a native GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
+GDS is attempted only for external-data ranges whose offset and length are both 4 KiB aligned. An unaligned
+initializer uses the configured fallback without disabling GDS for later aligned initializers.
 
 ## Configuration
 
