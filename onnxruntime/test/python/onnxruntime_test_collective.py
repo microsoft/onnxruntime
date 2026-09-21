@@ -298,7 +298,9 @@ class ORTBertPretrainTest(unittest.TestCase):
         input = np.full((8, 8), rank, dtype=np.float32)
         output = ort_sess.run(None, {"X": input})[0]
         expected_output = np.concatenate([np.full_like(input, peer_rank) for peer_rank in range(size)], axis=1)
-        np.testing.assert_allclose(output, expected_output, err_msg=f"{rank}: AllGather (default axis): results mismatch")
+        np.testing.assert_allclose(
+            output, expected_output, err_msg=f"{rank}: AllGather (default axis): results mismatch"
+        )
 
     @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     def test_all_gather_group_size_mismatch(self):
