@@ -173,10 +173,14 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     dropout_add_fusion_node.SetExecutionProviderType(dropout_node.GetExecutionProviderType());
 
     // Delete bias_add_node, dropout_node and optionally residual_add_node.
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_fuse.size());
     for (Node& n : nodes_to_fuse) {
+      source_node_indices.push_back(n.Index());
       graph_utils::RemoveNodeOutputEdges(graph, n);
       graph.RemoveNode(n.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, dropout_add_fusion_node.Index());
 
     modified = true;
   }
