@@ -149,6 +149,12 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
     ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
+    // The op schema and matmul_nbits_helper::CheckInputs accept bits in {2, 4, 8}. Keep this in
+    // lockstep with the widths the CUDA kernels actually implement: without it a node with an
+    // unimplemented width is accepted and then read with the wrong stride, silently producing
+    // garbage instead of failing.
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "MatMulNBits on the CUDA execution provider supports bits = 2, 4 or 8, but got bits = ", nbits_);
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
