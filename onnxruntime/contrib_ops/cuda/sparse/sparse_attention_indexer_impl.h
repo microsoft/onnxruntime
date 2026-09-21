@@ -35,6 +35,7 @@ struct SparseAttentionIndexerParams {
   int key_cache_capacity = 0;
   int max_block_count = 0;  // total_sequence_length / compress_ratio
   int block_topk = 0;       // token_budget / compress_ratio
+  bool use_block_representatives = false;
 
   // policy_mode = "csa"
   int past_compressed_length = 0;

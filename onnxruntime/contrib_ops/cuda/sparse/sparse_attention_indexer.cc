@@ -261,6 +261,10 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
           : total_sequence_length);
   params.max_block_count = static_cast<int>(total_sequence_length / compress_ratio_);
   params.block_topk = static_cast<int>(token_budget_ / compress_ratio_);
+  params.use_block_representatives =
+      mask == nullptr && context->InputCount() > sai::kPastSequenceLength &&
+      context->Input<Tensor>(sai::kPastSequenceLength) != nullptr && head_size == 128 &&
+      compress_ratio_ == 4 && num_heads == 4;
 
   Tensor* selected_indices = context->Output(sai::kSelectedIndices,
                                              TensorShape({batch_size, sequence_length, params.capacity}));
