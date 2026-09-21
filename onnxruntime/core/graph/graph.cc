@@ -5101,6 +5101,8 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   }
 
   Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
+  SetGraphResolveNeeded();
+  SetGraphProtoSyncNeeded();
 
   return true;
 }

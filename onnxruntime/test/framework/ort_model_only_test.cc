@@ -406,6 +406,21 @@ TEST(OrtModelTest, RejectsControlEdgeCycle) {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, AddControlEdgeMarksResolvedGraphDirty) {
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(LoadOrtModel(BuildOrtModelWithEdgeSlots(0, 0, true), model));
+  auto& graph = model->MainGraph();
+  ORT_IGNORE_RETURN_VALUE(graph.ToGraphProto());
+  ASSERT_FALSE(graph.GraphResolveNeeded());
+  ASSERT_FALSE(graph.GraphProtoSyncNeeded());
+
+  ASSERT_TRUE(graph.AddControlEdge(1, 0));
+  EXPECT_TRUE(graph.GraphResolveNeeded());
+  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelTest, RemovedControlEdgeIsNotRestored) {
   std::unique_ptr<Model> model;
   ASSERT_STATUS_OK(LoadOrtModel(BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true), model));
