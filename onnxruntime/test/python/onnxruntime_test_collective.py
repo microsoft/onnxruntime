@@ -316,6 +316,30 @@ class ORTBertPretrainTest(unittest.TestCase):
             ort_sess.run(None, {"X": np.array([rank], dtype=np.float32)})
 
     @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
+    def test_all_gather_invalid_axis_unknown_rank(self):
+        rank, size = self._get_rank_size()
+        input_value_info = helper.make_tensor_value_info("X", TensorProto.FLOAT, None)
+        output_value_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, None)
+        node = helper.make_node(
+            "AllGather",
+            ["X"],
+            ["Y"],
+            domain="com.microsoft",
+            axis=2,
+            group_size=size,
+        )
+        graph = helper.make_graph([node], "", [input_value_info], [output_value_info])
+        model = self._create_model_with_opsets(graph)
+        ort_sess = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+
+        with self.assertRaisesRegex(RuntimeError, r"axis must be in the range \[0, 2\)"):
+            ort_sess.run(None, {"X": np.ones((2, 2), dtype=np.float32)})
+
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
     @parameterized.expand(
         [
             (np.float32, TensorProto.FLOAT, TensorProto.FLOAT),
