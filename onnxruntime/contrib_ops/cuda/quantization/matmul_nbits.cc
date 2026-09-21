@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -181,35 +182,17 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
   return true;
 }
 
-// Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
-// shape is missing or any leading dimension is not statically known (dynamic-shape fallback).
-static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
-  if (input_a == nullptr) {
-    return std::nullopt;
-  }
-  const ONNX_NAMESPACE::TensorShapeProto* shape = input_a->Shape();
-  if (shape == nullptr || shape->dim_size() < 1) {
-    return std::nullopt;
-  }
-  SafeInt<int64_t> m(1);
-  // All dims except the last (which is K).
-  for (int i = 0; i + 1 < shape->dim_size(); ++i) {
-    const auto& dim = shape->dim(i);
-    if (!dim.has_dim_value()) {
-      return std::nullopt;
-    }
-    try {
-      m *= dim.dim_value();
-    } catch (const OnnxRuntimeException&) {
-      return std::nullopt;
-    }
-  }
-  return static_cast<int64_t>(m);
-}
-
-static std::optional<int64_t> LeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
+std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape) {
   if (input_a_shape.empty()) {
     return std::nullopt;
+  }
+
+  // Establish a known-empty output before rejecting unknown dimensions or doing arithmetic.
+  // This also avoids reporting overflow for a huge prefix whose later leading dimension is zero.
+  for (size_t i = 0; i + 1 < input_a_shape.size(); ++i) {
+    if (input_a_shape[i] == 0) {
+      return 0;
+    }
   }
 
   SafeInt<int64_t> m(1);
@@ -227,8 +210,33 @@ static std::optional<int64_t> LeadingDimProduct(gsl::span<const int64_t> input_a
   return static_cast<int64_t>(m);
 }
 
-static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
-    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m) {
+// Product of all leading (non-K) dimensions of input A, i.e. the GEMM "m". Returns nullopt when the
+// shape is missing or any non-zero leading dimension is not statically known.
+static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
+  if (input_a == nullptr) {
+    return std::nullopt;
+  }
+  const ONNX_NAMESPACE::TensorShapeProto* shape = input_a->Shape();
+  if (shape == nullptr || shape->dim_size() < 1) {
+    return std::nullopt;
+  }
+
+  TensorShapeVector dimensions;
+  dimensions.reserve(static_cast<size_t>(shape->dim_size()));
+  for (const auto& dimension : shape->dim()) {
+    if (!dimension.has_dim_value()) {
+      dimensions.push_back(-1);
+    } else {
+      dimensions.push_back(dimension.dim_value());
+    }
+  }
+
+  return ComputeMatMulNBitsLeadingDimProduct(dimensions);
+}
+
+static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
+    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m,
+    MatMulNBitsMemoryEstimateOptions options) {
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
     // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
     // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
@@ -275,22 +283,12 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
 
   const int device_sm = device_prop.major * 10 + device_prop.minor;
 
-  // Level 1 KNOWN LIMITATION (Major 2, issue microsoft/onnxruntime#29810): this estimate can only
-  // read the process-wide env var ORT_FPA_INTB_GEMM, NOT the per-session config ep.cuda.fpa_intb_gemm
-  // that the MatMulNBits constructor also honors (and which wins over the env var). The constructor
-  // has the session ConfigOptions via OpKernelInfo, but the only caller of this function -
-  // CUDAExecutionProvider::GetCapability() - does not: the IExecutionProvider::GetCapability()
-  // interface (shared by every EP) is not passed the session ConfigOptions, and CUDAExecutionProvider
-  // does not store them (info_ carries provider options only). Threading ConfigOptions into
-  // GetCapability() would be a cross-cutting change to the EP interface and is deferred.
-  //
-  // Consequence: a node enabled solely via ep.cuda.fpa_intb_gemm (env var unset) is judged eligible
-  // by the real kernel but NOT here, so Level 1 conservatively returns nullopt (no workspace
-  // pre-reservation) rather than over-estimating. Because Level 1 is currently log-only and does not
-  // change the partition budget, this divergence is safe. Prepacked weights are eligible regardless
-  // of the option, so they are unaffected.
+  const std::string fpa_intb_gemm =
+      options.fpa_intb_gemm.has_value()
+          ? std::string{*options.fpa_intb_gemm}
+          : ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "");
   const int fpa_intb_option =
-      ParseFpAIntBEnabled(ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "")) ? 1 : 0;
+      ParseFpAIntBEnabled(fpa_intb_gemm) ? 1 : 0;
 
   const bool fpa_intb_eligible = CheckFpAIntBEligibility(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked,
@@ -299,29 +297,142 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
     return std::nullopt;
   }
 
-  if (!m.has_value()) {
+  auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      N, K, nbits, block_size, weight_prepacked, has_zero_points);
+  if (!estimate.has_value()) {
     return std::nullopt;
   }
 
-  const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
   try {
-    return onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm, device_prop.multiProcessorCount);
+    const std::string profile_m_value =
+        options.profile_m.has_value()
+            ? std::string{*options.profile_m}
+            : ParseEnvironmentVariableWithDefault<std::string>(
+                  onnxruntime::llm::kernels::weight_only::kEnvProfileM, "");
+    const std::vector<int> profile_m =
+        WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            profile_m_value);
+    const int requested_constructor_profile_max_m =
+        profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                          : profile_m.back();
+    const int constructor_profile_max_m =
+        onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+            requested_constructor_profile_max_m,
+            onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+
+    const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+    const int packing_ratio = onnxruntime::llm::kernels::weight_only::FP16_BITS / SafeInt<int>(nbits);
+    const int packed_n = SafeInt<int>(N) / packing_ratio;
+    const int original_n = packed_n * packing_ratio;
+    const auto compute_profiler_scratch = [&](int profile_bucket_m) -> std::optional<size_t> {
+      const auto profiler_runner_workspace =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              profile_bucket_m, original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+      if (!profiler_runner_workspace.has_value()) {
+        return std::nullopt;
+      }
+      return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
+          profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
+          SafeInt<size_t>(block_size), *profiler_runner_workspace);
+    };
+
+    const auto constructor_profile_scratch = compute_profiler_scratch(constructor_profile_max_m);
+    if (!constructor_profile_scratch.has_value()) {
+      return std::nullopt;
+    }
+    // Kernel construction profiling and PrePack_B conversion happen sequentially.
+    estimate->initialization_scratch_bytes =
+        std::max(estimate->initialization_scratch_bytes, *constructor_profile_scratch);
+
+    if (m.has_value()) {
+      estimate->runtime_workspace_bytes =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              SafeInt<int>(*m), original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+    }
+
+    std::optional<int> lazy_profile_m;
+    if (!m.has_value()) {
+      // A dynamic M can request any rounded bucket at runtime.
+      lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+    } else if (*m > 0) {
+      const auto initial_profile_m =
+          WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+              1, constructor_profile_max_m, profile_m);
+      if (options.input_shape_is_upper_bound) {
+        const int maximum_runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
+          if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
+              initial_profile_m.end()) {
+            lazy_profile_m = candidate_m;
+          }
+          if (candidate_m == maximum_runtime_profile_m) {
+            break;
+          }
+        }
+      } else {
+        const int runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        const bool initially_profiled =
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
+        if (!initially_profiled) {
+          lazy_profile_m = runtime_profile_m;
+        }
+      }
+    }
+
+    if (lazy_profile_m.has_value()) {
+      const auto lazy_profile_scratch = compute_profiler_scratch(*lazy_profile_m);
+      if (!lazy_profile_scratch.has_value()) {
+        return std::nullopt;
+      }
+      // Lazy profiling occurs during Run() before the ordinary GEMM. The two allocations do not
+      // overlap, so the accountant peaks them rather than summing them.
+      estimate->runtime_transient_bytes = *lazy_profile_scratch;
+    }
+
+    return estimate;
   } catch (const OnnxRuntimeException&) {
-    // SafeInt<int> narrowing of m/N/K overflowed int range: treat as not estimable.
+    // Treat invalid or overflowing model-derived sizes as not estimable.
     return std::nullopt;
   }
 }
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
   const auto& input_defs = node.InputDefs();
   const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
-  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, StaticLeadingDimProduct(input_a));
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, StaticLeadingDimProduct(input_a), options);
+}
+
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  options.input_shape_is_upper_bound =
+      options.input_shape_is_upper_bound && !StaticLeadingDimProduct(input_a).has_value();
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape), options);
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, const cudaDeviceProp& device_prop) {
+  const auto estimate = EstimateMatMulNBitsMemory(node, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
 }
 
 std::optional<size_t> EstimateMatMulNBitsWorkspace(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
-  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, LeadingDimProduct(input_a_shape));
+  const auto estimate = EstimateMatMulNBitsMemory(node, input_a_shape, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
 }
 
 template <typename T>
@@ -618,55 +729,45 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 #endif
 
 #if USE_FPA_INTB_GEMM && !defined(BUILD_CUDA_EP_AS_PLUGIN)
-// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the same constructed
-// runner state and effective arch that ComputeInternal() uses, so the returned size equals the real
-// runtime request when the queried input-A shape equals the runtime input shape. Returns empty
-// (dynamic fallback) when the node does not take the fpA_intB CUTLASS-GEMM path, when the leading
-// (m) dimension of input A is not statically known, or when the size formula overflows.
+// Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775). Uses the constructed runner
+// state and effective arch from ComputeInternal(). The size is exact for its CUTLASS GEMM branch.
+// Runtime may instead select the CUDA GEMV tactic, which requests no workspace; in that case this is
+// a safe upper bound. Unknown/negative dimensions and arithmetic overflow use dynamic fallback.
+// The shared formula returns zero for empty output; a zero-sized requirement is omitted.
 template <typename T>
 Status MatMulNBits<T>::DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
+    gsl::span<const WorkspaceInputShape> input_shapes,
     /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
   requirements.clear();
   if (!has_fpA_intB_gemm_ || weightOnlyGemmRunner_ == nullptr) {
     return Status::OK();
   }
-  if (input_shapes.empty()) {
-    return Status::OK();
-  }
-  // input_shapes[0] is input A, the same tensor as ctx->Input(0) in Compute(). m = product of all
-  // its dims except the last (K). A symbolic/unknown dim (negative) triggers the dynamic fallback.
-  const TensorShape& a_shape = input_shapes[0];
-  const size_t rank = a_shape.NumDimensions();
-  if (rank < 1) {
-    return Status::OK();
-  }
-  int64_t m64 = 1;
-  try {
-    SafeInt<int64_t> m(1);
-    for (size_t i = 0; i + 1 < rank; ++i) {
-      const int64_t d = a_shape[i];
-      if (d < 0) {
-        return Status::OK();
-      }
-      m *= d;
-    }
-    m64 = static_cast<int64_t>(m);
-  } catch (const OnnxRuntimeException&) {
+
+  // Input A is the only input needed for this estimate. Missing or unknown unrelated optional
+  // inputs do not suppress declaration.
+  const TensorShape* a_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
+  if (a_shape == nullptr) {
     return Status::OK();
   }
 
-  // Use the same packing/workspace architecture rule as the runtime request.
+  // Input A is the same tensor as ctx->Input(0) in Compute(). m = product of all its dims except
+  // the last (K), which comes from the kernel attribute and may remain unknown here.
+  const std::optional<int64_t> m64 =
+      ComputeMatMulNBitsLeadingDimProduct(a_shape->GetDims());
+  if (!m64.has_value()) {
+    return Status::OK();
+  }
+  // Feed the SAME effective arch the runner resolved after setArch() - not the raw sm_ member.
   const int effective_sm = FpAIntBPackingSmForKernel();
   std::optional<size_t> ws;
   try {
     ws = onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(m64), SafeInt<int>(N_), SafeInt<int>(K_),
+        SafeInt<int>(*m64), SafeInt<int>(N_), SafeInt<int>(K_),
         effective_sm, this->GetDeviceProp().multiProcessorCount);
   } catch (const OnnxRuntimeException&) {
     return Status::OK();
   }
-  if (!ws.has_value()) {
+  if (!ws.has_value() || *ws == 0) {
     return Status::OK();
   }
   requirements.push_back(WorkspaceRequirement{*ws, /*slot_id=*/0, /*alignment_bytes=*/0});
@@ -676,6 +777,12 @@ Status MatMulNBits<T>::DeclareWorkspaceRequirements(
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
+#if USE_FPA_INTB_GEMM
+  // TEST verification hook only. Record every invocation, including validation failures, empty
+  // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
+  last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
+#endif
+
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -830,11 +937,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
         // TEST verification hook only. Relaxed ordering is sufficient: the pilot's single-threaded
         // tests only read this after the compute call has returned, so no cross-thread happens-before
         // relationship needs to be established here.
         last_compute_workspace_bytes_.store(workspace_size, std::memory_order_relaxed);
-        auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
 
         weightOnlyGemmRunner_->gemm(
             a_data,

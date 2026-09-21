@@ -15,6 +15,7 @@
 #param n_bits
 #param has_zero_points
 #param has_bias
+#param has_tail_buffer
 #param has_weight_idx
 #param has_weight_idx_indirect
 #param sg_mat_k
@@ -41,7 +42,8 @@ const kSgMatCountM: u32 = kTileM / kSgMatM;      // Number of subgroup matrices 
 var<workgroup> tile_b: array<f16, kTileN * kTileK>;
 
 #if has_bias
-// Scratch space for matmul results before bias addition [kTileM, kTileN], row-major
+// Scratch space for bounds-checked write-out with bias addition, [kTileM, kTileN],
+// row-major. The no-bias path never needs this - see `has_tail_buffer` below.
 var<workgroup> scratch: array<f16, kTileM * kTileN>;
 #endif
 
@@ -228,11 +230,43 @@ $MAIN {
             }
         }
 #else
+        // A trailing M-tile may be partial (M is not required to be a multiple of
+        // kTileM). Writing it with subgroupMatrixStore straight to output would run
+        // past M. That's not just an out-of-bounds risk: a subgroupMatrixStore whose
+        // footprint leaves the buffer does not degrade to a per-element clamp or zero
+        // fill - Tint's robustness transform resets the whole store to offset 0 with
+        // the minimum stride, so it would silently overwrite a different, valid region
+        // of the buffer (e.g. row 0) instead.
+#if has_tail_buffer
+        // Every tile - including the tail one - still writes via the same
+        // branch-free fast path (no per-element bounds check, no workgroup
+        // scratch); the tail tile targets a [kTileM, N] padded `tail_output`
+        // buffer instead of `output` (which is too short by this point).
+        // ApplySubgroupMatrixMatMulNBits crops the valid rows back into the real
+        // output with a follow-up copy dispatch.
+        if (global_base_a + kTileM <= uniforms.M) {
+            let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
+            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
+            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
+            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
+            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+        } else {
+            let sg_mat_offset_c = global_base_b + sg_idx * kSgMatM * uniforms.N;
+            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
+            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
+            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
+            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+        }
+#else
+        // ApplySubgroupMatrixMatMulNBits only sets has_tail_buffer when M isn't a
+        // multiple of kTileM, so here M is guaranteed aligned: every tile -
+        // including the last - is always fully in bounds.
         let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
         subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
         subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
         subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
         subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+#endif
 #endif
     } // end M-tile loop
 }  // MAIN

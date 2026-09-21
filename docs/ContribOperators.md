@@ -31,6 +31,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DynamicTimeWarping">com.microsoft.DynamicTimeWarping</a>
   * <a href="#com.microsoft.EPContext">com.microsoft.EPContext</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
+  * <a href="#com.microsoft.EngramGate">com.microsoft.EngramGate</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FastGelu">com.microsoft.FastGelu</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
@@ -71,6 +72,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
+  * <a href="#com.microsoft.NGramHashMapping">com.microsoft.NGramHashMapping</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcFusedConv">com.microsoft.NhwcFusedConv</a>
@@ -930,6 +932,23 @@ This version of the operator has been available since version 1 of the 'com.micr
   enforced on the last spatial dimension only.
   
   The optional activation attribute supports fused SiLU/Swish activation.
+  
+  The dilation attribute spaces the kernel taps along the causal axis: output position t reads
+  input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
+  (k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
+  past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
+  (the default) is the undilated case and keeps the original state length, so models exported
+  before the attribute existed are unaffected.
+  
+  The channels_last attribute selects a sequence-major layout for the activations and the carry
+  state, so a model that already produces channels-last activations does not have to transpose into
+  and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
+  (batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
+  (batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
+  channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
+  axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
+  (channels) shapes because they have no sequence axis. The computed values are identical to the
+  channels-first layout; only the memory layout differs.
 
 #### Version
 
@@ -940,23 +959,27 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>When 1, input, output, past_state and present_state use a sequence-major, channels-last layout: input and output are (batch_size, sequence_length, d_1, ..., d_n) and the state tensors are (batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. weight and bias keep their channels-first shapes. Requires ndim = 1. Default is 0 (channels-first).</dd>
+<dt><tt>dilation</tt> : int</dt>
+<dd>Spacing between kernel taps along the causal (last spatial) axis. The receptive field spans (k_1 - 1) * dilation positions before the current one, and past_state / present_state hold that many positions. Must be >= 1. Default is 1 (undilated).</dd>
 <dt><tt>ndim</tt> : int</dt>
 <dd>Spatial dimensionality: 1, 2, or 3. Default is 1.</dd>
 <dt><tt>state_window</tt> : int</dt>
-<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
+<dd>Number of trailing per-position carry states held by past_state and present_state. When 0 (default) the state tensors have no window axis and hold only the state after the last position, i.e. the backward-compatible (batch_size, channels, state_length) where state_length = (k_1 - 1) * dilation. When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state after position (seq_len - W + j), so slot W-1 is always the state after the last position (identical to the W = 0 tensor) and is the slot past_state is read from. The window axis leads the batch axis so that each slot is one contiguous (batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no position from this call and are filled with zeros. A window lets a speculative decoder roll the state back to an accepted prefix without replaying the forward. Valid range is [0, 8].</dd>
 </dl>
 
 #### Inputs (2 - 4)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>Input tensor with shape (batch_size, channels, ...). Channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).</dd>
+<dd>Input tensor with shape (batch_size, channels, ...) in the default channels-first layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.</dd>
 <dt><tt>weight</tt> : T</dt>
 <dd>Depthwise convolution kernel with shape (channels, 1, k_1, ...). Spatial kernel sizes: (k_1, ..., k_ndim).</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels).</dd>
 <dt><tt>past_state</tt> (optional) : T</dt>
-<dd>Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1), or (W, batch_size, channels, k_1 - 1) when state_window = W > 0, in which case only slot W-1 is read. If not provided, padding is zero.</dd>
+<dd>Carry state from previous step. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, in which case only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. If not provided, padding is zero.</dd>
 </dl>
 
 #### Outputs
@@ -965,7 +988,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Convolution output with same shape as input.</dd>
 <dt><tt>present_state</tt> : T</dt>
-<dd>Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1), or (W, batch_size, channels, k_1 - 1) when state_window = W > 0. Slot W-1 contains the last (k-1) values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
+<dd>Updated carry state. For ndim=1: (batch_size, channels, state_length), or (W, batch_size, channels, state_length) when state_window = W > 0, and (batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot W-1 contains the last state_length values from the virtual input along the causal axis; slot j contains the same for the prefix ending at position (seq_len - W + j).</dd>
 </dl>
 
 #### Type Constraints
@@ -1772,6 +1795,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
+
+  Fuses the Engram gate.
+  
+  The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
+  the hidden-state queries in the same layout, an already projected value in
+  (batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
+  RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
+  provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
+  projection is computed once per token instead of once per hyper-connection.
+  
+  It computes the Engram gate:
+  
+  gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
+  dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
+  
+  The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
+  output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
+  CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
+  RMSNorm, CausalConvWithState and Add.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>key</tt> : T</dt>
+<dd>Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>query</tt> : T</dt>
+<dd>Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>value</tt> : T</dt>
+<dd>Projected Engram value shared by every hyper-connection, with shape (batch_size, sequence_length, hidden_size).</dd>
+<dt><tt>key_norm_scale</tt> : T</dt>
+<dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
+<dt><tt>query_norm_scale</tt> : T</dt>
+<dd>RMSNorm scale for queries with shape (hc_mult, hidden_size).</dd>
+<dt><tt>conv_norm_scale</tt> (optional) : T</dt>
+<dd>Optional RMSNorm scale for the gated value, with shape (hc_mult, hidden_size). Required when gated_value_normed is requested.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>gated_value_normed</tt> (optional) : T</dt>
+<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.ExpandDims"></a><a name="com.microsoft.expanddims">**com.microsoft.ExpandDims**</a>
 
   ExpandDims echo operator.
@@ -2097,6 +2186,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+  Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
+  with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -2242,12 +2333,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
   
-    Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+    Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate)
+  
+  where `gate_activation` is one of:
+  - `silu` or `swish`: `z * sigmoid(z)`
+  - `sigmoid`: `sigmoid(z)`
   
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
   per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-  All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+  All arithmetic including gate activation is done in float32 regardless of the tensor type, matching
   the reference implementation, so this replaces the exported
   SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
   single launch.
@@ -2259,6 +2354,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. 'swish' is an alias of 'silu'.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
 </dl>
@@ -2350,13 +2447,22 @@ This version of the operator has been available since version 1 of the 'com.micr
   GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
     1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
        `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
+       For an FP8 or FP4 `data` type (see point 6 below), `block_size` may also be 0, meaning the entire `quantize_axis`
+       dimension forms a single block (i.e. one scale per row).
     2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
        If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
+       `zero_points` must not be provided when `data` is an FP8 or FP4 type: FP8/FP4 quantization is symmetric.
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
     5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
        for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+    6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
+       (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
+       no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
+       On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
+       dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
+       every row, as with a per-tensor scale applied to an entire embedding table).
 
 #### Version
 
@@ -2366,9 +2472,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>bits</tt> : int</dt>
-<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. </dd>
+<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. Ignored when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
+<dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16, or 0. A value of 0 is only valid for an FP8 or FP4 `data` type and means the entire `quantize_axis` dimension forms a single block.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
 <dd>(Optional) Which axis to gather on. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
 <dt><tt>quantize_axis</tt> : int</dt>
@@ -2381,11 +2487,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T1</dt>
 <dd>Tensor of rank r >= 1. Block-wise quantized.</dd>
 <dt><tt>indices</tt> : Tind</dt>
-<dd>Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.</dd>
+<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. Unlike ONNX Gather, an out-of-range index produces zeros for the corresponding output slice.</dd>
 <dt><tt>scales</tt> : T2</dt>
-<dd>quantization scale</dd>
+<dd>quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>zero_points</tt> (optional) : T1</dt>
-<dd>quantization zero points</dd>
+<dd>quantization zero points. Must not be provided when `data` is an FP8 or FP4 type.</dd>
 </dl>
 
 #### Outputs
@@ -2398,7 +2504,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8)</dt>
+<dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(float4e2m1)</dt>
 <dd>Constrain quantized types.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain dequantized types.</dd>
@@ -2840,6 +2946,25 @@ This version of the operator has been available since version 1 of the 'com.micr
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
   
+  **Windowed KV Cache (`sliding_window_cache` attribute):**
+  When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
+  
+  After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
+  
+  ```
+  G = C - W + 1
+  L(T) = T                            if T <= C
+  L(T) = T - G * ceil((T - C) / G)    otherwise
+  ```
+  
+  Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
+  
+    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+  
+    An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
+  
+  To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
+  
   **Quantization:**
   When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
   The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
@@ -2883,7 +3008,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>sliding_window_cache</tt> : int</dt>
-<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent tokens, contiguously, using cache-relative indexing and evicting from the front as needed. Requires local_window_size > 0 and a cache capacity of at least local_window_size. Multi-token steps may use a temporary staging buffer, so the capacity need not cover the entire step. Default value is 0 (full-length cache).</dd>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. When past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
@@ -2902,9 +3027,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
 <dt><tt>past_key</tt> (optional) : T_CACHE</dt>
-<dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the caller independently of the sequence length and must be at least local_window_size.</dd>
 <dt><tt>past_value</tt> (optional) : T_CACHE</dt>
-<dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
+<dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the caller independently of the sequence length and must be at least local_window_size.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
 <dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
@@ -2916,7 +3041,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
 <dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
-<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
+<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length). The last dimension is indexed by absolute key position and stays total_sequence_length when sliding_window_cache is 1: it is not reduced to the cache capacity or to local_window_size. The operator reads the columns of the positions that are resident in the cache and ignores the rest. CPU supports this windowed absolute-column indexing; CUDA rejects attention_bias when sliding_window_cache is 1.</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
 <dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
@@ -3356,18 +3481,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
 
-  Weight-only block-scaled FP8 (E4M3) matrix multiplication.
+  Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
   
-  The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per `block_size` consecutive
-  K values (`b_scale` of shape [N, ceil(K / block_size)]). The dequantized weight value is
-  `fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`. The weight is dequantized to the activation
-  type (FP16/BF16) and multiplied with the FP16/BF16 activation A. This path is architecture
-  independent and runs on any CUDA architecture (SM80+).
+  The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
+  (`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
+  `B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
   
-  When the optional `a_scale` (a single fp32 scalar) is provided, the activation A is statically
-  quantized to FP8 E4M3 and dequantized back (`a_deq = fp8_e4m3(A / a_scale) * a_scale`) before the
-  matmul, realizing W8A8 activation numerics. When `a_scale` is omitted the activation is kept at
-  full FP16/BF16 precision (weight-only W8A16).
+  When the optional scalar `a_scale` is provided, the activation values used in the multiplication
+  are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains its FP16/BF16
+  precision (weight-only W8A16).
+  
+  The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
+  The output has shape [..., N] and the same element type as A.
 
 #### Version
 
@@ -3390,7 +3515,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>b_scale</tt> : T2</dt>
 <dd>Per-block FP32 weight scales of shape [N, ceil(K / block_size)].</dd>
 <dt><tt>a_scale</tt> (optional) : T2</dt>
-<dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale and dequantized back before the matmul (W8A8 numerics); when absent, A stays in full FP16/BF16 precision.</dd>
+<dd>Optional global fp32 activation scale (scalar). When present, A is statically quantized to FP8 E4M3 with this scale (W8A8 numerics); when absent, A retains its FP16/BF16 precision.</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional bias of shape [N].</dd>
 </dl>
@@ -4182,6 +4307,95 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.NGramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NGramHashMapping**</a>
+
+  Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+  
+  For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+  sequence with pad_id, and computes
+  mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+  For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+  The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+  heads for n=2 first, then n=3, and so on.
+  
+  An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+  across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+  those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+  (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+  Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
+  Running the op once over a full sequence and running it over consecutive chunks while threading
+  present_ids into past_ids produce identical hash ids, including when reset_on_eos is enabled. When
+  segment_ids is used, segment boundaries are applied only within the current input_ids chunk and are
+  not inferred from past_ids. When past_ids is omitted the missing history is pad_id, or eos_token_id
+  when it is provided.
+  past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+  only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+  roll back must preserve past_ids.
+  
+  Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+  
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries: any shifted position at or before the most recent EOS strictly before the current
+    position is replaced with eos_token_id instead of the real token.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+    are not checked against past_ids history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int (required)</dt>
+<dd>Maximum n-gram order. Must be at least 2.</dd>
+<dt><tt>n_head_per_ngram</tt> : int (required)</dt>
+<dd>Number of hash heads emitted for each n-gram order.</dd>
+<dt><tt>pad_id</tt> : int (required)</dt>
+<dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and the eos_token_id input is provided, reset causal n-gram history at EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves the original pad_id-only behavior.</dd>
+</dl>
+
+#### Inputs (3 - 7)
+
+<dl>
+<dt><tt>input_ids</tt> : M</dt>
+<dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
+<dt><tt>multipliers</tt> : M</dt>
+<dd>Per-shift hash multipliers with shape at least (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dt><tt>vocab_sizes</tt> : M</dt>
+<dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
+<dt><tt>past_ids</tt> (optional) : M</dt>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id, or eos_token_id when provided.</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id, same type as input_ids. Required for reset_on_eos to take effect and for EOS-based substitution of unavailable prior context; see the op doc.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional per-token segment id with shape (batch_size, sequence_length), used to reset causal history at packed-sequence boundaries within input_ids.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>hash_ids</tt> : M</dt>
+<dd>Hash ids with shape (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>present_ids</tt> (optional) : M</dt>
+<dd>Trailing max_ngram_size - 1 ids of past_ids followed by input_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.NGramRepeatBlock"></a><a name="com.microsoft.ngramrepeatblock">**com.microsoft.NGramRepeatBlock**</a>
 
   Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
@@ -4654,9 +4868,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>key_cache</tt> : T_CACHE</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
 <dt><tt>value_cache</tt> (optional) : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
@@ -4689,9 +4903,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>2D output tensor with shape (num_tokens, num_heads * v_head_size), which is (num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.</dd>
 <dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
+<dd>Aliases key_cache with the same shape and element type, including its packed dimension for INT4.</dd>
 <dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dd>Aliases value_cache with the same shape and element type, including its packed dimension for INT4. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 </dl>
 
 #### Type Constraints
@@ -4699,7 +4913,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
-<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn)</dt>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn), tensor(uint8)</dt>
 <dd>Constrain the KV cache to float or quantized tensors.</dd>
 <dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
 <dd>Constrain KV cache scales to float tensors.</dd>
@@ -5469,6 +5683,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>Minimum accuracy level of the expert GEMMs on CPU, with the MatMulNBits meaning. For block-wise 4-bit experts, 0 (default) or 1 keeps fp32 activations and 4 allows int8 activations (int8 dot-product kernels). Block-wise 8-bit experts have no fp32 kernel and use int8 activations at every level. Other values are treated as 0.</dd>
 <dt><tt>activation_alpha</tt> : float</dt>
 <dd>Alpha parameter used in activation function.</dd>
 <dt><tt>activation_beta</tt> : float</dt>
@@ -7157,7 +7373,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
   Stateful causal depthwise convolution over a packed, token-major batch of variable-length
-  sequences (CUDA only).
+  sequences (CUDA and WebGPU).
   
   input and output have shape (total_tokens, channels). cumulative_sequence_length is a
   device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
@@ -7165,7 +7381,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
   (channels). The convolution never reads across a sequence boundary.
   
-  initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+  initial_state is required and has shape (batch_size, channels, state_length), where
+  state_length = (kernel_size - 1) * dilation. It contains
   the committed raw activation samples immediately preceding this call. final_state has the same
   shape and type and is fully written with the state after each sequence's final token. State
   uses the activation type because it stores raw samples, not accumulated convolution values.
@@ -7180,13 +7397,21 @@ This version of the operator has been available since version 1 of the 'com.micr
   These values represent the append component of each shift-left-and-append state transition.
   All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
   
-  For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+  For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
   cumulative_sequence_length[batch_size] == total_tokens, and its local range
   0 <= start < end <= total_tokens before accessing input, state, or output.
   Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
   This device-side containment is not a synchronous validation or rejection mechanism.
   
   The optional activation attribute supports none, SiLU, and Swish.
+  
+  The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+  reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+  before the request's first token come from the carry state. The carry state therefore holds
+  state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+  Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+  exported before the attribute existed are unaffected. input and output are already token-major
+  (sequence-major, channels-last), so this op needs no separate layout attribute.
 
 #### Version
 
@@ -7197,6 +7422,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>dilation</tt> : int</dt>
+<dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
 <dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
@@ -7213,7 +7440,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
 <dt><tt>initial_state</tt> : T</dt>
-<dd>Required committed carry state with shape (batch_size, channels, kernel_size - 1).</dd>
+<dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
 <dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
 </dl>
@@ -7224,7 +7451,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>Token-major convolution output with the same shape as input.</dd>
 <dt><tt>final_state</tt> : T</dt>
-<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, kernel_size - 1).</dd>
+<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
 <dd>Optional compact transition values with shape (batch_size, state_update_capacity, channels). Inactive slots are zero.</dd>
 </dl>
@@ -7521,5 +7748,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

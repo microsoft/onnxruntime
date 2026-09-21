@@ -16,6 +16,7 @@
 
 namespace ONNX_NAMESPACE {
 class FunctionProto;
+class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -27,6 +28,10 @@ class Graph;
 using LocalFunctionCallGraph = InlinedHashMap<std::string_view, InlinedVector<std::string_view>>;
 
 constexpr size_t kMaxModelLocalFunctionCallDepth = 100;
+constexpr size_t kMaxModelSubgraphDepth = 32;
+
+Status ValidateModelSubgraphDepth(const ONNX_NAMESPACE::ModelProto& model_proto);
+Status ValidateFunctionSubgraphDepth(const ONNX_NAMESPACE::FunctionProto& function_proto);
 
 /// Build a call graph adjacency list from model local functions.
 /// String views in the returned graph point into the keys of @p model_local_functions.

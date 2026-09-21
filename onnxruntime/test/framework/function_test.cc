@@ -347,6 +347,39 @@ TEST(FunctionTest, CallInConditional) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
+// A model-local function that declares zero inputs must not be invoked with
+// actual inputs.
+TEST(FunctionTest, RejectsZeroInputFunctionCalledWithInput) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[1] y)
+        {
+            y = local.zerofun (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        zerofun () => (ly) {
+            ly = Constant <value = float[1] {2.0}> ()
+        }
+        )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  const auto status = session_object.Load(sstr);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("declares no inputs"));
+}
+
 TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
   const char* code = R"(
         <
@@ -444,6 +477,63 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
 
 // --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
 // These test the cycle detection algorithm directly without constructing ONNX models.
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionModel(size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* nodes = model_proto.add_functions()->mutable_node();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = nodes->Add();
+    auto* attr = node->add_attribute();
+    if (use_graphs_attribute) {
+      nodes = attr->add_graphs()->mutable_node();
+    } else {
+      nodes = attr->mutable_g()->mutable_node();
+    }
+  }
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionDefaultAttributeModel(
+    size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* function = model_proto.add_functions();
+  auto* attr = function->add_attribute_proto();
+  auto* graph = use_graphs_attribute ? attr->add_graphs() : attr->mutable_g();
+  for (size_t i = 1; i < depth; ++i) {
+    auto* node = graph->add_node();
+    attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, LocalFunctionSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
+
+TEST(FunctionTest, LocalFunctionDefaultAttributeSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
 
 TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
   onnxruntime::LocalFunctionCallGraph call_graph;

@@ -35,9 +35,7 @@ stages:
         value: "."
 
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: jobs/checkout-and-git-redirect.yml
 
     - ${{ each agentSetupStep in parameters.agentSetupSteps }}:
       - ${{ agentSetupStep }}

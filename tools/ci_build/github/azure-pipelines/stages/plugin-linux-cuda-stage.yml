@@ -96,9 +96,7 @@ stages:
         ${{ else }}:
           value: 'onnxruntime_USE_FPA_INTB_GEMM=OFF'
     steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -194,9 +192,7 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 

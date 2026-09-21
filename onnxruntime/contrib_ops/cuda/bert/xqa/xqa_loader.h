@@ -15,7 +15,8 @@ namespace cuda {
 enum class XqaQuantType {
   kNone = 0,  // no quantization, use FP16/BF16
   kInt8 = 1,
-  kFp8 = 2
+  kFp8 = 2,
+  kInt4 = 3
 };
 
 // Wrapper for XQA MHA launch

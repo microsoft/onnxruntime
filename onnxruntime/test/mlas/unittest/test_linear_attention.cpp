@@ -299,6 +299,20 @@ class MlasLinearAttentionTest : public MlasTestBase {
         {12, 32},
         {20, 32},
         {256, 32},
+        // d_k not a multiple of 4, all three remainders. The SVE kernel loads
+        // key/query/decay weights four at a time for its lane-indexed FMA, so
+        // these are the only shapes that reach its scalar remainder path -- and
+        // every other d_k in this table is a multiple of 4. That path lives in
+        // the hand-written FULL-panel bodies, which only run when d_v holds a
+        // complete panel: 8 vectors of svcntw() words, i.e. 8 * 64 = 512 floats
+        // at the architectural maximum VL of 2048 bits. d_v = 512 therefore
+        // guarantees at least one full panel -- and so remainder coverage in
+        // the assembly -- at every legal vector length, where a smaller d_v
+        // would quietly demote these cases to the trailing-panel intrinsics at
+        // larger VLs and test nothing.
+        {13, 512},
+        {14, 512},
+        {15, 512},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,
@@ -359,6 +373,15 @@ class MlasLinearAttentionTest : public MlasTestBase {
            MlasLinearAttentionDecayNone, MlasLinearAttentionBetaShared,
            1.0f, 1, true);
     }
+
+    // Long sequence. Decay multiplies the entire state on every token, so exp()
+    // error compounds over T; the rest of this matrix tops out at T=17, which is
+    // far too short to see it. NOUT=8 is the widest readout group, and the
+    // per-key-dim layout is the one that evaluates d_k exponentials per token.
+    // d_k=d_v=64 with a single kv head keeps the scalar oracle affordable.
+    Test(1, 1024, 8, 1, 1, 64, 64, MlasLinearAttentionRuleGatedDelta,
+         MlasLinearAttentionDecayPerKeyDim, MlasLinearAttentionBetaPerHead,
+         0.125f, 1, true);
 
     // Thread partitioning: 8 threads against B*H_kv == 1 exercises the clamp to
     // the task count; 3 threads against 8 tasks exercises the remainder split.
