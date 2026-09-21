@@ -6,7 +6,6 @@
 #include <cstdint>
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

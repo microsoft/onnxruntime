@@ -11,9 +11,9 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
+#include <cub/block/block_radix_sort.cuh>
 
 #include <algorithm>
-#include <limits>
 
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
@@ -503,7 +503,7 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visibl
 
     int emitted = selected;
     if (topk_indices != nullptr) {
-      const int32_t* topk_row = topk_indices + row * params.max_block_count;
+      const int32_t* topk_row = topk_indices + row * params.block_topk;
       for (int rank = 0; rank < selected; ++rank) {
         const int selected_block = static_cast<int>(topk_row[rank]);
         for (int t = threadIdx.x; t < params.compress_ratio; t += blockDim.x) {

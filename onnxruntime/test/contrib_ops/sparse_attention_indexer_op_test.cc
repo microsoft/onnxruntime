@@ -1230,11 +1230,11 @@ TEST(SparseAttentionIndexerTest, QsaLongContextBoundedTopKTies) {
 template <typename T>
 void RunQsaQwenSpecializedScoreAndPartialTopK(float tolerance) {
   QsaProblem problem;
-  problem.batch_size = 1;
-  problem.sequence_length = 1;
+  problem.batch_size = 2;
+  problem.sequence_length = 2;
   problem.num_heads = 4;
   problem.head_size = 128;
-  problem.past_sequence_length = 4095;
+  problem.past_sequence_length = 4094;
   problem.rotary_width = 32;
   problem.compress_ratio = 4;
   problem.token_budget = 2048;
