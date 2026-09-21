@@ -276,6 +276,10 @@ void* BFCArena::Reserve(size_t size) {
   if (size == 0)
     return nullptr;
 
+  if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
+    return ArenaAllocationCapture::current_->Allocate(*this, size, nullptr, true);
+  }
+
   std::lock_guard<std::mutex> lock(lock_);
 
   LOGS_DEFAULT(INFO) << "Reserving memory in BFCArena for " << device_allocator_->Info().name << " size: " << size;
@@ -314,6 +318,10 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     Stream* stream) {
   if (num_bytes == 0) {
     return nullptr;
+  }
+
+  if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
+    return ArenaAllocationCapture::current_->Allocate(*this, num_bytes, stream, false);
   }
 
   // First, always allocate memory of at least kMinAllocationSize
@@ -476,6 +484,9 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
+  if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Free(*this, p)) {
+    return;
+  }
   std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
@@ -487,6 +498,85 @@ void BFCArena::Free(void* p) {
   } else {
     DeallocateRawInternal(p);
   }
+}
+
+thread_local ArenaAllocationCapture* ArenaAllocationCapture::current_ = nullptr;
+
+ArenaAllocationCapture::ArenaAllocationCapture(gsl::span<const AllocatorPtr> allocators)
+    : allocators_(allocators.begin(), allocators.end()) {}
+
+ArenaAllocationCapture::~ArenaAllocationCapture() {
+  Cancel();
+  for (const auto& allocation : allocations_) {
+    if (allocation.owned) {
+      allocation.arena->Free(allocation.pointer);
+    }
+  }
+}
+
+Status ArenaAllocationCapture::Begin(bool replay) {
+  ORT_RETURN_IF(current_ != nullptr, "Nested arena allocation capture is not supported.");
+  ORT_RETURN_IF(replay != recorded_, "Arena allocation capture must be recorded once before replay.");
+  replay_ = replay;
+  cursor_ = 0;
+  for (auto& allocation : allocations_) {
+    allocation.freed = false;
+  }
+  current_ = this;
+  return Status::OK();
+}
+
+Status ArenaAllocationCapture::End() {
+  ORT_RETURN_IF(current_ != this, "Arena allocation capture is not active.");
+  current_ = nullptr;
+  ORT_RETURN_IF(replay_ && cursor_ != allocations_.size(),
+                "CUDA partition scratch allocation sequence changed during capture.");
+  for (const auto& allocation : allocations_) {
+    ORT_RETURN_IF_NOT(allocation.freed,
+                      "CUDA partition allocated a persistent buffer during scratch recording/capture.");
+  }
+  recorded_ = true;
+  return Status::OK();
+}
+
+void ArenaAllocationCapture::Cancel() {
+  if (current_ == this) {
+    current_ = nullptr;
+  }
+}
+
+bool ArenaAllocationCapture::Handles(const BFCArena* arena) const {
+  return std::any_of(allocators_.begin(), allocators_.end(),
+                     [arena](const AllocatorPtr& allocator) { return allocator.get() == arena; });
+}
+
+void* ArenaAllocationCapture::Allocate(BFCArena& arena, size_t size, Stream* stream, bool reserve) {
+  if (replay_) {
+    ORT_ENFORCE(cursor_ < allocations_.size(), "CUDA partition allocated additional scratch during capture.");
+    auto& allocation = allocations_[cursor_++];
+    ORT_ENFORCE(allocation.arena == &arena && allocation.size == size &&
+                    allocation.stream == stream && allocation.reserve == reserve,
+                "CUDA partition scratch allocation sequence changed during capture.");
+    return allocation.pointer;
+  }
+
+  current_ = nullptr;
+  auto restore_scope = gsl::finally([this]() { current_ = this; });
+  void* pointer = reserve ? arena.Reserve(size) : arena.AllocOnStream(size, stream);
+  allocations_.push_back({&arena, pointer, size, stream, reserve});
+  return pointer;
+}
+
+bool ArenaAllocationCapture::Free(BFCArena& arena, void* pointer) {
+  for (auto& allocation : allocations_) {
+    if (allocation.arena == &arena && allocation.pointer == pointer) {
+      ORT_ENFORCE(!allocation.freed, "CUDA partition scratch was freed twice.");
+      allocation.owned = true;
+      allocation.freed = true;
+      return true;
+    }
+  }
+  return false;
 }
 
 Status BFCArena::Shrink() {

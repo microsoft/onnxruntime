@@ -42,6 +42,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
 #ifdef USE_TENSORRT
@@ -1933,6 +1934,153 @@ static void CreateFuseOpModel(const PathString& model_file_name) {
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
 }
+
+TEST(InferenceSessionTests, PartitionedCudaGraphRequiresCaptureProvider) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "built-in CUDA EP with enable_cuda_graph=1");
+}
+
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && !defined(ORT_USE_EP_API_ADAPTERS) && !defined(DISABLE_ML_OPS)
+TEST(InferenceSessionTests, PartitionedCudaGraphReexecutesCpuBetweenCudaPartitions) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+
+  Model model("partitioned_capture", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("batch");
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& a = graph.GetOrCreateNodeArg("a", &type);
+  auto& b = graph.GetOrCreateNodeArg("b", &type);
+  auto& c = graph.GetOrCreateNodeArg("c", &type);
+  auto& d = graph.GetOrCreateNodeArg("d", &type);
+  auto& e = graph.GetOrCreateNodeArg("e", &type);
+  auto& f = graph.GetOrCreateNodeArg("f", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  auto add_initializer = [&](const char* name, std::initializer_list<int64_t> dims,
+                             std::initializer_list<float> values) -> NodeArg& {
+    TensorProto tensor;
+    tensor.set_name(name);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    for (auto dim : dims) tensor.add_dims(dim);
+    for (auto value : values) tensor.add_float_data(value);
+    graph.AddInitializedTensor(tensor);
+    return graph.GetOrCreateNodeArg(name, nullptr);
+  };
+  auto& one = add_initializer("one", {1}, {1.0f});
+  auto add_cuda_scale = [&](const char* name, NodeArg& input, NodeArg& output, float scale) {
+    auto& node = graph.AddNode(name, "LabelEncoder", "", {&input}, {&output}, nullptr, kMLDomain);
+    std::vector<float> keys;
+    std::vector<float> values;
+    for (int i = -64; i <= 64; ++i) {
+      keys.push_back(static_cast<float>(i));
+      values.push_back(static_cast<float>(i) * scale);
+    }
+    node.AddAttribute("keys_floats", keys);
+    node.AddAttribute("values_floats", values);
+  };
+  graph.AddNode("cpu_prefix", "Add", "", {&x, &one}, {&a});
+  // LabelEncoder is available even in the minimal CUDA build used for this regression.
+  add_cuda_scale("gpu_scale1", a, b, 2.0f);
+  add_cuda_scale("gpu_identity", b, c, 1.0f);
+  graph.AddNode("cpu_middle", "Neg", "", {&c}, {&d});
+  add_cuda_scale("gpu_negate", d, e, -1.0f);
+  add_cuda_scale("gpu_scale2", e, f, 2.0f);
+  graph.AddNode("cpu_suffix", "Add", "", {&f, &one}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string bytes = model.ToProto().SerializeAsString();
+
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+    if (node.Name().find("gpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  }
+
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       std::vector<int64_t>{3, 2}, std::vector<float>(6, 1.0f), &input);
+  RunOptions run_options;
+  const std::array<std::string, 1> input_names{"X"};
+  const std::array<std::string, 1> output_names{"Y"};
+  std::array<OrtValue, 1> feeds{input};
+  std::vector<OrtValue> fetches;
+  for (int iteration = 0; iteration < 4; ++iteration) {
+    auto* values = input.GetMutable<Tensor>()->MutableData<float>();
+    for (size_t i = 0; i < 6; ++i) {
+      values[i] = static_cast<float>(iteration) + static_cast<float>(i);
+    }
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+    ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[i], 4.0f * values[i] + 5.0f);
+    }
+  }
+
+  OrtValue other_input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       std::vector<int64_t>{1, 2}, std::vector<float>{10.0f, 11.0f}, &other_input);
+  feeds[0] = other_input;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "Use a new gpu_graph_id");
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 45.0f);
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(2));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(3));
+
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  feeds[0] = input;
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "0"));
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], 17.0f);
+
+  Status other_thread_status;
+  std::thread other_thread([&]() {
+    std::vector<OrtValue> other_fetches;
+    other_thread_status = session.Run(run_options, input_names, feeds, output_names, &other_fetches);
+  });
+  other_thread.join();
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(other_thread_status, "thread that captured them");
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+
+  SessionOptions legacy_options = options;
+  ASSERT_STATUS_OK(legacy_options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "0"));
+  InferenceSession legacy_session(legacy_options, GetEnvironment());
+  ASSERT_STATUS_OK(legacy_session.RegisterExecutionProvider(CudaExecutionProviderWithOptions(&cuda_options)));
+  ASSERT_STATUS_OK(legacy_session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(legacy_session.Initialize(), "all compute graph nodes have not been partitioned");
+}
+#endif
 
 TEST(ExecutionProviderTest, FunctionTest) {
   PathString model_file_name = ORT_TSTR("execution_provider_test_graph.onnx");

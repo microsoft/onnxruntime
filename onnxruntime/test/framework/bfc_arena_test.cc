@@ -63,6 +63,68 @@ TEST(BFCArenaTest, NoDups) {
   CheckStats(&a, 1023, 0, 654336, 1024);
 }
 
+TEST(BFCArenaTest, CaptureRetainsAndReplaysScratch) {
+  auto arena = std::make_shared<BFCArena>(std::make_unique<CPUAllocator>(), 1 << 20);
+  const std::array<AllocatorPtr, 1> allocators{arena};
+  void* scratch = nullptr;
+  void* reserved = nullptr;
+  {
+    ArenaAllocationCapture capture(allocators);
+    ASSERT_TRUE(capture.Begin(false).IsOK());
+    scratch = arena->Alloc(256);
+    reserved = arena->Reserve(64);
+    arena->Free(scratch);
+    arena->Free(reserved);
+    ASSERT_TRUE(capture.End().IsOK());
+
+    AllocatorStats stats;
+    arena->GetStats(&stats);
+    EXPECT_EQ(stats.bytes_in_use, 320);
+    void* unrelated = arena->Alloc(256);
+    EXPECT_NE(unrelated, scratch);
+    arena->Free(unrelated);
+
+    ASSERT_TRUE(capture.Begin(true).IsOK());
+    EXPECT_EQ(arena->Alloc(256), scratch);
+    EXPECT_EQ(arena->Reserve(64), reserved);
+    arena->Free(scratch);
+    arena->Free(reserved);
+    ASSERT_TRUE(capture.End().IsOK());
+  }
+  AllocatorStats stats;
+  arena->GetStats(&stats);
+  EXPECT_EQ(stats.bytes_in_use, 0);
+}
+
+TEST(BFCArenaTest, CaptureRejectsChangedAllocationSequence) {
+  auto arena = std::make_shared<BFCArena>(std::make_unique<CPUAllocator>(), 1 << 20);
+  const std::array<AllocatorPtr, 1> allocators{arena};
+  ArenaAllocationCapture capture(allocators);
+  ASSERT_TRUE(capture.Begin(false).IsOK());
+  void* scratch = arena->Alloc(256);
+  arena->Free(scratch);
+  ASSERT_TRUE(capture.End().IsOK());
+  ASSERT_TRUE(capture.Begin(true).IsOK());
+  EXPECT_THROW(arena->Alloc(512), OnnxRuntimeException);
+  capture.Cancel();
+  EXPECT_NE(arena->Alloc(0), scratch);
+}
+
+TEST(BFCArenaTest, CaptureRejectsPersistentAllocationsAndNestedScopes) {
+  auto arena = std::make_shared<BFCArena>(std::make_unique<CPUAllocator>(), 1 << 20);
+  const std::array<AllocatorPtr, 1> allocators{arena};
+  ArenaAllocationCapture capture(allocators);
+  ArenaAllocationCapture nested(allocators);
+  ASSERT_TRUE(capture.Begin(false).IsOK());
+  EXPECT_FALSE(nested.Begin(false).IsOK());
+  void* persistent = arena->Alloc(256);
+  EXPECT_FALSE(capture.End().IsOK());
+  arena->Free(persistent);
+  ASSERT_TRUE(nested.Begin(false).IsOK());
+  EXPECT_EQ(arena->Alloc(0), nullptr);
+  ASSERT_TRUE(nested.End().IsOK());
+}
+
 TEST(BFCArenaTest, AllocationsAndDeallocations) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   // Allocate 256 raw pointers of sizes between 100 bytes and about a meg

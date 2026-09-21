@@ -44,6 +44,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/partitioned_graph_execution.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
@@ -493,6 +494,15 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
+
+  const auto partitioned_capture = session_options_.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsEnablePartitionedCudaGraph, "0");
+  ORT_ENFORCE(partitioned_capture == "0" || partitioned_capture == "1",
+              "session.enable_partitioned_cuda_graph must be 0 or 1.");
+  if (partitioned_capture == "1") {
+    // A retained frame, rather than a per-run memory pattern, owns captured intermediates.
+    session_options_.enable_mem_pattern = false;
+  }
 
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -3079,6 +3089,34 @@ common::Status InferenceSession::Initialize() {
                                   ep->Type()));
         }
 
+        if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
+#if !defined(ORT_ENABLE_STREAM) || defined(ENABLE_TRAINING)
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Partitioned CUDA capture requires an inference build with stream support.");
+#else
+          ORT_RETURN_IF_NOT(ep->Type() == kCudaExecutionProvider && ep->GetOrtEp() == nullptr,
+                            "Partitioned CUDA capture requires the built-in CUDA execution provider.");
+          ORT_RETURN_IF_NOT(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
+                            "Partitioned CUDA capture requires sequential execution.");
+          for (const auto& registered_ep : execution_providers_) {
+            ORT_RETURN_IF(registered_ep.get() != ep.get() && registered_ep->Type() != kCpuExecutionProvider,
+                          "Partitioned CUDA capture supports only CPU and CUDA execution providers.");
+          }
+          ORT_RETURN_IF(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1",
+                        "Partitioned CUDA capture does not support shared environment allocators.");
+          for (const auto& node : graph.Nodes()) {
+            ORT_RETURN_IF(node.GetExecutionProviderType() != kCpuExecutionProvider &&
+                              node.GetExecutionProviderType() != kCudaExecutionProvider,
+                          "Partitioned CUDA capture supports only CPU and CUDA nodes.");
+          }
+          partitioned_cuda_graph_ep_ = ep.get();
+          is_concurrent_run_supported_ = false;
+          LOGS(*session_logger_, WARNING) << "Experimental partitioned CUDA capture is enabled. "
+                                             "Captured intermediates and scratch remain allocated per graph id.";
+          break;
+#endif
+        }
+
         auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
         if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
           // Ensure that all nodes have been partitioned to the EP or CPU EP && there are no memcpy nodes.
@@ -3180,6 +3218,11 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+    if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
+      ORT_RETURN_IF_NOT(partitioned_cuda_graph_ep_ != nullptr,
+                        "Partitioned CUDA capture requires an ONNX model and the built-in CUDA EP with enable_cuda_graph=1.");
+    }
+
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
     // PrePack, initializer upload, memory planning) and early return here.
     //
@@ -3202,6 +3245,11 @@ common::Status InferenceSession::Initialize() {
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
+
+    if (partitioned_cuda_graph_ep_ != nullptr) {
+      partitioned_graph_execution_ =
+          std::make_unique<PartitionedGraphExecution>(*session_state_, *partitioned_cuda_graph_ep_);
+    }
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
@@ -3826,6 +3874,9 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {
         // call OnRunStart and add to exec_providers_to_stop if successful
+        if (xp.get() == partitioned_cuda_graph_ep_ && graph_annotation_id != -1) {
+          continue;
+        }
         auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
           auto status = xp->OnRunStart(run_options);
           if (status.IsOK())
@@ -3871,19 +3922,24 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #endif
 
       if (retval.IsOK()) {
-        retval = utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                     session_options_.execution_mode,
-                                     run_options,
+        if (partitioned_graph_execution_ && graph_annotation_id != -1) {
+          retval = partitioned_graph_execution_->Run(run_options, graph_annotation_id, feeds_fetches_manager,
+                                                     feeds, *p_fetches, run_logger);
+        } else {
+          retval = utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                                       session_options_.execution_mode,
+                                       run_options,
 #ifdef ORT_ENABLE_STREAM
-                                     device_stream_collection_holder,
+                                       device_stream_collection_holder,
 #endif
-                                     run_logger,
-                                     run_profiler ? &*run_profiler : nullptr
+                                       run_logger,
+                                       run_profiler ? &*run_profiler : nullptr
 #if !defined(ORT_MINIMAL_BUILD)
-                                     ,
-                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr
+                                       ,
+                                       run_instrumentation_context ? &*run_instrumentation_context : nullptr
 #endif
-        );
+          );
+        }
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -4430,6 +4486,8 @@ common::Status InferenceSession::ReleaseCapturedGraph(int graph_annotation_id) {
   if (!is_concurrent_run_supported_) {
     lock.emplace(session_mutex_);
   }
+  ORT_RETURN_IF(partitioned_graph_execution_ != nullptr,
+                "Releasing individual partitioned CUDA graphs is not supported by this prototype. Recreate the session.");
   return cached_execution_provider_for_graph_replay_.ReleaseCapturedGraph(graph_annotation_id);
 }
 
