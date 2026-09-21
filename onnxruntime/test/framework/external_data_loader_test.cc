@@ -60,8 +60,15 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
     return memory_info.device.Type() == OrtDevice::CPU;
   }
 
-  Status LoadTensor(const Env& env, const std::filesystem::path& path, FileOffsetType offset,
-                    SafeInt<size_t> length, Tensor& tensor) const override {
+  Status LoadTensor(const Env& env, const std::filesystem::path& path,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+                    std::string_view,
+#endif
+                    FileOffsetType offset, SafeInt<size_t> length,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+                    const std::shared_ptr<IAllocator>&,
+#endif
+                    Tensor& tensor) const override {
     state_->offsets.push_back(offset);
     if (state_->failure == ReadFailure::Exception) {
       ORT_THROW("external loader read exception");
