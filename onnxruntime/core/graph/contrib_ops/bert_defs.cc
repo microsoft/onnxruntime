@@ -357,6 +357,11 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
             // If total_sequence_length is provided and past_key has 0 length, present_key will grow.
             // Leave the dimension as dynamic to avoid "Error merging shape info" warning.
             present_shape.add_dim();
+          } else if (past_dims[2].has_dim_param()) {
+            // A symbolic past length does not bound present, which grows with total_sequence_length.
+            // Copying the dim_param makes the allocation planner treat the two as the same size and
+            // give present a past-sized buffer ("Shape mismatch attempting to re-use buffer").
+            present_shape.add_dim();
           } else {
             *present_shape.add_dim() = past_dims[2];
           }
