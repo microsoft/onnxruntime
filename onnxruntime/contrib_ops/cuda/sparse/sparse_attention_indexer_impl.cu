@@ -205,6 +205,16 @@ __global__ void AnalyzeVisibleKernel(const int64_t* mask, int32_t* visible_count
   }
 }
 
+__global__ void InitializePrefixVisibleCountKernel(int32_t* visible_count,
+                                                   SparseAttentionIndexerParams params) {
+  const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
+  for (int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; row < rows;
+       row += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int query = static_cast<int>(row % params.sequence_length);
+    visible_count[row] = -(params.past_sequence_length + query + 1) - 1;
+  }
+}
+
 // One block per non-prefix query row; compacts visible key positions into visible_indices.
 __global__ void CompactNonPrefixVisibleKernel(const int64_t* mask, int32_t* visible_indices,
                                               const int32_t* visible_count,
@@ -759,9 +769,9 @@ size_t GetQsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
   return rows * params.num_heads * params.head_size + rows * std::max(params.max_block_count, 1);
 }
 
-size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params) {
+size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params, bool has_mask) {
   const size_t rows = static_cast<size_t>(params.batch_size) * params.sequence_length;
-  return rows * std::max(params.total_sequence_length, 1) + rows;
+  return (has_mask ? rows * std::max(params.total_sequence_length, 1) : 0) + rows;
 }
 
 size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
@@ -800,15 +810,19 @@ Status LaunchQsaSparseAttentionIndexer(const onnxruntime::cuda::CudaKernel* kern
 
   float* query_rotated = float_workspace;
   float* block_scores = query_rotated + rows * params.num_heads * params.head_size;
-  int32_t* visible_indices = int_workspace;
-  int32_t* visible_count = int_workspace + rows * params.total_sequence_length;
+  int32_t* visible_indices = mask == nullptr ? nullptr : int_workspace;
+  int32_t* visible_count = mask == nullptr ? int_workspace : int_workspace + rows * params.total_sequence_length;
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
 
   const int row_blocks = static_cast<int>(std::min<int64_t>(rows, kMaxGridDimX));
-  AnalyzeVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(mask, visible_count, params);
-  CompactNonPrefixVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(
-      mask, visible_indices, visible_count, params);
+  if (mask == nullptr) {
+    InitializePrefixVisibleCountKernel<<<GridForElements(rows), kThreads, 0, stream>>>(visible_count, params);
+  } else {
+    AnalyzeVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(mask, visible_count, params);
+    CompactNonPrefixVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(
+        mask, visible_indices, visible_count, params);
+  }
 
   const int64_t query_rows = rows * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(query_rows, kMaxGridDimX));

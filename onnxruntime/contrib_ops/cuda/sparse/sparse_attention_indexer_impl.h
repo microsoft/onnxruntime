@@ -53,7 +53,7 @@ struct SparseAttentionIndexerParams {
 
 // Scratch requirements, in elements.
 size_t GetQsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
-size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params);
+size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params, bool has_mask);
 size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params);
 
 template <typename T>

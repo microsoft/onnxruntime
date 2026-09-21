@@ -2257,8 +2257,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   }
 
   // Strict policy input validation: every slot of the inactive policy must be omitted, and every
-  // slot of the active policy must be provided.
-  constexpr int kQsaOnlyInputs[] = {sai::kMask};
+  // required slot of the active policy must be provided. The QSA mask is optional because an
+  // omitted mask requests prefix-causal visibility.
   constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                                     sai::kPositionIds, sai::kPastProjBuffer};
   for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
@@ -2272,12 +2272,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   if (!SparseAttentionIndexerHasInput(ctx, sai::kPastKey)) {
     fail_shape_inference("SparseAttentionIndexer: past_key is required for every policy_mode");
   }
-  for (int index : kQsaOnlyInputs) {
-    if (SparseAttentionIndexerHasInput(ctx, index) != is_qsa) {
-      fail_shape_inference("SparseAttentionIndexer: input ", index,
-                           is_qsa ? " is required when policy_mode is 'qsa'"
-                                  : " must be omitted when policy_mode is 'csa'");
-    }
+  if (!is_qsa && SparseAttentionIndexerHasInput(ctx, sai::kMask)) {
+    fail_shape_inference("SparseAttentionIndexer: input ", sai::kMask,
+                         " must be omitted when policy_mode is 'csa'");
   }
   for (int index : kCsaOnlyInputs) {
     if (SparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
@@ -2509,18 +2506,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "query",
                "Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before "
-           "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
-           "this input instead packs query followed by key along the last dimension and has shape "
-           "(batch_size, sequence_length, (num_heads + 1) * head_size).",
+               "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
+               "this input instead packs query followed by key along the last dimension and has shape "
+               "(batch_size, sequence_length, (num_heads + 1) * head_size).",
                "T")
         .Input(1,
                "key",
                "Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) "
                "for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', "
-                 "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
-                 "May be omitted for policy_mode 'qsa' when query contains packed QK.",
-                 "T",
-                 OpSchema::Optional)
+               "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
+               "May be omitted for policy_mode 'qsa' when query contains packed QK.",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "query_norm_weight",
                "Effective RMSNorm multiplier of the queries, with shape (head_size).",
@@ -2543,7 +2540,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask",
                "Only for policy_mode 'qsa': INT64 padding mask with shape "
                "(batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. "
-               "total_sequence_length is past_sequence_length + sequence_length.",
+               "total_sequence_length is past_sequence_length + sequence_length. When omitted, every position "
+               "through past_sequence_length plus the current query index is visible.",
                "TB",
                OpSchema::Optional)
         .Input(7,

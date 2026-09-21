@@ -82,7 +82,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) 
   ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&float_workspace),
                                     GetQsaWorkspaceFloatCount(params) * sizeof(float)));
   ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&int_workspace),
-                                    GetQsaWorkspaceIntCount(params) * sizeof(int32_t)));
+                                    GetQsaWorkspaceIntCount(params, true) * sizeof(int32_t)));
 
   std::vector<float> ones(kContextLength * kHeadSize, 1.0f);
   std::vector<float> zeros(kContextLength * kHeadSize, 0.0f);

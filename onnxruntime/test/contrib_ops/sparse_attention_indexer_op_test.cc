@@ -97,6 +97,7 @@ struct QsaGraphOptions {
   bool share_cache = false;
   bool shared_rotary_cache = false;
   bool packed_qk = false;
+  bool add_mask = true;
   std::string policy_mode = sai::kPolicyModeQsa;
 };
 
@@ -121,7 +122,9 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
       builder.MakeInput<float>(options.shared_rotary_cache
                                    ? std::vector<int64_t>{total, options.rotary_width}
                                    : std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-      builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
+      options.add_mask
+          ? builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total})
+          : &empty,
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
   if (options.add_csa_inputs) {
@@ -679,7 +682,8 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
 
 template <typename T>
 void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
-                ProviderKind provider_kind = ProviderKind::Cuda, bool packed_qk = false) {
+                ProviderKind provider_kind = ProviderKind::Cuda, bool packed_qk = false,
+                bool omit_mask = false) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -736,7 +740,11 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
                                                       : std::vector<int64_t>{batch_size, total, problem.rotary_width};
   test.AddInput<T>("cos_cache", rotary_cache_shape, ToElementType<T>(problem.cos_cache));
   test.AddInput<T>("sin_cache", rotary_cache_shape, ToElementType<T>(problem.sin_cache));
-  test.AddInput<int64_t>("mask", {batch_size, total}, problem.mask);
+  if (omit_mask) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("mask", {batch_size, total}, problem.mask);
+  }
   test.AddInput<T>("past_key", {batch_size, problem.PastKeyCapacity(), head_size},
                    ToElementType<T>(problem.past_key));
   for (int slot = sai::kGate; slot < sai::kPastSequenceLength; ++slot) {
@@ -941,6 +949,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQk) {
               {options.batch_size, options.sequence_length, options.token_budget + options.compress_ratio - 1});
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, QsaAcceptsOmittedMask) {
+  QsaGraphOptions options;
+  options.add_mask = false;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&](ModelTestBuilder& builder) { AddQsaNode(builder, options); }, model));
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, QsaSharedCacheKeepsCapacity) {
   QsaGraphOptions options;
   options.share_cache = true;
@@ -1105,6 +1120,12 @@ TEST(SparseAttentionIndexerTest, QsaFloat) { RunQsaTest<float>(1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, QsaPackedQkFloat) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::Cuda, true);
+}
+
+TEST(SparseAttentionIndexerTest, QsaMasklessPrefixCausal) {
+  QsaProblem problem = MakeQsaProblem();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
 }
 
 TEST(SparseAttentionIndexerTest, QsaFloat16) { RunQsaTest<MLFloat16>(2.0e-3f); }
