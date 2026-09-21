@@ -91,8 +91,13 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   // there might be multiple batches per warp. compute the index within the batch
   int local_idx = threadIdx.x;
 
-  src += first_batch * stride + local_idx;
-  dst += first_batch * stride + local_idx;
+  // first_batch and stride are both int32_t; on large inputs their product can
+  // exceed INT32_MAX and silently wrap before it's added to src/dst, causing
+  // out-of-bounds reads/writes. Cast to int64_t before multiplying so the
+  // arithmetic happens in 64-bit.
+  const int64_t thread_offset = static_cast<int64_t>(first_batch) * stride + local_idx;
+  src += thread_offset;
+  dst += thread_offset;
 
   // The nested loops over WARP_BATCH and then WARP_ITERATIONS can be simplified to one loop,
   // but I think doing so would obfuscate the logic of the algorithm, thus I chose to keep
@@ -174,8 +179,14 @@ __global__ void softmax_warp_forward_resource_efficient(output_t* dst, const inp
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
 
   int local_idx = threadIdx.x;
-  src += blockIdx.x * stride + local_idx;
-  dst += blockIdx.x * stride + local_idx;
+  // blockIdx.x and stride are both int32; on large inputs their product can
+  // exceed INT32_MAX and silently wrap before it's added to src/dst, causing
+  // out-of-bounds reads/writes. Cast to int64_t before multiplying so the
+  // arithmetic happens in 64-bit.
+  const int64_t block_offset = static_cast<int64_t>(blockIdx.x) * stride + local_idx;
+  src += block_offset;
+  dst += block_offset;
+
   extern __shared__ unsigned char smem[];
   input_t(&elements)[WARP_ITERATIONS][WARP_SIZE] = *reinterpret_cast<input_t(*)[WARP_ITERATIONS][WARP_SIZE]>(smem);
 #pragma unroll

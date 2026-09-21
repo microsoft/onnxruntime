@@ -194,6 +194,32 @@ TEST(TensorScatterTest, Circular_WrapAround) {
   test.Run();
 }
 
+// Regression test for circular-mode wrapping semantics clarified by onnx/onnx#8353.
+// Sequence positions wrap from 3 to 0, while batch 5 > max sequence 4 detects an
+// incorrect full-tuple modulo that would also wrap the batch coordinate.
+TEST(TensorScatterTest, Circular_BatchLargerThanMaxSequenceLength) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  // shape (5, 4, 1), default axis=-2 -> axis=1, max_seq=4, batch=5
+  test.AddInput<float>("past_cache", {5, 4, 1}, std::vector<float>(20, -1.0f));
+
+  // Two distinct values per batch exercise the 3 -> 0 sequence wrap.
+  test.AddInput<float>("update", {5, 2, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+
+  test.AddInput<int64_t>("write_indices", {5}, {3, 3, 3, 3, 3});
+
+  // Each batch preserves its prefix coordinate and writes only slots 3 and 0.
+  test.AddOutput<float>("present_cache", {5, 4, 1},
+                        {2, -1, -1, 1,
+                         4, -1, -1, 3,
+                         6, -1, -1, 5,
+                         8, -1, -1, 7,
+                         10, -1, -1, 9});
+
+  test.Run();
+}
+
 // IO-binding test: bind the same buffer as both input[0] (past_cache) and
 // output[0] (present_cache) to verify the MayInplace(0,0) in-place path.
 TEST(TensorScatterTest, InPlace_IOBinding) {

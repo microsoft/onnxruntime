@@ -174,7 +174,7 @@ if(WIN32)
     endif()
   endif()
   if(onnxruntime_USE_1DS_TELEMETRY)
-    target_link_libraries(onnxruntime_common PRIVATE iphlpapi psapi)
+    target_link_libraries(onnxruntime_common PRIVATE iphlpapi)
   endif()
 endif()
 
@@ -290,18 +290,16 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    if(NOT WIN32)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    endif()
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
-    if(ANDROID)
-      # ORT checks whether the Java bridge initialized the SDK before logging. That type is an
-      # internal 1DS implementation detail and is not exposed by mat's public include interface.
-      target_include_directories(onnxruntime_common SYSTEM PRIVATE
-        "${cpp_client_telemetry_SOURCE_DIR}/lib")
+    if(NOT WIN32)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
     endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
       # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
@@ -316,25 +314,43 @@ if(onnxruntime_USE_1DS_TELEMETRY)
         "$<TARGET_FILE_NAME:p256m>")
       string(CONCAT _onnxruntime_telemetry_install_exclude_libs
         "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:MSTelemetry::curl_archive>:"
-        "$<TARGET_FILE_NAME:MSTelemetry::mbedtls>:"
-        "$<TARGET_FILE_NAME:MSTelemetry::mbedx509>:"
-        "$<TARGET_FILE_NAME:MSTelemetry::mbedcrypto>:"
-        "$<TARGET_FILE_NAME:MSTelemetry::everest>:"
-        "$<TARGET_FILE_NAME:MSTelemetry::p256m>")
+        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
+        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
+        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
+        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
       target_link_options(onnxruntime_common INTERFACE
         "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
         "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
     endif()
+    # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
+    # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
+    # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
+    if(DEFINED cpp_client_telemetry_SOURCE_DIR)
+      target_include_directories(onnxruntime_common SYSTEM PRIVATE
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
+        ${cpp_client_telemetry_SOURCE_DIR}/lib
+      )
+    endif()
     # Platform-specific system libraries required only for the Apple static-package path.
     if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
-      # 1DS uses the Apple-provided libraries rather than embedding private SQLite/zlib copies.
-      target_link_libraries(onnxruntime_common PRIVATE
-        "-framework CoreFoundation"
-        "-framework Security"
-        sqlite3
-        z
-      )
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # mat already links the SDK's bundled sqlite3/zlib archives, so no system SQLite is needed here.
+        # A bare sqlite3 name would reach Xcode as -framework SQLite3, which the iOS SDK does not provide.
+        target_link_libraries(onnxruntime_common PRIVATE
+          "-framework CoreFoundation"
+          "-framework Security"
+        )
+      else()
+        target_link_libraries(onnxruntime_common PRIVATE
+          "-framework CoreFoundation"
+          "-framework Security"
+          z
+          sqlite3
+        )
+      endif()
     endif()
 
     if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -347,7 +363,13 @@ if(onnxruntime_USE_1DS_TELEMETRY)
               FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
       foreach(_mat_bundled_dep
           sqlite3_bundled
-          zlib_bundled)
+          zlib_bundled
+          libcurl_static
+          mbedtls
+          mbedx509
+          mbedcrypto
+          everest
+          p256m)
         if(TARGET ${_mat_bundled_dep})
           install(TARGETS ${_mat_bundled_dep} EXPORT ${PROJECT_NAME}Targets
                   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

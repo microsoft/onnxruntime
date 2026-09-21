@@ -27,6 +27,7 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+#include <sys/resource.h>
 #endif
 
 // 1DS SDK
@@ -46,6 +47,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
@@ -98,7 +100,6 @@ std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
 std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
-
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
 
@@ -537,7 +538,8 @@ void PosixTelemetry::Initialize() {
   auto& config = *pending_config;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
+  config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
+  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
 #ifdef _WIN32
   // The 1DS network detector leaves a netprofm.dll allocation at process exit.
@@ -775,7 +777,6 @@ std::string PosixTelemetry::GetCpuModel() const {
   }
   cpu_model[sizeof(cpu_model) - 1] = '\0';
   return cpu_model;
-
 #elif defined(__APPLE__)
   // macOS/iOS expose the CPU brand string via sysctl.
   char buf[256] = {0};
@@ -823,6 +824,63 @@ std::string PosixTelemetry::GetDeviceClass() const {
 #else
   return "Desktop";
 #endif
+}
+
+namespace {
+
+#if defined(__linux__) || defined(__ANDROID__)
+std::string ReadBoundedFile(const char* path) {
+  constexpr size_t kMaxProbeBytes = 16 * 1024;
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return {};
+  }
+
+  std::array<char, kMaxProbeBytes> buffer{};
+  input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+  return std::string(buffer.data(), static_cast<size_t>(input.gcount()));
+}
+
+bool FileExists(const char* path) {
+  std::ifstream input(path);
+  return input.good();
+}
+#endif
+
+}  // namespace
+
+telemetry_detail::HostEnvironmentInfo PosixTelemetry::GetHostEnvironmentInfo() {
+  telemetry_detail::HostEnvironmentEvidence evidence;
+#if defined(__linux__) || defined(__ANDROID__)
+  evidence.docker_marker = FileExists("/.dockerenv");
+  evidence.podman_marker = FileExists("/run/.containerenv");
+  evidence.kubernetes = !telemetry_detail::GetTelemetryEnv("KUBERNETES_SERVICE_HOST").empty();
+  evidence.aws_ecs = !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI").empty() ||
+                     !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI_V4").empty();
+  evidence.generic_container =
+      telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("DOTNET_RUNNING_IN_CONTAINER"));
+  evidence.systemd_container =
+      ReadBoundedFile("/run/systemd/container") + telemetry_detail::GetTelemetryEnv("container");
+  evidence.cgroup = ReadBoundedFile("/proc/1/cgroup") + ReadBoundedFile("/proc/self/cgroup");
+  evidence.cpu_info = ReadBoundedFile("/proc/cpuinfo");
+  evidence.kernel_release = ReadBoundedFile("/proc/sys/kernel/osrelease");
+  evidence.dmi = ReadBoundedFile("/sys/class/dmi/id/sys_vendor") +
+                 ReadBoundedFile("/sys/class/dmi/id/product_name") +
+                 ReadBoundedFile("/sys/class/dmi/id/board_vendor");
+#if defined(__ANDROID__)
+  const std::string android_properties = ReadBoundedFile("/system/build.prop");
+  evidence.android_emulator = telemetry_detail::ContainsAscii(android_properties, "ro.kernel.qemu=1") ||
+                              telemetry_detail::ContainsAscii(android_properties, "ro.boot.qemu=1") ||
+                              telemetry_detail::ContainsAscii(android_properties, "ro.product.manufacturer=genymotion");
+#endif
+#elif defined(__APPLE__) && !TARGET_OS_IOS
+  int is_virtual_machine = 0;
+  size_t size = sizeof(is_virtual_machine);
+  evidence.apple_virtual_machine =
+      sysctlbyname("kern.hv_vmm_present", &is_virtual_machine, &size, nullptr, 0) == 0 &&
+      is_virtual_machine != 0;
+#endif
+  return telemetry_detail::ClassifyHostEnvironment(evidence);
 }
 
 std::string PosixTelemetry::GetProcessName() {
@@ -965,14 +1023,15 @@ void PosixTelemetry::LogProcessInfo() const {
     }
 
 #if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    if (DeviceId::Instance().GetStatus() == DeviceIdStatus::Failed) {
+    auto& device_id = DeviceId::Instance();
+    const DeviceIdStatus device_id_status = device_id.GetStatus();
+    if (device_id_status == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
     }
 #endif
 
-    // ProcessInfo is the unsampled process-level baseline; all other event families use their
-    // configured client-side sampling gates.
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
+    const auto host_environment = GetHostEnvironmentInfo();
     builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
         .AddString("DeviceInfo.Status", "Mobile")
@@ -983,6 +1042,14 @@ void PosixTelemetry::LogProcessInfo() const {
         .AddString("architecture", GetArchitecture())
         .AddString("cpuModel", GetCpuModel())
         .AddString("deviceClass", GetDeviceClass())
+        .AddBool("isContainer", host_environment.is_container)
+        .AddString("containerType", host_environment.container_type)
+        .AddBool("isVirtualMachine", host_environment.is_virtual_machine)
+        .AddString("virtualizationType", host_environment.virtualization_type)
+        .AddBool("isEmulator", host_environment.is_emulator)
+        .AddString("hostEnvironment", host_environment.environment_class)
+        .AddString("environmentDetectionConfidence", host_environment.detection_confidence)
+        .AddString("deviceIdScope", host_environment.device_id_scope)
 #ifdef _WIN32
         .AddString("windowsPlatformDeviceId", GetHashedWindowsPlatformDeviceId())
 #endif
@@ -993,26 +1060,10 @@ void PosixTelemetry::LogProcessInfo() const {
   });
 }
 
-#ifdef _WIN32
 void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
-  RunTelemetryOperation("LogSessionCreationStart", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("SessionCreationStart", EventPriority::CRITICAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-    auto event = builder.AddUInt32("sessionId", session_id)
-                     .AddString("runtimeVersion", ORT_VERSION)
-                     .AddStringAllowEmpty("frameworkName", ORT_CALLER_FRAMEWORK)
-                     .Build();
-
-    LogEventAsync(std::move(event));
-  });
+  // Start/stop markers are retained by TraceLogging. 1DS completion events carry local durations.
+  (void)session_id;
 }
-#endif
 
 void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
   // Per-run start/stop markers are useful for ETW tracing, but RuntimePerf already aggregates every
@@ -1344,7 +1395,9 @@ void PosixTelemetry::LogEpDeviceUsage(
     const std::string& hardware_vendor,
     const std::string& ep_vendor,
     const std::string& ep_version,
-    int assigned_node_count) const {
+    int assigned_node_count,
+    uint32_t total_runs_since_last,
+    int64_t total_run_duration_since_last) const {
   RunTelemetryOperation("LogEpDeviceUsage", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1363,6 +1416,8 @@ void PosixTelemetry::LogEpDeviceUsage(
                      .AddString("epVendor", ep_vendor)
                      .AddString("epVersion", ep_version)
                      .AddInt32("assignedNodeCount", assigned_node_count)
+                     .AddUInt32("totalRunsSinceLast", total_runs_since_last)
+                     .AddInt64("totalRunDurationSinceLast", total_run_duration_since_last)
                      .Build();
 
     LogEventAsync(std::move(event));

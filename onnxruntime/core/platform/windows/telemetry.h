@@ -95,7 +95,9 @@ class WindowsTelemetry : public Telemetry {
                         const std::string& hardware_vendor,
                         const std::string& ep_vendor,
                         const std::string& ep_version,
-                        int assigned_node_count) const override;
+                        int assigned_node_count,
+                        uint32_t total_runs_since_last,
+                        int64_t total_run_duration_since_last) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 

@@ -14,6 +14,13 @@
       ],
       "platform": "linux"
     },
+    {
+      "name": "mbedtls",
+      "features": [
+        "pthreads"
+      ],
+      "platform": "linux"
+    },
     "nlohmann-json",
     {
       "name": "sqlite3",

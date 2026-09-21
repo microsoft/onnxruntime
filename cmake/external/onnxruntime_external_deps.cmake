@@ -90,7 +90,7 @@ if (onnxruntime_BUILD_BENCHMARKS)
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
     EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES benchmark
+    FIND_PACKAGE_ARGS 1.9.5 NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
@@ -365,42 +365,52 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        # https://github.com/microsoft/onnxruntime/issues/10038
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+  if(onnxruntime_USE_VCPKG AND NOT APPLE)
+    find_package(cpuinfo CONFIG REQUIRED)
   else()
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+    if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
+      message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/324
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/microsoft/onnxruntime/issues/10038
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    else()
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    endif()
+    onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
   endif()
-  set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
-  onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
     message(STATUS "Aliasing cpuinfo::cpuinfo to cpuinfo")
     add_library(cpuinfo ALIAS cpuinfo::cpuinfo)
@@ -657,6 +667,13 @@ if (onnxruntime_USE_WEBGPU)
     endif()
     if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
       message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
+    endif()
+    if (onnxruntime_USE_EP_API_ADAPTERS)
+      # Plugin EP packages cannot guarantee that the Agility SDK runtime DLLs are deployed
+      # next to the host executable.
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_USE_EP_API_ADAPTERS=ON (plugin EP build). "
+              "It is intended for local development builds only.")
     endif()
   endif()
 
@@ -998,17 +1015,26 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
     set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
+    # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
+    # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      include(external/telemetry_linux_http.cmake)
+    endif()
+    set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
+
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
     # HttpClient_Android and its Java bridge.
+    # Use cpp_client_telemetry's canonical build options. The SDK keeps its
+    # build policy and dependency selection local to 1DS.
     set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
     set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
     set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
     set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
     set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
     set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS Common Diagnostic Stack module" FORCE)
-    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector module" FORCE)
+    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS CDS module" FORCE)
+    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector" FORCE)
     set(MATSDK_BUILD_SIGNALS OFF CACHE BOOL "Disable 1DS signals module" FORCE)
     set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
     set(MATSDK_BUILD_AZMON OFF CACHE BOOL "Disable 1DS Azure Monitor module" FORCE)
@@ -1019,29 +1045,12 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     if(APPLE)
       set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
-    # Let 1DS own its pinned static curl/mbedTLS transport on Linux. Apple and Android use native clients.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      set(MATSDK_CURL_PROVIDER FETCH CACHE STRING "Use 1DS's pinned static curl transport" FORCE)
-    else()
-      set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use the platform-native 1DS transport" FORCE)
-    endif()
+    # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
+    # transport. On Apple/Android the SDK selects the native transport.
+    set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
     set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
-    # Apple platforms provide stable system SQLite. Other source builds use 1DS's
-    # feature-stripped SQLite.
-    if(APPLE)
-      set(MATSDK_SQLITE_PROVIDER SYSTEM CACHE STRING "Use the Apple system SQLite" FORCE)
-    else()
-      set(MATSDK_SQLITE_PROVIDER MINIMAL CACHE STRING "Use 1DS's feature-stripped SQLite" FORCE)
-    endif()
-    # Android intentionally bypasses the vcpkg telemetry package, so its FetchContent
-    # fallback must not infer a system zlib merely because a vcpkg toolchain is active.
-    if(ANDROID)
-      set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use 1DS's bundled zlib" FORCE)
-    elseif(onnxruntime_USE_VCPKG)
-      set(MATSDK_ZLIB_PROVIDER SYSTEM CACHE STRING "Reuse ONNX Runtime's vcpkg zlib" FORCE)
-    else()
-      set(MATSDK_ZLIB_PROVIDER AUTO CACHE STRING "Reuse an existing zlib or bundle one" FORCE)
-    endif()
+    set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
+    set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
@@ -1051,34 +1060,29 @@ if(onnxruntime_USE_1DS_TELEMETRY)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
+    if(NOT Patch_FOUND)
+      message(FATAL_ERROR
+              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
+    endif()
+    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
+        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
+        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      block(SCOPE_FOR VARIABLES)
-        # curl otherwise auto-detects and embeds paths from the build host. ORT selects a readable
-        # CA bundle on the target at runtime, so mask auto-detection while 1DS configures curl.
-        set(CURL_CA_BUNDLE none)
-        set(CURL_CA_PATH none)
-        onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-
-        get_target_property(_ort_telemetry_curl_binary_dir libcurl_static BINARY_DIR)
-        set(_ort_telemetry_curl_config "${_ort_telemetry_curl_binary_dir}/curl_config.h")
-        file(READ "${_ort_telemetry_curl_config}" _ort_telemetry_curl_config_contents)
-        foreach(_ort_telemetry_ca_definition CURL_CA_BUNDLE CURL_CA_PATH)
-          string(REGEX REPLACE
-            "#define ${_ort_telemetry_ca_definition} \"[^\"]*\""
-            "/* #undef ${_ort_telemetry_ca_definition} */"
-            _ort_telemetry_curl_config_contents
-            "${_ort_telemetry_curl_config_contents}")
-        endforeach()
-        file(WRITE "${_ort_telemetry_curl_config}" "${_ort_telemetry_curl_config_contents}")
-      endblock()
-    else()
-      onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(WIN32 AND TARGET mat)
+      # CMake's Visual Studio generator otherwise forwards mat's BUILD_INTERFACE system include
+      # expression verbatim to MASM. ORT adds dependency includes to C/C++ targets separately.
+      set_property(TARGET mat PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
+    endif()
+    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
+    if(ANDROID)
+      target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()
 
     if(ANDROID)
@@ -1111,12 +1115,67 @@ if(onnxruntime_USE_1DS_TELEMETRY)
         COPYONLY)
     endif()
 
-    if(TARGET mat AND NOT MSVC)
+    if(TARGET mat)
+      if(TARGET sqlite3_bundled)
+        # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
+        # size reductions and extension-loading hardening on the bundled replacement.
+        target_compile_definitions(sqlite3_bundled PRIVATE
+          SQLITE_OMIT_LOAD_EXTENSION
+          SQLITE_OMIT_DEPRECATED
+          SQLITE_OMIT_UTF16
+          SQLITE_OMIT_PROGRESS_CALLBACK
+          SQLITE_OMIT_SHARED_CACHE
+          SQLITE_OMIT_GET_TABLE
+          SQLITE_OMIT_COMPLETE
+          SQLITE_OMIT_TCL_VARIABLE
+          SQLITE_DQS=0
+          SQLITE_DEFAULT_MEMSTATUS=0
+          SQLITE_DEFAULT_FOREIGN_KEYS=0
+        )
+      endif()
+      foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
+        if(TARGET ${_ort_apple_dep})
+          if(APPLE AND _ort_requested_apple_architectures)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}"
+              XCODE_ATTRIBUTE_ARCHS "${_ort_requested_apple_architectures}")
+          endif()
+          get_target_property(_ort_apple_inc
+            ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
+          if(_ort_apple_inc)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
+          endif()
+        endif()
+      endforeach()
       # ORT enables -ffast-math globally, which conflicts with
       # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
-      target_compile_options(mat PRIVATE
-        -fno-finite-math-only
-      )
+      # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
+      if(NOT MSVC)
+        target_compile_options(mat PRIVATE
+          -fno-finite-math-only
+          -Wno-unused-const-variable
+          $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+          $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+        )
+      endif()
+      # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
+      # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
+      if(APPLE)
+        foreach(_ort_mat_tgt mat sqlite3_bundled zlib_bundled)
+          if(TARGET ${_ort_mat_tgt})
+            target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
+          endif()
+        endforeach()
+        if(TARGET sqlite3_bundled)
+          target_compile_options(sqlite3_bundled PRIVATE -Wno-ambiguous-macro)
+        endif()
+      endif()
+      if(TARGET sqlite3_bundled
+         AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
+         AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
+      endif()
     endif()
 
     set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)

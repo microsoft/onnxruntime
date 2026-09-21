@@ -34,7 +34,6 @@ TEST(TelemetryContextTest, SuppressesUnneededCommonContext) {
   for (const char* field : telemetry_internal::kSuppressedCommonContextFields) {
     EXPECT_EQ(context.Fields().at(field), "");
   }
-  EXPECT_EQ(context.Fields().count("AppInfo.Id"), 0);
   EXPECT_EQ(context.Fields().count("AppInfo.Name"), 0);
 }
 

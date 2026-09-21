@@ -103,10 +103,10 @@ native SM90 (Hopper) layout and set `weight_prepacked=2` on the node.
 `weight_prepacked=2` selects the native SM90 (Hopper TMA/WGMMA) mixed-GEMM
 kernel and its Hopper weight layout. It requires a compute capability 9.0 device
 and `block_size` in `{64, 128}` (the SM90 kernel needs `group_size` to be a
-multiple of the 64-element Hopper K tile, so `block_size=32` is SM80-only). On
-SM90 devices, runtime-prepacked (`weight_prepacked=0`) and SM80-prepacked
-(`weight_prepacked=1`) weights continue to route to the SM80 CUTLASS
-kernel/layout.
+multiple of the 64-element Hopper K tile, so `block_size=32` uses the
+non-Hopper kernel). On SM90 devices, runtime-prepacked (`weight_prepacked=0`)
+and SM80-prepacked (`weight_prepacked=1`) weights continue to route to the SM80
+CUTLASS kernel/layout.
 
 ---
 
@@ -242,23 +242,29 @@ tile saturates the SMs while keeping scratch ≲128 MB.
 
 ## 6. fpA_intB_gemm Path (CUTLASS weight-only)
 
-When built with `onnxruntime_USE_FPA_INTB_GEMM=ON` (`USE_FPA_INTB_GEMM` in C++)
-and enabled via `ORT_FPA_INTB_GEMM`, FP16/BF16 MatMulNBits can use the
-TensorRT-LLM-derived CUTLASS weight-only kernels. The constructor sets
-`has_fpA_intB_gemm_` only when:
+`onnxruntime_USE_FPA_INTB_GEMM` is the master build option and defaults to `ON`
+for CUDA builds. Its default kernel set is intentionally compact, excludes the
+native Hopper kernel, and covers the SM80-layout RC model contract:
 
-- dtype is FP16 or BF16, `bits ∈ {4, 8}`, `block_size ∈ {32, 64, 128}`,
-- no `g_idx`, `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`,
-- `sm_ >= 75`, and weight/scale/zero-point inputs are constant initializers that
-  ORT can prepack.
+- FP16 activations and INT4 or INT8 weights,
+- scale-only quantization with `block_size=32` and no zero-points, bias, or
+  `g_idx`,
+- `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`, and `sm_ >= 75`,
+- unpacked weights or `weight_prepacked=1` (the SM80 layout).
 
-`block_size=32` is served by the SM80/Ampere-class fine-grained kernel (and its
-SM90 compatibility path); the native SM90 kernel (`weight_prepacked=2`) supports
-only `block_size ∈ {64, 128}` — see §2.1.
+Set `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON` to build the legacy full kernel
+matrix. Full mode additionally supports BF16, block sizes 64 and 128,
+zero-points, bias, and the native SM90 layout (`weight_prepacked=2`). The
+native SM90 kernel supports only `block_size ∈ {64, 128}`; see §2.1.
+
+When enabled via `ORT_FPA_INTB_GEMM`, eligible MatMulNBits nodes use the
+TensorRT-LLM-derived CUTLASS weight-only kernels. Weight and scale inputs (and
+zero-points in full mode) must be constant initializers that ORT can prepack.
 
 At run time a profiler picks the best tactic; small `M` may use a dedicated CUDA
 GEMV kernel (`bestTactic->enableCudaKernel`), otherwise a CUTLASS grouped GEMM.
-This path takes precedence over everything in §3 when active.
+The compact fpA_intB GEMV does not support zero-points or bias. This path takes
+precedence over everything in §3 when active.
 
 For `weight_prepacked=0`, the CUDA EP preprocesses the standard MatMulNBits
 weight initializer into the fpA_intB layout during ORT prepacking. For
@@ -273,8 +279,9 @@ Prepacked weights are intentionally strict:
   flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
   var) is ignored for prepacked weights — the layout choice was fixed at export
   time and cannot be turned off at run time.
-- Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
-  CUDA fpA_intB path consumes this layout.
+- Nonzero `weight_prepacked` requires FP16 input `A` in the default compact
+  build, or FP16/BF16 in a full build, because only the CUDA fpA_intB path
+  consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
   the SM80 layout, `2` is the native SM90 (Hopper) layout. `2` additionally
   requires a compute-capability 9.0 device and `block_size ∈ {64, 128}` and is

@@ -20,11 +20,6 @@ namespace webgpu {
 
 namespace {
 
-// Lanes per subgroup assumed by the subgroup-matrix kernel. The workgroup runs
-// split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
-// TODO: use subgroup-size-control to enforce the subgroup size is 32.
-constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
-
 // Subgroup-matrix Gemm implementation. Loads A and B directly from global memory
 // (transposed operands via column-major loads) and runs the cooperative
 // subgroup-matrix kernel during Compute. Y = alpha * op(A) @ op(B) + beta * C.
@@ -114,6 +109,12 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
       return Status::OK();
     }
 
+    // The kernel keeps its operand loads in bounds by shifting a trailing partial
+    // tile back, which is only possible when the tile fits within M and N.
+    if (M < tiling->tile_m || N < tiling->tile_n) {
+      return Status::OK();
+    }
+
     TensorShape output_shape{{static_cast<int64_t>(M), static_cast<int64_t>(N)}};
     auto* output = context.Output(0, output_shape);
     if (output->Shape().Size() == 0) {
@@ -134,7 +135,10 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
     SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
-    program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+    program.SetWorkgroupSize(config.subgroupSize * split_k);
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      program.SetSubgroupSize(config.subgroupSize);
+    }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
     program.CacheHint(has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
@@ -201,11 +205,10 @@ Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const
 
 std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context) {
-  // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for.
-  int32_t config_index = 0;
-  if (!IsSubgroupMatrixConfigSupported(context, /*is_fp16=*/true, config_index) ||
-      !supported_subgroup_matrix_configs[config_index].Is(8, 16, 16)) {
+  // Only run on devices that report the 8x16x16 F16 subgroup-matrix config this
+  // kernel is implemented for and can provide its required subgroup size.
+  const auto config_index = SelectSubgroupMatrixConfig(context, /*is_fp16=*/true, {{8, 16, 16, 32}});
+  if (!config_index) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -216,7 +219,7 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
   if (!tiling_selector) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixGemmImpl>(parent, config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixGemmImpl>(parent, *config_index, std::move(tiling_selector));
 }
 
 }  // namespace webgpu

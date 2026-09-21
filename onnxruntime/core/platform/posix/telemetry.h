@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/platform/telemetry.h"
+#include "core/platform/telemetry_environment.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -47,9 +48,7 @@ class PosixTelemetry : public Telemetry {
   uint64_t Keyword() const override;
 
   void LogProcessInfo() const override;
-#ifdef _WIN32
   void LogSessionCreationStart(uint32_t session_id) const override;
-#endif
   void LogEvaluationStop(uint32_t session_id) const override;
   void LogEvaluationStart(uint32_t session_id) const override;
 
@@ -127,7 +126,9 @@ class PosixTelemetry : public Telemetry {
                         const std::string& hardware_vendor,
                         const std::string& ep_vendor,
                         const std::string& ep_version,
-                        int assigned_node_count) const override;
+                        int assigned_node_count,
+                        uint32_t total_runs_since_last,
+                        int64_t total_run_duration_since_last) const override;
 
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
@@ -150,6 +151,7 @@ class PosixTelemetry : public Telemetry {
   std::string GetOsDescription() const;
   std::string GetCpuModel() const;
   std::string GetDeviceClass() const;
+  static telemetry_detail::HostEnvironmentInfo GetHostEnvironmentInfo();
   static std::string GetProcessName();
   static std::string GetArchitecture();
   static int64_t GetTotalMemoryMB();

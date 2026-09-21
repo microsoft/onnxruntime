@@ -163,6 +163,9 @@ RegistryRead ReadDeviceIdRegistryValue() {
   if (query_status == ERROR_FILE_NOT_FOUND) {
     return {RegistryReadResult::Missing, {}};
   }
+  if (query_status == ERROR_MORE_DATA) {
+    return {RegistryReadResult::Invalid, {}};
+  }
   if (query_status != ERROR_SUCCESS) {
     return {RegistryReadResult::Failed, {}};
   }
@@ -193,16 +196,19 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
 }
 
 std::string GetEnvironmentValue(const char* name) {
-  char* value = nullptr;
-  size_t length = 0;
-  if (_dupenv_s(&value, &length, name) != 0 || value == nullptr || length <= 1) {
-    std::free(value);
+  const DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
+  if (required_size == 0) {
     return {};
   }
 
-  std::string result(value);
-  std::free(value);
-  return result;
+  std::string value(required_size, '\0');
+  const DWORD value_size = ::GetEnvironmentVariableA(name, value.data(), required_size);
+  if (value_size == 0 || value_size >= required_size) {
+    return {};
+  }
+
+  value.resize(value_size);
+  return value;
 }
 
 std::filesystem::path GetAbsoluteEnvironmentPath(const char* name) {

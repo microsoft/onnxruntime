@@ -1655,6 +1655,40 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
   return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
 }
 
+#if !defined(__wasm__)
+static Status LoadPrepackedWeightsFromFile(const Env& env,
+                                           const std::filesystem::path& external_data_file_path,
+                                           std::uintmax_t file_length,
+                                           const ExternalDataInfo::PrepackedInfos& prepacked_infos,
+                                           PrepackedWeightsForGraph& prepacked_info) {
+  for (const auto& [key, blobs] : prepacked_infos) {
+    PrePackedWeights prepacked_weights;
+    prepacked_weights.buffers_.reserve(blobs.size());
+    prepacked_weights.buffer_sizes_.reserve(blobs.size());
+    for (const auto& blob : blobs) {
+      const auto blob_offset = std::get<0>(blob);
+      const auto blob_length = std::get<1>(blob);
+      SafeInt<FileOffsetType> end_of_blob{blob_offset};
+      end_of_blob += blob_length;
+      ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
+                    "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
+                    " is out of bounds and can not read in full");
+
+      IAllocatorUniquePtr<void> data_ptr;
+      ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
+                                         data_ptr));
+      prepacked_weights.buffers_.push_back(std::move(data_ptr));
+      prepacked_weights.buffer_sizes_.push_back(blob_length);
+    }
+    if (!blobs.empty()) {
+      prepacked_info.InsertPrepackedWeights(key, std::move(prepacked_weights));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
+
 Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -1795,34 +1829,49 @@ Status GetExtDataFromTensorProto(const Env& env,
     ext_data_buf.release();
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
-      for (const auto& [key, blobs] : *prepacked_infos) {
-        PrePackedWeights prepacked_weights;
-        prepacked_weights.buffers_.reserve(blobs.size());
-        prepacked_weights.buffer_sizes_.reserve(blobs.size());
-        for (const auto& blob : blobs) {
-          const auto blob_offset = std::get<0>(blob);
-          const auto blob_length = std::get<1>(blob);
-          SafeInt<FileOffsetType> end_of_blob{blob_offset};
-          end_of_blob += blob_length;
-          ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
-                        "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
-                        " is out of bounds and can not read in full");
-
-          IAllocatorUniquePtr<void> data_ptr;
-          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
-                                             data_ptr));
-          prepacked_weights.buffers_.push_back(std::move(data_ptr));
-          prepacked_weights.buffer_sizes_.push_back(blob_length);
-        }
-        if (!blobs.empty()) {
-          prepacked_info->InsertPrepackedWeights(key, std::move(prepacked_weights));
-        }
-      }
+      ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
+          env, external_data_file_path, file_length, *prepacked_infos, *prepacked_info));
     }
 #endif
   }
 
   return Status::OK();
+}
+
+Status LoadPrepackedWeightsFromExternalData(const Env& env,
+                                            const std::filesystem::path& model_path,
+                                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                            PrepackedWeightsForGraph& prepacked_info) {
+  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
+              tensor_proto.name(), "Expected to have external data");
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ExternalDataInfo::PrepackedInfos prepacked_infos;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
+                          raw_data_safe_len, &prepacked_infos));
+  if (prepacked_infos.empty()) {
+    return Status::OK();
+  }
+
+#if defined(__wasm__)
+  return Status::OK();
+#else
+  ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
+                    external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
+                "Pre-packed blobs cannot be restored from an in-memory external tensor.");
+  const std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+  return LoadPrepackedWeightsFromFile(
+      env, external_data_file_path, file_length, prepacked_infos, prepacked_info);
+#endif
 }
 
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
@@ -2521,10 +2570,15 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     const size_t element_size = ml_data->Size();
+    const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
+    ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
+                      "Sparse tensor: ", name, " dense data size of ", dense_data_size,
+                      " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                      " byte limit for embedded initializer data.");
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
+    std::string dense_data_storage(dense_data_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;

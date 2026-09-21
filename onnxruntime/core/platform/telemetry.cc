@@ -151,7 +151,9 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
                                  const std::string& hardware_vendor,
                                  const std::string& ep_vendor,
                                  const std::string& ep_version,
-                                 int assigned_node_count) const {
+                                 int assigned_node_count,
+                                 uint32_t total_runs_since_last,
+                                 int64_t total_run_duration_since_last) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ep_type);
   ORT_UNUSED_PARAMETER(hardware_device_type);
@@ -161,6 +163,8 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
   ORT_UNUSED_PARAMETER(ep_vendor);
   ORT_UNUSED_PARAMETER(ep_version);
   ORT_UNUSED_PARAMETER(assigned_node_count);
+  ORT_UNUSED_PARAMETER(total_runs_since_last);
+  ORT_UNUSED_PARAMETER(total_run_duration_since_last);
 }
 
 void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {

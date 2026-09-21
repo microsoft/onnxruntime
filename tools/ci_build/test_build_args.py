@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_args
 
 
-class TelemetryBuildArgsTest(unittest.TestCase):
+class BuildArgsTest(unittest.TestCase):
     def _parse(self, *arguments: str, platform_name: str, machine: str = "x86_64"):
         argv = ["build.py", "--build_dir", "build/test", *arguments]
         with (
@@ -45,6 +45,15 @@ class TelemetryBuildArgsTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self._parse("--use_windows_telemetry", platform_name="linux")
 
+    def test_windows_telemetry_backend_is_rejected_for_unsupported_targets(self):
+        for arguments in (
+            ("--android",),
+            ("--build_wasm",),
+            ("--minimal_build", "--disable_exceptions"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaises(SystemExit):
+                self._parse("--use_windows_telemetry", *arguments, platform_name="windows")
+
     def test_telemetry_backend_and_opt_out_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):
             self._parse("--use_windows_telemetry", "--no_telemetry", platform_name="windows")
@@ -67,6 +76,16 @@ class TelemetryBuildArgsTest(unittest.TestCase):
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
+
+    def test_use_acl_emits_deprecation_warning(self):
+        with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
+            self._parse("--use_acl", platform_name="linux")
+
+    def test_acl_deprecation_warning_not_emitted_without_use_acl(self):
+        with mock.patch.object(build_args.warnings, "warn") as warn:
+            self._parse(platform_name="linux")
+
+        warn.assert_not_called()
 
 
 if __name__ == "__main__":
