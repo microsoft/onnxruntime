@@ -350,11 +350,6 @@ def create_moe_onnx_graph(
 
     activation = "swiglu" if use_swiglu else "silu"
 
-    # Set normalization behavior based on operator type:
-    # - QMoE: Raw logits passed, needs normalization in C++ kernel
-    # - Regular MoE: Pre-computed probabilities passed, no additional normalization needed
-    normalize_routing = 1 if use_quant else 0
-
     nodes = [
         helper.make_node(
             op_name,
@@ -362,7 +357,7 @@ def create_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=normalize_routing,
+            normalize_routing_weights=1,
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=swiglu_fusion,
@@ -725,41 +720,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         hidden_states_flat = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states_flat)
 
-        # Different routing logic for QMoE vs regular MoE:
-        # - QMoE expects raw logits (does its own softmax internally)
-        # - Regular MoE expects pre-computed routing probabilities
-        if hasattr(self, "quant_bits") and self.quant_bits > 0:
-            # QMoE: Pass raw logits directly (QMoE does softmax internally)
-            router_input = router_logits
-            if enable_debug:
-                print("DEBUG: Using QMoE routing (raw logits)")
-        else:
-            # Regular MoE: Apply the same routing logic as PyTorch reference
-            # This converts raw logits to proper routing probabilities
-            routing_weights, selected_experts = masked_sampling_omp_inference(
-                router_logits,
-                top_k=self.top_k,
-                jitter_eps=self.router_jitter_noise,
-                training=False,
-            )
-
-            # IMPORTANT: The routing weights from masked_sampling_omp_inference sum to top_k,
-            # but ONNX Runtime expects normalized probabilities that sum to 1.0
-            # Normalize the routing weights per token
-            routing_weights = routing_weights / routing_weights.sum(dim=1, keepdim=True)
-
-            # Create proper router probabilities tensor that matches PyTorch routing
-            router_input = torch.zeros_like(router_logits)
-            for i in range(router_logits.shape[0]):  # For each token
-                for j in range(self.top_k):  # For each top-k expert
-                    expert_idx = selected_experts[i, j]
-                    router_input[i, expert_idx] = routing_weights[i, j]
-
-            if enable_debug:
-                print("DEBUG: Using regular MoE routing (processed probabilities)")
-
         if enable_debug:
-            print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
+            print(f"DEBUG: router_logits stats: mean={router_logits.mean():.6f}, std={router_logits.std():.6f}")
             print(
                 f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
             )
@@ -768,7 +730,7 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         tensors = {
             "input": hidden_states_flat.clone().to(device=device, dtype=torch_dtype),
-            "router_probs": router_input.clone().to(device=device, dtype=torch_dtype),
+            "router_probs": router_logits.clone().to(device=device, dtype=torch_dtype),
             "output": torch.zeros((batch_size * sequence_length, hidden_dim), device=device, dtype=torch_dtype),
         }
 
