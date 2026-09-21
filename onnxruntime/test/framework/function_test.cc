@@ -16,6 +16,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
 #include "test/common/tensor_op_test_utils.h"
@@ -253,10 +254,8 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
 
 TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
   auto model = CreateFunctionExpansionModel(2, 20);
-  const std::string large_value_name(256 * 1024, 'x');
   auto* function = model.mutable_functions(0);
-  function->mutable_node(0)->set_output(0, large_value_name);
-  function->mutable_node(1)->set_input(0, large_value_name);
+  function->mutable_node(0)->set_doc_string(std::string(256 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
   ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
