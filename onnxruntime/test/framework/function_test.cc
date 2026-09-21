@@ -247,7 +247,9 @@ static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
 TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
   auto model = CreateRecursiveFunctionExpansionModel(20, 14);
   std::vector<std::string> log_messages;
-  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
+  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
 }
@@ -267,7 +269,9 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
   payload_tensor->set_raw_data(std::string(256 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
-  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
+  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("protobuf expansion limit")));
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("node expansion limit"))));
 }

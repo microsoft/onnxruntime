@@ -1368,6 +1368,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      const logging::Logger& logger,
                                      const CheckLoadCancellationFn& check_load_cancellation_fn,
                                      InlinedHashSet<std::string>& not_inlined,
+                                     InlinedHashSet<std::string>& budget_limited_functions,
                                      size_t& inlined_count,
                                      size_t expansion_node_budget,
                                      size_t& expanded_node_count,
@@ -1390,6 +1391,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  logger,
                                                  check_load_cancellation_fn,
                                                  not_inlined,
+                                                 budget_limited_functions,
                                                  inlined_count,
                                                  expansion_node_budget,
                                                  expanded_node_count,
@@ -1457,13 +1459,15 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         if (expansion_cost.node_count > expansion_node_budget - expanded_node_count) {
           LOGS(logger, WARNING) << "AOT function inlining exceeds the node expansion limit of "
                                 << expansion_node_budget << ". Retaining function '" << function_id << "'.";
-          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(function_id));
+          ORT_IGNORE_RETURN_VALUE(budget_limited_functions.insert(std::move(function_id)));
           continue;
         }
         if (expansion_cost.proto_bytes > expansion_byte_budget - expanded_proto_bytes) {
           LOGS(logger, WARNING) << "AOT function inlining exceeds the protobuf expansion limit of "
                                 << expansion_byte_budget << " bytes. Retaining function '" << function_id << "'.";
-          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(function_id));
+          ORT_IGNORE_RETURN_VALUE(budget_limited_functions.insert(std::move(function_id)));
           continue;
         }
         expanded_node_count += expansion_cost.node_count;
@@ -1862,6 +1866,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   size_t expanded_node_count = 0;
   size_t expanded_proto_bytes = 0;
   InlinedHashSet<std::string> not_inlined;
+  InlinedHashSet<std::string> budget_limited_functions;
   do {
     size_t inlined_count = 0;
     ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
@@ -1871,6 +1876,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                logger,
                                                check_load_cancellation_fn,
                                                not_inlined,
+                                               budget_limited_functions,
                                                inlined_count,
                                                expansion_node_budget,
                                                expanded_node_count,
@@ -1882,6 +1888,14 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     }
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
+
+  if (!budget_limited_functions.empty()) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "AOT function inlining exceeded an expansion limit for ",
+        budget_limited_functions.size(),
+        " function(s). Initialization cannot continue because fallback inlining would exceed the same limit.");
+  }
 
   model.RemoveLocalFunctionsProtos(not_inlined);
 
