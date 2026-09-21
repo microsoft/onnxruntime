@@ -23,12 +23,14 @@ GDS requires:
 
 - Linux and a CUDA toolkit that provides `cufile.h`;
 - `libcufile.so` at runtime;
-- a working GDS driver and supported storage/filesystem configuration; and
+- either `nvidia-fs` or a recent open NVIDIA kernel module that supports PCI P2PDMA;
+- a supported storage/filesystem and PCIe topology; and
 - external weights stored in a file that can be opened with `O_DIRECT`.
 
 ONNX Runtime loads `libcufile` dynamically, so enabling the option does not add a mandatory runtime dependency for
-users who keep GDS disabled. It also disables cuFile compatibility mode: if the storage stack cannot provide the
-direct GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
+users who keep GDS disabled. It requests PCI P2PDMA, which can provide GDS without `nvidia-fs` on supported recent
+kernels, GPUs, and storage devices. It also disables cuFile compatibility mode: if the storage stack cannot provide
+a native GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
 
 ## Configuration
 

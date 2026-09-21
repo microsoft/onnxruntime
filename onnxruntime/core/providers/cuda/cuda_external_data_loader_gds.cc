@@ -151,6 +151,9 @@ class LinuxGdsLoader final : public GdsLoader {
     ORT_RETURN_IF_ERROR(LoadSymbol(library_, "cuFileRead", read_));
 
     ORT_RETURN_IF_ERROR(CheckCuFileStatus(
+        set_bool_parameter_(CUFILE_PARAM_USE_PCIP2PDMA, true),
+        "Enabling cuFile PCI P2PDMA"));
+    ORT_RETURN_IF_ERROR(CheckCuFileStatus(
         set_bool_parameter_(CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE, false),
         "Disabling cuFile compatibility mode"));
     ORT_RETURN_IF_ERROR(CheckCuFileStatus(driver_open_(), "cuFileDriverOpen"));
