@@ -534,6 +534,14 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxrun
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
 endif()
 
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  file(GLOB onnxruntime_test_providers_webgpu_plugin_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/webgpu/plugin/*.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/plugin/*.h"
+  )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_plugin_src})
+endif()
+
 if (onnxruntime_USE_CANN)
   file(GLOB_RECURSE onnxruntime_test_providers_cann_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cann/*"
@@ -659,6 +667,10 @@ endif()
 
 if(onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_plugin)
+endif()
+
+if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
 endif()
 
 if(onnxruntime_USE_CANN)
@@ -1481,6 +1493,11 @@ block()
     target_compile_definitions(onnxruntime_provider_test PRIVATE
       ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
       ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
+
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+    target_compile_definitions(onnxruntime_provider_test PRIVATE
+      ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
   endif()
 
   if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
@@ -2725,11 +2742,6 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
-  if (NOT onnxruntime_USE_WEBGPU OR NOT onnxruntime_USE_EP_API_ADAPTERS)
-    list(REMOVE_ITEM onnxruntime_autoep_test_SRC
-         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_webgpu_allocators.cc")
-  endif()
-
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
 
@@ -2761,12 +2773,6 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
-
-  if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
-    # The WebGPU plugin is loaded at test-run time, so ensure a focused auto-EP test build produces it and its
-    # co-located runtime dependencies.
-    add_dependencies(onnxruntime_autoep_test onnxruntime_providers_webgpu)
-  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

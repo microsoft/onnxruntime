@@ -8,6 +8,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -21,15 +22,14 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test/autoep/test_autoep_utils.h"
-#include "test/util/include/file_util.h"
+#include "test/providers/webgpu/plugin/webgpu_plugin_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 namespace {
 
@@ -124,22 +124,20 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
 class PluginEpWebGpuConcurrency : public ::testing::Test {
  protected:
   void SetUp() override {
-    webgpu_ep_info_ = std::make_unique<Utils::ExamplePluginInfo>(
-        GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu")),
-        "webgpu_ep_concurrency_library",
-        kWebGpuExecutionProvider);
-    ASSERT_NO_FATAL_FAILURE(
-        Utils::RegisterAndGetExampleEp(*ort_env, *webgpu_ep_info_, webgpu_ep_device_holder_));
+    registration_.emplace(*ort_env, "webgpu_ep_concurrency_library");
+    const auto devices = registration_->GetEpDevices();
+    ASSERT_FALSE(devices.empty());
+    webgpu_ep_device_ = devices.front();
     ASSERT_NE(Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT), nullptr);
   }
 
   Ort::ConstEpDevice Device() const {
-    return Ort::ConstEpDevice{webgpu_ep_device_holder_.get()};
+    return webgpu_ep_device_;
   }
 
   Ort::UnownedAllocator CreateSharedAllocator() const {
     return ort_env->CreateSharedAllocator(
-        webgpu_ep_device_holder_.get(), OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, nullptr);
+        Device(), OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, nullptr);
   }
 
   std::unique_ptr<Ort::Session> CreateSession() const {
@@ -481,8 +479,8 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
   }
 
  private:
-  std::unique_ptr<Utils::ExamplePluginInfo> webgpu_ep_info_;
-  RegisteredEpDeviceUniquePtr webgpu_ep_device_holder_;
+  std::optional<ScopedWebGpuPluginRegistration> registration_;
+  Ort::ConstEpDevice webgpu_ep_device_{nullptr};
 };
 
 TEST_F(PluginEpWebGpuConcurrency, DeferredProducerThenIdentityCopy) {
@@ -860,7 +858,7 @@ TEST_F(PluginEpWebGpuConcurrency, MixedSessionAndAllocatorOperationsConcurrently
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-#endif  // defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+#endif  // defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 }  // namespace test
 }  // namespace onnxruntime

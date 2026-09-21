@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
+#include <optional>
 #include <set>
 #include <thread>
 #include <vector>
@@ -22,22 +21,22 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/autoep/test_autoep_utils.h"
-#include "test/shared_lib/utils.h"
+#include "test/providers/webgpu/plugin/webgpu_plugin_test_utils.h"
 #include "test/util/include/api_asserts.h"
-#include "test/util/include/file_util.h"
 
-#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 namespace {
 
@@ -145,22 +144,9 @@ std::string BuildMatMulLoadModelBytes(int64_t dimension, size_t depth) {
 class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    const auto devices_before_registration = ort_env->GetEpDevices();
-    const auto ep_lib_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
-    ep_info_ = std::make_unique<Utils::ExamplePluginInfo>(
-        ep_lib_path, "webgpu_allocator_test", kWebGpuExecutionProvider);
-    ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, *ep_info_, ep_device_holder_));
-
-    const auto devices_after_registration = ort_env->GetEpDevices();
-    for (const auto& candidate : devices_after_registration) {
-      const auto candidate_ptr = static_cast<const OrtEpDevice*>(candidate);
-      if (candidate.EpName() == std::string{kWebGpuExecutionProvider} &&
-          std::none_of(devices_before_registration.begin(), devices_before_registration.end(),
-                       [&](const Ort::ConstEpDevice& existing) {
-                         return static_cast<const OrtEpDevice*>(existing) == candidate_ptr;
-                       })) {
-        ep_devices_.push_back(candidate_ptr);
-      }
+    registration_.emplace(*ort_env, "webgpu_allocator_test");
+    for (const auto& device : registration_->GetEpDevices()) {
+      ep_devices_.push_back(device);
     }
     ASSERT_FALSE(ep_devices_.empty());
   }
@@ -183,8 +169,7 @@ class WebGpuPluginSharedAllocatorTest : public ::testing::Test {
   }
 
  private:
-  std::unique_ptr<Utils::ExamplePluginInfo> ep_info_;
-  RegisteredEpDeviceUniquePtr ep_device_holder_;
+  std::optional<ScopedWebGpuPluginRegistration> registration_;
   std::vector<const OrtEpDevice*> ep_devices_;
 };
 
@@ -279,24 +264,23 @@ TEST_F(WebGpuSessionAllocatorDeathTest, FreeContainsExceptionAndPreservesUnrelea
 }  // namespace
 
 TEST(WebGpuPluginSharedAllocatorRegistrationTest, UserAllocatorRegisteredBeforePluginRemainsAvailable) {
+  // provider_test pre-registers the plugin; this case requires an environment without it.
+  ortenv_teardown();
+  auto restore_env = gsl::finally([] { ortenv_setup(); });
+
   Ort::MemoryInfo user_memory_info{WEBGPU_BUFFER, OrtMemoryInfoDeviceType_GPU,
                                    0, 0, OrtDeviceMemoryType_DEFAULT, 0, OrtDeviceAllocator};
   UserWebGpuAllocator user_allocator{user_memory_info};
-  auto& env = *ort_env;
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "webgpu_allocator_registration");
 
   env.RegisterAllocator(&user_allocator);
-  auto unregister_allocator = gsl::finally([&] {
-    Ort::Status ignored{Ort::GetApi().UnregisterAllocator(env, user_memory_info)};
-  });
 
   auto allocator_before_plugin_registration = env.GetSharedAllocator(user_memory_info);
   ASSERT_EQ(static_cast<OrtAllocator*>(allocator_before_plugin_registration),
             static_cast<OrtAllocator*>(&user_allocator));
 
-  const auto ep_lib_path = GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_webgpu"));
-  Utils::ExamplePluginInfo ep_info{ep_lib_path, "webgpu_user_allocator_test", kWebGpuExecutionProvider};
-  RegisteredEpDeviceUniquePtr ep_device_holder;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(env, ep_info, ep_device_holder));
+  ScopedWebGpuPluginRegistration registration(env, "webgpu_user_allocator_test");
+  ASSERT_FALSE(registration.GetEpDevices().empty());
 
   auto allocator_after_plugin_registration = env.GetSharedAllocator(user_memory_info);
   ASSERT_NE(allocator_after_plugin_registration, nullptr);
@@ -555,7 +539,7 @@ TEST_F(WebGpuPluginSharedAllocatorTest, DISABLED_ManualPerDeviceMemoryAndCompute
             << " MiB allocations remained live for the full test.\n";
 }
 
-#endif  // defined(USE_WEBGPU) && defined(ORT_USE_EP_API_ADAPTERS)
+#endif  // defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 }  // namespace test
 }  // namespace onnxruntime
