@@ -489,6 +489,39 @@ TEST(FunctionTest, CallInConditional) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
+// A model-local function that declares zero inputs must not be invoked with
+// actual inputs.
+TEST(FunctionTest, RejectsZeroInputFunctionCalledWithInput) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[1] y)
+        {
+            y = local.zerofun (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        zerofun () => (ly) {
+            ly = Constant <value = float[1] {2.0}> ()
+        }
+        )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  const auto status = session_object.Load(sstr);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("declares no inputs"));
+}
+
 TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
   const char* code = R"(
         <
