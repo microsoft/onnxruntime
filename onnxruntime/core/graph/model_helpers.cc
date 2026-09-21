@@ -88,6 +88,7 @@ void CollectLocalFunctionCalls(
         if (seen_calls.insert(key_view).second) {
           called_functions.push_back(key_view);
         }
+        continue;
       }
 
       for (const auto& attr : node.attribute()) {
@@ -110,129 +111,190 @@ void CollectLocalFunctionCalls(
   }
 }
 
-void CollectLocalFunctionCalls(
-    const Graph& main_graph,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string_view>& seen_calls,
-    InlinedVector<std::string_view>& called_functions) {
-  InlinedVector<const Graph*> pending_graphs{&main_graph};
+struct BoundAttribute {
+  const ONNX_NAMESPACE::AttributeProto* proto;
+  const Graph* graph;
+};
 
-  while (!pending_graphs.empty()) {
-    const auto* graph = pending_graphs.back();
-    pending_graphs.pop_back();
-    for (const auto& node : graph->Nodes()) {
-      const auto function_id = function_utils::GetFunctionIdentifier(
-          node.Domain(), node.OpType(), node.Overload());
-      auto function_it = model_local_functions.find(function_id);
-      if (function_it != model_local_functions.end()) {
-        std::string_view key_view = function_it->first;
-        if (seen_calls.insert(key_view).second) {
-          called_functions.push_back(key_view);
-        }
-      }
+struct AttributeBinding {
+  std::string_view name;
+  BoundAttribute attribute;
+};
 
-      for (const auto& [attr_name, attr] : node.GetAttributes()) {
-        if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
-          if (const auto* subgraph = node.GetGraphAttribute(attr_name); subgraph != nullptr) {
-            pending_graphs.push_back(subgraph);
-          } else if (attr.has_g()) {
-            CollectLocalFunctionCalls(attr.g().node(), model_local_functions, seen_calls, called_functions);
-          }
-        }
-        for (const auto& attribute_graph : attr.graphs()) {
-          CollectLocalFunctionCalls(attribute_graph.node(), model_local_functions, seen_calls, called_functions);
-        }
-      }
-    }
+using AttributeBindings = InlinedVector<AttributeBinding>;
+using ModelLocalFunctions =
+    std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
+
+const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
+                                           std::string_view name) {
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [name](const AttributeBinding& binding) {
+                                 return binding.name == name;
+                               });
+  return it == bindings.end() ? nullptr : &it->attribute;
+}
+
+BoundAttribute ResolveAttribute(const ONNX_NAMESPACE::AttributeProto& attr,
+                                const AttributeBindings& bindings,
+                                const Graph* graph = nullptr) {
+  if (attr.ref_attr_name().empty()) {
+    return {&attr, graph};
+  }
+
+  const auto* binding = FindAttributeBinding(bindings, attr.ref_attr_name());
+  return binding == nullptr ? BoundAttribute{} : *binding;
+}
+
+void SetAttributeBinding(AttributeBindings& bindings,
+                         std::string_view name,
+                         BoundAttribute attribute) {
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [name](const AttributeBinding& binding) {
+                                 return binding.name == name;
+                               });
+  if (it == bindings.end()) {
+    bindings.push_back({name, attribute});
+  } else {
+    it->attribute = attribute;
   }
 }
 
-bool FunctionReferencesAttribute(const ONNX_NAMESPACE::FunctionProto& function_proto,
-                                 std::string_view attribute_name) {
-  InlinedVector<const ONNX_NAMESPACE::GraphProto*> pending_graphs;
+Status ValidateFunctionCallDepth(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    AttributeBindings bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions);
 
-  auto process_nodes = [&](const auto& nodes) {
-    for (const auto& node : nodes) {
+Status ValidateProtoNodesCallDepth(
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>& nodes,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions);
+
+Status ValidateGraphCallDepth(
+    const Graph& graph,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions);
+
+Status ValidateBoundAttributeCallDepth(
+    BoundAttribute attribute,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions) {
+  if (attribute.proto == nullptr) {
+    return Status::OK();
+  }
+
+  if (attribute.graph != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateGraphCallDepth(
+        *attribute.graph, bindings, call_depth, model_local_functions));
+  } else if (attribute.proto->has_g()) {
+    ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
+        attribute.proto->g().node(), bindings, call_depth, model_local_functions));
+  }
+
+  for (const auto& graph : attribute.proto->graphs()) {
+    ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
+        graph.node(), bindings, call_depth, model_local_functions));
+  }
+
+  return Status::OK();
+}
+
+Status ValidateFunctionCallDepth(
+    const ONNX_NAMESPACE::FunctionProto& function_proto,
+    AttributeBindings bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions) {
+  if (call_depth > kMaxModelLocalFunctionCallDepth) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Model local function call depth ", call_depth,
+        " exceeds the maximum supported depth of ", kMaxModelLocalFunctionCallDepth, ".");
+  }
+
+  for (const auto& attr : function_proto.attribute_proto()) {
+    if (FindAttributeBinding(bindings, attr.name()) == nullptr) {
+      SetAttributeBinding(bindings, attr.name(), {&attr, nullptr});
+    }
+  }
+
+  return ValidateProtoNodesCallDepth(
+      function_proto.node(), bindings, call_depth, model_local_functions);
+}
+
+Status ValidateProtoNodesCallDepth(
+    const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>& nodes,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions) {
+  for (const auto& node : nodes) {
+    const auto function_id = function_utils::GetFunctionIdentifier(
+        node.domain(), node.op_type(), node.overload());
+    const auto function_it = model_local_functions.find(function_id);
+    if (function_it != model_local_functions.end()) {
+      AttributeBindings callee_bindings;
       for (const auto& attr : node.attribute()) {
-        if (attr.ref_attr_name() == attribute_name) {
-          return true;
-        }
-        if (attr.has_g()) {
-          pending_graphs.push_back(&attr.g());
-        }
-        for (const auto& graph : attr.graphs()) {
-          pending_graphs.push_back(&graph);
+        const auto resolved_attr = ResolveAttribute(attr, bindings);
+        if (resolved_attr.proto != nullptr) {
+          SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
         }
       }
+      ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
+          *function_it->second, std::move(callee_bindings), call_depth + 1,
+          model_local_functions));
+      continue;
     }
-    return false;
-  };
 
-  if (process_nodes(function_proto.node())) {
-    return true;
-  }
-
-  while (!pending_graphs.empty()) {
-    const auto* graph = pending_graphs.back();
-    pending_graphs.pop_back();
-    if (process_nodes(graph->node())) {
-      return true;
+    for (const auto& attr : node.attribute()) {
+      ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+          ResolveAttribute(attr, bindings), bindings, call_depth, model_local_functions));
     }
   }
 
-  return false;
+  return Status::OK();
 }
 
-void AddReferencedGraphAttributeCalls(
-    const Graph& main_graph,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    LocalFunctionCallGraph& call_graph) {
-  InlinedVector<const Graph*> pending_graphs{&main_graph};
-
-  while (!pending_graphs.empty()) {
-    const auto* graph = pending_graphs.back();
-    pending_graphs.pop_back();
-
-    for (const auto& node : graph->Nodes()) {
-      const auto function_id = function_utils::GetFunctionIdentifier(
-          node.Domain(), node.OpType(), node.Overload());
-      const auto function_it = model_local_functions.find(function_id);
-      const bool is_local_function_call = function_it != model_local_functions.end();
-
+Status ValidateGraphCallDepth(
+    const Graph& graph,
+    const AttributeBindings& bindings,
+    size_t call_depth,
+    const ModelLocalFunctions& model_local_functions) {
+  for (const auto& node : graph.Nodes()) {
+    const auto function_id = function_utils::GetFunctionIdentifier(
+        node.Domain(), node.OpType(), node.Overload());
+    const auto function_it = model_local_functions.find(function_id);
+    if (function_it != model_local_functions.end()) {
+      AttributeBindings callee_bindings;
       for (const auto& [attr_name, attr] : node.GetAttributes()) {
-        const Graph* subgraph = nullptr;
+        const Graph* attribute_graph = nullptr;
         if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
-          subgraph = node.GetGraphAttribute(attr_name);
-          if (subgraph != nullptr) {
-            pending_graphs.push_back(subgraph);
-          }
+          attribute_graph = node.GetGraphAttribute(attr_name);
         }
-
-        if (!is_local_function_call ||
-            !FunctionReferencesAttribute(*function_it->second, attr_name)) {
-          continue;
-        }
-
-        InlinedHashSet<std::string_view> seen_calls;
-        InlinedVector<std::string_view> attribute_calls;
-        if (subgraph != nullptr) {
-          CollectLocalFunctionCalls(*subgraph, model_local_functions, seen_calls, attribute_calls);
-        } else if (attr.has_g()) {
-          CollectLocalFunctionCalls(attr.g().node(), model_local_functions, seen_calls, attribute_calls);
-        }
-        for (const auto& attribute_graph : attr.graphs()) {
-          CollectLocalFunctionCalls(attribute_graph.node(), model_local_functions, seen_calls, attribute_calls);
-        }
-
-        auto& callees = call_graph.at(function_it->first);
-        for (const auto callee : attribute_calls) {
-          if (std::find(callees.begin(), callees.end(), callee) == callees.end()) {
-            callees.push_back(callee);
-          }
+        const auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
+        if (resolved_attr.proto != nullptr) {
+          SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
         }
       }
+      ORT_RETURN_IF_ERROR(ValidateFunctionCallDepth(
+          *function_it->second, std::move(callee_bindings), call_depth + 1,
+          model_local_functions));
+      continue;
+    }
+
+    for (const auto& [attr_name, attr] : node.GetAttributes()) {
+      const Graph* attribute_graph = nullptr;
+      if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+        attribute_graph = node.GetGraphAttribute(attr_name);
+      }
+      ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
+          ResolveAttribute(attr, bindings, attribute_graph),
+          bindings, call_depth, model_local_functions));
     }
   }
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -444,12 +506,8 @@ Status ValidateModelLocalFunctionCallDepth(
 
   LocalFunctionCallGraph call_graph;
   ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
-  AddReferencedGraphAttributeCalls(main_graph, model_local_functions, call_graph);
   ORT_RETURN_IF_ERROR(ValidateCallGraphAcyclic(call_graph));
-  InlinedHashSet<std::string_view> seen_calls;
-  InlinedVector<std::string_view> root_calls;
-  CollectLocalFunctionCalls(main_graph, model_local_functions, seen_calls, root_calls);
-  return ValidateCallGraphDepth(call_graph, root_calls);
+  return ValidateGraphCallDepth(main_graph, {}, 0, model_local_functions);
 }
 
 }  // namespace onnxruntime

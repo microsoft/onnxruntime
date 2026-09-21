@@ -821,6 +821,64 @@ TEST(FunctionTest, ReferencedGraphAttributeContributesToLocalFunctionDepth) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
+TEST(FunctionTest, DefaultGraphAttributeContributesToLocalFunctionDepth) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  WrapLocalFunctionChainInReferencedGraphAttribute(model_proto);
+
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  auto* wrapper = model_proto.mutable_functions(model_proto.functions_size() - 1);
+  *wrapper->add_attribute_proto() = root_node->attribute(0);
+  root_node->clear_attribute();
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateTerminatingCrossBoundGraphAttributeModel() {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* graph = model_proto.mutable_graph();
+
+  for (const auto* function_name : {"F", "G"}) {
+    auto* function = model_proto.add_functions();
+    function->set_domain("local");
+    function->set_name(function_name);
+    function->add_attribute("body");
+
+    auto* if_node = function->add_node();
+    if_node->set_op_type("If");
+    auto* body_attr = if_node->add_attribute();
+    body_attr->set_name("then_branch");
+    body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    body_attr->set_ref_attr_name("body");
+  }
+
+  const auto add_bound_call = [&](const char* function_name, const char* nested_function_name) {
+    auto* call = graph->add_node();
+    call->set_domain("local");
+    call->set_op_type(function_name);
+    auto* body_attr = call->add_attribute();
+    body_attr->set_name("body");
+    body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* nested_call = body_attr->mutable_g()->add_node();
+    nested_call->set_domain("local");
+    nested_call->set_op_type(nested_function_name);
+  };
+  add_bound_call("F", "G");
+  add_bound_call("G", "F");
+
+  return model_proto;
+}
+
+TEST(FunctionTest, CallSiteGraphBindingsDoNotCreateGlobalCycle) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateTerminatingCrossBoundGraphAttributeModel(), nullptr, logger);
+  ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
+}
+
 TEST(FunctionTest, LoadFromBytes_ExcessiveLocalFunctionDepthReturnsStatus) {
   auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
   std::string serialized_model;
