@@ -83,7 +83,8 @@ class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispa
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
-      {"batch_size", ProgramUniformVariableDataType::Uint32});
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"present_sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {

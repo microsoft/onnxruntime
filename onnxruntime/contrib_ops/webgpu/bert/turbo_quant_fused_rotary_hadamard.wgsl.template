@@ -69,7 +69,9 @@ $MAIN {
 
   // Base position offset for rotary embedding cos/sin cache lookup.
 #if prepare_indirect_dispatch
-  let global_total_seq_length = u32(total_sequence_length_input[0]);
+  let raw_global_total_seq_length = total_sequence_length_input[0];
+  let global_total_seq_length =
+      min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_seq_length);
 #else
   let global_total_seq_length = uniforms.total_sequence_length;
 #endif

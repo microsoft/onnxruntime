@@ -268,7 +268,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (prepare_indirect_dispatch_) {
     shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
-                              << "    let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+                              << "    let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+                              << "    let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
                               << "    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
                               << "    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
                               << "  }\n\n";
@@ -308,7 +309,8 @@ Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) 
   shader.AddOutput("indirect_buffer", ShaderUsage::None);
   shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
   shader.MainFunctionBody()
-      << "  let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+      << "  let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+      << "  let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
       << "  let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
       << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
   return Status::OK();
@@ -1071,6 +1073,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     // because that is when total_seqlen is GPU-resident and CPU-side dispatch sizing
     // is unavailable.
     if (use_indirect_dispatch) {
+      const uint32_t present_sequence_capacity =
+          use_paged_kv_cache ? block_size * max_num_blocks_per_seq
+                             : static_cast<uint32_t>(present_key->Shape()[2]);
       PrepareIndirectDispatchProgram program;
       program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
       program.AddOutput({indirect_buffer_ptr, ProgramTensorMetadataDependency::None});
@@ -1079,7 +1084,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           .AddUniformVariables({{tile_size},
                                 {static_cast<uint32_t>(parameters.num_heads_)},
                                 {num_q_tiles},
-                                {static_cast<uint32_t>(parameters.batch_size_)}});
+                                {static_cast<uint32_t>(parameters.batch_size_)},
+                                {present_sequence_capacity}});
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
   }

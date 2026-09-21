@@ -4242,12 +4242,20 @@ struct IndirectDispatchGraphCaptureTestOptions {
   int local_window_size = -1;
   bool enable_graph_capture = true;
   std::vector<float>* replay_output = nullptr;
+  std::optional<int32_t> device_total_sequence_length = std::nullopt;
 };
 
-static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptureTestOptions& options) {
+enum class IndirectDispatchGraphCaptureVerification {
+  kOutput,
+  kCompletionOnly,
+};
+
+static void RunIndirectDispatchGraphCaptureTestImpl(
+    const IndirectDispatchGraphCaptureTestOptions& options,
+    IndirectDispatchGraphCaptureVerification verification) {
   const auto& [do_rotary, kv_cache_quant_bits, enable_multi_rotary_cache,
                rotary_interleaved, sequence_length, local_window_size,
-               enable_graph_capture, replay_output] = options;
+               enable_graph_capture, replay_output, device_total_sequence_length] = options;
   constexpr int batch_size = 2;
   constexpr int short_total_sequence_length = 2;
   constexpr int cache_sequence_length = 130;  // Three 64-token attention tiles.
@@ -4410,7 +4418,8 @@ static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptu
   auto past_value_value = make_gpu_value(past_value_data.data(), DataTypeImpl::GetType<float>(), cache_shape);
   std::vector<int32_t> seqlens_data{short_total_sequence_length - 1, cache_sequence_length - 1};
   auto seqlens_value = make_gpu_value(seqlens_data.data(), DataTypeImpl::GetType<int32_t>(), seqlens_shape);
-  std::vector<int32_t> total_sequence_length_data{cache_sequence_length};
+  std::vector<int32_t> total_sequence_length_data{
+      device_total_sequence_length.value_or(cache_sequence_length)};
   OrtValue total_sequence_length_value;
   if (enable_graph_capture) {
     total_sequence_length_value = make_gpu_value(total_sequence_length_data.data(),
@@ -4466,6 +4475,10 @@ static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptu
 
   RunOptions run_options;
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+  if (verification == IndirectDispatchGraphCaptureVerification::kCompletionOnly) {
+    ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+    return;
+  }
   auto first_output = read_output();
   if (kv_cache_quant_bits == 8 && do_rotary && rotary_interleaved) {
     constexpr int reference_sequence_length = short_total_sequence_length;
@@ -4589,6 +4602,17 @@ static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptu
   }
 }
 
+static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptureTestOptions& options) {
+  RunIndirectDispatchGraphCaptureTestImpl(
+      options, IndirectDispatchGraphCaptureVerification::kOutput);
+}
+
+static void RunIndirectDispatchGraphCaptureCompletionOnlyTest(
+    const IndirectDispatchGraphCaptureTestOptions& options) {
+  RunIndirectDispatchGraphCaptureTestImpl(
+      options, IndirectDispatchGraphCaptureVerification::kCompletionOnly);
+}
+
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_NoRotary) {
   RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 4});
 }
@@ -4621,6 +4645,16 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_Interleaved
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
   RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_IndirectDispatch_NegativeDeviceTotal) {
+  // A negative total produces a zero-sized QKV dispatch, so the reduction output is unspecified.
+  // Verify only that capture and replay complete without a wrapped or excessive dispatch.
+  RunIndirectDispatchGraphCaptureCompletionOnlyTest({.device_total_sequence_length = -100});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_IndirectDispatch_OversizedDeviceTotal) {
+  RunIndirectDispatchGraphCaptureTest({.device_total_sequence_length = 1'000'000});
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
