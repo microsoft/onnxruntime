@@ -16,6 +16,7 @@ namespace test {
 using contrib::cuda::CheckedGQAWorkspaceAdd;
 using contrib::cuda::CheckedGQAWorkspaceAlign;
 using contrib::cuda::CheckedGQAWorkspaceMultiply;
+using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
 using contrib::cuda::GetGQAPreparationRecipe;
 using contrib::cuda::GQAKvQuantizationType;
 using contrib::cuda::GQAPreparationRecipe;
@@ -59,7 +60,7 @@ GQAWorkspaceProblem ValidXqaProblem(bool is_quantized = false) {
 testing::AssertionResult BuildRecipe(
     const GQAWorkspaceProblem& problem,
     GQAPreparationRecipe& recipe,
-    GQAPreprocessMode mode = GQAPreprocessMode::Fallback,
+    GQAPreprocessMode mode = GQAPreprocessMode::Unfused,
     bool fast_decode = false) {
   const auto result = GetGQAPreparationRecipe(
       problem, GQAPreparationRoute{mode, fast_decode});
@@ -72,6 +73,21 @@ testing::AssertionResult BuildRecipe(
 }
 
 }  // namespace
+
+TEST(GroupQueryAttentionWorkspaceTest, EffectiveKvLengthMatchesRuntimeCacheExtent) {
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(100, 8, false), 100);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(5, 8, true), 5);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(8, 8, true), 8);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(100, 8, true), 8);
+
+  // A multi-token windowed update changes the runtime cache extent from C to C + S.
+  // The workspace must cover all staged rows, not only the final window capacity.
+  constexpr int cache_capacity = 8;
+  constexpr int sequence_length = 3;
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(
+                100, cache_capacity + sequence_length, true),
+            11);
+}
 
 TEST(GroupQueryAttentionWorkspaceTest, CheckedArithmeticRejectsOverflow) {
   size_t result = 0;
@@ -105,13 +121,71 @@ TEST(GroupQueryAttentionWorkspaceTest, OrdinaryNonWindowedPreparationHasThreeVec
   EXPECT_EQ(recipe.sequence_lengths_offset_bytes, 0U);
   EXPECT_EQ(recipe.sequence_lengths_bytes, 24U);
 
-  // Fallback packed preprocess: B*S*N*H*sizeof(T) = 2*3*4*8*2 = 384.
+  // Unfused packed preprocess: B*S*N*H*sizeof(T) = 2*3*4*8*2 = 384.
   EXPECT_EQ(recipe.qkv_preprocess_offset_bytes, 256U);
   EXPECT_EQ(recipe.qkv_preprocess_bytes, 384U);
   EXPECT_EQ(recipe.total_preparation_bytes, 640U);
   EXPECT_FALSE(recipe.uses_staging);
   EXPECT_FALSE(recipe.uses_compaction);
   EXPECT_EQ(recipe.effective_kv_cache_capacity, 5);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, AsymmetricAliasPreservesOnePastCacheTensor) {
+  auto problem = ValidProblem();
+  problem.past_kv_cache_capacity = 5;
+  problem.requires_separate_past_buffer = true;
+
+  GQAPreparationRecipe recipe;
+  ASSERT_TRUE(BuildRecipe(problem, recipe));
+
+  // B*Nk*P*row = 2*2*5*16 = 320.
+  EXPECT_TRUE(recipe.uses_separate_past_buffer);
+  EXPECT_EQ(recipe.separate_past_offset_bytes, 0U);
+  EXPECT_EQ(recipe.separate_past_bytes, 320U);
+  EXPECT_EQ(recipe.sequence_lengths_offset_bytes, 512U);
+  EXPECT_TRUE(ValidateGQAPreparationRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsInvalidSeparatePastBufferFacts) {
+  auto problem = ValidProblem();
+  problem.requires_separate_past_buffer = true;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, {}).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem.past_kv_cache_capacity = 5;
+  problem.is_windowed_kv_cache = true;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, {}).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsSeparatePastBufferWithWindowedRecipe) {
+  auto problem = ValidProblem();
+  problem.sequence_length = 1;
+  problem.is_windowed_kv_cache = true;
+  auto result = GetGQAPreparationRecipe(problem, {});
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  result.recipe.uses_separate_past_buffer = true;
+  result.recipe.separate_past_bytes = result.recipe.compaction_bytes;
+  EXPECT_EQ(ValidateGQAPreparationRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsSeparatePastBufferForSharedOnlyRoutes) {
+  auto problem = ValidXqaProblem();
+  problem.past_kv_cache_capacity = 5;
+  problem.requires_separate_past_buffer = true;
+  EXPECT_EQ(
+      GetGQAPreparationRecipe(
+          problem, GQAPreparationRoute{GQAPreprocessMode::Xqa, false})
+          .status.error,
+      GQAWorkspaceError::InvalidArgument);
+
+  EXPECT_EQ(
+      GetGQAPreparationRecipe(
+          problem, GQAPreparationRoute{GQAPreprocessMode::Flash, true})
+          .status.error,
+      GQAWorkspaceError::InvalidArgument);
 }
 
 TEST(GroupQueryAttentionWorkspaceTest, WindowedSingleTokenUsesCompactionAndSixVectors) {
@@ -220,7 +294,7 @@ INSTANTIATE_TEST_SUITE_P(
     Contradictions,
     GroupQueryAttentionFastDecodeValidationTest,
     testing::Values(
-        FastDecodeContradictionCase{"NonFlashMode", GQAPreprocessMode::Fallback,
+        FastDecodeContradictionCase{"NonFlashMode", GQAPreprocessMode::Unfused,
                                     false, false, GQAKvQuantizationType::None,
                                     GQAKvQuantizationType::None, false},
         FastDecodeContradictionCase{"FirstPrompt", GQAPreprocessMode::Flash,
@@ -323,10 +397,10 @@ INSTANTIATE_TEST_SUITE_P(
         QkvPreprocessCase{"MemoryEfficientRotaryQk", GQAPreprocessMode::MemoryEfficient,
                           false, true, false, false,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 576},
-        QkvPreprocessCase{"FallbackRotaryQ", GQAPreprocessMode::Fallback,
+        QkvPreprocessCase{"UnfusedRotaryQ", GQAPreprocessMode::Unfused,
                           false, true, false, false,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384},
-        QkvPreprocessCase{"FallbackQkNormQ", GQAPreprocessMode::Fallback,
+        QkvPreprocessCase{"UnfusedQkNormQ", GQAPreprocessMode::Unfused,
                           false, false, false, true,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384}),
     [](const testing::TestParamInfo<QkvPreprocessCase>& info) {

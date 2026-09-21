@@ -258,6 +258,42 @@ TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
            {}, nullptr, &execution_providers);
 }
 
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
+TEST(SparseAttentionTest, RejectsEmptyTotalSequenceLengthInitializer) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 2);
+  test.AddAttribute<int64_t>("kv_num_heads", 2);
+  test.AddAttribute<int64_t>("sparse_block_size", 1);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("past_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddInput<float>("past_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddInput<int32_t>("block_row_indices", {1, 5}, {0, 1, 2, 3, 4});
+  test.AddInput<int32_t>("block_col_indices", {1, 1}, std::vector<int32_t>{0}, /*is_initializer=*/true);
+  // Empty total_sequence_length initializer at input 7 must be rejected by shape inference.
+  test.AddInput<int32_t>("total_sequence_length", {0}, std::vector<int32_t>{}, /*is_initializer=*/true);
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {4});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+
+  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddOutput<float>("present_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+  test.AddOutput<float>("present_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "total_sequence_length input must contain a single element", {}, nullptr, &execution_providers);
+}
+#endif  // !ORT_NO_EXCEPTIONS
+
 // Helper for CSR value-validation tests.
 // Uses: num_heads=2, kv_num_heads=2, sparse_block_size=16, head_size=8.
 // block_row_indices shape: (1, max_blocks+1), block_col_indices shape: (1, col_count).
