@@ -46,7 +46,7 @@ However, we cannot build the code for 32-bit ARM in such a way since a 32-bit co
 
   ```
   git submodule update --init
-  docker build -t onnxruntime-cuda --build-arg CUDA_VERSION=12.6.1 \
+  docker build -t onnxruntime-cuda --build-arg CUDA_VERSION=12.8.1 \
                                    --build-arg CUDNN_VERSION=9.5.0.50 \
                                    --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
                                    --build-arg GIT_COMMIT=$(git rev-parse HEAD) \

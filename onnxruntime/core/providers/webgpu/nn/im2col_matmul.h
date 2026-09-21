@@ -26,13 +26,13 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
                       uint32_t tile_n,
                       uint32_t vec_size,
                       bool use_subgroup,
-                      ActivationKind activation_kind) : Program("Im2ColMatMul"),
-                                                        has_bias_(has_bias),
-                                                        tile_m_(tile_m),
-                                                        tile_n_(tile_n),
-                                                        vec_size_(vec_size),
-                                                        use_subgroup_(use_subgroup),
-                                                        activation_kind_(activation_kind) {}
+                      const Activation& activation) : Program("Im2ColMatMul"),
+                                                      has_bias_(has_bias),
+                                                      tile_m_(tile_m),
+                                                      tile_n_(tile_n),
+                                                      vec_size_(vec_size),
+                                                      use_subgroup_(use_subgroup),
+                                                      activation_(activation) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -63,7 +63,7 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
   uint32_t tile_n_;
   uint32_t vec_size_;
   bool use_subgroup_;
-  ActivationKind activation_kind_;
+  const Activation& activation_;
 };
 
 bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,

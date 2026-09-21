@@ -108,6 +108,10 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     bias_softmax_dropout_node.SetExecutionProviderType(node.GetExecutionProviderType());
     softmax_droput_grad_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
+    const InlinedVector<NodeIndex> forward_source_node_indices{
+        node.Index(), dropout_node.Index()};
+    const InlinedVector<NodeIndex> gradient_source_node_indices{
+        dropout_grad_node.Index(), softmax_grad_node.Index()};
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
     graph_utils::RemoveNodeOutputEdges(graph, dropout_node);
@@ -116,6 +120,8 @@ Status BiasSoftmaxDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     graph.RemoveNode(dropout_grad_node.Index());
     graph_utils::RemoveNodeOutputEdges(graph, softmax_grad_node);
     graph.RemoveNode(softmax_grad_node.Index());
+    graph.NotifyNodeReplacement(forward_source_node_indices, bias_softmax_dropout_node.Index());
+    graph.NotifyNodeReplacement(gradient_source_node_indices, softmax_droput_grad_node.Index());
     modified = true;
   }
 

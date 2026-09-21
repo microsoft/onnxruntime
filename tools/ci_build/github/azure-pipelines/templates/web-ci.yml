@@ -10,7 +10,7 @@ parameters:
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
-  default: 'onnxruntime-Win-CPU-VS2022-Latest'
+  default: 'onnxruntime-Win-CPU-2022'
 - name: PackageName
   displayName: 'Package name'
   type: string
@@ -43,10 +43,10 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+  default: 'onnxruntime-Win2022-GPU-A10'
 - name: WebCpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+  default: 'onnxruntime-Win2022-GPU-A10'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -64,6 +64,7 @@ parameters:
 
 stages:
 - stage: Precheck_and_extract_commit
+  dependsOn: []
   jobs:
   - job: Precheck_and_extract_commit
     pool:
