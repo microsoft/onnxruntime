@@ -80,7 +80,7 @@ jobs:
         '["self-hosted","1ES.Pool={0}","JobId={1}-{2}-{3}-{4}"{5}]',
         inputs.pool_name, inputs.job_identifier, github.run_id, github.run_number, github.run_attempt,
         inputs.pool_name == 'onnxruntime-github-Ubuntu2204-AMD-CPU' &&
-        ',"1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test"' || ''
+        ',"1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64"' || ''
       )) }}
     timeout-minutes: 120
     permissions:

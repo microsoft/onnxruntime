@@ -25,7 +25,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_full_ort-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -90,7 +90,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_minimal_exceptions_disabled-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -168,7 +168,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_minimal_custom_ops-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -225,7 +225,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_minimal_type_reduction-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -281,7 +281,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_minimal_globally_allowed_types-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -338,7 +338,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_extended_minimal-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -426,7 +426,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_regular_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -525,7 +525,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_minimal_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -613,7 +613,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_extended_minimal_no_optional-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
@@ -709,7 +709,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64",
         "JobId=build_extended_minimal_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120

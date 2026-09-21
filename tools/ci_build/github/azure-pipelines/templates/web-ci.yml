@@ -71,7 +71,7 @@ stages:
       name: ${{ parameters.PoolName }}
       ${{ if eq(parameters.PoolName, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
         demands:
-        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
       ${{ if or(contains(parameters.PoolName, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
         os: linux
     variables:

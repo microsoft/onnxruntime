@@ -24,7 +24,7 @@ stages:
     pool:
       name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       demands:
-      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
       os: 'linux'
     templateContext:
       sdl:
