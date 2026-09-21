@@ -573,9 +573,11 @@ KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture) 
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Provider(kWebGpuExecutionProvider)
-      .TypeConstraint("T", WebGpuSupportedFloatTypes())
-      .MayInplace(3, 1)
-      .MayInplace(4, 2);
+      .TypeConstraint("T", WebGpuSupportedFloatTypes());
+  // Deliberately no MayInplace(past_key -> present_key) alias: present is only the same size as
+  // past when total_sequence_length says so at runtime, and shape inference cannot prove that, so
+  // the planner would alias buffers that a growing KV cache then needs at different sizes.
+  // ComputeInternal detects a genuinely shared buffer by comparing DataRaw() instead.
 
   // Only set InputMemoryType to CPU when graph capture is disabled
   if (!enable_graph_capture) {
