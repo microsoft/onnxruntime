@@ -424,8 +424,8 @@ static bool CanTransposeInputWithQDQ(const api::GraphRef& graph, std::string_vie
   }
 
   auto quant_info = GetQuantizationInfo(graph, *producer);
-  return quant_info && (quant_info->mode != QuantizationMode::kPerAxis ||
-                        IsAxisInRangeForPerm(quant_info->norm_axis, perm));
+  return !quant_info || quant_info->mode != QuantizationMode::kPerAxis ||
+         IsAxisInRangeForPerm(quant_info->norm_axis, perm);
 }
 
 /// <summary>

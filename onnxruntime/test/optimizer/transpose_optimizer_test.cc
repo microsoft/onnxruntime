@@ -5413,11 +5413,12 @@ TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermut
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder(graph);
 
-  auto* dq_input = builder.MakeInput<uint8_t>({1, 1, 1, 1, 3}, {uint8_t{1, 2, 3}});
+  auto* dq_input = builder.MakeInput<uint8_t>(std::vector<int64_t>{1, 1, 1, 1, 3},
+                                              std::vector<uint8_t>{1, 2, 3});
   auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
   auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
-  auto* dq_output = builder.MakeIntermediate<float>({1, 1, 1, 1, 3});
-  auto* output = builder.MakeOutput<float>({1, 1, 1, 1, 3});
+  auto* dq_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, 1, 1, 3});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1, 1, 1, 3});
   auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
   dq.AddAttribute("axis", static_cast<int64_t>(4));
   builder.AddNode("Identity", {dq_output}, {output});
@@ -5444,6 +5445,51 @@ TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermut
   EXPECT_EQ(identity->Inputs()[0], dq_output->Name());
 }
 
+TEST(TransposeOptimizerTests, LayoutTransformAllowsDQWithUnavailableQuantizationInfo) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformAllowsDQWithUnavailableQuantizationInfo", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3},
+                                      std::vector<uint8_t>{1, 2, 3});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>(std::nullopt);
+  auto* output = builder.MakeOutput<float>(std::nullopt);
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Identity", {dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  onnx_transpose_optimization::api::NodeRef* identity = nullptr;
+  for (auto& node : api_graph->Nodes()) {
+    if (node->OpType() == "Identity") {
+      identity = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(identity, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_TRUE(layout_transformation::WrapTransposesAroundNode(*api_graph, *identity, {&perm}, {&perm}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.count("Transpose"), 1);
+  EXPECT_EQ(op_to_count.at("Transpose"), 2);
+  const auto* input_transpose = graph.GetProducerNode(std::string(identity->Inputs()[0]));
+  ASSERT_NE(input_transpose, nullptr);
+  EXPECT_EQ(input_transpose->OpType(), "Transpose");
+  EXPECT_EQ(input_transpose->InputDefs()[0]->Name(), dq_output->Name());
+  EXPECT_EQ(dq.InputDefs()[0]->Name(), dq_input->Name());
+}
+
 TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
   Model model("LayoutTransformPreflightsAllInputsBeforeMutation", false, ModelMetaData(), PathString(),
@@ -5453,7 +5499,7 @@ TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) 
   ModelTestBuilder builder(graph);
 
   auto* valid_input = builder.MakeInput<float>({1, 1}, {1.0f});
-  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3},
+  auto* dq_input = MakeInput<uint8_t>(builder, std::vector<int64_t>{1, 1, 1, 1, 3}, {1, 1, 1, 1, 3},
                                       std::vector<uint8_t>{1, 2, 3});
   auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
   auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
