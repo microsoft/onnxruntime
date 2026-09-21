@@ -525,7 +525,9 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
       axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
     } else if (is_unsqueeze) {
       auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
-      assert(axes.has_value());  // 'axes' are required for Unsqueeze
+      if (!axes.has_value()) {
+        return false;
+      }
 
       const auto dq_output_info = graph.GetValueInfo(dq_node.Outputs()[0]);
       std::optional<size_t> dq_output_rank = dq_output_info->ShapeRank();
