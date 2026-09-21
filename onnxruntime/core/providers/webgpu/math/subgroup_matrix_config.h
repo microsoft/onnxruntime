@@ -99,8 +99,16 @@ inline constexpr std::array<SupportedSubgroupMatrixConfig, 4> supported_subgroup
     {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, false},
 }};
 
-// Returns the first device-supported config matching the operation's preference list.
-// Preference order, rather than adapter or global config-table order, determines the result.
+// Selects a subgroup-matrix configuration supported by both the operation and the device.
+//
+// `is_fp16` restricts candidates to F16 configs when true and F32 configs when false.
+// `preferences` lists the matrix shape and subgroup size combinations implemented by the
+// operation, in performance-preference order. A candidate must also be reported by the adapter
+// and have a usable subgroup size. Fixed-size adapters need no subgroup-size-control feature;
+// adapters reporting a size range must support subgroup-size control.
+//
+// Returns the selected index in `supported_subgroup_matrix_configs`, or `std::nullopt` when no
+// configuration satisfies all requirements.
 std::optional<int32_t> SelectSubgroupMatrixConfig(
     const ComputeContextBase& context,
     bool is_fp16,

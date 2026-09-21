@@ -792,7 +792,9 @@ if(onnxruntime_USE_JSEP)
 endif()
 
 if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_src_patterns
+    ${TEST_SRC_DIR}/providers/webgpu/*
+    ${TEST_SRC_DIR}/providers/webgpu/math/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()

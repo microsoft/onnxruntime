@@ -136,7 +136,9 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
 
     SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(config.subgroupSize * split_k);
-    program.SetSubgroupSize(config.subgroupSize);
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      program.SetSubgroupSize(config.subgroupSize);
+    }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
     program.CacheHint(has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
@@ -203,12 +205,10 @@ Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const
 
 std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context) {
-  // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
-  // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
-  // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
-  // subgroup-size control.
+  // Only run on devices that report the 8x16x16 F16 subgroup-matrix config this
+  // kernel is implemented for and can provide its required subgroup size.
   const auto config_index = SelectSubgroupMatrixConfig(context, /*is_fp16=*/true, {{8, 16, 16, 32}});
-  if (!config_index || !context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+  if (!config_index) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
