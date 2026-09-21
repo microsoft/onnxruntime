@@ -465,7 +465,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
   constexpr int total_sequence_length_index = 6;
   BaseGroupQueryAttentionTypeAndShapeInference(
       ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index,
-      /*total_sequence_length_index=*/6);
+      total_sequence_length_index);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
