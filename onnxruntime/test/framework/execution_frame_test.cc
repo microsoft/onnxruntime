@@ -119,10 +119,16 @@ TEST_F(ExecutionFrameTest, WorkspacePatternCachesAndRejectsOversizedRequests) {
   DataTransferManager dtm;
   ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
+#ifdef ORT_MEMORY_PROFILE
+  MemoryProfiler memory_profiler;
+#endif
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
   const auto& logger = DefaultLoggingManager().DefaultLogger();
   SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm, logger, profiler, options);
+#ifdef ORT_MEMORY_PROFILE
+  state.SetMemoryProfiler(&memory_profiler);
+#endif
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
   ASSERT_TRUE(state.GetEnableMemoryPattern());
   const OpKernel* kernel = state.GetKernel(node.Index());
@@ -156,7 +162,9 @@ TEST_F(ExecutionFrameTest, WorkspacePatternCachesAndRejectsOversizedRequests) {
       OpKernelContextInternal context(state, frame, *kernel, logger, terminate, nullptr);
       ASSERT_STATUS_OK(kernel->Compute(&context));
     }
-    EXPECT_EQ(*frame.GetMLValue(output_index).Get<Tensor>().Data<bool>(), run != 0 && requested_bytes <= 128);
+    ASSERT_STATUS_OK(frame.GetOutputs(outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(*outputs[0].Get<Tensor>().Data<bool>(), run != 0 && requested_bytes <= 128);
 
     if (frame.HasMemoryPatternPlanner()) {
       MemoryPatternGroup patterns;

@@ -2888,13 +2888,15 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
-    // now that we have all the execution providers, create the session state
+#if !defined(ORT_MINIMAL_BUILD)
     const bool enable_static_workspace_preallocation =
         session_options_.config_options.GetConfigOrDefault(
             kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
     ORT_RETURN_IF(enable_static_workspace_preallocation &&
                       session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL,
                   "Static workspace preallocation requires sequential execution mode.");
+#endif
+    // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,

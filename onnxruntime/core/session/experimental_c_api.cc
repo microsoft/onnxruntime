@@ -65,9 +65,15 @@ ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
                     _Out_ int64_t* reclaimed_bytes,
                     _Out_ size_t* arena_count) {
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF(checkpoint == nullptr, ORT_INVALID_ARGUMENT, "checkpoint is null");
-  ORT_API_RETURN_IF(reclaimed_bytes == nullptr, ORT_INVALID_ARGUMENT, "reclaimed_bytes is null");
-  ORT_API_RETURN_IF(arena_count == nullptr, ORT_INVALID_ARGUMENT, "arena_count is null");
+  if (checkpoint == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "checkpoint is null");
+  }
+  if (reclaimed_bytes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "reclaimed_bytes is null");
+  }
+  if (arena_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "arena_count is null");
+  }
 #if !defined(ORT_MINIMAL_BUILD)
   int64_t reclaimed = 0;
   size_t count = 0;
