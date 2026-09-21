@@ -2774,6 +2774,53 @@ TEST(GroupQueryAttentionTest, SeqlensKWithinCosCache_Rotary) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(GroupQueryAttentionTest, MismatchedRotaryCacheShapes) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int half_rotary_dimension = head_size / 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddInput<float>("cos_cache", {2, half_rotary_dimension},
+                         std::vector<float>(2 * half_rotary_dimension, 1.0f));
+  tester.AddInput<float>("sin_cache", {1, half_rotary_dimension},
+                         std::vector<float>(half_rotary_dimension, 0.0f));
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "cos_cache and sin_cache must have the same shape",
+             {}, nullptr, &execution_providers);
+}
+
 // Multi-batch test: one valid and one OOB seqlens_k value.
 // Verifies the validation loop correctly identifies the offending batch index.
 TEST(GroupQueryAttentionTest, SeqlensKExceedsCosCache_MultiBatch) {
@@ -4011,8 +4058,7 @@ static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOption
 
 struct PackedQkvRotaryCacheBoundsTestOptions {
   int32_t seqlens_k = 2;
-  int cos_cache_length = 4;
-  int sin_cache_length = 2;
+  int cos_sin_cache_length = 2;
   bool verify_first_present_row = false;
 };
 
@@ -4050,10 +4096,10 @@ static void RunPackedQkvRotaryCacheBoundsTest(const PackedQkvRotaryCacheBoundsTe
 
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {options.seqlens_k});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
-  tester.AddInput<float>("cos_cache", {options.cos_cache_length, half_rotary_dimension},
-                         std::vector<float>(options.cos_cache_length * half_rotary_dimension, 1.0f));
-  tester.AddInput<float>("sin_cache", {options.sin_cache_length, half_rotary_dimension},
-                         std::vector<float>(options.sin_cache_length * half_rotary_dimension, 0.0f));
+  tester.AddInput<float>("cos_cache", {options.cos_sin_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.cos_sin_cache_length * half_rotary_dimension, 1.0f));
+  tester.AddInput<float>("sin_cache", {options.cos_sin_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.cos_sin_cache_length * half_rotary_dimension, 0.0f));
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
@@ -4125,14 +4171,9 @@ TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) 
   RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .smooth_softmax = true});
 }
 
-TEST(GroupQueryAttentionTest, PackedRotaryAsymmetricCaches_NoOOB_WebGPU) {
-  RunPackedQkvRotaryCacheBoundsTest({});
-}
-
 TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_PackedRotary_WebGPU) {
   RunPackedQkvRotaryCacheBoundsTest({.seqlens_k = -5,
-                                     .cos_cache_length = 2,
-                                     .sin_cache_length = 2,
+                                     .cos_sin_cache_length = 2,
                                      .verify_first_present_row = true});
 }
 
@@ -4201,13 +4242,12 @@ struct IndirectDispatchGraphCaptureTestOptions {
   int local_window_size = -1;
   bool enable_graph_capture = true;
   std::vector<float>* replay_output = nullptr;
-  bool use_asymmetric_rotary_caches = false;
 };
 
 static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptureTestOptions& options) {
   const auto& [do_rotary, kv_cache_quant_bits, enable_multi_rotary_cache,
                rotary_interleaved, sequence_length, local_window_size,
-               enable_graph_capture, replay_output, use_asymmetric_rotary_caches] = options;
+               enable_graph_capture, replay_output] = options;
   constexpr int batch_size = 2;
   constexpr int short_total_sequence_length = 2;
   constexpr int cache_sequence_length = 130;  // Three 64-token attention tiles.
@@ -4330,19 +4370,15 @@ static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptu
   constexpr int half_rotary_dim = head_size / 2;
   const int large_rotary_cache_length = cache_sequence_length + 1;
   auto cos_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 37);
-  int cos_cache_length = large_rotary_cache_length;
-  int sin_cache_length = use_asymmetric_rotary_caches ? short_total_sequence_length
-                                                      : large_rotary_cache_length;
-  auto sin_cache_data = make_data(sin_cache_length * half_rotary_dim, 0.001f, 41);
+  int cos_sin_cache_length = large_rotary_cache_length;
+  auto sin_cache_data = make_data(cos_sin_cache_length * half_rotary_dim, 0.001f, 41);
   if (enable_multi_rotary_cache) {
-    ASSERT_FALSE(use_asymmetric_rotary_caches);
     const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
     cos_cache_data.insert(cos_cache_data.begin(), small_cache_size,
                           std::numeric_limits<float>::quiet_NaN());
     sin_cache_data.insert(sin_cache_data.begin(), small_cache_size,
                           std::numeric_limits<float>::quiet_NaN());
-    cos_cache_length += multi_rotary_cache_concat_offset;
-    sin_cache_length += multi_rotary_cache_concat_offset;
+    cos_sin_cache_length += multi_rotary_cache_concat_offset;
   }
 
   auto make_gpu_value = [&](const void* data, MLDataType data_type, const TensorShape& shape) {
@@ -4365,8 +4401,8 @@ static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptu
   const TensorShape cache_shape{batch_size, kv_num_heads, cache_sequence_length, cache_head_size};
   const TensorShape seqlens_shape{batch_size};
   const TensorShape total_sequence_length_shape{1};
-  const TensorShape cos_cache_shape{cos_cache_length, half_rotary_dim};
-  const TensorShape sin_cache_shape{sin_cache_length, half_rotary_dim};
+  const TensorShape cos_cache_shape{cos_sin_cache_length, half_rotary_dim};
+  const TensorShape sin_cache_shape{cos_sin_cache_length, half_rotary_dim};
   auto query_value = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(), query_shape);
   auto key_value = make_gpu_value(key_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
   auto value_value = make_gpu_value(value_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
@@ -4603,24 +4639,6 @@ TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
                                        .replay_output = &eager_output});
   ExpectOutputsMatch(captured_output, eager_output, 2e-3f,
                      "WebGPU_GraphCapture_PackedRotaryLocalWindow");
-}
-
-TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
-  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
-                                       .kv_cache_quant_bits = 0,
-                                       .use_asymmetric_rotary_caches = true});
-}
-
-TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
-  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
-                                       .kv_cache_quant_bits = 4,
-                                       .use_asymmetric_rotary_caches = true});
-}
-
-TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_GraphCapture_PackedRotaryAsymmetricCaches_NoOOB) {
-  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
-                                       .kv_cache_quant_bits = 8,
-                                       .use_asymmetric_rotary_caches = true});
 }
 
 // The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
