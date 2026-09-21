@@ -417,6 +417,9 @@ TEST(OrtModelTest, AddControlEdgeMarksResolvedGraphDirty) {
   ASSERT_TRUE(graph.AddControlEdge(1, 0));
   EXPECT_TRUE(graph.GraphResolveNeeded());
   EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
 }
 #endif
 

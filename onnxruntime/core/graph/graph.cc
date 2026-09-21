@@ -1750,11 +1750,6 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
         std::remove(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
                     std::pair{src_node_index, dst_node_index}),
         ort_format_control_edges_.end());
-    ort_format_control_edge_nodes_.clear();
-    for (const auto& [control_src_node_index, control_dst_node_index] : ort_format_control_edges_) {
-      ort_format_control_edge_nodes_.insert(control_src_node_index);
-      ort_format_control_edge_nodes_.insert(control_dst_node_index);
-    }
     return;
   }
 
@@ -3807,7 +3802,10 @@ Status Graph::VerifyInputAndInitializerNames() {
 }
 
 bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
-  return ort_format_control_edge_nodes_.contains(node_index);
+  return std::any_of(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+                     [node_index](const auto& control_edge) {
+                       return control_edge.first == node_index || control_edge.second == node_index;
+                     });
 }
 
 void Graph::RestoreOrtFormatControlEdges() {
@@ -5072,19 +5070,12 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  if (ort_format_control_edge_nodes_.contains(p_index)) {
-    ort_format_control_edges_.erase(
-        std::remove_if(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-                       [p_index](const auto& control_edge) {
-                         return control_edge.first == p_index || control_edge.second == p_index;
-                       }),
-        ort_format_control_edges_.end());
-    ort_format_control_edge_nodes_.clear();
-    for (const auto& [src_node_index, dst_node_index] : ort_format_control_edges_) {
-      ort_format_control_edge_nodes_.insert(src_node_index);
-      ort_format_control_edge_nodes_.insert(dst_node_index);
-    }
-  }
+  ort_format_control_edges_.erase(
+      std::remove_if(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+                     [p_index](const auto& control_edge) {
+                       return control_edge.first == p_index || control_edge.second == p_index;
+                     }),
+      ort_format_control_edges_.end());
 
   return ReleaseNode(p_index);
 }
@@ -5101,6 +5092,11 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   }
 
   Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
+  const auto control_edge = std::pair{src_node_index, dst_node_index};
+  if (std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), control_edge) ==
+      ort_format_control_edges_.end()) {
+    ort_format_control_edges_.push_back(control_edge);
+  }
   SetGraphResolveNeeded();
   SetGraphProtoSyncNeeded();
 
@@ -7073,8 +7069,6 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
       if (edge->GetSrcArgIndex() == INT_MAX && edge->GetDstArgIndex() == INT_MAX) {
         ort_format_control_edges_.push_back({node.Index(), edge->GetNode().Index()});
-        ort_format_control_edge_nodes_.insert(node.Index());
-        ort_format_control_edge_nodes_.insert(edge->GetNode().Index());
       }
     }
   }
