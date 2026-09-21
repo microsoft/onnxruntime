@@ -11,6 +11,7 @@
 
 namespace onnxruntime {
 namespace test {
+namespace {
 
 TEST(NchwcOpsTest, ReorderOutputRejectsUnalignedInputChannels) {
   const int64_t block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
@@ -57,6 +58,11 @@ void RunInvalidNchwcConvTest(const std::vector<int64_t>& input_shape,
 }
 
 TEST(NchwcOpsTest, ReorderOutputRejectsExtraChannelBlock) {
+  const int64_t block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  if (block_size <= 1) {
+    GTEST_SKIP() << "NCHWc blocking is not enabled on this platform.";
+  }
+
   const int64_t input_channels = 2 * block_size;
   OpTester test("ReorderOutput", 1, kMSNchwcDomain);
   test.AddAttribute("channels", block_size);
@@ -70,6 +76,8 @@ TEST(NchwcOpsTest, ReorderOutputRejectsExtraChannelBlock) {
               "Input channels must match the NCHWc block-aligned channel count.")
       .ConfigEp(DefaultCpuExecutionProvider())
       .RunWithConfig();
+}
+
 }  // namespace
 
 TEST(NchwcOpsTest, ConvRejectsUnalignedOutputChannels) {
