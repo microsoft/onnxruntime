@@ -376,6 +376,7 @@ Return Value:
         this->RopeDispatch = &MlasRopeDispatchRvv;
         this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
         this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {

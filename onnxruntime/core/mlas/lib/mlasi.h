@@ -1714,6 +1714,7 @@ extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchSve;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchRvv;
 
 //
 // Quantized depthwise convolution kernels.
