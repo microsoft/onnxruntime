@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/moe_profiler.h"
+#endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
@@ -10,6 +13,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/common/narrow.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -629,6 +633,12 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return Status::OK();
+  }
+
   // If scales are prepacked, they are constant initializers.
   if (input_idx == 3) {
     return Status::OK();
@@ -920,6 +930,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
+  fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
+  fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
+  fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
+              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
   ORT_ENFORCE(block_size_ >= 0);
 
@@ -1207,9 +1226,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
-      8 / expert_weight_bits_,
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Mixed-width QMoE execution is not yet implemented on CPU.");
+  }
 
   if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
@@ -1237,6 +1265,18 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t hidden_size = moe_params.hidden_size;
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
+#if !defined(ORT_MINIMAL_BUILD)
+  const size_t routing_element_count =
+      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
+  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  const TimePoint instrumentation_start =
+      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+#endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
                     "QMoE attribute 'k' must be <= num_experts; got k=", k_,
@@ -1426,8 +1466,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   //    GEMM is a GEMV that MLAS does not thread internally, so this is the only way to keep the
   //    cores busy.
   //  - QNBit path: the MatMulNBits kernels thread a single GEMM over N (and M), so when fewer experts
-  //    are active than there are threads (decode: top_k experts) the experts run sequentially and
-  //    every GEMM gets the whole pool instead of leaving most of it idle.
+  //    are active than there are threads (decode: top_k experts) the expert loop is serialized and the
+  //    experts are instead batched into one MLAS dispatch (see the grouped path below), which keeps
+  //    the whole pool busy without paying a thread-pool barrier per expert.
   // This must be decided BEFORE the per-thread workspaces below, which are sized by num_expert_threads.
   int num_expert_threads = std::max(1, std::min(num_active_experts, max_expert_threads));
   if (qnbit_fc1_.packed != nullptr && qnbit_fc2_.packed != nullptr && num_active_experts < max_expert_threads) {
@@ -1652,11 +1693,188 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                               gemm_workspace, gemm_tp, &mlas_backend_kernel_selector_config_);
   };
 
+  // Grouped expert GEMMs: batch the active experts into as few MLAS dispatches as possible rather
+  // than one per expert, removing the 2 * num_active_experts thread-pool barriers per layer. MLAS
+  // takes a single M/N/K per batch, so experts are bucketed by token count; decode (one token per
+  // active expert) collapses to a single bucket. This is only reached when the expert loop is
+  // already serial: with at least as many active experts as threads, running one expert per thread
+  // above is faster than batching.
+  InlinedVector<int64_t> grouped_experts;
+  bool use_grouped_qnbit = use_qnbit_fc1 && use_qnbit_fc2 && num_expert_threads == 1 &&
+                           activation_type_ == ActivationType::SwiGLU;
+  if (use_grouped_qnbit) {
+    grouped_experts.reserve(static_cast<size_t>(num_active_experts));
+    SafeInt<size_t> total_grouped_rows = 0;
+    for (int64_t i = 0; i < num_experts; ++i) {
+      const size_t expert_rows = expert_token_map[static_cast<size_t>(i)].size();
+      if (expert_rows > 0) {
+        grouped_experts.push_back(i);
+        total_grouped_rows += expert_rows;
+      }
+    }
+
+    // Bound the additional route-wide staging matrices. Large prefills retain the per-expert
+    // path, whose scratch size is based on the largest expert rather than all routed rows.
+    constexpr size_t kMaxGroupedStagingBytes = 8 * 1024 * 1024;
+    const size_t staging_bytes_per_row = SafeInt<size_t>(hidden_size) * 2 * sizeof(float) +
+                                         SafeInt<size_t>(inter_size) * 3 * sizeof(float);
+    use_grouped_qnbit = grouped_experts.size() > 1 &&
+                        total_grouped_rows <= kMaxGroupedStagingBytes / staging_bytes_per_row;
+  }
+
+  if (use_grouped_qnbit) {
+    const size_t num_grouped = grouped_experts.size();
+    const size_t n1 = static_cast<size_t>(fc1_out_features);
+    const size_t k1 = static_cast<size_t>(hidden_size);
+    const size_t n2 = static_cast<size_t>(hidden_size);
+    const size_t k2 = static_cast<size_t>(inter_size);
+
+    // Experts sharing a token count must be contiguous so each bucket is one batched call.
+    std::sort(grouped_experts.begin(), grouped_experts.end(), [&](int64_t a, int64_t b) {
+      return expert_token_map[static_cast<size_t>(a)].size() < expert_token_map[static_cast<size_t>(b)].size();
+    });
+    InlinedVector<size_t> row_offset(num_grouped + 1, 0);
+    for (size_t g = 0; g < num_grouped; ++g) {
+      row_offset[g + 1] = row_offset[g] + expert_token_map[static_cast<size_t>(grouped_experts[g])].size();
+    }
+    const size_t total_rows = row_offset[num_grouped];
+
+    auto a1_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * k1);
+    auto c1_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * n1);
+    auto a2_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * k2);
+    auto c2_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * n2);
+
+    // fp16 bias needs one fp32 copy per active expert; fp32 bias is passed straight from the initializer.
+    IAllocatorUniquePtr<float> grouped_bias;
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      if (has_fc1_bias || has_fc2_bias) {
+        grouped_bias = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(num_grouped) * (n1 + n2));
+        for (size_t g = 0; g < num_grouped; ++g) {
+          const int64_t e = grouped_experts[g];
+          float* dst = grouped_bias.get() + g * (n1 + n2);
+          if (has_fc1_bias) {
+            MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(fc1_bias_data + e * fc1_out_features), dst, n1);
+          }
+          if (has_fc2_bias) {
+            MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(fc2_bias_data + e * hidden_size), dst + n1, n2);
+          }
+        }
+      }
+    }
+
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_grouped), [&](std::ptrdiff_t g_idx) {
+      const size_t g = static_cast<size_t>(g_idx);
+      const auto& routes = expert_token_map[static_cast<size_t>(grouped_experts[g])];
+      float* dst = a1_all.get() + row_offset[g] * k1;
+      for (size_t i = 0; i < routes.size(); ++i) {
+        const int64_t token_idx = routes[i] / k_;
+        std::memcpy(dst + i * k1, input_float + token_idx * hidden_size, k1 * sizeof(float));
+      }
+    });
+
+    // [begin, end) ranges over grouped_experts that share a token count.
+    InlinedVector<std::pair<size_t, size_t>> buckets;
+    for (size_t b0 = 0; b0 < num_grouped;) {
+      const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[b0])].size();
+      size_t b1 = b0 + 1;
+      while (b1 < num_grouped && expert_token_map[static_cast<size_t>(grouped_experts[b1])].size() == rows) {
+        ++b1;
+      }
+      buckets.emplace_back(b0, b1);
+      b0 = b1;
+    }
+
+    size_t grouped_ws_size = 0;
+    for (const auto& bucket : buckets) {
+      const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[bucket.first])].size();
+      const size_t count = bucket.second - bucket.first;
+      grouped_ws_size = std::max({grouped_ws_size,
+                                  MlasQNBitGemmBatchWorkspaceSize(rows, n1, k1, count, qnbit_bits, qnbit_blk,
+                                                                  qnbit_fc1_.has_zero_point, qnbit_compute_type_,
+                                                                  &mlas_backend_kernel_selector_config_),
+                                  MlasQNBitGemmBatchWorkspaceSize(rows, n2, k2, count, qnbit_bits, qnbit_blk,
+                                                                  qnbit_fc2_.has_zero_point, qnbit_compute_type_,
+                                                                  &mlas_backend_kernel_selector_config_)});
+    }
+    IAllocatorUniquePtr<std::byte> grouped_ws;
+    if (grouped_ws_size > 0) {
+      grouped_ws = IAllocator::MakeUniquePtr<std::byte>(allocator, grouped_ws_size);
+    }
+
+    InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> gemm_params(num_grouped);
+    auto run_buckets = [&](const QNBitPackedExperts& packed, const float* scales_base, const uint8_t* zp_base,
+                           int64_t zp_expert_stride, size_t n, size_t k, const float* a_all, float* c_all,
+                           bool is_fc1) {
+      for (const auto& bucket : buckets) {
+        const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[bucket.first])].size();
+        const size_t count = bucket.second - bucket.first;
+        for (size_t g = bucket.first; g < bucket.second; ++g) {
+          const int64_t e = grouped_experts[g];
+          auto& p = gemm_params[g - bucket.first];
+          p = MLAS_QNBIT_GEMM_DATA_PARAMS<float>{};
+          p.A = a_all + row_offset[g] * k;
+          p.lda = k;
+          const std::byte* b = static_cast<const std::byte*>(packed.packed.get()) +
+                               static_cast<size_t>(e) * packed.packed_size_per_expert;
+          p.QuantBDataWorkspace = b;
+          p.PackedQuantBData = b;
+          p.QuantBScale = packed.scales_packed ? nullptr : scales_base + static_cast<size_t>(e) * n * (k / qnbit_blk);
+          p.QuantBZeroPoint = packed.has_zero_point ? zp_base + static_cast<size_t>(e * zp_expert_stride) : nullptr;
+          if (is_fc1 ? has_fc1_bias : has_fc2_bias) {
+            if constexpr (std::is_same_v<T, MLFloat16>) {
+              p.Bias = grouped_bias.get() + g * (n1 + n2) + (is_fc1 ? 0 : n1);
+            } else {
+              const T* bias_base = is_fc1 ? fc1_bias_data : fc2_bias_data;
+              p.Bias = reinterpret_cast<const float*>(bias_base) + static_cast<size_t>(e) * n;
+            }
+          }
+          p.C = c_all + row_offset[g] * n;
+          p.ldc = n;
+        }
+        MlasQNBitGemmBatch<float>(rows, n, k, count, qnbit_bits, qnbit_blk, qnbit_compute_type_,
+                                  gemm_params.data(), grouped_ws.get(), tp,
+                                  &mlas_backend_kernel_selector_config_);
+      }
+    };
+
+    run_buckets(qnbit_fc1_, qnbit_fc1_scales, fc1_zp_data, fc1_zp_expert_stride, n1, k1,
+                a1_all.get(), c1_all.get(), /*is_fc1*/ true);
+
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(total_rows), [&](std::ptrdiff_t idx) {
+      const size_t row = static_cast<size_t>(idx);
+      ApplySwiGLUActivation(c1_all.get() + row * n1, a2_all.get() + row * k2,
+                            inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+    });
+
+    run_buckets(qnbit_fc2_, qnbit_fc2_scales, fc2_zp_data, fc2_zp_expert_stride, n2, k2,
+                a2_all.get(), c2_all.get(), /*is_fc1*/ false);
+
+    for (size_t g = 0; g < num_grouped; ++g) {
+      const auto& routes = expert_token_map[static_cast<size_t>(grouped_experts[g])];
+      const float* src = c2_all.get() + row_offset[g] * n2;
+      for (size_t i = 0; i < routes.size(); ++i) {
+        const int64_t route_idx = routes[i];
+        const int64_t token_idx = route_idx / k_;
+        if (token_idx < 0 || token_idx >= num_tokens) continue;
+        const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
+        if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) continue;
+        const float weight = route_scale[route_idx];
+        float* dest = thread_local_outputs + buffer_offset;
+        for (int64_t j = 0; j < hidden_size; ++j) {
+          dest[j] += weight * src[i * n2 + static_cast<size_t>(j)];
+        }
+      }
+    }
+  }
+
+  // The grouped path above already produced every active expert's contribution.
   std::vector<std::pair<int64_t, size_t>> expert_workload;
-  for (int64_t i = 0; i < num_experts; ++i) {
-    const size_t token_count = expert_token_map[static_cast<size_t>(i)].size();
-    if (token_count > 0) {
-      expert_workload.emplace_back(i, token_count);
+  if (!use_grouped_qnbit) {
+    for (int64_t i = 0; i < num_experts; ++i) {
+      const size_t token_count = expert_token_map[static_cast<size_t>(i)].size();
+      if (token_count > 0) {
+        expert_workload.emplace_back(i, token_count);
+      }
     }
   }
 
@@ -2318,6 +2536,15 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   } else {
     accumulate(output->template MutableData<T>());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (instrumentation != nullptr) {
+    RecordMoeRoutingEvent(*instrumentation, Node(),
+                          gsl::make_span(route_expert, routing_element_count),
+                          gsl::make_span(route_scale, routing_element_count),
+                          num_tokens, k_, instrumentation_start);
+  }
+#endif
 
   return Status::OK();
 }

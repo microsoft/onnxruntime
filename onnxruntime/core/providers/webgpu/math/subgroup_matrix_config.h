@@ -6,12 +6,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
+#include <optional>
 #include <string_view>
 
-#include "core/providers/webgpu/compute_context.h"
+#include <gsl/span>
+
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+class ComputeContextBase;
 
 // Human-readable names for wgpu::SubgroupMatrixComponentType, indexed by the enum value.
 constexpr std::string_view ComponentTypeName[] = {"unknown", "f32", "f16", "u32", "i32"};
@@ -66,6 +72,13 @@ struct SupportedSubgroupMatrixConfig {
   }
 };
 
+struct SubgroupMatrixConfigPreference {
+  uint32_t M;
+  uint32_t N;
+  uint32_t K;
+  uint32_t subgroupSize;
+};
+
 // A fixed-size adapter already guarantees the required size. An adapter exposing a range needs
 // subgroup-size control so the kernel can select its required size instead of relying on the
 // implementation's choice.
@@ -86,10 +99,29 @@ inline constexpr std::array<SupportedSubgroupMatrixConfig, 4> supported_subgroup
     {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, false},
 }};
 
-// Returns true and sets config_index (into supported_subgroup_matrix_configs) when the device
-// reports one of the supported configs matching the requested output precision. is_fp16 selects
-// F16-output configs; otherwise F32-output configs.
-bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_fp16, int32_t& config_index);
+// Selects a subgroup-matrix configuration supported by both the operation and the device.
+//
+// `is_fp16` restricts candidates to F16 configs when true and F32 configs when false.
+// `preferences` lists the matrix shape and subgroup size combinations implemented by the
+// operation, in performance-preference order. A candidate must also be reported by the adapter
+// and have a usable subgroup size. Fixed-size adapters need no subgroup-size-control feature;
+// adapters reporting a size range must support subgroup-size control.
+//
+// Returns the selected index in `supported_subgroup_matrix_configs`, or `std::nullopt` when no
+// configuration satisfies all requirements.
+std::optional<int32_t> SelectSubgroupMatrixConfig(
+    const ComputeContextBase& context,
+    bool is_fp16,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+
+namespace detail {
+
+// Separated from device capability discovery for focused preference-order testing.
+std::optional<int32_t> SelectSubgroupMatrixConfigFromCandidates(
+    gsl::span<const int32_t> candidate_indices,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+
+}  // namespace detail
 
 }  // namespace webgpu
 }  // namespace onnxruntime

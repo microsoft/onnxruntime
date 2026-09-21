@@ -272,7 +272,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
-      8 / expert_weight_bits_, is_fused_swiglu, block_size_));
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
+      is_fused_swiglu, block_size_));
   ORT_RETURN_IF(router_weights && router_weights->Shape() != router_logits->Shape(),
                 "router_weights must have the same shape as router_probs; got ",
                 router_weights->Shape(), " and ", router_logits->Shape());
@@ -286,6 +289,13 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_NOT(moe_params.num_rows != 1 ||
                         (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
                     "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Mixed-width QMoE execution is not yet implemented on WebGPU.");
+  }
 
   const auto& input_shape = hidden_state->Shape();
 
