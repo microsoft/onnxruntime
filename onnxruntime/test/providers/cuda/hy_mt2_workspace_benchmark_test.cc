@@ -1069,64 +1069,64 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
               << rate_percent(decode_stalls, decode_latencies_ms.size());
   }
   std::cout
-            << " baseline_device_used_mib=" << to_mib(*baseline_used_bytes)
-            << " initialization_peak_device_used_mib="
-            << to_mib(initialization_peak_bytes)
-            << " initialization_peak_delta_mib="
-            << to_mib(delta_from_baseline(initialization_peak_bytes))
-            << " post_initialize_device_used_mib=" << to_mib(*after_initialize_used_bytes)
-            << " inference_peak_device_used_mib="
-            << to_mib(inference_peak_bytes)
-            << " inference_peak_delta_mib="
-            << to_mib(delta_from_baseline(inference_peak_bytes))
-            << " wddm_baseline_local_mib=" << to_mib(wddm_baseline_local_bytes)
-            << " wddm_initialization_peak_local_mib="
-            << to_mib(wddm_initialization_peak_local_bytes)
-            << " wddm_initialization_peak_delta_mib="
-            << to_mib(wddm_initialization_peak_local_bytes -
-                      std::min(wddm_initialization_peak_local_bytes,
-                               wddm_baseline_local_bytes))
-            << " wddm_post_initialize_local_mib="
-            << to_mib(wddm_after_initialize_local_bytes)
-            << " wddm_pre_inference_local_mib="
-            << to_mib(wddm_before_inference_local_bytes)
-            << " wddm_inference_peak_local_mib="
-            << to_mib(wddm_inference_peak_local_bytes)
-            << " wddm_inference_peak_delta_mib="
-            << to_mib(wddm_inference_peak_local_bytes -
-                      std::min(wddm_inference_peak_local_bytes,
-                               wddm_before_inference_local_bytes))
-            << " post_initialize_total_allocated_bytes="
-            << post_initialize_breakdown.total_allocated_bytes
-            << " post_initialize_reserved_bytes=" << post_initialize_breakdown.reserved_bytes
-            << " post_initialize_bfc_region_bytes=" << post_initialize_breakdown.bfc_region_bytes
-            << " post_initialize_bytes_in_use=" << post_initialize_breakdown.bytes_in_use
-            << " post_initialize_arena_slack_bytes=" << post_initialize_breakdown.arena_slack_bytes
-            << " post_initialize_internal_fragmentation_bytes="
-            << post_initialize_breakdown.internal_fragmentation_bytes
-            << " post_initialize_internal_fragmentation_ratio="
-            << post_initialize_breakdown.internal_fragmentation_ratio
-            << " post_warmup_total_allocated_bytes="
-            << post_warmup_breakdown.total_allocated_bytes
-            << " post_warmup_arena_slack_bytes=" << post_warmup_breakdown.arena_slack_bytes
-            << " shrink_reclaimed_bytes=" << shrink_reclaimed_bytes
-            << " post_shrink_total_allocated_bytes="
-            << post_shrink_breakdown.total_allocated_bytes
-            << " post_shrink_arena_slack_bytes=" << post_shrink_breakdown.arena_slack_bytes
-            << " measurement_new_arena_bytes=" << measurement_new_arena_bytes
-            << " arena_bytes_in_use=" << allocator_stats.bytes_in_use
-            << " arena_total_allocated_bytes=" << allocator_stats.total_allocated_bytes
-            << " arena_reserved_bytes=" << final_breakdown.reserved_bytes
-            << " arena_bfc_region_bytes=" << final_breakdown.bfc_region_bytes
-            << " arena_slack_bytes=" << final_breakdown.arena_slack_bytes
-            << " arena_internal_fragmentation_bytes="
-            << final_breakdown.internal_fragmentation_bytes
-            << " arena_internal_fragmentation_ratio="
-            << final_breakdown.internal_fragmentation_ratio
-            << " arena_max_bytes_in_use=" << allocator_stats.max_bytes_in_use
-            << " arena_num_allocs=" << allocator_stats.num_allocs
-            << " arena_num_reserves=" << allocator_stats.num_reserves
-            << std::endl;
+      << " baseline_device_used_mib=" << to_mib(*baseline_used_bytes)
+      << " initialization_peak_device_used_mib="
+      << to_mib(initialization_peak_bytes)
+      << " initialization_peak_delta_mib="
+      << to_mib(delta_from_baseline(initialization_peak_bytes))
+      << " post_initialize_device_used_mib=" << to_mib(*after_initialize_used_bytes)
+      << " inference_peak_device_used_mib="
+      << to_mib(inference_peak_bytes)
+      << " inference_peak_delta_mib="
+      << to_mib(delta_from_baseline(inference_peak_bytes))
+      << " wddm_baseline_local_mib=" << to_mib(wddm_baseline_local_bytes)
+      << " wddm_initialization_peak_local_mib="
+      << to_mib(wddm_initialization_peak_local_bytes)
+      << " wddm_initialization_peak_delta_mib="
+      << to_mib(wddm_initialization_peak_local_bytes -
+                std::min(wddm_initialization_peak_local_bytes,
+                         wddm_baseline_local_bytes))
+      << " wddm_post_initialize_local_mib="
+      << to_mib(wddm_after_initialize_local_bytes)
+      << " wddm_pre_inference_local_mib="
+      << to_mib(wddm_before_inference_local_bytes)
+      << " wddm_inference_peak_local_mib="
+      << to_mib(wddm_inference_peak_local_bytes)
+      << " wddm_inference_peak_delta_mib="
+      << to_mib(wddm_inference_peak_local_bytes -
+                std::min(wddm_inference_peak_local_bytes,
+                         wddm_before_inference_local_bytes))
+      << " post_initialize_total_allocated_bytes="
+      << post_initialize_breakdown.total_allocated_bytes
+      << " post_initialize_reserved_bytes=" << post_initialize_breakdown.reserved_bytes
+      << " post_initialize_bfc_region_bytes=" << post_initialize_breakdown.bfc_region_bytes
+      << " post_initialize_bytes_in_use=" << post_initialize_breakdown.bytes_in_use
+      << " post_initialize_arena_slack_bytes=" << post_initialize_breakdown.arena_slack_bytes
+      << " post_initialize_internal_fragmentation_bytes="
+      << post_initialize_breakdown.internal_fragmentation_bytes
+      << " post_initialize_internal_fragmentation_ratio="
+      << post_initialize_breakdown.internal_fragmentation_ratio
+      << " post_warmup_total_allocated_bytes="
+      << post_warmup_breakdown.total_allocated_bytes
+      << " post_warmup_arena_slack_bytes=" << post_warmup_breakdown.arena_slack_bytes
+      << " shrink_reclaimed_bytes=" << shrink_reclaimed_bytes
+      << " post_shrink_total_allocated_bytes="
+      << post_shrink_breakdown.total_allocated_bytes
+      << " post_shrink_arena_slack_bytes=" << post_shrink_breakdown.arena_slack_bytes
+      << " measurement_new_arena_bytes=" << measurement_new_arena_bytes
+      << " arena_bytes_in_use=" << allocator_stats.bytes_in_use
+      << " arena_total_allocated_bytes=" << allocator_stats.total_allocated_bytes
+      << " arena_reserved_bytes=" << final_breakdown.reserved_bytes
+      << " arena_bfc_region_bytes=" << final_breakdown.bfc_region_bytes
+      << " arena_slack_bytes=" << final_breakdown.arena_slack_bytes
+      << " arena_internal_fragmentation_bytes="
+      << final_breakdown.internal_fragmentation_bytes
+      << " arena_internal_fragmentation_ratio="
+      << final_breakdown.internal_fragmentation_ratio
+      << " arena_max_bytes_in_use=" << allocator_stats.max_bytes_in_use
+      << " arena_num_allocs=" << allocator_stats.num_allocs
+      << " arena_num_reserves=" << allocator_stats.num_reserves
+      << std::endl;
 }
 
 }  // namespace test
