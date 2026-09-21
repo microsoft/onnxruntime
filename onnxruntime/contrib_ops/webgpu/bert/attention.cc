@@ -119,7 +119,7 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   if (has_seqlen_k) {
     ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
-    ss << "total_sequence_length = min(raw_total_sequence_length, uniforms.present_sequence_length);\n";
+    ss << "total_sequence_length = min(raw_total_sequence_length, min(uniforms.present_sequence_length, total_sequence_length));\n";
     ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
@@ -336,7 +336,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str()
-                            << "let seq_causal_length = " << (has_seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
+                            << "let seq_causal_length = " << (has_seqlen_k_ ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
   if (has_sliding_window) {

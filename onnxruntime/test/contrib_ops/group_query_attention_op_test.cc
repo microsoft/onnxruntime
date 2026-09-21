@@ -3975,7 +3975,8 @@ struct SeparateQkvCacheBoundsTestOptions {
   bool smooth_softmax = false;
   int sequence_length = 2;
   int past_seq_len = 4;
-  int present_seq_len = -1;
+  std::optional<int> present_seq_len = std::nullopt;
+  std::optional<int> total_sequence_length = std::nullopt;
   std::optional<float> expected_output_value = std::nullopt;
   OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess;
   std::string expected_failure_string = {};
@@ -3984,10 +3985,10 @@ struct SeparateQkvCacheBoundsTestOptions {
 static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOptions& options) {
   const auto& [seqlens_k, kv_cache_quant_bits, smooth_softmax,
                sequence_length, past_seq_len, configured_present_seq_len,
+               configured_total_sequence_length,
                expected_output_value, expected_result, expected_failure_string] = options;
-  const int present_seq_len = configured_present_seq_len < 0
-                                  ? past_seq_len + sequence_length
-                                  : configured_present_seq_len;
+  const int present_seq_len = configured_present_seq_len.value_or(past_seq_len + sequence_length);
+  const int total_sequence_length = configured_total_sequence_length.value_or(present_seq_len);
   auto webgpu_ep = CreateWebGpuEpForGqa({.kv_cache_quant_bits = kv_cache_quant_bits});
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
@@ -4021,7 +4022,7 @@ static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOption
   tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
                          std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.5f));
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seqlens_k});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {present_seq_len}, /*is_initializer=*/true);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
 
   tester.AddOptionalInputEdge<float>();    // cos_cache
   tester.AddOptionalInputEdge<float>();    // sin_cache
@@ -4169,6 +4170,18 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQua
 
 TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
   RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .smooth_softmax = true});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_StaticCache_NoOOB_WebGPU) {
+  const float attention_score = 0.1f * 0.2f * std::sqrt(8.0f);
+  const float expected_output_value = 0.3f * std::exp(attention_score) / (std::exp(attention_score) + 1.0f);
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = std::numeric_limits<int32_t>::max(),
+                                 .smooth_softmax = true,
+                                 .sequence_length = 1,
+                                 .past_seq_len = 128,
+                                 .present_seq_len = 128,
+                                 .total_sequence_length = 1,
+                                 .expected_output_value = expected_output_value});
 }
 
 TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_PackedRotary_WebGPU) {
