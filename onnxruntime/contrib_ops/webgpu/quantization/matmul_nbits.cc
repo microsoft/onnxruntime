@@ -133,7 +133,6 @@ Status MatMulNBits::DeclareWorkspaceRequirements(
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   const uint32_t components_a = GetMaxComponents(K);
   const MLDataType input_type =
       input_a_is_fp16_ ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
@@ -143,6 +142,7 @@ Status MatMulNBits::DeclareWorkspaceRequirements(
       SafeInt<size_t>(context.DeviceLimits().minStorageBufferOffsetAlignment);
 
 #if !defined(__wasm__)
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   int32_t subgroup_matrix_config_index = -1;
   if (CanApplySubgroupMatrixMatMulNBits(
           context, accuracy_level_, block_size, batch_count, N, K, nbits, input_a_is_fp16_,

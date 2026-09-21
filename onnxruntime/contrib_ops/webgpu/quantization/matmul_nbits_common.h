@@ -35,9 +35,7 @@ bool CanApplyDP4AMatrixMatMulNBits(bool has_subgroups,
                                    bool has_weight_idx_indirect,
                                    bool output_is_fp32);
 
-#if !defined(__wasm__)
 uint32_t SubgroupMatrixMatMulNBitsTileSizeA(int32_t config_index);
-#endif
 
 /**
  * Generates WebGPU shader code for reading zero points in quantized matrix multiplication
