@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -73,7 +74,10 @@ static void RunGQASeqlensKTest(
     const std::string& expected_message,
     bool provide_past = false,
     int past_seq_len = 0,
-    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    const std::optional<std::vector<int64_t>>& total_seq_len_shape = std::nullopt,
+    const std::optional<std::vector<int32_t>>& total_seq_len_data = std::nullopt,
+    bool total_seq_len_is_initializer = false) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -107,7 +111,9 @@ static void RunGQASeqlensKTest(
                                    ? *seqlens_k_shape
                                    : std::vector<int64_t>{batch_size};
   tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
+  const std::vector<int64_t> ts_shape = total_seq_len_shape.value_or(std::vector<int64_t>{1});
+  const std::vector<int32_t> ts_data = total_seq_len_data.value_or(std::vector<int32_t>{total_seq_len});
+  tester.AddInput<int32_t>("total_sequence_length", ts_shape, ts_data, total_seq_len_is_initializer);
 
   tester.AddOptionalInputEdge<float>();    // cos_cache
   tester.AddOptionalInputEdge<float>();    // sin_cache
@@ -1178,6 +1184,27 @@ TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
       /*past_seq_len=*/0,
       /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
+
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
+// total_sequence_length constant must have a single element.
+TEST(GroupQueryAttentionTest, EmptyTotalSequenceLengthInitializerRejected) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length input must contain a single element",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::nullopt,
+      /*total_seq_len_shape=*/std::vector<int64_t>{0},
+      /*total_seq_len_data=*/std::vector<int32_t>{},
+      /*total_seq_len_is_initializer=*/true);
+}
+#endif  // !ORT_NO_EXCEPTIONS
 
 // Helper to compare two output vectors (non-zero check + element-wise tolerance).
 static void ExpectOutputsMatch(const std::vector<float>& a, const std::vector<float>& b,
@@ -3450,7 +3477,11 @@ TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
 }
 
 #ifdef USE_CUDA
-static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cache = false) {
+static void RunGQACudaCacheAliasingTest(
+    bool use_flash,
+    bool sliding_window_cache = false,
+    int windowed_sequence_length = 0,
+    std::vector<float>* captured_output = nullptr) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
@@ -3467,13 +3498,14 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
     GTEST_SKIP() << "FlashAttention requires SM80 or later";
   }
 
-  constexpr int batch_size = 2;
+  const int batch_size = windowed_sequence_length > 1 ? 1 : 2;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
   constexpr int head_size = 128;
-  constexpr int sequence_length = 1;
+  const int sequence_length = windowed_sequence_length > 0 ? windowed_sequence_length : 1;
   constexpr int past_length = 3;
-  constexpr int total_length = past_length + sequence_length;
+  const bool valid_windowed_cache = windowed_sequence_length > 0;
+  const int total_length = valid_windowed_cache ? 257 : past_length + sequence_length;
   constexpr int cache_capacity = 8;
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
@@ -3508,6 +3540,7 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
 
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSession session(options, GetEnvironment());
   IExecutionProvider* ep = cuda_ep.get();
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
@@ -3550,7 +3583,8 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
   auto query_value = make_gpu_value(make_data(query_shape.Size(), 1), query_shape);
   auto key_value = make_gpu_value(key_data, kv_shape);
   auto value_value = make_gpu_value(value_data, kv_shape);
-  auto seqlens_value = make_gpu_value(std::vector<int32_t>(batch_size, total_length - 1), {batch_size});
+  auto seqlens_value =
+      make_gpu_value(std::vector<int32_t>(batch_size, total_length - sequence_length), {batch_size});
   std::vector<int32_t> total_length_data{total_length};
   OrtValue total_length_value;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
@@ -3559,7 +3593,10 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
   std::vector<std::vector<float>> reference;
   for (bool share_key : {false, true}) {
     for (bool share_value : {false, true}) {
-      if (sliding_window_cache && share_key == share_value) {
+      if (valid_windowed_cache && (!share_key || !share_value)) {
+        continue;
+      }
+      if (sliding_window_cache && !valid_windowed_cache && share_key == share_value) {
         continue;
       }
       SCOPED_TRACE(MakeString("share_key=", share_key, " share_value=", share_value));
@@ -3584,7 +3621,7 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
       testing::internal::CaptureStdout();
       const auto status = session.Run(RunOptions{}, *binding);
       const std::string kernel_log = testing::internal::GetCapturedStdout();
-      if (sliding_window_cache) {
+      if (sliding_window_cache && !valid_windowed_cache) {
         ASSERT_FALSE(status.IsOK());
         EXPECT_NE(status.ErrorMessage().find("sliding_window_cache=1 requires past_key/present_key"), std::string::npos);
         continue;
@@ -3592,6 +3629,21 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
       ASSERT_STATUS_OK(status);
       EXPECT_NE(kernel_log.find(use_flash ? "SdpaKernel=FLASH_ATTENTION" : "SdpaKernel=MATH"), std::string::npos)
           << kernel_log;
+      if (valid_windowed_cache) {
+        // Single-token decode uses resident capacity C; multi-token runs stage C+S.
+        const int expected_effective_kv_length = std::min(
+            total_length, cache_capacity + (sequence_length > 1 ? sequence_length : 0));
+        EXPECT_NE(kernel_log.find(MakeString(
+                      "EffectiveKvLengthBound=", expected_effective_kv_length)),
+                  std::string::npos)
+            << kernel_log;
+      }
+      if (use_flash && valid_windowed_cache) {
+        // The staged extent is C+S=11, which uses the runtime's zero encoding
+        // for no split-KV workspace. Using the raw total length 257 would cross
+        // the 128-token block boundary and select multiple splits.
+        EXPECT_NE(kernel_log.find("NumSplits=0"), std::string::npos) << kernel_log;
+      }
       ASSERT_STATUS_OK(binding->SynchronizeOutputs());
       std::vector<std::vector<float>> actual;
       for (const auto& result : binding->GetOutputs()) {
@@ -3607,19 +3659,31 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
       ASSERT_EQ(actual.size(), 3u);
       for (int batch = 0; batch < batch_size; ++batch) {
         for (int head = 0; head < kv_num_heads; ++head) {
-          for (int token = 0; token < total_length; ++token) {
+          const int expected_cache_length = valid_windowed_cache ? cache_capacity : total_length;
+          for (int token = 0; token < expected_cache_length; ++token) {
             for (int channel = 0; channel < head_size; ++channel) {
               const size_t cache_index = ((batch * kv_num_heads + head) * cache_capacity + token) * head_size + channel;
-              const int new_index = ((batch * sequence_length + token - past_length) * kv_num_heads + head) *
-                                        head_size +
-                                    channel;
+              const int source_token = valid_windowed_cache ? token + sequence_length : token;
+              const bool from_past = source_token < (valid_windowed_cache ? cache_capacity : past_length);
+              const size_t past_index =
+                  ((batch * kv_num_heads + head) * cache_capacity + (from_past ? source_token : 0)) *
+                      head_size +
+                  channel;
+              const int new_token =
+                  from_past ? 0 : source_token - (valid_windowed_cache ? cache_capacity : past_length);
+              const int new_index =
+                  ((batch * sequence_length + new_token) * kv_num_heads + head) * head_size +
+                  channel;
               EXPECT_EQ(actual[1][cache_index],
-                        (token < past_length ? past_key_data[cache_index] : key_data[new_index]).ToFloat());
+                        (from_past ? past_key_data[past_index] : key_data[new_index]).ToFloat());
               EXPECT_EQ(actual[2][cache_index],
-                        (token < past_length ? past_value_data[cache_index] : value_data[new_index]).ToFloat());
+                        (from_past ? past_value_data[past_index] : value_data[new_index]).ToFloat());
             }
           }
         }
+      }
+      if (captured_output != nullptr) {
+        *captured_output = actual[0];
       }
       if (reference.empty()) {
         reference = std::move(actual);
@@ -3644,6 +3708,35 @@ TEST(GroupQueryAttentionTest, CudaCacheAliasingFlash) {
 
 TEST(GroupQueryAttentionTest, CudaCacheAliasingRejectsMixedSlidingWindow) {
   RunGQACudaCacheAliasingTest(false, true);
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedUnfusedSupportsAbsoluteLengthBeyondCacheCapacity) {
+  RunGQACudaCacheAliasingTest(false, true, 1);
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
+#if USE_FLASH_ATTENTION
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires SM80 or later";
+  }
+
+  std::vector<float> flash_output;
+  constexpr int sequence_length = 3;
+  RunGQACudaCacheAliasingTest(true, true, sequence_length, &flash_output);
+  ASSERT_FALSE(flash_output.empty());
+  EXPECT_TRUE(std::all_of(flash_output.begin(), flash_output.end(), [](float value) {
+    return std::isfinite(value);
+  }));
+  EXPECT_TRUE(std::any_of(flash_output.begin(), flash_output.end(), [](float value) {
+    return value != 0.0f;
+  }));
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
 }
 #endif
 

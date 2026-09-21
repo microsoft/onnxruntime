@@ -302,12 +302,12 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     int64_t total_sequence_length_value = 0;
-    const auto* total_sequence_length_data = ctx.getInputData(total_sequence_length_index);
+    const auto* total_sequence_length_data =
+        total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
       const auto& data = ParseData<int32_t>(total_sequence_length_data);
       if (data.size() != 1) {
-        fail_shape_inference("Input ", total_sequence_length_index,
-                             " (total_sequence_length) must contain exactly one element");
+        fail_shape_inference("total_sequence_length input must contain a single element");
       }
       total_sequence_length_value = static_cast<int64_t>(data[0]);
     }
@@ -462,6 +462,7 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
   // capacity C, which is deliberately smaller than total_sequence_length. present therefore keeps
   // the past buffer's own sequence dimension instead of growing with the total sequence length.
   const int64_t sliding_window_cache = getAttribute(ctx, "sliding_window_cache", 0);
+  constexpr int total_sequence_length_index = 6;
   BaseGroupQueryAttentionTypeAndShapeInference(
       ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index,
       /*total_sequence_length_index=*/6);
@@ -470,8 +471,9 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
+  constexpr int total_sequence_length_index = 7;
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
-                                               /*total_sequence_length_index=*/7);
+                                               total_sequence_length_index);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
@@ -3034,7 +3036,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             fail_shape_inference("CausalConvWithState: channels_last must be 0 or 1, got ",
                                  channels_last);
           }
-          if (channels_last == 1 && getAttribute(ctx, "ndim", 1) != 1) {
+
+          const int64_t ndim = getAttribute(ctx, "ndim", 1);
+          if (ndim < 1 || ndim > 3) {
+            fail_shape_inference("CausalConvWithState: ndim must be 1, 2, or 3, got ", ndim);
+          }
+          if (channels_last == 1 && ndim != 1) {
             fail_shape_inference("CausalConvWithState: channels_last requires ndim = 1");
           }
 
@@ -3048,13 +3055,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
-            if (input_shape.dim_size() < 2) {
-              fail_shape_inference("CausalConvWithState: input must have rank >= 2");
+            // weight is always channels-first: (channels, 1, k_1, ..., k_ndim), rank == ndim + 2.
+            if (weight_shape.dim_size() != ndim + 2) {
+              fail_shape_inference("CausalConvWithState: weight must have rank ndim + 2 (",
+                                   ndim + 2, "), got rank ", weight_shape.dim_size());
             }
-            if (weight_shape.dim_size() < 2) {
-              fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
+            if (channels_last == 1) {
+              // (batch_size, sequence_length, d_1, ..., d_n). Check the lower bound.
+              if (input_shape.dim_size() < 3) {
+                fail_shape_inference("CausalConvWithState: channels_last input must have rank >= 3");
+              }
+            } else if (input_shape.dim_size() != ndim + 2) {
+              fail_shape_inference("CausalConvWithState: input must have rank ndim + 2 (",
+                                   ndim + 2, "), got rank ", input_shape.dim_size());
             }
-            int64_t ndim = getAttribute(ctx, "ndim", 1);
             // (kernel_size - 1) * dilation, or an unset dim when kernel_size is symbolic.
             const int last_kernel_dim = weight_shape.dim_size() - 1;
             TensorShapeProto::Dimension state_length;
@@ -3492,6 +3506,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
+with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -3708,9 +3724,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
               const int64_t num_heads_v = value_shape.dim(token_dims).dim_value();
               const int64_t head_size_v = value_shape.dim(token_dims + 1).dim_value();
-              width->set_dim_value(state_update_capacity *
-                                   (num_heads_v + num_heads_k * head_size_qk +
-                                    num_heads_v * head_size_v));
+              if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: head counts and head sizes must be positive");
+              }
+
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_k > max_dimension / head_size_qk ||
+                  num_heads_v > max_dimension / head_size_v) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              const int64_t key_width = num_heads_k * head_size_qk;
+              const int64_t value_width = num_heads_v * head_size_v;
+              if (num_heads_v > max_dimension - key_width) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              const int64_t width_without_capacity = num_heads_v + key_width;
+              if (value_width > max_dimension - width_without_capacity) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              const int64_t per_token_width = width_without_capacity + value_width;
+              if (state_update_capacity > 0 &&
+                  per_token_width > max_dimension / state_update_capacity) {
+                fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
+              }
+              width->set_dim_value(state_update_capacity * per_token_width);
             }
             updateOutputShape(ctx, 2, capsule_shape);
           }
@@ -3798,12 +3836,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
 Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
 
-  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate)
+
+where `gate_activation` is one of:
+- `silu` or `swish`: `z * sigmoid(z)`
+- `sigmoid`: `sigmoid(z)`
 
 The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
 length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
 per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+All arithmetic including gate activation is done in float32 regardless of the tensor type, matching
 the reference implementation, so this replaces the exported
 SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
 single launch.
@@ -3817,6 +3859,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Epsilon added to the mean of squares before the reciprocal square root.",
               AttributeProto::FLOAT,
               1e-5f)
+        .Attr("activation",
+              "Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. "
+              "'swish' is an alias of 'silu'.",
+              AttributeProto::STRING,
+              std::string("silu"))
         .Input(0,
                "X",
                "Input tensor with shape (..., H * C). Normalization is applied over each "

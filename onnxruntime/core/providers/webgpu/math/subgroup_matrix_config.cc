@@ -5,12 +5,21 @@
 
 #include <cstddef>
 
+#include "core/common/inlined_containers.h"
+#include "core/providers/webgpu/compute_context.h"
+
 namespace onnxruntime {
 namespace webgpu {
+namespace {
 
-bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_fp16, int32_t& config_index) {
+using SubgroupMatrixConfigIndices = InlinedVector<int32_t, 8>;
+
+SubgroupMatrixConfigIndices GetSupportedSubgroupMatrixConfigIndices(
+    const ComputeContextBase& context,
+    bool is_fp16) {
+  SubgroupMatrixConfigIndices candidates;
   if (!context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
-    return false;
+    return {};
   }
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
@@ -30,15 +39,48 @@ bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_
           device_config.M == supported_config.M &&
           device_config.N == supported_config.N &&
           device_config.K == supported_config.K &&
-          adapter_info.subgroupMinSize == supported_config.subgroupMinSize &&
-          adapter_info.subgroupMaxSize == supported_config.subgroupMaxSize) {
-        config_index = index;
-        return true;
+          IsSubgroupSizeSupported(adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
+                                  supported_config.subgroupSize,
+                                  context.HasFeature(wgpu::FeatureName::SubgroupSizeControl))) {
+        candidates.push_back(index);
+        break;
       }
     }
     index++;
   }
-  return false;
+  return candidates;
+}
+
+}  // namespace
+
+namespace detail {
+
+std::optional<int32_t> SelectSubgroupMatrixConfigFromCandidates(
+    gsl::span<const int32_t> candidate_indices,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences) {
+  for (const auto& preference : preferences) {
+    for (const int32_t index : candidate_indices) {
+      if (index < 0 || static_cast<size_t>(index) >= supported_subgroup_matrix_configs.size()) {
+        continue;
+      }
+      const auto& config = supported_subgroup_matrix_configs[index];
+      if (config.Is(preference.M, preference.N, preference.K) &&
+          config.subgroupSize == preference.subgroupSize) {
+        return index;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+}  // namespace detail
+
+std::optional<int32_t> SelectSubgroupMatrixConfig(
+    const ComputeContextBase& context,
+    bool is_fp16,
+    std::initializer_list<SubgroupMatrixConfigPreference> preferences) {
+  const auto candidates = GetSupportedSubgroupMatrixConfigIndices(context, is_fp16);
+  return detail::SelectSubgroupMatrixConfigFromCandidates(candidates, preferences);
 }
 
 }  // namespace webgpu
