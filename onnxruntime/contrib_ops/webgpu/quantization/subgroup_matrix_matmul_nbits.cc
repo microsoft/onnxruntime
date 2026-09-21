@@ -14,7 +14,7 @@ namespace webgpu {
 // The subgroup matrix config table, support check, and component-type validation live in the
 // shared core header (core/providers/webgpu/math/subgroup_matrix_config.h) so both this contrib
 // kernel and the core subgroup-matrix MatMul share them.
-using onnxruntime::webgpu::IsSubgroupMatrixConfigSupported;
+using onnxruntime::webgpu::SelectSubgroupMatrixConfig;
 using onnxruntime::webgpu::supported_subgroup_matrix_configs;
 
 // This program optimizes the layout of input matrix A(MxK) for SubgroupMatrixLoad, so that all elements of each
@@ -208,8 +208,10 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
 
     // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
     PrepackProgram prepack_program{m, k};
-    constexpr uint32_t kSubgroupSize = 32;
-    prepack_program.SetWorkgroupSize(kSubgroupSize);
+    prepack_program.SetWorkgroupSize(config.subgroupSize);
+    if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+      prepack_program.SetSubgroupSize(config.subgroupSize);
+    }
 
     // Pad M to workgroup tile size so all subgroups read valid prepacked data.
     const uint32_t padded_M = ((M + tile_size_a - 1) / tile_size_a) * tile_size_a;
@@ -244,10 +246,9 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer};
   mul_program.SetWorkgroupSize(work_group_size);
 
-  // On Intel, use a fixed subgroup size of 32 for better performance.
-  if (context.AdapterInfo().vendor == std::string_view{"intel"} &&
-      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-    mul_program.SetSubgroupSize(32);
+  // Pin kernels running on variable-size adapters to the subgroup size they were written for.
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    mul_program.SetSubgroupSize(config.subgroupSize);
   }
 
   uint32_t dispatch_x = (N + tile_size_b - 1) / tile_size_b;
@@ -346,26 +347,24 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
-  if (has_subgroup_matrix) {
-    // Check if the adapter reports a subgroup matrix config we support.
-    has_subgroup_matrix = IsSubgroupMatrixConfigSupported(context, is_fp16, config_index);
-    if (has_subgroup_matrix) {
-      if (context.AdapterInfo().vendor == std::string_view{"apple"}) {
-        // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
-        // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
-        // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
-        // FP32 is around 7s.
-        has_subgroup_matrix = accuracy_level == 4;
-      }
-    }
+  // On Apple, this kernel is only validated for accuracy level 4. Higher accuracy requires
+  // a slower f32-compute variant.
+  if (context.AdapterInfo().vendor == std::string_view{"apple"} && accuracy_level != 4) {
+    return false;
   }
 
-  return has_subgroup_matrix &&
-         block_size == 32 &&
-         batch_count == 1 &&
-         K % 32 == 0 &&
-         N % 64 == 0;
+  if (block_size != 32 || batch_count != 1 || K % 32 != 0 || N % 64 != 0) {
+    return false;
+  }
+
+  const auto selected_config = SelectSubgroupMatrixConfig(
+      context, is_fp16, {{16, 16, 16, 32}, {8, 16, 16, 32}, {8, 8, 8, 32}});
+  if (!selected_config) {
+    return false;
+  }
+
+  config_index = *selected_config;
+  return true;
 }
 }  // namespace webgpu
 }  // namespace contrib
