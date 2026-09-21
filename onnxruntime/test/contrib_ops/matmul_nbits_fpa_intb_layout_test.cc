@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -27,14 +28,15 @@ namespace {
 
 // K spans four 64-element threadblock K tiles, which is what caught the B pipeline stalling on
 // the first tile. N is a multiple of 128 so 2-bit weights are fpA_intB-eligible.
-constexpr int64_t kN = 128, kK = 256, kBlockSize = 128;
+constexpr int64_t kN = 128, kK = 256;
 
 void ExpectExactDequantizedWeights(int64_t bits) {
   SCOPED_TRACE("bits=" + std::to_string(bits));
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
-  const int64_t k_blocks = kK / kBlockSize;
-  const int64_t blob_size = kBlockSize * bits / 8;
+  const int64_t block_size = bits == 2 ? 64 : 32;
+  const int64_t k_blocks = kK / block_size;
+  const int64_t blob_size = block_size * bits / 8;
   const int per_byte = static_cast<int>(8 / bits);
   const int mask = (1 << bits) - 1;
   const int zero_point = 1 << (bits - 1);
@@ -64,7 +66,7 @@ void ExpectExactDequantizedWeights(int64_t bits) {
   OpTester test("MatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", kK);
   test.AddAttribute<int64_t>("N", kN);
-  test.AddAttribute<int64_t>("block_size", kBlockSize);
+  test.AddAttribute<int64_t>("block_size", block_size);
   test.AddAttribute<int64_t>("bits", bits);
   test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
   test.AddInput<MLFloat16>("A", {kK, kK}, a, false);
@@ -79,6 +81,10 @@ void ExpectExactDequantizedWeights(int64_t bits) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.emplace_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  session_options.use_per_session_threads = false;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
   test.ConfigEps(std::move(eps));
   test.RunWithConfig();
 }

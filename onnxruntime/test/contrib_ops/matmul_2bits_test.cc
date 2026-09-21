@@ -1907,11 +1907,11 @@ TEST(MatMul2BitsCuda, BFloat16_FpAIntB) {
   }
 }
 
-// The decode and prefill shapes of the ternary 27B model's qkv_proj, at the block size it ships.
+// Cover production N/K at small M and the large-M GEMM route with bounded reference work.
 TEST(MatMul2BitsCuda, Float16_FpAIntB_ProductionShape) {
   if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
-  for (int64_t m : {int64_t{1}, int64_t{8}, int64_t{512}}) {
+  for (int64_t m : {int64_t{1}, int64_t{8}}) {
     TestOptions2Bits opts{};
     opts.M = m;
     opts.N = 10240;
@@ -1923,6 +1923,17 @@ TEST(MatMul2BitsCuda, Float16_FpAIntB_ProductionShape) {
     opts.output_rel_error = 0.02f;
     RunTest2Bits<MLFloat16>(opts);
   }
+
+  TestOptions2Bits opts{};
+  opts.M = 512;
+  opts.N = 128;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.has_zero_point = true;
+  opts.use_cuda = true;
+  opts.output_abs_error = 0.2f;
+  opts.output_rel_error = 0.02f;
+  RunTest2Bits<MLFloat16>(opts);
 }
 
 namespace {
