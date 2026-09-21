@@ -5634,6 +5634,37 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformerReportsIntentionalRemoval) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("QDQFinalCleanupRemovalTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input = builder.MakeInput<float>({1, 4}, -1.0f, 1.0f);
+  auto* quantized = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<uint8_t>(input, 0.05f, 128, quantized);
+  auto* output = builder.MakeOutput();
+  builder.AddDequantizeLinearNode<uint8_t>(quantized, 0.05f, 128, output);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  InlinedVector<NodeIndex> removed_node_indices;
+  graph.SetNodeRemovalCallback(
+      [&removed_node_indices](const Graph&, gsl::span<const NodeIndex> node_indices) {
+        removed_node_indices.insert(
+            removed_node_indices.end(), node_indices.begin(), node_indices.end());
+      });
+
+  bool modified = false;
+  QDQFinalCleanupTransformer transformer(true);
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+  EXPECT_TRUE(modified);
+  EXPECT_EQ(removed_node_indices.size(), 2U);
+  for (const NodeIndex node_index : removed_node_indices) {
+    EXPECT_EQ(graph.GetNode(node_index), nullptr);
+  }
+}
+
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        bool block_removal_of_last_dq,
