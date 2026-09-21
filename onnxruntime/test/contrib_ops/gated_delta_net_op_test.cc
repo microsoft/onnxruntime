@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <sstream>
@@ -1265,6 +1267,76 @@ TEST(GatedDeltaNetTest, RejectsPerKeyDtBias) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "dt_bias must be [num_heads_v]",
            {}, nullptr, &eps);
 }
+
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
+TEST(GatedDeltaNetTest, RejectsStateUpdateWidthOverflow) {
+  struct Case {
+    std::array<int64_t, 3> query_dims;
+    std::array<int64_t, 3> value_dims;
+    int64_t state_update_capacity;
+  };
+
+  const int64_t max_dimension = std::numeric_limits<int64_t>::max();
+  const int64_t large_head_size = 4000000000LL;
+  const std::vector<Case> cases = {
+      // num_heads_k * head_size_qk.
+      {{1, large_head_size, large_head_size}, {1, 1, 1}, 1},
+      // num_heads_v * head_size_v.
+      {{1, 1, 1}, {1, large_head_size, large_head_size}, 1},
+      // num_heads_v + (num_heads_k * head_size_qk).
+      {{1, 1, max_dimension}, {1, 1, 1}, 1},
+      // value_width + (num_heads_v + key_width).
+      {{1, 1, 1}, {1, 1, max_dimension}, 1},
+      // state_update_capacity * per_token_width.
+      {{1, 1, 1}, {1, 1, max_dimension / 8}, 8},
+  };
+
+  for (size_t case_index = 0; case_index < cases.size(); ++case_index) {
+    SCOPED_TRACE(case_index);
+    const auto& test_case = cases[case_index];
+    std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+    std::vector<ONNX_NAMESPACE::FunctionProto> functions;
+    auto model = std::make_unique<Model>(
+        "gated_delta_net_overflow", true, ModelMetaData(), PathString(),
+        IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, functions,
+        DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+    auto& graph = model->MainGraph();
+
+    std::vector<ONNX_NAMESPACE::TypeProto> types;
+    types.reserve(6);
+    auto tensor_type = [&](int elem_type, const auto& dims) {
+      types.emplace_back();
+      auto* type = &types.back();
+      type->mutable_tensor_type()->set_elem_type(elem_type);
+      for (int64_t dim : dims) {
+        type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+      return type;
+    };
+
+    auto& query_arg = graph.GetOrCreateNodeArg(
+        "query", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, test_case.query_dims));
+    auto& key_arg = graph.GetOrCreateNodeArg(
+        "key", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 3>{1, 1, 1}));
+    auto& value_arg = graph.GetOrCreateNodeArg(
+        "value", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, test_case.value_dims));
+    auto& output_arg = graph.GetOrCreateNodeArg(
+        "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
+    auto& final_state_arg = graph.GetOrCreateNodeArg(
+        "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
+    auto& state_update_arg = graph.GetOrCreateNodeArg(
+        "state_update", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, std::array<int64_t, 0>{}));
+
+    auto& node = graph.AddNode("node", "GatedDeltaNet", "", {&query_arg, &key_arg, &value_arg},
+                               {&output_arg, &final_state_arg, &state_update_arg}, nullptr, kMSDomain);
+    node.AddAttribute("state_update_capacity", test_case.state_update_capacity);
+
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "overflows int64");
+  }
+}
+#endif  // !ORT_NO_EXCEPTIONS
 
 TEST(GatedDeltaNetTest, RequiresCaptureCountExactlyWhenCapacityIsPositive) {
   if (NeedSkipGatedDeltaNetTest()) return;
