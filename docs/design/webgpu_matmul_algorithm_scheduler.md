@@ -26,7 +26,9 @@ Add a `MatMulAlgorithmScheduler` base class. Automatic selection uses this order
 
 An Intel-derived scheduler implements the vendor hook. It preserves the original policy by selecting `SubgroupMatrix` first when applicable, then selecting `IntelSubgroup` under the current Intel subgroup rule. Other vendors use the base scheduler unchanged. Future vendor policies can derive from the base scheduler, override as many performance ranges as needed, and return no selection to delegate the remaining ranges to the common fallback without adding vendor conditionals to `ComputeMatMul`.
 
-The scheduler accepts immutable problem facts rather than mutable policy decisions: logical and packed dimensions, batch sizes, adapter architecture, input types, packing and layout facts, deterministic-compute state, activation and bias facts, device capabilities, and the configured Split-K size. The common `SplitKConfig::UseSplitK` result is passed separately as the common fallback recommendation. A vendor may ignore that recommendation and apply independent thresholds from the raw facts. This keeps the scheduler deterministic and unit-testable without a WebGPU device.
+The scheduler accepts immutable problem facts rather than mutable policy decisions: logical and packed dimensions, batch sizes, adapter architecture, input types, packing and layout facts, deterministic-compute state, activation and bias facts, and device capabilities. It also owns a copy of the immutable `SplitKConfig` selected for the adapter. The private common fallback evaluates `SplitKConfig::UseSplitK` directly from the problem facts instead of receiving a precomputed decision from `ComputeMatMul`. A vendor may ignore that common recommendation and apply independent thresholds from the raw facts. This keeps the scheduler deterministic and unit-testable without a WebGPU device.
+
+`SplitKConfig` contains only generic Split-K eligibility evaluation and data. Adapter routing is handled by a small generic factory, while Intel architecture profiles and their measured threshold tables live under `vendor/intel`. `WebGpuContext` owns the selected configuration so GEMM and MatMul use the same profile; the MatMul scheduler receives that configuration when it is created. A future vendor can add its own profile builder and factory route without adding conditions to `ComputeMatMul` or changing the generic evaluator.
 
 ## Execution Configuration
 
@@ -64,7 +66,7 @@ The option is intentionally internal and test-only: it is declared with WebGPU p
 
 ## Testing
 
-- Add device-independent scheduler unit tests covering every common branch, forced-over-vendor precedence, the zero-K correctness guard, vendor-over-common precedence, Intel override, default fallback, independent vendor thresholds, common packed defaults, and vendor tuning of a forced algorithm.
+- Add device-independent scheduler unit tests covering every common branch, forced-over-vendor precedence, the zero-K correctness guard, vendor-over-common precedence, Intel override, default fallback, independent vendor thresholds, common packed defaults, vendor tuning of a forced algorithm, Split-K profile routing, and current Intel architecture boundaries.
 - Add parser/configuration tests for every accepted value and invalid input.
 - Add WebGPU MatMul tests that choose shapes which normally select a different path, force a compatible algorithm, and verify numerical output. Hardware-specific forced algorithms are tested only when their hard capabilities are present; strict-failure tests cover unsupported forced choices.
 - Build Dawn and the WebGPU provider on Windows with the Vulkan backend enabled and D3D12 disabled. Tests explicitly request `dawnBackendType=Vulkan`.

@@ -30,9 +30,10 @@ MatMulOptImpl* MatMulOptImplCache::GetOrCreate(const ComputeContextBase& context
 const MatMulAlgorithmScheduler& MatMulOptImplCache::GetOrCreateScheduler(const ComputeContextBase& context) {
   std::call_once(scheduler_init_flag_, [&]() {
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      scheduler_ = std::make_unique<intel::IntelMatMulAlgorithmScheduler>();
+      scheduler_ = std::make_unique<intel::IntelMatMulAlgorithmScheduler>(
+          context.GetSplitKConfig());
     } else {
-      scheduler_ = std::make_unique<MatMulAlgorithmScheduler>();
+      scheduler_ = std::make_unique<MatMulAlgorithmScheduler>(context.GetSplitKConfig());
     }
   });
   return *scheduler_;
@@ -225,40 +226,6 @@ static Status ApplyMatMulNaive(ComputeContext& context,
   return context.RunProgram(program);
 }
 
-static bool ShouldUsePackedSplitK(ComputeContext& context,
-                                  const Activation& activation,
-                                  const std::vector<const Tensor*>& inputs,
-                                  bool is_channels_last,
-                                  const MatMulComputeHelper& helper) {
-  if (context.KernelContext().GetUseDeterministicCompute()) {
-    return false;
-  }
-
-  TensorShape a_shape = inputs[0]->Shape();
-  TensorShape b_shape = inputs[1]->Shape();
-  TensorShape output_shape = helper.OutputShape();
-  const int64_t batch_a =
-      a_shape.NumDimensions() > 2 ? a_shape.SizeToDimension(a_shape.NumDimensions() - 2) : 1;
-  const int64_t batch_b =
-      b_shape.NumDimensions() > 2 ? b_shape.SizeToDimension(b_shape.NumDimensions() - 2) : 1;
-  if (batch_a != 1 && batch_b == 1) {
-    const int64_t batch_and_m = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    a_shape = TensorShape({batch_and_m, helper.K()});
-    b_shape = TensorShape({helper.K(), helper.N()});
-    output_shape = TensorShape({batch_and_m, helper.N()});
-  }
-
-  const int64_t batch_size = output_shape.NumDimensions() > 2
-                                 ? output_shape.SizeToDimension(output_shape.NumDimensions() - 2)
-                                 : 1;
-  const uint32_t m = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
-  const uint32_t k = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
-  const uint32_t n = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
-  const bool is_vec4 = k % 4 == 0 && n % 4 == 0;
-  return context.GetSplitKConfig().UseSplitK(
-      is_vec4, activation.activation_kind_, batch_size, m, n, k, is_channels_last);
-}
-
 static Status ApplyMatMulPacked(ComputeContext& context,
                                 const Activation& activation,
                                 const std::vector<const Tensor*>& inputs,
@@ -411,9 +378,6 @@ Status ComputeMatMul(ComputeContext* context,
       subgroup_impl != nullptr &&
       subgroup_impl->CanApply(*context, inputs, is_channels_last, b_is_constant);
   const bool has_intel_subgroup_capability = intel::HasMatMulIntelCapability(*context);
-  const bool use_split_k =
-      ShouldUsePackedSplitK(*context, activation, inputs, is_channels_last, helper);
-
   const int64_t batch_a =
       logical_a_shape.NumDimensions() > 2
           ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 2)
@@ -448,8 +412,6 @@ Status ComputeMatMul(ComputeContext* context,
   selection_params.has_fused_activation = activation.activation_kind_ != ActivationKind::None;
   selection_params.has_bias = has_bias;
   selection_params.is_channels_last = is_channels_last;
-  selection_params.common_use_split_k = use_split_k;
-  selection_params.split_dim_inner = context->GetSplitKConfig().GetSplitDimInner();
 
   const MatMulExecutionPlan plan = cache.GetOrCreateScheduler(*context).CreateExecutionPlan(
       selection_params, context->ForcedMatMulAlgorithm());

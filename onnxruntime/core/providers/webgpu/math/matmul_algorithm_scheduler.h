@@ -13,6 +13,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -34,8 +35,6 @@ struct MatMulAlgorithmSelectionParams {
   bool has_fused_activation = false;
   bool has_bias = false;
   bool is_channels_last = true;
-  bool common_use_split_k = false;
-  uint32_t split_dim_inner = 0;
 };
 
 struct MatMulSubgroupMatrixConfiguration {};
@@ -150,7 +149,8 @@ inline bool MeetsMatMulAlgorithmPrerequisites(
 
 class MatMulAlgorithmScheduler {
  public:
-  MatMulAlgorithmScheduler() = default;
+  explicit MatMulAlgorithmScheduler(SplitKConfig split_k_config = {})
+      : split_k_config_{std::move(split_k_config)} {}
   virtual ~MatMulAlgorithmScheduler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulAlgorithmScheduler);
 
@@ -201,7 +201,7 @@ class MatMulAlgorithmScheduler {
     if (params.n < 8 && params.k < 8) {
       return MatMulAlgorithm::Naive;
     }
-    if (params.common_use_split_k) {
+    if (ShouldUseSplitK(params)) {
       return MatMulAlgorithm::PackedSplitK;
     }
     return MatMulAlgorithm::Packed;
@@ -224,12 +224,32 @@ class MatMulAlgorithmScheduler {
             params.packed_m <= 8 ? std::array<uint32_t, 3>{4, 1, 1}
                                  : std::array<uint32_t, 3>{4, 4, 1};
         configuration.split_dim_inner =
-            algorithm == MatMulAlgorithm::PackedSplitK ? params.split_dim_inner : 1;
+            algorithm == MatMulAlgorithm::PackedSplitK
+                ? split_k_config_.GetSplitDimInner()
+                : 1;
         return configuration;
       }
     }
     return MatMulNaiveConfiguration{};
   }
+
+  bool ShouldUseSplitK(const MatMulAlgorithmSelectionParams& params) const {
+    if (params.deterministic_compute || params.has_fused_activation ||
+        params.packed_m < 0 || params.n < 0 || params.k < 0) {
+      return false;
+    }
+
+    return split_k_config_.UseSplitK(
+        params.is_vec4,
+        ActivationKind::None,
+        params.packed_batch_size,
+        static_cast<uint64_t>(params.packed_m),
+        static_cast<uint64_t>(params.n),
+        static_cast<uint64_t>(params.k),
+        params.is_channels_last);
+  }
+
+  SplitKConfig split_k_config_;
 };
 
 }  // namespace webgpu

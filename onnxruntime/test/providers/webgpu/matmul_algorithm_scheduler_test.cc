@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/vendor/intel/math/split_k_config.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -58,13 +59,20 @@ class TunedPackedVendorScheduler final : public MatMulAlgorithmScheduler {
 };
 
 class VendorSplitKThresholdScheduler final : public MatMulAlgorithmScheduler {
+ public:
+  VendorSplitKThresholdScheduler()
+      : MatMulAlgorithmScheduler{SplitKConfig{
+            /*max_batch_size=*/8,
+            /*split_dim_inner=*/128,
+            /*min_dim_inner_with_split_k=*/256,
+            {{4096, 16.0}}}} {}
+
  protected:
   std::optional<MatMulAlgorithm> SelectVendorAlgorithm(
       const MatMulAlgorithmSelectionParams& params) const override {
     if (params.batch_size <= 16 && params.is_vec4 &&
         !params.deterministic_compute && !params.has_fused_activation &&
-        (!params.has_bias || params.is_channels_last) &&
-        params.split_dim_inner != 0) {
+        (!params.has_bias || params.is_channels_last)) {
       return MatMulAlgorithm::PackedSplitK;
     }
     return std::nullopt;
@@ -96,6 +104,38 @@ TEST(MatMulAlgorithmParsingTest, RoundTripsEveryAlgorithmName) {
 
 TEST(MatMulAlgorithmParsingTest, RejectsUnknownAlgorithmName) {
   EXPECT_EQ(ParseMatMulAlgorithm("unknown"), std::nullopt);
+}
+
+TEST(SplitKConfigTest, IntelArchitectureProfilesPreserveCurrentBoundaries) {
+  const SplitKConfig discrete_config = intel::CreateSplitKConfig("xe-2lpg");
+  EXPECT_EQ(discrete_config.GetSplitDimInner(), 256u);
+  EXPECT_TRUE(discrete_config.UseSplitK(
+      /*is_vec4=*/true, ActivationKind::None, /*batch_size=*/1,
+      /*dim_a_outer=*/192, /*dim_b_outer=*/160, /*dim_inner=*/1024));
+
+  const SplitKConfig xe3_config = intel::CreateSplitKConfig("xe-3lpg");
+  EXPECT_FALSE(xe3_config.UseSplitK(
+      /*is_vec4=*/true, ActivationKind::None, /*batch_size=*/1,
+      /*dim_a_outer=*/192, /*dim_b_outer=*/160, /*dim_inner=*/1024));
+  EXPECT_TRUE(xe3_config.UseSplitK(
+      /*is_vec4=*/true, ActivationKind::None, /*batch_size=*/1,
+      /*dim_a_outer=*/128, /*dim_b_outer=*/128, /*dim_inner=*/1024));
+
+  const SplitKConfig default_config = intel::CreateSplitKConfig("gen-12lp");
+  EXPECT_FALSE(default_config.UseSplitK(
+      /*is_vec4=*/true, ActivationKind::None, /*batch_size=*/1,
+      /*dim_a_outer=*/128, /*dim_b_outer=*/128, /*dim_inner=*/1024));
+
+  const SplitKConfig legacy_config = intel::CreateSplitKConfig("gen-9");
+  EXPECT_EQ(legacy_config.GetSplitDimInner(), 0u);
+  EXPECT_FALSE(legacy_config.UseSplitK(
+      /*is_vec4=*/true, ActivationKind::None, /*batch_size=*/1,
+      /*dim_a_outer=*/1, /*dim_b_outer=*/1, /*dim_inner=*/1024));
+}
+
+TEST(SplitKConfigTest, FactoryRoutesOnlySupportedVendorProfiles) {
+  EXPECT_EQ(CreateSplitKConfig("intel", "xe-2lpg").GetSplitDimInner(), 256u);
+  EXPECT_EQ(CreateSplitKConfig("nvidia", "pascal").GetSplitDimInner(), 0u);
 }
 
 TEST(MatMulAlgorithmSchedulerTest, ForcedAlgorithmTakesPrecedence) {
@@ -134,15 +174,34 @@ TEST(MatMulAlgorithmSchedulerTest, VendorCanSetIndependentSplitKThresholds) {
   params.n = 64;
   params.k = 1024;
   params.batch_size = 16;
+  params.packed_batch_size = 16;
   params.is_vec4 = true;
   params.is_channels_last = true;
-  params.split_dim_inner = 128;
-  params.common_use_split_k = false;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::PackedSplitK);
+  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
+  EXPECT_EQ(std::get<MatMulPackedConfiguration>(plan.configuration).split_dim_inner, 128u);
 
   params.batch_size = 17;
+  params.packed_batch_size = 17;
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, InjectedSplitKPolicyCreatesPackedSplitKPlan) {
+  intel::IntelMatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 192;
+  params.packed_m = 192;
+  params.n = 160;
+  params.k = 1024;
+  params.is_vec4 = true;
+
+  const MatMulExecutionPlan plan = scheduler.CreateExecutionPlan(params);
+
+  EXPECT_EQ(plan.algorithm, MatMulAlgorithm::PackedSplitK);
+  const auto& configuration =
+      std::get<MatMulPackedConfiguration>(plan.configuration);
+  EXPECT_EQ(configuration.split_dim_inner, 256u);
 }
 
 TEST(MatMulAlgorithmSchedulerTest, CommonPackedConfigurationPreservesCurrentTuning) {
@@ -207,12 +266,14 @@ TEST(MatMulAlgorithmConfigurationTest, PackedDispatchArithmeticIsOverflowSafe) {
 }
 
 TEST(MatMulAlgorithmSchedulerTest, CommonFallbackPrefersSubgroupMatrix) {
-  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
-  params.n = 4;
-  params.k = 4;
+  params.m = 64;
+  params.packed_m = 64;
+  params.n = 64;
+  params.k = 1024;
   params.can_use_subgroup_matrix = true;
-  params.common_use_split_k = true;
+  params.is_vec4 = true;
 
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
 }
@@ -289,15 +350,17 @@ TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerPreservesSubgroupMatrixPreceden
 }
 
 TEST(MatMulAlgorithmSchedulerTest, SplitKPrecedesPackedFallback) {
-  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmScheduler scheduler{intel::CreateSplitKConfig("xe-2lpg")};
   MatMulAlgorithmSelectionParams params{};
+  params.m = 64;
+  params.packed_m = 64;
   params.n = 64;
   params.k = 1024;
-  params.common_use_split_k = true;
+  params.is_vec4 = true;
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::PackedSplitK);
 
-  params.common_use_split_k = false;
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
+  MatMulAlgorithmScheduler disabled_scheduler;
+  EXPECT_EQ(disabled_scheduler.Select(params), MatMulAlgorithm::Packed);
 }
 
 TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
