@@ -224,6 +224,8 @@ Status GemmFloat8::ComputeGemm(
 #if !defined(DISABLE_FLOAT8_TYPES)
   if (is_fp8_output) {
     if (!has_bias) {
+      // cuBLASLt requires a supported FP16/BF16 C layout for FP8 output even when
+      // beta is zero and the C pointer is null. D retains the requested FP8 layout.
       c_cuda_type = CUDA_R_16F;
     }
   }
