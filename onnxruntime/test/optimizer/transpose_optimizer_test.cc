@@ -5453,7 +5453,8 @@ TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) 
   ModelTestBuilder builder(graph);
 
   auto* valid_input = builder.MakeInput<float>({1, 1}, {1.0f});
-  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3}, {uint8_t{1, 2, 3}});
+  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3},
+                                      std::vector<uint8_t>{1, 2, 3});
   auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
   auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
   auto* dq_output = builder.MakeIntermediate<float>(std::nullopt);
