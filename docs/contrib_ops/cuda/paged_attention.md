@@ -235,6 +235,7 @@ ops without translation.
 | `kv_num_heads` | INT | required | existing |
 | `scale` | FLOAT | `1/sqrt(head_size)` | existing — mandatory in `LATENT` (§12.6) |
 | `softcap` | FLOAT | `0.0` | existing |
+| `is_causal` | INT | `1` | `0` removes the right-hand causal bound on all CUDA backends |
 | `local_window_size` | INT | `-1` | existing — §9 |
 | `do_rotary` | INT | `0` | existing |
 | `rotary_interleaved` | INT | `0` | existing |
@@ -1324,6 +1325,7 @@ Target dispatch order once all phases land, first eligible wins:
 |---|---|---|
 | 0 | **MLA backend** (new, §12.7) | `kv_cache_layout == "LATENT"` — FlashMLA / FlashInfer MLA / TRT-LLM MLA where available, unfused MLA reference otherwise |
 | 1 | **Paged decode kernel** (new, Phase 4) | Decode-shaped batch per the static shape test in §4.7 (`token_count <= batch_size`); non-quantized or `PER_TENSOR`/`PER_CHANNEL` INT8/FP8; sliding window and `head_sink` supported |
+| 1.5 | **cuDNN paged SDPA** (new) | Decode-shaped (`max_query_len_bound == 1` **and** `token_count == batch_size`); FP16/BF16; non-quantized cache; `is_causal`; no softcap / sliding window / smooth softmax (QK-Norm rides the shared prologue — §7); `sm >= 90` and cuDNN `>= 9.5`; `is_supported_paged` shape gate accepts `(num_heads, kv_num_heads, head_size, block_size)`. Selected ahead of FlashAttention/MEA when eligible and XQA is not the winner. Reports `SdpaKernel=CUDNN_FLASH_ATTENTION`. Kill switch: `ORT_ENABLE_CUDNN_FLASH_ATTENTION=0` and the `sdpa_kernel` bit both disable it (they share the state with the CUDA EP's other cuDNN attention paths). Also gated by a per-Run buildability probe: `try_build_paged_graph` is called before each `Compute` with the same `PagedGraphParams` key `run_paged` uses, backed by a `thread_local` graph cache keyed on `(batch_size, num_heads, kv_num_heads, head_size, num_blocks, block_size, max_num_blocks_per_seq, scale, dtype, cudnnHandle_t)`. Steady state is one hash lookup; the first Run per unique shape on each thread pays the cuDNN planner build cost. A planner rejection (or a CUDA graph capture cache miss) suppresses cuDNN paged for that Run only — the cascade falls back to FlashAttention / MEA — and the same key is re-probed on the next Run without being memoized as a negative result. During CUDA graph capture the probe short-circuits to `false` before touching cuDNN, so run at least one warm-up `Compute` before capture to seed the cache. **Short-context regression**: the planner requires `max_seq_len_kv == max_num_blocks_per_seq * block_size`, so `run_paged` aligns the metadata bound up to a page multiple when the caller over-allocates the page table (e.g. `past+1` reported but reserving an extra page). |
 | 2 | **FlashAttention varlen** | FP16/BF16, SM80+, non-quantized cache (or quantized via dequant-gather); supports sliding window, softcap, packed QKV, `head_sink` via LSE epilogue |
 | 3 | **Memory-Efficient Attention (CUTLASS fMHA)** | Fallback for supported combinations and pre-SM80 |
 | 4 | **Unfused** | Last resort — arbitrary `head_size`, `attention_bias`, `output_qk` |
@@ -1629,6 +1631,16 @@ These block the feature work and should land ahead of it.
    > falls back to the memory-efficient backend, which gathers pages into a dense buffer first and
    > therefore accepts any block size. The op only errors when neither backend is eligible.
    > Lifting this properly requires teaching the Flash paged loader to split a tile across pages.
+   >
+   > **Non-causal attention.** `is_causal=0` works with all CUDA backends: FlashAttention,
+   > memory-efficient attention, paged decode (including XQA), and latent attention. In particular,
+   > a native cache with `head_size=128` and 16-, 32-, or 64-token pages uses MEA for prefill/multi-token
+   > drafting and paged decode for decode-shaped batches, without requiring Flash-compatible pages.
+   > Each query can attend through the sequence's full live KV length (`past_seqlens + query_length`).
+   > A positive `local_window_size` still bounds the left side at `query_position - window_size + 1`;
+   > the right side remains unbounded. XQA's speculative mask admits every live draft
+   > token when non-causal; its single-token kernel needs no different mask. Other backend eligibility
+   > constraints, including XQA's page alignment and MEA's lack of attention-sink support, are unchanged.
 2. **Out-of-bounds binary search.** The binary search over `cumulative_seqlens_q` in
    `ReshapeAndCache` and `GatherAndExpandPagedKVCache` can yield `batch_id == batch_size` when
    `token_id >= cumulative_seqlens_q[batch_size]`, producing OOB reads of `past_seqlens` and

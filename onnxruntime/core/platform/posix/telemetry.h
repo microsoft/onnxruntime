@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/platform/telemetry.h"
+#include "core/platform/telemetry_environment.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -105,9 +106,11 @@ class PosixTelemetry : public Telemetry {
                           const std::vector<std::string>& available_execution_provider_ids) const override;
 
   void LogModelLoadStart(uint32_t session_id) const override;
-  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                       int64_t duration_us) const override;
 
-  void LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const override;
+  void LogSessionCreationEnd(uint32_t session_id, const common::Status& status,
+                             int64_t duration_us) const override;
 
   void LogEpDeviceUsage(uint32_t session_id,
                         const std::string& ep_type,
@@ -123,7 +126,8 @@ class PosixTelemetry : public Telemetry {
 
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                               const common::Status& status) const override;
+                               const common::Status& status,
+                               int64_t duration_us) const override;
   void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                        const std::string& lib_path) const override;
 
@@ -141,14 +145,13 @@ class PosixTelemetry : public Telemetry {
   std::string GetOsDescription() const;
   std::string GetCpuModel() const;
   std::string GetDeviceClass() const;
+  static telemetry_detail::HostEnvironmentInfo GetHostEnvironmentInfo();
+  static std::string GetProcessName();
   static std::string GetArchitecture();
   static int64_t GetTotalMemoryMB();
 
   // Safe async event logging.
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
-
-  // Log system resource metrics
-  void LogSystemMetrics(uint32_t session_id) const;
 
   // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
   // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
