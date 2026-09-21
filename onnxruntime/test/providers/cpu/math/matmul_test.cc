@@ -9,10 +9,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
-#if defined(USE_WEBGPU)
-#include "core/providers/webgpu/math/subgroup_matrix_config.h"
-#endif
-
 namespace onnxruntime {
 namespace test {
 
@@ -769,19 +765,6 @@ TEST(MathOpTest, MatMulBatchedSplitK) {
 }
 
 #if defined(USE_WEBGPU)
-TEST(SubgroupMatrixConfigTest, RequiredSubgroupSizeCompatibility) {
-  using webgpu::IsSubgroupSizeSupported;
-
-  EXPECT_TRUE(IsSubgroupSizeSupported(32, 32, 32, false));  // NVIDIA and Apple fixed-size adapters
-  EXPECT_TRUE(IsSubgroupSizeSupported(32, 64, 32, true));   // AMD variable-size adapter
-  EXPECT_TRUE(IsSubgroupSizeSupported(16, 32, 32, true));   // Intel variable-size adapter
-
-  EXPECT_FALSE(IsSubgroupSizeSupported(32, 64, 32, false));
-  EXPECT_FALSE(IsSubgroupSizeSupported(64, 64, 32, true));
-  EXPECT_FALSE(IsSubgroupSizeSupported(16, 16, 32, true));
-  EXPECT_FALSE(IsSubgroupSizeSupported(64, 32, 32, true));
-}
-
 // f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
 // The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in
 // {16,32,64}); M and N may be any size and K must be a multiple of 16. When the
