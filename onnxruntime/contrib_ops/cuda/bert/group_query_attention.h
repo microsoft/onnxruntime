@@ -21,7 +21,7 @@ class GroupQueryAttention final : public CudaKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   bool SupportsPreallocatedWorkspace() const noexcept override {
     return declared_workspace_bytes_.load(std::memory_order_relaxed) != 0;
   }

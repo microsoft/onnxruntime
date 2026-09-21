@@ -41,7 +41,7 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Set ORT_ARENA_DIAGNOSTICS=1 before creating arenas to register them. This diagnostic
  * hook operates on all registered GPU BFC arenas in the current process. Call it only
  * after synchronizing all runs that use those arenas.
- * This diagnostic hook is unavailable in minimal builds.
+ * Minimal builds return ORT_NOT_IMPLEMENTED without inspecting the arguments.
  *
  * \param[in] checkpoint Label included in each diagnostic log line.
  * \param[in] shrink Whether to call Shrink once on each registered GPU arena.

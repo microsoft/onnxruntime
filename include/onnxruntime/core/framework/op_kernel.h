@@ -142,8 +142,10 @@ class OpKernel {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Returns true when the kernel can consume workspace supplied by the execution frame.
   virtual bool SupportsPreallocatedWorkspace() const noexcept { return false; }
+#endif
 
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,

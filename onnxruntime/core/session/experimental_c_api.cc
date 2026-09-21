@@ -65,6 +65,7 @@ ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
                     _Out_ int64_t* reclaimed_bytes,
                     _Out_ size_t* arena_count) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   if (checkpoint == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "checkpoint is null");
   }
@@ -74,7 +75,6 @@ ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
   if (arena_count == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "arena_count is null");
   }
-#if !defined(ORT_MINIMAL_BUILD)
   int64_t reclaimed = 0;
   size_t count = 0;
   ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::LogAndShrinkRegisteredGpuArenas(
@@ -83,7 +83,10 @@ ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
   *arena_count = count;
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(checkpoint);
   ORT_UNUSED_PARAMETER(shrink);
+  ORT_UNUSED_PARAMETER(reclaimed_bytes);
+  ORT_UNUSED_PARAMETER(arena_count);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GPU arena diagnostics are unavailable in minimal builds");
 #endif
   API_IMPL_END

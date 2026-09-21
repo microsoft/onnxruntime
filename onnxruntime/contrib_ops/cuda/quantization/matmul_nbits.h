@@ -304,7 +304,9 @@ class MatMulNBits final : public CudaKernel {
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
 
+#if !defined(ORT_MINIMAL_BUILD)
   bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
+#endif
 #endif
 
   // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace requested by the most recent

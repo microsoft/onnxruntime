@@ -35,7 +35,11 @@ class OpKernelContext {
 
   // Returns a run-scoped planned workspace buffer when one is available. A nullptr result means
   // the kernel must use its normal dynamic allocation path.
-  virtual Status GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual
+#endif
+      Status
+      GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
     *workspace = nullptr;
     return Status::OK();
   }
