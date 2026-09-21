@@ -8,6 +8,9 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/moe_profiler.h"
+#endif
 #include <charconv>
 #include <type_traits>
 #include "core/common/float8.h"
@@ -21,7 +24,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
 
@@ -172,7 +175,7 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
 
 // Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
 int StaticFp4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
-#if !defined(HAS_SM90_OR_LATER)
+#if !defined(HAS_SM90_OR_LATER) || !defined(USE_DEEP_GEMM)
   ORT_UNUSED_PARAMETER(op_kernel_info);
   return 0;
 #else
@@ -632,6 +635,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const auto* instrumentation = context->GetRunInstrumentationContext();
+  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -895,7 +902,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // through the fused GEMV or the dense A16 fallback instead. (MXFP4 keeps its existing routing.)
       !(is_nvfp4 && fp4_prefill_min_tokens_ > 0 &&
         static_cast<int64_t>(moe_params.num_rows) < fp4_prefill_min_tokens_);
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
   const bool use_fp4_deep_gemm =
       enable_fp4_deep_gemm_ && moe_params.num_rows > 0 &&
       moe_params.num_rows <= onnxruntime::llm::kernels::deep_gemm_sm90::kMaxTokensPerExpert &&
@@ -1570,6 +1577,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  CudaMoeRoutingRecord* routing_record = nullptr;
+  const size_t routing_element_count =
+      SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
+                  "MoE expert statistics is not supported during CUDA graph capture.");
+    auto host_expert_ids = AllocateBufferOnCPUPinned<int>(routing_element_count);
+    auto host_router_weights = AllocateBufferOnCPUPinned<float>(routing_element_count);
+    ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
+                      "Failed to allocate pinned host memory for CUDA QMoE routing statistics.");
+
+    const TimePoint instrumentation_start = instrumentation->StartProfiling();
+    auto record = std::make_unique<CudaMoeRoutingRecord>(
+        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
+        std::move(host_expert_ids), std::move(host_router_weights),
+        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
+    ORT_RETURN_IF_ERROR(record->Start(stream));
+    routing_record = record.get();
+    instrumentation->AddDeferredRecord(std::move(record));
+  }
+#endif
+
   // The FP4 DeepGEMM path, when eligible, outranks the GEMV for the same shapes.
   if (!use_fp4_deep_gemm && use_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1785,6 +1819,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                expanded, expanded,
                                workspace_size, total_scratch_bytes);
     }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, 0,
+          SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), true, stream));
+    }
+#endif
     return Status::OK();
   }
 
@@ -2002,6 +2043,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         activation_params,
         fused_routing,
         stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
+      const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, destination_offset, tile_element_count,
+          tile_index + 1 == row_tile_plan.TileCount(), stream));
+    }
+#endif
   }
 
   if (enable_kernel_debug_info_) {
@@ -2042,7 +2093,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #define DUMP_PACK_TENSOR(name, packed_scales, scales)
 #endif
 
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
   if (enable_fp4_deep_gemm_ && (input_idx == 2 || input_idx == 5 || input_idx == 3 || input_idx == 6)) {
     const bool fc1 = input_idx == 2 || input_idx == 3;
     const bool weight = input_idx == 2 || input_idx == 5;
@@ -2736,7 +2787,7 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
 }
 
 void QMoE::TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc) {
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
   if (!enable_fp4_deep_gemm_) {
     return;
   }

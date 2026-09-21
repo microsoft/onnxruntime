@@ -973,6 +973,7 @@ TEST(PagedAttention, Cuda_AttentionMetadataShape2CompatibilityAndDispatchBounds)
           {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1513,6 +1514,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvLongContext) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1559,6 +1561,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1654,6 +1657,7 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -1682,6 +1686,365 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
+}
+
+// -----------------------------------------------------------------------------
+// cuDNN paged SDPA dispatch tests. The tier follows GroupQueryAttention's cuDNN
+// enablement: explicit opt-in via `ORT_ENABLE_CUDNN_FLASH_ATTENTION=1` (also
+// settable through the `sdpa_kernel` bit) and auto-on for sm>=90. The kernel is
+// decode-only and requires cuDNN >= 9.5. Tests that expect the cuDNN backend to
+// actually run skip when the debug output does not show
+// SdpaKernel=CUDNN_FLASH_ATTENTION (older cuDNN, unsupported device, etc.);
+// tests that verify the fallback path always assert the negative.
+// -----------------------------------------------------------------------------
+namespace {
+
+// Common decode-shape case used by the cuDNN paged dispatch tests. head_size=128
+// keeps us clear of the XQA H256/group=6 case that would beat cuDNN paged. The
+// metadata reports max_query_len_bound == 1 and a max_kv_len_bound comfortably
+// above past_seqlen + 1.
+IoBindingCase MakeCudnnPagedDecodeCase() {
+  IoBindingCase c;
+  c.num_heads = 8;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.num_blocks = 4;
+  c.max_num_blocks_per_seq = 2;
+  c.past_seqlen = 256;
+  c.attention_metadata = {1, 512};
+  return c;
+}
+
+}  // namespace
+
+TEST(PagedAttention, Cuda_CudnnPagedDispatchWhenEnabled) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "cuDNN paged SDPA requires compute capability 8.0 or later.";
+  }
+
+  const IoBindingCase c = MakeCudnnPagedDecodeCase();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=512"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN paged SDPA must survive CUDA graph capture/replay. The `try_build_paged_graph`
+// probe is cache-first, and the ORT CUDA EP's two warm-up Runs
+// (min_num_runs_before_cuda_graph_capture_ = 2) populate the thread_local plan cache before
+// capture begins. During capture and replay, the probe hits the cache and returns true without
+// touching cuDNN -- the fused-attention kernel is what the graph captures. A regression that
+// (a) invalidates the cache between warm-up and capture, (b) fails to fold `isCapturing` inside
+// `try_build_paged_graph`, or (c) attempts a non-capturable cuDNN plan build during capture would
+// either crash the capture or silently fall back to FlashAttention on replays. RunIoBindingCase's
+// per-Run softmax(QK^T)V reference (2e-3 tolerance, checked per batch x token x head x dim)
+// covers numerical corruption of the captured graph.
+TEST(PagedAttention, Cuda_CudnnPagedCudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  // Five Runs: Runs 1-2 are warm-ups (populate the thread_local plan cache), Run 3 begins capture,
+  // Runs 4-5 replay. All Runs share the same PagedGraphParams key (batch / heads / head_size /
+  // blocks / block_size / max_num_blocks_per_seq / scale / dtype / handle), so every call to
+  // try_build_paged_graph -- warm-up, capturing, replaying -- hits the cached plan. past_seqlen
+  // varies across Runs but is not part of the cache key.
+  c.replay_past_seqlens = {
+      {256},
+      {260},
+      {300},
+      {340},
+      {380},
+  };
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedRespectsGlobalCudnnDisable) {
+  // ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch for every cuDNN
+  // attention path in the CUDA EP: it clears the sdpa_kernel bit AND sets
+  // disable_auto_cudnn_flash_attention_, so the sm>=90 auto-on path is also
+  // suppressed. The cuDNN paged tier must be inert under this setting on every
+  // supported device.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  const IoBindingCase c = MakeCudnnPagedDecodeCase();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackWithoutMetadata) {
+  // With no attention_metadata the has_metadata_bounds gate is false and cuDNN
+  // paged must not fire (it would otherwise require a D->H readback to prove
+  // max_query_len == 1 for decode).
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.attention_metadata.clear();
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackForMultiTokenBound) {
+  // With batch_size=2 the harness runs one token per sequence, so token_count=2 and metadata's
+  // max_query_len_bound=2 clamps to 2 -- not a decode step. cuDNN paged is decode-only and
+  // must decline; the cascade then picks XQA / FlashAttention / decoder.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.batch_size = 2;
+  c.attention_metadata = {2, 512};
+  c.block_table.resize(c.batch_size * c.max_num_blocks_per_seq);
+  for (int i = 0; i < static_cast<int>(c.block_table.size()); ++i) {
+    c.block_table[i] = i % c.num_blocks;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_CudnnPagedFallsBackForQuantizedCache) {
+  // int8 KV cache is not supported by the cuDNN paged tier; the eligibility
+  // gate rejects it and the cascade continues to XQA / FlashAttention / decoder.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "PagedAttention CUDA dispatch requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.int8_cache = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_EQ(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN 9.12's paged SDPA planner requires
+// `max_seq_len_kv == max_num_blocks_per_seq * block_size`. The decode benchmark
+// (contrib B:1/nH:16/nKV:16/H:128/past:512) allocates one extra page over the
+// past bound (`(past+1+block_size-1)/block_size + 1 = 4` blocks), so the
+// unaligned metadata bound (past+1 = 513) exercises the case where
+// `max_num_blocks_per_seq * block_size > max_kv_len_bound`. Without the
+// alignment fix in `run_paged`, cuDNN silently fails `graph->build()`.
+TEST(PagedAttention, Cuda_CudnnPagedBuildsWhenPageTableOverAllocated) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  // Shape-independent capability probe: does cuDNN paged fire on the aligned baseline shape? If we
+  // decide "cuDNN paged is available in this build/device" from the same run that also tests the
+  // alignment invariant, a regression in that invariant makes run_paged return false and the test
+  // silently skips instead of failing. Use a known-good shape here so the only reason the
+  // over-allocated case below can miss the cuDNN marker is the alignment invariant itself.
+  {
+    const IoBindingCase probe = MakeCudnnPagedDecodeCase();
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, probe);
+    const std::string probe_output = testing::internal::GetCapturedStdout();
+    if (probe_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+      GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                   << probe_output;
+    }
+  }
+
+  // Regression case: over-allocate the page table so `max_num_blocks_per_seq * block_size` exceeds
+  // the reported `max_kv_len_bound`. cuDNN 9.12's planner rejects any smaller value than the page
+  // capacity for max_seq_len_kv, so a working `run_paged` must round the metadata bound up before
+  // building. If that round-up is ever removed, this case fails the ASSERT_NE on the cuDNN marker
+  // below rather than silently falling back to FlashAttention/MEA.
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.num_heads = 16;
+  c.kv_num_heads = 16;
+  c.head_size = 128;
+  c.past_seqlen = 512;
+  c.max_num_blocks_per_seq = 4;  // Reserves 4 * 256 = 1024 slots.
+  c.num_blocks = 5;
+  c.attention_metadata = {1, 513};  // Bound is past+1 -- not a page multiple.
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  // The capability probe above already confirmed cuDNN paged is runnable on this build/device, so a
+  // missing marker here can only mean the alignment round-up in `run_paged` regressed. Hard-assert
+  // rather than skip.
+  ASSERT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << "Alignment regression: cuDNN paged fired on the aligned baseline case but not on the "
+         "over-allocated page-table case. `run_paged` is no longer rounding max_seq_len_kv up to "
+         "`max_num_blocks_per_seq * block_size` before feeding cuDNN. Debug output:\n"
+      << debug_output;
+  // EffectiveKvLengthBound pins the *un*aligned metadata bound (past+1 = 513) that the CUDA EP
+  // reports; the fact that the graph compiled at all is the observable proof that `run_paged`
+  // coarsened it to `max_num_blocks_per_seq * block_size = 1024` before build. GqaGroupSize=1
+  // catches the MHA-vs-GQA plumbing.
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=513"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=1"), std::string::npos) << debug_output;
+}
+
+// Regression: cuDNN paged SDPA must serve batch>1 with unequal past_seqlens per sequence and a
+// GQA layout (num_heads > kv_num_heads with num_heads % kv_num_heads == 0). This exercises the
+// per-batch KV padding-mask input (LaunchGetSeqlensKV) with non-uniform values -- a bug there
+// would either mask valid keys or read past the cache without a shape-level failure.
+TEST(PagedAttention, Cuda_CudnnPagedBatchGqaUnequalPastSeqlens) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.batch_size = 2;
+  c.num_heads = 8;
+  c.kv_num_heads = 1;
+  c.head_size = 128;
+  c.past_seqlen = 512;           // Harness upper bound; per-sequence lengths come from replay_past_seqlens.
+  c.max_num_blocks_per_seq = 4;  // 4 * 256 = 1024 slots per sequence, covers unequal past_seqlens.
+  c.num_blocks = 8;
+  c.attention_metadata = {1, 1024};  // aligned: max_num_blocks_per_seq * block_size.
+  c.replay_past_seqlens = {{200, 500}};
+  c.block_table.resize(c.batch_size * c.max_num_blocks_per_seq);
+  for (int i = 0; i < static_cast<int>(c.block_table.size()); ++i) {
+    c.block_table[i] = i % c.num_blocks;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=1024"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
+}
+
+// bf16 decode coverage. is_bf16 flips the graph's dtype tensors from fp16 to bf16 and hashes to a
+// different cache entry; the fp16 tests do not touch that code path.
+TEST(PagedAttention, Cuda_CudnnPagedBf16Decode) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.bf16_query = true;
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                 << debug_output;
+  }
+  EXPECT_NE(debug_output.find("EffectiveKvLengthBound=512"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, WebGpu_AliasedCache_IOBinding) {
