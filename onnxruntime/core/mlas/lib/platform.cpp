@@ -341,6 +341,7 @@ Return Value:
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
@@ -368,6 +369,7 @@ Return Value:
         this->ActivationRoutine = MlasActivationRvv;
         this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelRvv;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
