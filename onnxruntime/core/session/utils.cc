@@ -577,8 +577,16 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  const OrtSessionOptions* effective_options = options;
+  OrtSessionOptions options_with_session_options;
+  if (options != nullptr) {
+    options_with_session_options = *options;
+    options_with_session_options.value = sess.GetSessionOptions();
+    effective_options = &options_with_session_options;
+  }
+
   if (sess.GetRegisteredProviderTypes().empty()) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options, sess));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(effective_options, sess));
   }
 
   if (prepacked_weights_container != nullptr) {

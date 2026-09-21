@@ -116,8 +116,8 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
       blob_filepath = graph_viewer.ModelPath();
     }
     constexpr const char* path_resolution_guidance =
-        ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
-        "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
+        ". If the EPContext model is loaded from memory or a stream, set ep.context_file_path to the "
+        "EPContext model path so relative ep_cache_context paths can be resolved.";
     const auto validate_status =
         utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context));
     if (!validate_status.IsOK()) {
