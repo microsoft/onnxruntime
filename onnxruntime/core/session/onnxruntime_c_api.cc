@@ -4942,6 +4942,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
     // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::KernelContext_GetPreallocatedOutput,
+    // End of Version 30 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4983,9 +4984,10 @@ static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*)
 static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 421, "Size of version 27 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetSyncStream) / sizeof(void*) == 423, "Size of version 28 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsSetWeightlessSourceModelBuffer) / sizeof(void*) == 424, "Size of version 29 API cannot change");
+static_assert(offsetof(OrtApi, KernelContext_GetPreallocatedOutput) / sizeof(void*) == 425, "Size of version 30 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+static_assert(std::string_view(ORT_VERSION) == "1.31.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //

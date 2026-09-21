@@ -199,6 +199,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument("--terrapin_retrieval_tool_path", help="Path to TerrapinRetrievalTool binary.")
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
@@ -777,8 +778,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
 
     # --- ACL (Arm Compute Library) ---
-    acl_group = parser.add_argument_group("ACL Execution Provider")
-    acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
+    acl_group = parser.add_argument_group("[DEPRECATED] ACL Execution Provider")
+    acl_group.add_argument(
+        "--use_acl",
+        action="store_true",
+        help="Enable ACL EP (ARM architectures). The ACL EP is deprecated and will be removed in a future release.",
+    )
     acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
     acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
@@ -1046,7 +1051,10 @@ def parse_arguments() -> argparse.Namespace:
 
     # Handle deprecated args
     if hasattr(args, "enable_cuda_nhwc_ops") and args.enable_cuda_nhwc_ops:
-        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", DeprecationWarning)
+        warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", FutureWarning)
+
+    if args.use_acl:
+        warnings.warn("The ACL EP is deprecated and will be removed in a future release.", FutureWarning)
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)
