@@ -26,12 +26,14 @@
 #pragma comment(lib, "dxgi.lib")
 
 #include "core/common/path_string.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_stats.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -260,6 +262,26 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
 
   const std::string enable_workspace_preallocation =
       GetBinaryEnvironmentValue("ORT_WEBGPU_WORKSPACE_BENCHMARK_PREALLOCATION", "0");
+  std::string storage_cache_mode =
+      Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_STORAGE_BUFFER_CACHE_MODE");
+  if (storage_cache_mode.empty()) {
+    storage_cache_mode = "disabled";
+  }
+  ORT_ENFORCE(storage_cache_mode == "disabled" || storage_cache_mode == "bucket",
+              "Storage buffer cache mode must be disabled or bucket.");
+  std::string phase = Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_PHASE");
+  if (phase.empty()) {
+    phase = "all";
+  }
+  ORT_ENFORCE(phase == "all" || phase == "latency" || phase == "memory",
+              "Benchmark phase must be all, latency, or memory.");
+  const int64_t warmup_runs = GetPositiveInt64EnvironmentValue("ORT_WEBGPU_WORKSPACE_BENCHMARK_WARMUPS", 5);
+  const int64_t memory_runs = phase == "latency"
+                                  ? 0
+                                  : GetPositiveInt64EnvironmentValue("ORT_WEBGPU_WORKSPACE_BENCHMARK_MEMORY_RUNS", 3);
+  const int64_t measured_runs = phase == "memory"
+                                    ? 0
+                                    : GetPositiveInt64EnvironmentValue("ORT_WEBGPU_WORKSPACE_BENCHMARK_ITERATIONS", 30);
 
   SessionOptions session_options;
   session_options.session_logid = "WebGpuQwen25WorkspacePreallocationBenchmark";
@@ -269,7 +291,12 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
       kOrtSessionOptionsEnableStaticWorkspacePreallocation,
       enable_workspace_preallocation.c_str()));
 
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  ConfigOptions provider_options;
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode, storage_cache_mode.c_str()));
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableGraphCapture, "0"));
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kPreferredLayout, "NHWC"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(provider_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
@@ -377,25 +404,23 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
 
   const std::vector<std::string> output_names{"logits"};
   std::vector<OrtValue> fetches;
-  constexpr int kWarmupRuns = 5;
-  std::array<size_t, kWarmupRuns> wddm_warmup_live_local_bytes{};
-  std::array<size_t, kWarmupRuns> wddm_warmup_post_clear_local_bytes{};
-  for (int i = 0; i < kWarmupRuns; ++i) {
+  InlinedVector<size_t> wddm_warmup_live_local_bytes;
+  InlinedVector<size_t> wddm_warmup_post_clear_local_bytes;
+  wddm_warmup_live_local_bytes.reserve(static_cast<size_t>(warmup_runs));
+  wddm_warmup_post_clear_local_bytes.reserve(static_cast<size_t>(warmup_runs));
+  for (int64_t i = 0; i < warmup_runs; ++i) {
     fetches.clear();
     if (i > 0) {
-      wddm_warmup_post_clear_local_bytes[static_cast<size_t>(i - 1)] =
-          GetWddmLocalUsageBytes(dxgi_adapter.Get());
+      wddm_warmup_post_clear_local_bytes.push_back(GetWddmLocalUsageBytes(dxgi_adapter.Get()));
     }
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
-    wddm_warmup_live_local_bytes[static_cast<size_t>(i)] =
-        GetWddmLocalUsageBytes(dxgi_adapter.Get());
+    wddm_warmup_live_local_bytes.push_back(GetWddmLocalUsageBytes(dxgi_adapter.Get()));
   }
   ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
   ASSERT_EQ(fetches.front().Get<Tensor>().Shape(),
             TensorShape({1, sequence_length, profile.vocab_size}));
   fetches.clear();
-  wddm_warmup_post_clear_local_bytes.back() =
-      GetWddmLocalUsageBytes(dxgi_adapter.Get());
+  wddm_warmup_post_clear_local_bytes.push_back(GetWddmLocalUsageBytes(dxgi_adapter.Get()));
 
   size_t workspace_pattern_peak_bytes = 0;
   if (const MemoryPatternGroup* workspace_patterns =
@@ -416,21 +441,26 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
       static_cast<webgpu::GpuBufferAllocator*>(webgpu_allocator.get());
   webgpu_buffer_allocator->ResetPeakStats();
 
-  constexpr int kMemoryMeasurementRuns = 3;
+  const auto unix_time_ns = []() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+  };
   WddmMemorySampler inference_wddm_sampler(dxgi_adapter);
-  for (int i = 0; i < kMemoryMeasurementRuns; ++i) {
+  const int64_t memory_start_unix_ns = unix_time_ns();
+  for (int64_t i = 0; i < memory_runs; ++i) {
     fetches.clear();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
+  const int64_t memory_end_unix_ns = unix_time_ns();
   inference_wddm_sampler.Stop();
   ASSERT_TRUE(SUCCEEDED(inference_wddm_sampler.Error()));
   AllocatorStats after_memory_measurement;
   webgpu_allocator->GetStats(&after_memory_measurement);
 
-  constexpr int kMeasuredRuns = 30;
   std::vector<double> latencies_ms;
-  latencies_ms.reserve(kMeasuredRuns);
-  for (int i = 0; i < kMeasuredRuns; ++i) {
+  latencies_ms.reserve(static_cast<size_t>(measured_runs));
+  for (int64_t i = 0; i < measured_runs; ++i) {
     fetches.clear();
     const auto start = Clock::now();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
@@ -446,9 +476,6 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
                          1;
     return latencies_ms[std::min(index, latencies_ms.size() - 1)];
   };
-  const double average_ms =
-      std::accumulate(latencies_ms.begin(), latencies_ms.end(), 0.0) /
-      static_cast<double>(latencies_ms.size());
   const double initialize_ms =
       std::chrono::duration<double, std::milli>(
           initialize_end - initialize_start)
@@ -475,19 +502,31 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
             << " model=" << profile.name
             << " sequence_length=" << sequence_length
             << " workspace_preallocation=" << enable_workspace_preallocation
+            << " storage_buffer_cache_mode=" << storage_cache_mode
+            << " enable_int64=1 enable_graph_capture=0 preferred_layout=NHWC"
+            << " phase=" << phase
+            << " warmup_runs=" << warmup_runs
+            << " memory_runs=" << memory_runs
+            << " measured_runs=" << measured_runs
+            << " memory_start_unix_ns=" << memory_start_unix_ns
+            << " memory_end_unix_ns=" << memory_end_unix_ns
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " planned_workspace_slots=" << planned_workspace_slots
             << " aggregate_workspace_bytes=" << aggregate_workspace_bytes
             << " largest_workspace_bytes=" << largest_workspace_bytes
             << " workspace_pattern_peak_bytes=" << workspace_pattern_peak_bytes
-            << " initialize_ms=" << initialize_ms
-            << " average_ms=" << average_ms
-            << " p50_ms=" << percentile(0.50)
-            << " p90_ms=" << percentile(0.90)
-            << " p99_ms=" << percentile(0.99)
-            << " min_ms=" << latencies_ms.front()
-            << " max_ms=" << latencies_ms.back()
-            << " wddm_baseline_local_mib=" << to_mib(wddm_baseline_local_bytes)
+            << " initialize_ms=" << initialize_ms;
+  if (!latencies_ms.empty()) {
+    std::cout << " average_ms="
+              << std::accumulate(latencies_ms.begin(), latencies_ms.end(), 0.0) /
+                     static_cast<double>(latencies_ms.size())
+              << " p50_ms=" << percentile(0.50)
+              << " p90_ms=" << percentile(0.90)
+              << " p99_ms=" << percentile(0.99)
+              << " min_ms=" << latencies_ms.front()
+              << " max_ms=" << latencies_ms.back();
+  }
+  std::cout << " wddm_baseline_local_mib=" << to_mib(wddm_baseline_local_bytes)
             << " wddm_initialization_peak_local_mib="
             << to_mib(wddm_initialization_peak_local_bytes)
             << " wddm_initialization_peak_delta_mib="
@@ -515,7 +554,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
             << " measurement_peak_delta_bytes=" << measurement_peak_delta_bytes
             << " final_bytes_in_use=" << after_memory_measurement.bytes_in_use
             << " final_max_bytes_in_use=" << after_memory_measurement.max_bytes_in_use;
-  for (size_t i = 0; i < static_cast<size_t>(kWarmupRuns); ++i) {
+  for (size_t i = 0; i < static_cast<size_t>(warmup_runs); ++i) {
     std::cout << " wddm_warmup_" << i + 1
               << "_live_local_mib=" << to_mib(wddm_warmup_live_local_bytes[i])
               << " wddm_warmup_" << i + 1

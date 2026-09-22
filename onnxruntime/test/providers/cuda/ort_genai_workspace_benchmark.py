@@ -4,11 +4,12 @@
 """Benchmark ORT GenAI latency and GPU memory with workspace preallocation.
 
 The controller launches one fresh worker process per mode. This keeps model
-initialization, tactic profiling, CUDA arena state, and memory-pattern state
+initialization, provider allocator state, and memory-pattern state
 isolated between scratch and planned-workspace measurements.
 
-The script requires an onnxruntime-genai Python package built against an ONNX
-Runtime containing the workspace-estimation changes under test.
+The script supports CUDA and WebGPU. It requires an onnxruntime-genai Python
+package built against an ONNX Runtime containing the workspace-estimation
+changes under test.
 """
 
 from __future__ import annotations
@@ -33,8 +34,17 @@ from typing import Any
 
 import numpy as np
 
-MODES = ("scratch", "matmul", "combined")
-MODE_ORDERS = tuple(itertools.permutations(MODES))
+CUDA_MODES = ("scratch", "matmul", "combined")
+WEBGPU_MODES = ("scratch", "planned")
+ALL_MODES = tuple(dict.fromkeys((*CUDA_MODES, *WEBGPU_MODES)))
+
+
+def modes_for_provider(execution_provider: str) -> tuple[str, ...]:
+    if execution_provider == "cuda":
+        return CUDA_MODES
+    if execution_provider == "webgpu":
+        return WEBGPU_MODES
+    raise ValueError(f"Unsupported execution provider: {execution_provider}")
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -187,34 +197,66 @@ def build_max_shape_override(config: dict[str, Any], prompt_tokens: int, capacit
 
 def create_benchmark_config(
     model_path: Path,
+    execution_provider: str,
     mode: str,
     prompt_tokens: int,
     generated_tokens: int,
     fpa_intb: bool,
     device_id: int,
     output_directory: Path,
+    webgpu_cache_mode: str | None = None,
+    webgpu_controlled_comparison: bool = False,
 ) -> Path:
+    if mode not in modes_for_provider(execution_provider):
+        raise ValueError(f"Mode {mode!r} is invalid for {execution_provider}")
+    if execution_provider == "webgpu" and fpa_intb:
+        raise ValueError("fpA-intB is only supported for CUDA")
+    if execution_provider != "webgpu" and (webgpu_cache_mode is not None or webgpu_controlled_comparison):
+        raise ValueError("WebGPU provider controls require the WebGPU execution provider")
+    if webgpu_cache_mode not in (None, "disabled", "bucket"):
+        raise ValueError("WebGPU storage buffer cache mode must be disabled or bucket")
     source_config_path = model_path / "genai_config.json"
     config = json.loads(source_config_path.read_text(encoding="utf-8"))
     decoder = config["model"]["decoder"]
 
     capacity = prompt_tokens + generated_tokens
+    if capacity > int(config["model"]["context_length"]):
+        raise ValueError(f"Prompt plus generation ({capacity}) exceeds the model context length")
     session_options = decoder.setdefault("session_options", {})
-    provider_options = session_options.setdefault("provider_options", [])
-    cuda_options = next(
-        (provider["cuda"] for provider in provider_options if "cuda" in provider),
-        None,
-    )
-    if cuda_options is None:
-        cuda_options = {}
-        provider_options.append({"cuda": cuda_options})
-    cuda_options["device_id"] = str(device_id)
+    if execution_provider == "cuda":
+        provider_options = session_options.setdefault("provider_options", [])
+        cuda_options = next((provider["cuda"] for provider in provider_options if "cuda" in provider), None)
+        if cuda_options is None:
+            cuda_options = {}
+            provider_options.append({"cuda": cuda_options})
+        cuda_options["device_id"] = str(device_id)
+    else:
+        webgpu_options = next(
+            (
+                options
+                for provider in session_options.get("provider_options", [])
+                for name, options in provider.items()
+                if name.lower() == "webgpu"
+            ),
+            {},
+        )
+        if webgpu_cache_mode is not None:
+            webgpu_options["storageBufferCacheMode"] = webgpu_cache_mode
+        if webgpu_controlled_comparison:
+            webgpu_options.update(enableInt64="1", enableGraphCapture="0", preferredLayout="NHWC")
+        session_options["provider_options"] = [{"webgpu": webgpu_options}]
 
     session_options["session.enable_static_workspace_preallocation"] = "0" if mode == "scratch" else "1"
-    session_options["ep.cuda.fpa_intb_gemm"] = "1" if fpa_intb else "0"
     session_options["session.max_shape_override"] = build_max_shape_override(config, prompt_tokens, capacity)
-    if mode == "combined":
-        session_options["ep.cuda.gqa_workspace_max_total_sequence_length"] = str(capacity)
+    if execution_provider == "cuda":
+        session_options["ep.cuda.fpa_intb_gemm"] = "1" if fpa_intb else "0"
+        if mode == "combined":
+            session_options["ep.cuda.gqa_workspace_max_total_sequence_length"] = str(capacity)
+        else:
+            session_options.pop("ep.cuda.gqa_workspace_max_total_sequence_length", None)
+    else:
+        session_options.pop("ep.cuda.fpa_intb_gemm", None)
+        session_options.pop("ep.cuda.gqa_workspace_max_total_sequence_length", None)
 
     search = config.setdefault("search", {})
     use_engine = "engine" in config
@@ -255,7 +297,9 @@ class NvidiaSmiMemorySampler:
         self._interval_ms = interval_ms
         self._process: subprocess.Popen[str] | None = None
         self._thread: threading.Thread | None = None
-        self._values: list[int] = []
+        self.samples: list[tuple[int, int]] = []
+        self._error: str | None = None
+        self._peak_start_ns: int | None = None
 
     def start(self) -> None:
         command = [
@@ -277,27 +321,52 @@ class NvidiaSmiMemorySampler:
             assert self._process is not None
             assert self._process.stdout is not None
             for line in self._process.stdout:
-                try:
-                    self._values.append(int(line.strip()))
-                except ValueError:
+                if not line.strip():
                     continue
+                try:
+                    value = int(line.strip())
+                except ValueError:
+                    self._error = f"Invalid nvidia-smi memory sample: {line.strip()}"
+                    return
+                self.samples.append((time.time_ns(), value))
 
         self._thread = threading.Thread(target=read_samples, daemon=True)
         self._thread.start()
         deadline = time.monotonic() + 5.0
-        while not self._values and time.monotonic() < deadline:
+        while not self.samples and self._error is None and time.monotonic() < deadline:
+            if self._process.poll() is not None:
+                break
             time.sleep(0.01)
-        if not self._values:
+        if not self.samples:
             self.stop()
             raise RuntimeError("nvidia-smi did not produce a memory sample")
 
     def reset_peak(self) -> int:
-        baseline = self._values[-1]
-        self._values = [baseline]
+        self._peak_start_ns, baseline = self.samples[-1]
         return baseline
 
+    def summarize_window(self, start_ns: int | None = None, end_ns: int | None = None) -> dict[str, float | int]:
+        if not self.samples:
+            raise RuntimeError("nvidia-smi did not produce a memory sample")
+        start_ns = self.samples[0][0] if start_ns is None else start_ns
+        end_ns = self.samples[-1][0] if end_ns is None else end_ns
+        selected = [(timestamp, value) for timestamp, value in self.samples if start_ns <= timestamp <= end_ns]
+        if not selected:
+            raise RuntimeError("No nvidia-smi samples fell inside the measurement window")
+        baseline = selected[0][1]
+        peak = max(value for _, value in selected)
+        gaps = [right[0] - left[0] for left, right in itertools.pairwise(selected)]
+        return {
+            "device_baseline_mib": baseline,
+            "device_peak_mib": peak,
+            "device_peak_delta_mib": peak - baseline,
+            "sample_count": len(selected),
+            "max_sample_gap_ms": max(gaps, default=0) / 1_000_000,
+        }
+
     def stop(self) -> int:
-        if self._process is not None and self._process.poll() is None:
+        unexpected_exit = self._process is not None and self._process.poll() is not None
+        if self._process is not None and not unexpected_exit:
             self._process.terminate()
             try:
                 self._process.wait(timeout=5)
@@ -305,8 +374,21 @@ class NvidiaSmiMemorySampler:
                 self._process.kill()
                 self._process.wait(timeout=5)
         if self._thread is not None:
-            self._thread.join(timeout=1)
-        return max(self._values) if self._values else 0
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                raise RuntimeError("nvidia-smi sample reader did not terminate")
+        stderr = ""
+        if self._process is not None:
+            if self._process.stdout is not None:
+                self._process.stdout.close()
+            if self._process.stderr is not None:
+                stderr = self._process.stderr.read().strip()
+                self._process.stderr.close()
+        if self._error is not None:
+            raise RuntimeError(self._error)
+        if unexpected_exit:
+            raise RuntimeError(f"nvidia-smi exited unexpectedly: {stderr}")
+        return int(self.summarize_window(self._peak_start_ns)["device_peak_mib"])
 
 
 def run_generation(
@@ -345,6 +427,11 @@ def run_generation(
 
     scenario_end = time.perf_counter()
     sequence = np.asarray(generator.get_sequence(0), dtype=np.int32)
+    if len(sequence) != total_length or len(decode_ms) != generated_tokens - 1:
+        raise RuntimeError(
+            f"Expected {generated_tokens} generated tokens and {generated_tokens - 1} decode evaluations, "
+            f"got {len(sequence) - len(prompt)} tokens and {len(decode_ms)} evaluations"
+        )
     result = {
         "generator_setup_ms": (append_start - request_start) * 1000.0,
         "append_tokens_ms": (append_end - append_start) * 1000.0,
@@ -353,6 +440,7 @@ def run_generation(
         "model_ttft_ms": (first_token_end - append_start) * 1000.0,
         "request_scenario_ms": (scenario_end - request_start) * 1000.0,
         "model_scenario_ms": (scenario_end - append_start) * 1000.0,
+        "decode_total_ms": (scenario_end - first_token_end) * 1000.0,
         "decode_ms": decode_ms,
         "output_hash": hashlib.sha256(sequence.tobytes()).hexdigest(),
         "output_length": len(sequence),
@@ -409,6 +497,8 @@ def run_engine_generation(
         raise RuntimeError("Engine request completed without producing a token")
 
     scenario_end = time.perf_counter()
+    if len(output_tokens) != generated_tokens or len(decode_ms) != generated_tokens - 1:
+        raise RuntimeError(f"Expected {generated_tokens} generated tokens, got {len(output_tokens)}")
     sequence = np.concatenate((prompt, np.asarray(output_tokens, dtype=np.int32)))
     result = {
         "generator_setup_ms": (append_start - request_start) * 1000.0,
@@ -418,6 +508,7 @@ def run_engine_generation(
         "model_ttft_ms": (first_token_end - append_start) * 1000.0,
         "request_scenario_ms": (scenario_end - request_start) * 1000.0,
         "model_scenario_ms": (scenario_end - append_start) * 1000.0,
+        "decode_total_ms": (scenario_end - first_token_end) * 1000.0,
         "decode_ms": decode_ms,
         "output_hash": hashlib.sha256(sequence.tobytes()).hexdigest(),
         "output_length": len(sequence),
@@ -431,7 +522,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         og = importlib.import_module("onnxruntime_genai")
     except ImportError as error:
         raise RuntimeError(
-            "onnxruntime-genai is not installed. Install or build a CUDA package "
+            "onnxruntime-genai is not installed. Install or build a package "
             "that uses the ONNX Runtime changes under test."
         ) from error
 
@@ -445,13 +536,19 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     ) as temporary_directory:
         config_path = create_benchmark_config(
             model_path,
+            args.execution_provider,
             args.mode,
             args.prompt_tokens,
             args.generated_tokens,
             args.fpa_intb,
             args.device_id,
             Path(temporary_directory),
+            args.webgpu_storage_buffer_cache_mode,
+            args.webgpu_controlled_comparison,
         )
+        effective_session_options = json.loads(config_path.read_text(encoding="utf-8"))["model"]["decoder"][
+            "session_options"
+        ]
         model_load_start = time.perf_counter()
         model = og.Model(str(config_path.parent))
         use_engine = "engine" in source_config
@@ -468,19 +565,31 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
 
         samples: list[dict[str, Any]] = []
         memory: dict[str, int] | None = None
+        memory_window: dict[str, int] | None = None
         if args.phase == "memory":
-            sampler = NvidiaSmiMemorySampler(args.device_id, args.memory_sample_interval_ms)
-            sampler.start()
-            try:
+            sampler = (
+                None
+                if args.external_memory_sampling
+                else NvidiaSmiMemorySampler(args.device_id, args.memory_sample_interval_ms)
+            )
+            if sampler is not None:
+                sampler.start()
                 baseline_mib = sampler.reset_peak()
-                samples.append(generate())
+            memory_start_ns = time.time_ns()
+            try:
+                for _ in range(args.memory_iterations):
+                    samples.append(generate())
             finally:
-                peak_mib = sampler.stop()
-            memory = {
-                "device_baseline_mib": baseline_mib,
-                "device_peak_mib": peak_mib,
-                "device_peak_delta_mib": peak_mib - baseline_mib,
-            }
+                memory_end_ns = time.time_ns()
+                if sampler is not None:
+                    peak_mib = sampler.stop()
+            memory_window = {"start": memory_start_ns, "end": memory_end_ns}
+            if sampler is not None:
+                memory = {
+                    "device_baseline_mib": baseline_mib,
+                    "device_peak_mib": peak_mib,
+                    "device_peak_delta_mib": peak_mib - baseline_mib,
+                }
         else:
             for _ in range(args.iterations):
                 samples.append(generate())
@@ -492,6 +601,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         model_ttft = [float(sample["model_ttft_ms"]) for sample in samples]
         request_scenario = [float(sample["request_scenario_ms"]) for sample in samples]
         model_scenario = [float(sample["model_scenario_ms"]) for sample in samples]
+        decode_total = [float(sample["decode_total_ms"]) for sample in samples]
         decode = [float(value) for sample in samples for value in sample["decode_ms"]]
         output_hashes = {str(sample["output_hash"]) for sample in samples}
         lengths = {int(sample["output_length"]) for sample in samples}
@@ -499,10 +609,12 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError("Generated output changed between identical measured iterations")
 
         return {
+            "execution_provider": args.execution_provider,
             "mode": args.mode,
             "phase": args.phase,
             "model_path": str(model_path),
             "fpa_intb": args.fpa_intb,
+            "effective_session_options": effective_session_options,
             "prompt_tokens": args.prompt_tokens,
             "generated_tokens": args.generated_tokens,
             "generation_api": "engine" if use_engine else "generator",
@@ -516,10 +628,12 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "model_ttft_ms": summarize(model_ttft),
             "request_scenario_ms": summarize(request_scenario),
             "model_scenario_ms": summarize(model_scenario),
+            "decode_total_ms": summarize(decode_total),
             "decode_token_ms": summarize(decode),
             "output_hashes": sorted(output_hashes),
             "output_lengths": sorted(lengths),
             "memory": memory,
+            "memory_window_unix_ns": memory_window,
         }
 
 
@@ -530,6 +644,8 @@ def worker_command(args: argparse.Namespace, mode: str, output_path: Path) -> li
         "--worker",
         "--model-path",
         args.model_path,
+        "--execution-provider",
+        args.execution_provider,
         "--mode",
         mode,
         "--phase",
@@ -548,10 +664,16 @@ def worker_command(args: argparse.Namespace, mode: str, output_path: Path) -> li
         str(args.device_id),
         "--memory-sample-interval-ms",
         str(args.memory_sample_interval_ms),
+        "--memory-iterations",
+        str(args.memory_iterations),
         "--worker-output",
         str(output_path),
     ]
     command.append("--fpa-intb" if args.fpa_intb else "--no-fpa-intb")
+    if args.webgpu_storage_buffer_cache_mode is not None:
+        command.extend(("--webgpu-storage-buffer-cache-mode", args.webgpu_storage_buffer_cache_mode))
+    if args.webgpu_controlled_comparison:
+        command.append("--webgpu-controlled-comparison")
     return command
 
 
@@ -560,7 +682,9 @@ def run_controller(args: argparse.Namespace) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     process_results: list[dict[str, Any]] = []
 
-    orders = [MODE_ORDERS[index % len(MODE_ORDERS)] for index in range(args.repetitions)]
+    modes = modes_for_provider(args.execution_provider)
+    mode_orders = tuple(itertools.permutations(modes))
+    orders = [mode_orders[index % len(mode_orders)] for index in range(args.repetitions)]
 
     with tempfile.TemporaryDirectory(prefix="ort-genai-workspace-controller-") as temporary_directory:
         temporary_path = Path(temporary_directory)
@@ -593,7 +717,7 @@ def run_controller(args: argparse.Namespace) -> dict[str, Any]:
                 for output_hash in result["output_hashes"]
             }
         )
-        for mode in MODES
+        for mode in modes
     }
     mode_hash_sets_match = len({tuple(hashes) for hashes in output_hashes_by_mode.values()}) == 1
     output_lengths_match = len(output_lengths) == 1
@@ -608,9 +732,10 @@ def run_controller(args: argparse.Namespace) -> dict[str, Any]:
         "model_ttft_ms",
         "request_scenario_ms",
         "model_scenario_ms",
+        "decode_total_ms",
         "decode_token_ms",
     )
-    for mode in MODES:
+    for mode in modes:
         mode_results = [result for result in process_results if result["mode"] == mode]
         aggregate[mode] = {
             metric: summarize([float(result[metric]["trimmed_mean"]) for result in mode_results]) for metric in metrics
@@ -627,25 +752,29 @@ def run_controller(args: argparse.Namespace) -> dict[str, Any]:
         else:
             aggregate[mode]["memory"] = None
 
+    comparisons = (
+        (("matmul", "scratch"), ("combined", "scratch"), ("combined", "matmul"))
+        if args.execution_provider == "cuda"
+        else (("planned", "scratch"),)
+    )
     paired_changes = None
     paired_memory = None
     if args.phase != "memory":
         paired_changes = {
             metric: {
-                "matmul_vs_scratch": summarize_paired_changes(process_results, metric, "matmul", "scratch"),
-                "combined_vs_scratch": summarize_paired_changes(process_results, metric, "combined", "scratch"),
-                "combined_vs_matmul": summarize_paired_changes(process_results, metric, "combined", "matmul"),
+                f"{candidate}_vs_{reference}": summarize_paired_changes(process_results, metric, candidate, reference)
+                for candidate, reference in comparisons
             }
             for metric in metrics
         }
     else:
         paired_memory = {
-            "matmul_vs_scratch": summarize_paired_memory_changes(process_results, "matmul", "scratch"),
-            "combined_vs_scratch": summarize_paired_memory_changes(process_results, "combined", "scratch"),
-            "combined_vs_matmul": summarize_paired_memory_changes(process_results, "combined", "matmul"),
+            f"{candidate}_vs_{reference}": summarize_paired_memory_changes(process_results, candidate, reference)
+            for candidate, reference in comparisons
         }
 
     report = {
+        "execution_provider": args.execution_provider,
         "phase": args.phase,
         "model_path": str(Path(args.model_path).resolve()),
         "fpa_intb": args.fpa_intb,
@@ -676,16 +805,34 @@ def run_controller(args: argparse.Namespace) -> dict[str, Any]:
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-path", required=True, help="Directory containing genai_config.json and model.onnx")
+    parser.add_argument("--execution-provider", choices=("cuda", "webgpu"), default="cuda")
     parser.add_argument("--phase", choices=("ttft", "scenario", "memory"), default="ttft")
-    parser.add_argument("--mode", choices=MODES, default="scratch", help=argparse.SUPPRESS)
+    parser.add_argument("--mode", choices=ALL_MODES, default="scratch", help=argparse.SUPPRESS)
     parser.add_argument("--prompt-tokens", type=int, default=1024)
     parser.add_argument("--generated-tokens", type=int, default=128)
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--iterations", type=int, default=30)
     parser.add_argument("--repetitions", type=int, default=6)
     parser.add_argument("--seed", type=int, default=1234)
-    parser.add_argument("--device-id", type=int, default=0)
+    parser.add_argument(
+        "--device-id",
+        type=int,
+        default=0,
+        help="CUDA device / nvidia-smi index; for WebGPU only index 0 is supported on an otherwise idle single-GPU system",
+    )
     parser.add_argument("--memory-sample-interval-ms", type=int, default=5)
+    parser.add_argument("--memory-iterations", type=int, default=1)
+    parser.add_argument("--webgpu-storage-buffer-cache-mode", choices=("disabled", "bucket"))
+    parser.add_argument(
+        "--webgpu-controlled-comparison",
+        action="store_true",
+        help="Match the C++ WebGPU benchmark: enableInt64=1, enableGraphCapture=0, preferredLayout=NHWC",
+    )
+    parser.add_argument(
+        "--external-memory-sampling",
+        action="store_true",
+        help="Memory workers only: emit the measurement window; the caller must collect device memory externally",
+    )
     parser.add_argument("--fpa-intb", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--output", default="ort_genai_workspace_benchmark.json")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
@@ -698,8 +845,23 @@ def parse_arguments() -> argparse.Namespace:
         parser.error("--generated-tokens must be positive")
     if args.warmups < 0 or args.iterations <= 0 or args.repetitions <= 0:
         parser.error("warmups must be non-negative; iterations and repetitions must be positive")
+    if args.device_id < 0 or args.memory_sample_interval_ms <= 0 or args.memory_iterations <= 0:
+        parser.error("device-id must be non-negative; memory-sample-interval-ms and memory-iterations must be positive")
+    if args.execution_provider != "webgpu" and (
+        args.webgpu_storage_buffer_cache_mode is not None or args.webgpu_controlled_comparison
+    ):
+        parser.error("WebGPU provider controls require --execution-provider webgpu")
+    if args.external_memory_sampling and (not args.worker or args.phase != "memory"):
+        parser.error("--external-memory-sampling requires --worker --phase memory")
     if args.phase == "ttft":
         args.generated_tokens = 1
+    valid_modes = modes_for_provider(args.execution_provider)
+    if args.mode not in valid_modes:
+        parser.error(f"--mode {args.mode!r} is invalid for {args.execution_provider}; choose from {valid_modes}")
+    if args.execution_provider == "webgpu" and args.fpa_intb:
+        parser.error("--fpa-intb is only valid with --execution-provider cuda")
+    if args.execution_provider == "webgpu" and args.device_id != 0:
+        parser.error("WebGPU adapter selection by --device-id is not supported; use index 0 on a single-GPU system")
     if args.worker and not args.worker_output:
         parser.error("--worker-output is required with --worker")
     return args

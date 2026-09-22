@@ -7,6 +7,11 @@ This document records results produced by
 API. It compares dynamic CUDA scratch allocation with static workspace
 preallocation for `MatMulNBits` and `GroupQueryAttention` (GQA).
 
+CUDA is the script's default execution provider. The same script also accepts
+`--execution-provider webgpu`; its scratch/planned comparison and results are
+documented in the
+[controlled WebGPU report](../webgpu/workspace_controlled_benchmark_results.md).
+
 Results from the earlier C++ provider benchmark are maintained separately in
 [`workspace_preallocation_benchmark_results.md`](workspace_preallocation_benchmark_results.md).
 Numbers from the two benchmark implementations should not be compared as
