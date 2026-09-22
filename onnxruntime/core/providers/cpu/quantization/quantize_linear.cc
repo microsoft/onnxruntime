@@ -52,6 +52,12 @@ class QuantizeLinear final : public OpKernel {
     }
 
     ORT_ENFORCE(block_size_ >= 0, "'block_size' must be non-negative.");
+    precision_ = info.node().SinceVersion() < 23
+                     ? static_cast<int64_t>(ONNX_NAMESPACE::TensorProto::FLOAT)
+                     : info.GetAttrOrDefault<int64_t>("precision", 0);
+    ORT_ENFORCE(precision_ == 0 || precision_ == ONNX_NAMESPACE::TensorProto::FLOAT ||
+                    precision_ == ONNX_NAMESPACE::TensorProto::FLOAT16,
+                "CPU QuantizeLinear only supports FLOAT and FLOAT16 precision.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -60,6 +66,7 @@ class QuantizeLinear final : public OpKernel {
   int64_t axis_;
   int64_t saturate_;
   int64_t block_size_;
+  int64_t precision_;
 };
 
 static void PrepareForQDQ(const TensorShape& input_shape,
@@ -926,6 +933,83 @@ DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt4x2, 2)
 DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(Int2x4, 4)
 DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt2x4, 4)
 
+template <typename OutT, typename InT, typename ScaleT>
+void QuantizeLinearWithPrecision(const InT* input, const ScaleT* scale, const OutT* zero_point,
+                                 OutT* output, size_t count, size_t K, size_t N, size_t block_size,
+                                 bool half_precision, bool saturate, concurrency::ThreadPool* thread_pool) {
+  constexpr size_t elements_per_byte =
+      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, OutT>::value   ? 2
+      : boost::mp11::mp_contains<TypeList<Int2x4, UInt2x4>, OutT>::value ? 4
+                                                                         : 1;
+  const size_t blocks = block_size ? K / block_size + (K % block_size != 0) : 0;
+  auto quantize = [&](size_t i) {
+    const size_t axis_index = (i / N) % K;
+    const size_t scale_index = block_size ? ((i / N / K) * blocks + axis_index / block_size) * N + i % N
+                                          : axis_index;
+    float value = static_cast<float>(input[i]);
+    float divisor = static_cast<float>(scale[scale_index]);
+    if (half_precision) {
+      // Round the operands and quotient before rounding to a quantized value.
+      value = MLFloat16(MLFloat16(value).ToFloat() / MLFloat16(divisor).ToFloat()).ToFloat();
+    } else {
+      value /= divisor;
+    }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+    if constexpr (boost::mp11::mp_contains<element_type_lists::AllFloat8, OutT>::value) {
+      return OutT(value, saturate);
+    } else
+#endif
+    {
+      ORT_UNUSED_PARAMETER(saturate);
+      float zp = 0.0f;
+      float low;
+      float high;
+      if constexpr (elements_per_byte > 1) {
+        if (zero_point) {
+          zp = zero_point[scale_index / elements_per_byte].GetElem(scale_index % elements_per_byte);
+        }
+        low = static_cast<float>(OutT::min_val);
+        high = static_cast<float>(OutT::max_val);
+      } else {
+        if (zero_point) {
+          zp = static_cast<float>(zero_point[scale_index]);
+        }
+        low = static_cast<float>(std::numeric_limits<OutT>::lowest());
+        high = static_cast<float>(std::numeric_limits<OutT>::max());
+      }
+      // Clamp before the integer conversion, including quotients that overflow.
+      return static_cast<int32_t>(std::min(high, std::max(low, RoundHalfToEven(value) + zp)));
+    }
+  };
+
+  const size_t units = count / elements_per_byte + (count % elements_per_byte != 0);
+  constexpr size_t thread_block_size = 128;
+  const auto thread_blocks = narrow<std::ptrdiff_t>(units / thread_block_size + (units % thread_block_size != 0));
+  const TensorOpCost unit_cost{static_cast<double>(thread_block_size * elements_per_byte * (sizeof(InT) + sizeof(ScaleT))),
+                               static_cast<double>(thread_block_size * sizeof(OutT)),
+                               static_cast<double>(thread_block_size * elements_per_byte * 8)};
+  auto quantize_range = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    const size_t first = static_cast<size_t>(begin) * thread_block_size;
+    const size_t last = std::min(static_cast<size_t>(end) * thread_block_size, units);
+    for (size_t unit = first; unit < last; ++unit) {
+      if constexpr (elements_per_byte > 1) {
+        // Each worker owns complete bytes, including an incomplete final byte.
+        OutT packed{};
+        const size_t first_element = unit * elements_per_byte;
+        const size_t packed_count = std::min(elements_per_byte, count - first_element);
+        for (size_t j = 0; j < packed_count; ++j) {
+          packed.SetElem(j, static_cast<typename OutT::UnpackedType>(quantize(first_element + j)));
+        }
+        output[unit] = packed;
+      } else {
+        output[unit] = static_cast<OutT>(quantize(unit));
+      }
+    }
+  };
+  concurrency::ThreadPool::TryParallelFor(thread_pool, thread_blocks, unit_cost, quantize_range);
+}
+
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
 Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -943,6 +1027,31 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   T* output = y.MutableData<T>();
+
+  const auto precision = precision_ == 0 ? y_scale.GetElementType() : precision_;
+  if (x.GetElementType() != y_scale.GetElementType() || precision == ONNX_NAMESPACE::TensorProto::FLOAT16) {
+    auto quantize = [&]<typename InT, typename ScaleT>(const InT* input, const ScaleT* scale) {
+      QuantizeLinearWithPrecision(input, scale, zero_point, output,
+                                  narrow<size_t>(x_shape.Size()), narrow<size_t>(broadcast_dim),
+                                  narrow<size_t>(process_block_size), narrow<size_t>(block_size_),
+                                  precision == ONNX_NAMESPACE::TensorProto::FLOAT16,
+                                  saturate_, ctx->GetOperatorThreadPool());
+    };
+    if (x.IsDataType<float>()) {
+      if (y_scale.IsDataType<float>()) {
+        quantize(x.Data<float>(), y_scale.Data<float>());
+      } else {
+        quantize(x.Data<float>(), y_scale.Data<MLFloat16>());
+      }
+    } else {
+      if (y_scale.IsDataType<float>()) {
+        quantize(x.Data<MLFloat16>(), y_scale.Data<float>());
+      } else {
+        quantize(x.Data<MLFloat16>(), y_scale.Data<MLFloat16>());
+      }
+    }
+    return Status::OK();
+  }
 
   constexpr int output_type_group_ =
       boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value   ? 2
