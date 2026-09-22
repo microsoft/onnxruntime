@@ -3294,9 +3294,10 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
 
   if (cost < 0 && info.transposes_outputs) {
     // If the output will be transposed and won't ultimately cancel, factor in that cost.
-    // A downstream Transpose only makes an inserted output Transpose free when it would cancel with the pushed perm.
-    // Shared incoming Transpose + merge is a no-op on Transpose count (the shared Transpose remains).
-    // Unique incoming Transpose can still be a win if at most one output Transpose remains after the push.
+    // An inserted output Transpose is free when a downstream Transpose cancels the pushed perm. A downstream
+    // Transpose that would only merge leaves a Transpose behind, so it only pays off when the incoming Transpose
+    // disappears into this node (it feeds nothing else) and at most one output Transpose survives the push.
+    bool any_output_leads_to_transpose = false;
     bool all_pushed_outputs_cancel = true;
     int kept_output_transposes = 0;
     auto outputs = node.Outputs();
@@ -3308,20 +3309,25 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
         continue;
       }
       out_cost = std::max(out_cost, EstimateValueRank(ctx.graph, out));
-      const bool leads_to_transpose =
-          outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end();
-      const bool can_cancel =
-          leads_to_transpose && PushedTransposeCancels(ctx, out, perm, /*tolerate_stranded_branches*/ false);
-      if (can_cancel) {
+      if (outputs_leading_to_transpose.find(std::string(out)) == outputs_leading_to_transpose.end()) {
+        all_pushed_outputs_cancel = false;
+        ++kept_output_transposes;
         continue;
       }
+
+      any_output_leads_to_transpose = true;
+      if (PushedTransposeCancels(ctx, out, perm, /*tolerate_stranded_branches*/ false)) {
+        continue;
+      }
+
       all_pushed_outputs_cancel = false;
       ++kept_output_transposes;
     }
 
     const bool waive_output_cost =
-        all_pushed_outputs_cancel ||
-        (kept_output_transposes <= 1 && IncomingTransposeIsSolelyConsumedByNode(ctx.graph, node, perm));
+        any_output_leads_to_transpose &&
+        (all_pushed_outputs_cancel ||
+         (kept_output_transposes <= 1 && IncomingTransposeIsSolelyConsumedByNode(ctx.graph, node, perm)));
     if (!waive_output_cost) {
       cost += out_cost;
     }
@@ -3395,12 +3401,15 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    cost = DefaultCostCheck(ctx, node, perm, outputs_leading_to_transpose, *info, input_indices)
-               ? CostCheckResult::kPushTranspose
-               : CostCheckResult::kStop;
+    // The QDQ guard only applies here. A cost check that returns kPushTranspose is an explicit instruction from the
+    // caller, not a heuristic we may second-guess: layout transformation pushes layout Transposes through Q/DQ on
+    // purpose and relies on FixQDQNodeUnits to repair the units afterwards.
+    const bool push = DefaultCostCheck(ctx, node, perm, outputs_leading_to_transpose, *info, input_indices) &&
+                      !PushBreaksTransposeQDQNodeUnit(ctx, transpose, node, perm);
+    cost = push ? CostCheckResult::kPushTranspose : CostCheckResult::kStop;
   }
 
-  if (cost != CostCheckResult::kPushTranspose || PushBreaksTransposeQDQNodeUnit(ctx, transpose, node, perm)) {
+  if (cost == CostCheckResult::kStop) {
     return false;
   }
 
