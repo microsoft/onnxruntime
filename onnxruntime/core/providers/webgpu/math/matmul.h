@@ -3,13 +3,10 @@
 
 #pragma once
 
-#include <memory>
-#include <mutex>
-
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -17,42 +14,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-class MatMulOptImpl {
- public:
-  virtual ~MatMulOptImpl() = default;
-
-  virtual bool CanApply(const ComputeContext& context,
-                        const std::vector<const Tensor*>& inputs,
-                        bool is_channels_last,
-                        bool b_is_constant) const = 0;
-
-  virtual Status Compute(ComputeContext& context,
-                         const std::vector<const Tensor*>& inputs,
-                         Tensor* output,
-                         const Activation& activation,
-                         bool is_channels_last,
-                         bool b_is_constant) = 0;
-};
-
-class MatMulOptImplCache {
- public:
-  MatMulOptImplCache() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulOptImplCache);
-
-  MatMulOptImpl* GetOrCreate(const ComputeContextBase& context);
-  const MatMulAlgorithmScheduler& GetOrCreateScheduler(const ComputeContextBase& context);
-
- private:
-  std::once_flag subgroup_impl_init_flag_;
-  std::unique_ptr<MatMulOptImpl> subgroup_impl_;
-  std::once_flag scheduler_init_flag_;
-  std::unique_ptr<MatMulAlgorithmScheduler> scheduler_;
-};
-
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output,
-                     bool is_channels_last, MatMulOptImplCache& cache,
-                     bool b_is_constant = false);
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
@@ -80,7 +41,7 @@ class MatMul final : public WebGpuKernel {
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
-  mutable MatMulOptImplCache compute_cache_;
+  mutable MatMulComputeDispatcher compute_dispatcher_;
   bool b_is_constant_ = false;
 };
 

@@ -9,7 +9,6 @@
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/grouped_conv.h"
 #include "core/providers/webgpu/webgpu_utils.h"
-#include "core/providers/webgpu/math/matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -281,8 +280,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (has_bias) {
       matmul_inputs.push_back(bias);
     }
-    return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
-                         matmul_compute_cache_, matmul_b_is_constant);
+    return matmul_compute_dispatcher_.Compute(context, activation_, matmul_inputs, output, is_channels_last,
+                                              matmul_b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;

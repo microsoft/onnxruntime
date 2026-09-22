@@ -18,17 +18,11 @@
 namespace onnxruntime {
 namespace webgpu {
 
-std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context);
+std::unique_ptr<SubgroupMatrixMatMulImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context);
 
-MatMulOptImpl* MatMulOptImplCache::GetOrCreate(const ComputeContextBase& context) {
-  std::call_once(subgroup_impl_init_flag_, [&]() {
-    subgroup_impl_ = CreateSubgroupMatrixMatMulImpl(context);
-  });
-  return subgroup_impl_.get();
-}
-
-const MatMulAlgorithmScheduler& MatMulOptImplCache::GetOrCreateScheduler(const ComputeContextBase& context) {
-  std::call_once(scheduler_init_flag_, [&]() {
+void MatMulComputeDispatcher::Initialize(const ComputeContextBase& context) {
+  std::call_once(init_flag_, [&]() {
+    subgroup_matrix_impl_ = CreateSubgroupMatrixMatMulImpl(context);
     if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
       scheduler_ = std::make_unique<intel::IntelMatMulAlgorithmScheduler>(
           context.GetSplitKConfig());
@@ -36,7 +30,6 @@ const MatMulAlgorithmScheduler& MatMulOptImplCache::GetOrCreateScheduler(const C
       scheduler_ = std::make_unique<MatMulAlgorithmScheduler>(context.GetSplitKConfig());
     }
   });
-  return *scheduler_;
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -171,8 +164,8 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs[1] = &promoted_b;
   }
 
-  return ComputeMatMul(&context, Activation(), inputs, output_tensor,
-                       /*is_channels_last=*/true, compute_cache_, b_is_constant_);
+  return compute_dispatcher_.Compute(context, Activation(), inputs, output_tensor,
+                                     /*is_channels_last=*/true, b_is_constant_);
 }
 
 static Status ApplyMatMulNaive(ComputeContext& context,
@@ -358,10 +351,12 @@ static Status ApplyMatMulPacked(ComputeContext& context,
   return context.RunProgram(program);
 }
 
-Status ComputeMatMul(ComputeContext* context,
-                     const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor,
-                     bool is_channels_last, MatMulOptImplCache& cache,
-                     bool b_is_constant) {
+Status MatMulComputeDispatcher::Compute(ComputeContext& context,
+                                        const Activation& activation,
+                                        const std::vector<const Tensor*>& inputs,
+                                        Tensor* output_tensor,
+                                        bool is_channels_last,
+                                        bool b_is_constant) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   const bool has_bias = inputs.size() > 2;
@@ -373,11 +368,12 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
-  MatMulOptImpl* subgroup_impl = cache.GetOrCreate(*context);
+  Initialize(context);
+  SubgroupMatrixMatMulImpl* subgroup_impl = subgroup_matrix_impl_.get();
   const bool can_use_subgroup_matrix =
       subgroup_impl != nullptr &&
-      subgroup_impl->CanApply(*context, inputs, is_channels_last, b_is_constant);
-  const bool has_intel_subgroup_capability = intel::HasMatMulIntelCapability(*context);
+      subgroup_impl->CanApply(context, inputs, is_channels_last, b_is_constant);
+  const bool has_intel_subgroup_capability = intel::HasMatMulIntelCapability(context);
   const int64_t batch_a =
       logical_a_shape.NumDimensions() > 2
           ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 2)
@@ -402,19 +398,19 @@ Status ComputeMatMul(ComputeContext* context,
                                   : helper.M();
   selection_params.batch_size = batch_size;
   selection_params.packed_batch_size = folds_batch_into_m ? 1 : batch_size;
-  selection_params.adapter_architecture = context->AdapterInfo().architecture;
+  selection_params.adapter_architecture = context.AdapterInfo().architecture;
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
   selection_params.has_intel_subgroup_capability = has_intel_subgroup_capability;
   selection_params.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
-  selection_params.deterministic_compute = context->KernelContext().GetUseDeterministicCompute();
+  selection_params.deterministic_compute = context.KernelContext().GetUseDeterministicCompute();
   selection_params.has_fused_activation = activation.activation_kind_ != ActivationKind::None;
   selection_params.has_bias = has_bias;
   selection_params.is_channels_last = is_channels_last;
 
-  const MatMulExecutionPlan plan = cache.GetOrCreateScheduler(*context).CreateExecutionPlan(
-      selection_params, context->ForcedMatMulAlgorithm());
+  const MatMulExecutionPlan plan = scheduler_->CreateExecutionPlan(
+      selection_params, context.ForcedMatMulAlgorithm());
   const MatMulAlgorithm algorithm = plan.algorithm;
   ORT_RETURN_IF_NOT(IsMatMulAlgorithmConfigurationCompatible(plan),
                     "MatMul algorithm ", MatMulAlgorithmName(algorithm),
@@ -440,21 +436,21 @@ Status ComputeMatMul(ComputeContext* context,
       ORT_RETURN_IF_NOT(subgroup_impl != nullptr,
                         "MatMul algorithm subgroup_matrix is unavailable.");
       return subgroup_impl->Compute(
-          *context, inputs, output_tensor, activation, is_channels_last, b_is_constant);
+          context, inputs, output_tensor, activation, is_channels_last, b_is_constant);
     case MatMulAlgorithm::Naive:
       return ApplyMatMulNaive(
-          *context, activation, inputs, output_tensor, is_channels_last, helper);
+          context, activation, inputs, output_tensor, is_channels_last, helper);
     case MatMulAlgorithm::IntelSubgroup:
       return intel::ApplyMatMulIntel(
-          *context, activation, inputs, output_tensor, is_channels_last);
+          context, activation, inputs, output_tensor, is_channels_last);
     case MatMulAlgorithm::Packed:
       return ApplyMatMulPacked(
-          *context, activation, inputs, output_tensor, is_channels_last, helper,
+          context, activation, inputs, output_tensor, is_channels_last, helper,
           *packed_configuration,
           /*use_split_k=*/false);
     case MatMulAlgorithm::PackedSplitK:
       return ApplyMatMulPacked(
-          *context, activation, inputs, output_tensor, is_channels_last, helper,
+          context, activation, inputs, output_tensor, is_channels_last, helper,
           *packed_configuration,
           /*use_split_k=*/true);
   }

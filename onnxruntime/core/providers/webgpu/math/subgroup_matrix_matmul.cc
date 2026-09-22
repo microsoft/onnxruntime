@@ -76,9 +76,9 @@ class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMu
 // intended to support all subgroup-matrix configs; for now only 8x16x16 is
 // implemented. The per-problem output tiling is supplied by a vendor-specific
 // selector kept internal to this impl.
-class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
+class SubgroupMatrixMatMulImplInternal final : public SubgroupMatrixMatMulImpl {
  public:
-  SubgroupMatrixMatMulImpl(int32_t config_index, SubgroupMatrixTilingSelector tiling_selector)
+  SubgroupMatrixMatMulImplInternal(int32_t config_index, SubgroupMatrixTilingSelector tiling_selector)
       : config_index_(config_index),
         tiling_selector_(std::move(tiling_selector)) {}
 
@@ -355,7 +355,7 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
                 "Unsupported subgroup matrix config dimensions.");
 }
 
-std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context) {
+std::unique_ptr<SubgroupMatrixMatMulImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context) {
   // Only run on devices that report the fixed 8x16x16 F16 subgroup-matrix config
   // this kernel is implemented for. That config's adapters expose a 16-32 subgroup
   // size range, so the kernel's fixed 32 lanes per subgroup must be pinned with
@@ -374,7 +374,7 @@ std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeConte
   if (!tiling_selector) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixMatMulImpl>(config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixMatMulImplInternal>(config_index, std::move(tiling_selector));
 }
 
 }  // namespace webgpu

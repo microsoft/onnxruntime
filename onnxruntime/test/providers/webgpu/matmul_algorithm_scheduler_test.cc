@@ -8,6 +8,7 @@
 
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #include "core/providers/webgpu/math/matmul_algorithm_scheduler.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul_algorithm_scheduler.h"
 #include "core/providers/webgpu/vendor/intel/math/split_k_config.h"
@@ -22,6 +23,10 @@ static_assert(!std::is_copy_constructible_v<MatMulAlgorithmScheduler>);
 static_assert(!std::is_copy_assignable_v<MatMulAlgorithmScheduler>);
 static_assert(!std::is_move_constructible_v<MatMulAlgorithmScheduler>);
 static_assert(!std::is_move_assignable_v<MatMulAlgorithmScheduler>);
+static_assert(!std::is_copy_constructible_v<MatMulComputeDispatcher>);
+static_assert(!std::is_copy_assignable_v<MatMulComputeDispatcher>);
+static_assert(!std::is_move_constructible_v<MatMulComputeDispatcher>);
+static_assert(!std::is_move_assignable_v<MatMulComputeDispatcher>);
 
 class AlwaysPackedVendorScheduler final : public MatMulAlgorithmScheduler {
  protected:
@@ -144,6 +149,23 @@ TEST(MatMulAlgorithmSchedulerTest, ForcedAlgorithmTakesPrecedence) {
   params.can_use_subgroup_matrix = true;
 
   EXPECT_EQ(scheduler.Select(params, MatMulAlgorithm::Naive), MatMulAlgorithm::Naive);
+}
+
+TEST(MatMulAlgorithmSchedulerTest, ReevaluatesSelectionForEachRuntimeShape) {
+  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.m = 4;
+  params.packed_m = 4;
+  params.n = 7;
+  params.k = 7;
+
+  EXPECT_EQ(scheduler.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Naive);
+
+  params.m = 64;
+  params.packed_m = 64;
+  params.n = 64;
+  params.k = 64;
+  EXPECT_EQ(scheduler.CreateExecutionPlan(params).algorithm, MatMulAlgorithm::Packed);
 }
 
 TEST(MatMulAlgorithmSchedulerTest, VendorCanTuneForcedAlgorithmConfiguration) {
