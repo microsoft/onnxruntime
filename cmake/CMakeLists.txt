@@ -1545,6 +1545,24 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(CheckCXXSourceCompiles)
+    include(CMakePushCheckState)
+    cmake_push_check_state(RESET)
+    set(CMAKE_REQUIRED_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
+    check_cxx_source_compiles("
+      #include <cufile.h>
+      using SetBoolParameterFn = decltype(&cuFileSetParameterBool);
+      int main() {
+        return CUFILE_PARAM_USE_PCIP2PDMA == CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE;
+      }" onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+    cmake_pop_check_state()
+    if(onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+      set_property(SOURCE "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds.cc"
+        APPEND PROPERTY COMPILE_DEFINITIONS ORT_CUDA_GDS_AVAILABLE)
+    endif()
+  endif()
+
   if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
           AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
     foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)

@@ -18,14 +18,11 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#if defined(__linux__) && defined(__has_include)
-#if __has_include(<cufile.h>)
-#define ORT_CUDA_GDS_AVAILABLE 1
+#if defined(ORT_CUDA_GDS_AVAILABLE)
 #include <cufile.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
-#endif
 #endif
 
 namespace onnxruntime {
@@ -275,7 +272,8 @@ common::Status GdsLoader::Create(int device_id, std::unique_ptr<GdsLoader>& load
   ORT_UNUSED_PARAMETER(device_id);
   ORT_UNUSED_PARAMETER(loader);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "GPUDirect Storage requires Linux and a CUDA toolkit with cuFile headers.");
+                         "GPUDirect Storage requires Linux and cuFile headers with cuFileSetParameterBool, "
+                         "CUFILE_PARAM_USE_PCIP2PDMA, and CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE.");
 #endif
 }
 

@@ -21,7 +21,8 @@ loading path because they require host-side conversion.
 
 GDS requires:
 
-- Linux and a CUDA toolkit that provides `cufile.h`;
+- Linux and `cufile.h` with `cuFileSetParameterBool`, `CUFILE_PARAM_USE_PCIP2PDMA`, and
+  `CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE`;
 - `libcufile.so` at runtime;
 - either `nvidia-fs` or a recent open NVIDIA kernel module that supports PCI P2PDMA;
 - a supported storage/filesystem and PCIe topology; and
@@ -33,6 +34,8 @@ kernels, GPUs, and storage devices. It also disables cuFile compatibility mode: 
 a native GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
 GDS is attempted only for external-data ranges whose offset and length are both 4 KiB aligned. An unaligned
 initializer uses the configured fallback without disabling GDS for later aligned initializers.
+The build checks for the required cuFile configuration API. Older CUDA toolkits without it remain supported,
+but enabling GDS in those builds logs a warning and uses the configured host-memory fallback.
 
 ## Configuration
 

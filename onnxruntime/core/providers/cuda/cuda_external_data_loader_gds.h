@@ -10,7 +10,9 @@
 #include "core/common/status.h"
 
 namespace onnxruntime {
+#ifndef SHARED_PROVIDER
 class Tensor;
+#endif
 
 namespace cuda {
 
