@@ -816,10 +816,11 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
 > a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` or `PER_CHANNEL` K scales.
 > Separate causal speculative XQA specializations cover matching native FP16/BF16 query and cache
-> types, and FP16 query/output with an INT8/FP8/INT4 cache, when `attention_metadata` bounds the
-> longest query to 2–8 tokens, `head_size = 256`, and `group_size = 6`. An additional H128
-> specialization covers FP16 query/output with an INT8 cache at `group_size = 6`. These kernels
-> write packed token-major output and support ragged batches. A
+> types, FP16 query/output with an INT8/FP8 cache, and FP16 query/output with a `PER_CHANNEL` INT4
+> cache when scale folding is enabled. These H256 paths require `attention_metadata` to bound the
+> longest query to 2–8 tokens and `group_size = 6`. An additional H128 specialization covers FP16
+> query/output with an INT8 cache at `group_size = 6`. These kernels write packed token-major output
+> and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
 > without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
