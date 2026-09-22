@@ -112,6 +112,8 @@ namespace Dml
 
     std::pair<PooledUploadHeap::Chunk*, size_t> PooledUploadHeap::Reserve(size_t sizeInBytes)
     {
+        ORT_THROW_HR_IF(E_OUTOFMEMORY, sizeInBytes > c_maxChunkSize);
+
         // Try to find a chunk with enough free space to accommodate the requested allocation size
         for (Chunk& chunk : m_chunks)
         {
@@ -169,7 +171,11 @@ namespace Dml
         std::tie(chunk, offsetInChunk) = Reserve(src.size());
 
         assert(chunk != nullptr);
-        assert(offsetInChunk + src.size() <= chunk->capacityInBytes);
+        ORT_THROW_HR_IF(
+            E_INVALIDARG,
+            chunk == nullptr ||
+                offsetInChunk > chunk->capacityInBytes ||
+                src.size() > chunk->capacityInBytes - offsetInChunk);
 
         // Map the upload heap and copy the source data into it at the specified offset
         void* uploadHeapData = nullptr;
