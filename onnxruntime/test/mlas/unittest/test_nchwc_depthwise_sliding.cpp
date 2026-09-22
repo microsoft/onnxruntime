@@ -141,6 +141,11 @@ class NchwcDepthwiseSlidingTest : public testing::Test {
     if (block_size_ <= 1) {
       GTEST_SKIP() << "NCHWc is not supported on this platform";
     }
+    // Without the sliding window kernel both configurations evaluate the assembly kernel, so a
+    // passing comparison would prove nothing.
+    if (!MlasNchwcDepthwiseSlidingKernelAvailable()) {
+      GTEST_SKIP() << "The sliding window NCHWc depthwise kernel is not available on this platform";
+    }
   }
 
   void Check(const DepthwiseCase& c, uint32_t seed, size_t threads = 1) {

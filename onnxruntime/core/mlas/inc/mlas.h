@@ -1362,6 +1362,20 @@ MlasNchwcGetBlockSize(
     void
     );
 
+/**
+ * @brief Returns whether this platform provides the sliding window NCHWc depthwise
+ *        convolution kernel, which MLAS uses in place of the assembly kernel unless
+ *        MLAS_BACKEND_KERNEL_SELECTOR_CONFIG::nchwc_depthwise_sliding_kernel is cleared.
+ *
+ * Tests and benchmarks that compare the two kernels must skip where this returns false,
+ * as both settings then evaluate the same kernel.
+ */
+bool
+MLASCALL
+MlasNchwcDepthwiseSlidingKernelAvailable(
+    void
+    );
+
 void
 MLASCALL
 MlasNchwcConv(

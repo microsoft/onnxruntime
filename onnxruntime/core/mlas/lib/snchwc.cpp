@@ -69,6 +69,29 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     MLAS_POOLING_KIND PoolingKind;
 };
 
+bool
+MLASCALL
+MlasNchwcDepthwiseSlidingKernelAvailable(
+    void
+    )
+/*++
+
+Routine Description:
+
+    This routine returns whether MlasNchwcSelectDepthwiseKernel replaces the
+    platform depthwise kernel with the sliding window kernel on this platform.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PlatformKernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
+
+    return MlasNchwcSelectDepthwiseKernel(PlatformKernel, nullptr) != PlatformKernel;
+#else
+    return false;
+#endif
+}
+
 size_t
 MLASCALL
 MlasNchwcGetBlockSize(
