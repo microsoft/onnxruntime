@@ -57,7 +57,7 @@ class QuantizeLinear final : public OpKernel {
                      : info.GetAttrOrDefault<int64_t>("precision", 0);
     ORT_ENFORCE(precision_ == 0 || precision_ == ONNX_NAMESPACE::TensorProto::FLOAT ||
                     precision_ == ONNX_NAMESPACE::TensorProto::FLOAT16,
-                "CPU QuantizeLinear only supports FLOAT and FLOAT16 precision.");
+                "CPU QuantizeLinear only supports precision 0 (use scale type), FLOAT, and FLOAT16.");
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -81,6 +81,8 @@ void TestQuantizeLinearMixedTypes(int opset, int granularity, bool has_zero_poin
       scales = {1.0f, 2.0f, 4.0f};
       expected = {0, 2, 2, 12, 8, 5};
       break;
+    default:
+      FAIL() << "Unexpected quantization granularity: " << granularity;
   }
   test.AddInput<InT>("x", dims, {InT(0.0f), InT(4.0f), InT(8.0f), InT(12.0f), InT(16.0f), InT(20.0f)});
   std::vector<ScaleT> scale_values;
@@ -285,7 +287,7 @@ TEST(QuantizeLinearPrecisionTest, UnsupportedPrecision) {
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "CPU QuantizeLinear only supports FLOAT and FLOAT16 precision.", {}, nullptr, &eps);
+           "CPU QuantizeLinear only supports precision 0 (use scale type), FLOAT, and FLOAT16.", {}, nullptr, &eps);
 }
 
 // scalar zero & scale with uint8
