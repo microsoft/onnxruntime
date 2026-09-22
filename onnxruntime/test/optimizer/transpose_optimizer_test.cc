@@ -45,6 +45,19 @@ void SetNodeArgShape(NodeArg* node_arg, const std::optional<std::vector<int64_t>
   }
 }
 
+static Status ReplaceInitializerWithInt8(Graph& graph, const std::string& initializer_name, size_t num_elements) {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(initializer_name, initializer),
+                    "Initializer not found: ", initializer_name);
+
+  ONNX_NAMESPACE::TensorProto replacement = *initializer;
+  replacement.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+  replacement.set_raw_data(std::string(num_elements, '\0'));
+  graph.RemoveInitializedTensor(initializer_name);
+  graph.AddInitializedTensor(replacement);
+  return Status::OK();
+}
+
 template <typename T>
 NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
                    const std::vector<int64_t>& value_shape, T min, T max) {
@@ -2050,6 +2063,42 @@ TEST(TransposeOptimizerTests, TestSliceNoAxesOpset15) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ {15, 18, 23});
+}
+
+TEST(TransposeOptimizerTests, TestSliceUnexpectedAxesTypeNoOpt) {
+  std::string axes_initializer_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* starts = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* ends = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* axes = builder.MakeInitializer<int64_t>({1}, {2});
+    axes_initializer_name = axes->Name();
+    auto* transpose_out = builder.MakeIntermediate();
+    auto* slice_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose = builder.AddNode("Transpose", {input}, {transpose_out});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Slice", {transpose_out, starts, ends, axes}, {slice_out});
+    auto& output_transpose = builder.AddNode("Transpose", {slice_out}, {output});
+    output_transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    return ReplaceInitializerWithInt8(graph, axes_initializer_name, 1);
+  };
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.at("Transpose") == 2,
+                      "Slice with unexpected axes type should not be optimized");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TransposeOptimizer>(std::move(cpu_allocator));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 TEST(TransposeOptimizerTests, TestSliceNegativeAxesInt32) {
@@ -4339,6 +4388,47 @@ TEST(TransposeOptimizerTests, TestReshapeCanMerge) {
                        {5, 1, 6, 1},                // reshape 'shape'. equiv. transpose perms == 1,0,3,2
                        TransposeReshapeResult::kMerge,
                        {3, 2, 1, 0});  // merged perms of 2,3,0,1 followed by 1,0,3,2
+}
+
+TEST(TransposeOptimizerTests, TestReshapeUnexpectedShapeTypeNoOpt) {
+  std::string shape_initializer_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 12, 20, 24}, 0.0, 1.0);
+    auto* shape = builder.MakeInitializer<int64_t>({5}, {1, 3, 8, 12, 20});
+    shape_initializer_name = shape->Name();
+    auto* transpose_out = builder.MakeIntermediate();
+    auto* reshape_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose = builder.AddNode("Transpose", {input}, {transpose_out});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_out, shape}, {reshape_out});
+    builder.AddNode("Identity", {reshape_out}, {output});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    return ReplaceInitializerWithInt8(graph, shape_initializer_name, 5);
+  };
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count.at("Transpose") == 1 && op_to_count.at("Reshape") == 1,
+                      "Reshape with unexpected shape type should not be optimized");
+
+    const auto& nodes = graph.Nodes();
+    const Node& transpose = *std::find_if(nodes.begin(), nodes.end(),
+                                          [](const auto& node) { return node.OpType() == "Transpose"; });
+    const Node& reshape = *std::find_if(nodes.begin(), nodes.end(),
+                                        [](const auto& node) { return node.OpType() == "Reshape"; });
+    ORT_RETURN_IF_NOT(reshape.InputDefs()[0]->Name() == transpose.OutputDefs()[0]->Name(),
+                      "Reshape with unexpected shape type should remain after Transpose");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TransposeOptimizer>(std::move(cpu_allocator));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
 }
 
 // Transpose -> Reshape cancel each other out if Reshape can be expressed as a Transpose due to not changing the
