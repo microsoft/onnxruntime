@@ -741,37 +741,40 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   auto cuda_stream = Stream(context);
 
-  // Derive bounded device-side lengths for every path, including fast decode, so raw input values
-  // never control KV-cache or attention indexing.
-  const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
-  seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
-  data.past_seq_lens = seq_lens_buffer.get();
-  data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
-  data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
-  if (parameters.is_windowed_kv_cache) {
-    data.cache_past_seq_lens = data.padded_seq_lens + parameters.batch_size;
-    data.cache_total_seq_lens = data.cache_past_seq_lens + parameters.batch_size;
-    data.evict_counts = data.cache_total_seq_lens + parameters.batch_size;
+  if (data.use_flash_attention_fast_decode) {
+    // FlashAttention clamps this device input to the cache capacity before deriving offsets.
+    data.past_seq_lens = const_cast<int*>(total_seq_lens_minus_one->Data<int>());
+  } else {
+    const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
+    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
+    data.past_seq_lens = seq_lens_buffer.get();
+    data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
+    data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
+    if (parameters.is_windowed_kv_cache) {
+      data.cache_past_seq_lens = data.padded_seq_lens + parameters.batch_size;
+      data.cache_total_seq_lens = data.cache_past_seq_lens + parameters.batch_size;
+      data.evict_counts = data.cache_total_seq_lens + parameters.batch_size;
+    }
+    ORT_RETURN_IF_ERROR(LaunchGetSequenceLengths(total_seq_lens_minus_one->Data<int>(),
+                                                 data.past_seq_lens,
+                                                 data.total_seq_lens,
+                                                 data.padded_seq_lens,
+                                                 data.cache_past_seq_lens,
+                                                 data.cache_total_seq_lens,
+                                                 data.evict_counts,
+                                                 parameters.batch_size,
+                                                 parameters.sequence_length,
+                                                 parameters.is_first_prompt,
+                                                 parameters.total_sequence_length,
+                                                 parameters.kv_cache_capacity,
+                                                 parameters.kv_cache_real_capacity,
+                                                 cuda_stream,
+                                                 device_prop.maxThreadsPerBlock));
+    DUMP_TENSOR_INIT();
+    DUMP_TENSOR("total_seq_lens", data.total_seq_lens, parameters.batch_size, 1);
+    DUMP_TENSOR("past_seq_lens", data.past_seq_lens, parameters.batch_size, 1);
+    DUMP_TENSOR("padded_seq_lens", data.padded_seq_lens, parameters.batch_size, 1);
   }
-  ORT_RETURN_IF_ERROR(LaunchGetSequenceLengths(total_seq_lens_minus_one->Data<int>(),
-                                               data.past_seq_lens,
-                                               data.total_seq_lens,
-                                               data.padded_seq_lens,
-                                               data.cache_past_seq_lens,
-                                               data.cache_total_seq_lens,
-                                               data.evict_counts,
-                                               parameters.batch_size,
-                                               parameters.sequence_length,
-                                               parameters.is_first_prompt,
-                                               parameters.total_sequence_length,
-                                               parameters.kv_cache_capacity,
-                                               parameters.kv_cache_real_capacity,
-                                               cuda_stream,
-                                               device_prop.maxThreadsPerBlock));
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("total_seq_lens", data.total_seq_lens, parameters.batch_size, 1);
-  DUMP_TENSOR("past_seq_lens", data.past_seq_lens, parameters.batch_size, 1);
-  DUMP_TENSOR("padded_seq_lens", data.padded_seq_lens, parameters.batch_size, 1);
 
   // Scratch used to left-shift the KV cache when the sliding window advances. Sized for the whole
   // cache because the number of evicted rows is only known on device (and must stay constant across

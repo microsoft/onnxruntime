@@ -677,9 +677,7 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const int kv_cache_real_capacity) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
-    // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
-    // Clamp the negative case at the source so the derived lengths below stay non-negative and
-    // cannot flow as negative offsets into KV-cache or attention index computations.
+    // seqlens_k is untrusted device input; clamp it before deriving lengths and offsets.
     const int seqlens_k = total_seq_lens_minus_one[i];
     const int bounded_seqlens_k = seqlens_k < 0 ? 0 : min(seqlens_k, max_total_sequence_length - 1);
     const int total_len = bounded_seqlens_k + 1;
