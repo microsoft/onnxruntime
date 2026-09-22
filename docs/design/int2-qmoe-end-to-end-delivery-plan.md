@@ -59,9 +59,9 @@ This is not `IQ2_XS`. The published Qwen GGUF is a comparison point for tensor p
 
 ### Mixed FC1 and FC2 Widths
 
-QMoE currently has one `expert_weight_bits` attribute shared by FC1 and FC2. That cannot represent FC1 INT2 with FC2 INT4. The schema must support independent bit widths while preserving existing models.
+QMoE originally had one `expert_weight_bits` attribute shared by FC1 and FC2, which could not represent FC1 INT2 with FC2 INT4. The mixed-width contract merged in [#32697](https://github.com/microsoft/onnxruntime/pull/32697) adds independent bit widths while preserving existing models.
 
-One candidate contract is:
+The accepted contract is:
 
 ```text
 expert_weight_bits      # existing default for backward compatibility
@@ -70,7 +70,7 @@ fc2_expert_weight_bits  # optional override
 fc3_expert_weight_bits  # optional override when FC3 is present
 ```
 
-The names are provisional and require schema review. Semantics must include:
+The merged semantics are:
 
 1. An omitted FC-specific value inherits `expert_weight_bits`.
 2. Each effective width is restricted to a supported value.
@@ -124,9 +124,11 @@ The recipe manifest should report tensor names, logical shapes, selected widths,
 
 ### Workstream 1: Contract and Shared Validation
 
+Status: Complete. The contract and validation changes merged in [#32697](https://github.com/microsoft/onnxruntime/pull/32697).
+
 Deliverables:
 
-- Approve the mixed-width QMoE schema design.
+- Maintain the approved mixed-width QMoE schema design.
 - Centralize bit-width, pack-size, default-zero-point, and packed-shape calculations.
 - Update FC1, FC2, and FC3 validation to use independent effective widths.
 - Define raw and provider-prepacked layout behavior.
@@ -222,7 +224,9 @@ Measure coding, tool-calling, long-generation stability, perplexity or KL diverg
 
 ## Delivery Sequence
 
-### PR 1: Mixed-Width Contract
+### PR 1: Mixed-Width Contract - Merged
+
+Merged as [#32697](https://github.com/microsoft/onnxruntime/pull/32697). Mixed-width execution remains intentionally disabled until the projection-aware CPU and provider paths in the following PRs are implemented.
 
 - Schema and inheritance semantics.
 - Shared shape and packing helpers.
@@ -240,7 +244,7 @@ Measure coding, tool-calling, long-generation stability, perplexity or KL diverg
 - Fused QMoE graph export.
 - Weight-binding and numerical-parity tests.
 
-PR 2 and PR 3 can proceed in parallel after the contract is approved.
+PR 2 and PR 3 can proceed in parallel on the merged contract.
 
 ### PR 4: CUDA Correctness
 
@@ -316,8 +320,7 @@ Stop production kernel expansion if no mixed affine INT2 recipe meets the frozen
 
 ## Immediate Decisions Needed
 
-1. Select the schema approach for independent FC1 and FC2 widths.
-2. Select the first block size and CUDA architecture.
-3. Assign owners for ORT schema/CPU, Olive/Mobius, CUDA, and model validation.
-4. Freeze quality, memory, decode, and TTFT thresholds before collecting candidate results.
-5. Decide whether native grouped prefill is part of the first committed date or a follow-up performance milestone.
+1. Select the first block size and CUDA architecture.
+2. Assign owners for ORT CPU execution, Olive/Mobius, CUDA, and model validation.
+3. Freeze quality, memory, decode, and TTFT thresholds before collecting candidate results.
+4. Decide whether native grouped prefill is part of the first committed date or a follow-up performance milestone.
