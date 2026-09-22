@@ -24,13 +24,18 @@ Training, router changes, expert-weight quantization, and multiple CUDA devices 
 
 ## Global offload configuration
 
-The session configuration contains one global offload target:
+The four numerical policy parameters are exposed as session configuration entries:
 
-```text
-session.moe_cpu_offload_experts=<positive number>
-```
+| Session option | Parameter | Meaning and valid range |
+|---|---|---|
+| `session.moe_cpu_offload_experts` | Offload target | Global integer expert count (`>= 1`) or proportion (`0 < value < 1`). |
+| `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and in `[0, 1]`. |
+| `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`. |
+| `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
 
-The value has the following meaning:
+The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
+
+The offload target has the following meaning:
 
 - An integer greater than or equal to `1` is the total number of experts to offload to CPU.
 - A value strictly between `0` and `1` is the proportion of all experts to offload to CPU. The concrete expert count is
@@ -217,6 +222,8 @@ Wire the cache manager into every participating CUDA `MoE` and `QMoE` node using
 
 **Configuration and initial placement**
 
+- Wire the four session options `session.moe_cpu_offload_experts`, `session.moe_expert_counter_alpha`,
+  `session.moe_expert_counter_beta`, and `session.moe_expert_swap_epsilon` to the cache manager.
 - Apply `session.moe_cpu_offload_experts` globally across all participating nodes, not separately to each node. Values
   greater than `1` specify an integer expert count; values strictly between `0` and `1` specify a proportion. The value
   `1` specifies one expert. Derive the global CUDA budget from the complementary expert count.
