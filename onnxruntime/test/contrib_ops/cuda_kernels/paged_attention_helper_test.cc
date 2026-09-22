@@ -49,6 +49,17 @@ TEST(PagedAttentionHelperTest, CheckSequenceLengthTensorsAcceptsMatchingSeqlensL
   EXPECT_EQ(batch_size, 64);
 }
 
+TEST(PagedAttentionHelperTest, CheckBlockTableRejectsZeroWidth) {
+  FakeTensor block_table({2, 0});
+  int max_num_blocks_per_seq = 0;
+
+  const auto status = onnxruntime::contrib::paged_attention_helper::CheckBlockTable(
+      &block_table, 2, max_num_blocks_per_seq);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("dimension 1 must be positive"));
+}
+
 TEST(PagedAttentionHelperTest, CheckSequenceLengthValuesRejectsPastSeqlensOverflow) {
   const int32_t cumulative_seqlens_q[] = {0, 2};
   const int32_t cumulative_seqlens_kv[] = {0, 17};
@@ -152,7 +163,7 @@ TEST(PagedAttentionHelperTest, CheckSequenceLengthValuesRejectsTokenCountMismatc
 
 TEST(PagedAttentionHelperTest, SanitizeBlockTablePreservesSentinelAndBoundsInvalidIds) {
   const std::vector<int32_t> input{-2, -1, 0, 3, 4};
-  const std::vector<int32_t> expected{0, -1, 0, 3, 0};
+  const std::vector<int32_t> expected{-1, -1, 0, 3, -1};
   int32_t* input_device = nullptr;
   int32_t* output_device = nullptr;
   ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, input.size() * sizeof(int32_t)));
@@ -172,6 +183,46 @@ TEST(PagedAttentionHelperTest, SanitizeBlockTablePreservesSentinelAndBoundsInval
   ASSERT_EQ(cudaSuccess,
             cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
   EXPECT_EQ(actual, expected);
+}
+
+TEST(PagedAttentionHelperTest, SanitizeBlockTableAllowsZeroElements) {
+  const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
+      nullptr, nullptr, 0, 0, nullptr);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
+
+TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs) {
+  const std::vector<int32_t> cumulative_seqlens_q{5, -2, 1};
+  const std::vector<int32_t> past_seqlens{-4, 100};
+  const std::vector<int32_t> block_table{0, -1, 1, 2};
+  constexpr int batch_size = 2;
+
+  int32_t* input_device = nullptr;
+  int32_t* output_device = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, 9 * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, 8 * sizeof(int32_t)));
+  auto cleanup = gsl::finally([&]() {
+    cudaFree(input_device);
+    cudaFree(output_device);
+  });
+
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(input_device, cumulative_seqlens_q.data(), 3 * sizeof(int32_t), cudaMemcpyHostToDevice));
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(input_device + 3, past_seqlens.data(), 2 * sizeof(int32_t), cudaMemcpyHostToDevice));
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(input_device + 5, block_table.data(), 4 * sizeof(int32_t), cudaMemcpyHostToDevice));
+
+  const auto status = onnxruntime::contrib::cuda::LaunchSanitizeSequenceLengths(
+      output_device, output_device + 3, output_device + 5,
+      input_device, input_device + 3, input_device + 5,
+      batch_size, 2, 16, 3, nullptr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  std::vector<int32_t> actual(8);
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
+  EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 3, 0, 29, 0, 0, 32}));
 }
 
 }  // namespace test

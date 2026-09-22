@@ -376,6 +376,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
+  auto sanitized_sequence_lengths = GetScratchBuffer<int>(
+      2 * parameters.batch_size + 1, GetComputeStream(context));
+  int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
+  int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + parameters.batch_size + 1;
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
@@ -388,13 +392,21 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, GetComputeStream(context));
 
-  // Populate cumulative_seqlens_kv for all backends. Every kernel that needs a per-sequence KV
-  // length reads it from here on device; the host only ever uses upper bounds.
-  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
+  // Canonicalize untrusted sequence metadata and populate cumulative_seqlens_kv for every backend.
+  // This stays entirely on the compute stream, so CUDA Graph replay sees current values without a
+  // host synchronization.
+  ORT_RETURN_IF_ERROR(LaunchSanitizeSequenceLengths(
+      sanitized_cumulative_seqlens_q,
+      sanitized_past_seqlens,
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
       reinterpret_cast<const int*>(past_seqlens->Data<int>()),
-      parameters.batch_size, cuda_stream));
+      sanitized_block_table.get(),
+      parameters.batch_size,
+      parameters.max_num_blocks_per_seq,
+      parameters.block_size,
+      parameters.token_count,
+      cuda_stream));
 
   int total_kv_tokens = 0;
   int max_query_len = 0;
@@ -628,19 +640,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   //      a large over-allocation for a short prefill. Read the exact value back instead.
   //   2. XQA needs the one-token-per-sequence proof described above.
   //
-  // Neither case can occur on a capturable step: a captured step is decode-shaped on a paged cache
-  // (so no gather runs), and a producer that captures must supply 'attention_metadata' anyway --
-  // its bounds are the only replay-safe source of per-step information. The synchronization is
-  // therefore gone for every configuration CUDA Graphs can reach, including an unquantized cache.
+  // During graph capture, static capacity bounds replace an otherwise-required readback. Optional
+  // attention_metadata can tighten those bounds, but correctness and capture never require it.
   const bool needs_readback = !has_metadata_bounds && (needs_dense_kv || xqa_candidate);
-  if (needs_readback && onnxruntime::llm::common::isCapturing(cuda_stream)) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "PagedAttention requires input 'attention_metadata' when CUDA graph capture needs "
-        "replay-stable attention bounds.");
-  }
+  const bool perform_readback =
+      needs_readback && !onnxruntime::llm::common::isCapturing(cuda_stream);
 
-  if (!needs_readback) {
+  if (!perform_readback) {
     max_query_len = max_query_len_bound;
     max_kv_len = max_kv_len_bound;
     // Upper bound: no sequence holds more than max_kv_len_bound cached tokens. Read only by the
@@ -654,7 +660,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
-                                         reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
+                                         sanitized_cumulative_seqlens_q,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
@@ -961,8 +967,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                          : reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
   data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
-  data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
-  data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
+  data.cumulative_seqlens_q = sanitized_cumulative_seqlens_q;
+  data.past_seqlens = sanitized_past_seqlens;
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
   data.block_table = sanitized_block_table.get();
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());

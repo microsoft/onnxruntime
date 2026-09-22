@@ -29,8 +29,17 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 
 // Exposed so paged_attention.cc can populate cumulative_seqlens_kv on both the FA and MEA
 // dispatch paths (producer hoisted out of FlashAttention/UnfusedAttention in impl.cu).
-Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
-                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
+Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
+                                     int32_t* sanitized_past_seqlens,
+                                     int32_t* cumulative_seqlens_kv,
+                                     const int32_t* cumulative_seqlens_q,
+                                     const int32_t* past_seqlens,
+                                     const int32_t* block_table,
+                                     int batch_size,
+                                     int max_num_blocks_per_seq,
+                                     int block_size,
+                                     int token_count,
+                                     cudaStream_t stream);
 
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
                                 int element_count, int num_blocks, cudaStream_t stream);

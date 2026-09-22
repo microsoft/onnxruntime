@@ -247,6 +247,10 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table dimension 0 should be batch_size, got ",
                            block_table_dims[0]);
+  } else if (block_table_dims[1] <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table dimension 1 must be positive, got ",
+                           block_table_dims[1]);
   }
   max_num_blocks_per_seq = static_cast<int>(block_table_dims[1]);
   return Status::OK();

@@ -83,8 +83,8 @@ never populated or consumed), `head_sink` / smooth softmax, QK-Norm, quantized c
 
 Structural limits in the current implementation:
 
-- `batch_size <= 256` — `LaunchGetCumulativeSeqlensKV` uses a per-block `cub::BlockScan` with 256
-  threads and independent blocks.
+- Sequence metadata is canonicalized and cumulative KV lengths are produced by one device kernel;
+  this path has no fixed batch-size limit.
 - `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
   *(Partly true. It is a genuine FlashAttention tiling constraint, but a head-size-dependent one. See
   the implementation note in §18.1: validation now accepts any power-of-two `block_size >= 16` and
