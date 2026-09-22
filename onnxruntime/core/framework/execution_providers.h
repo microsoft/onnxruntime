@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -48,14 +49,20 @@ class ExecutionProviders {
           // Check if this callback is for capturing state
           if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
               ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-            for (size_t i = 0; i < exec_providers_.size(); ++i) {
-              const auto& provider_id = exec_provider_ids_[i];
-
-              auto it = exec_provider_options_.find(provider_id);
-              if (it != exec_provider_options_.end()) {
-                const auto& options = it->second;
-                LogProviderOptions(provider_id, options, true);
+            std::vector<std::pair<std::string, ProviderOptions>> provider_options_snapshot;
+            {
+              std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+              provider_options_snapshot.reserve(exec_provider_ids_.size());
+              for (const auto& provider_id : exec_provider_ids_) {
+                auto it = exec_provider_options_.find(provider_id);
+                if (it != exec_provider_options_.end()) {
+                  provider_options_snapshot.emplace_back(provider_id, it->second);
+                }
               }
+            }
+
+            for (const auto& [provider_id, options] : provider_options_snapshot) {
+              LogProviderOptions(provider_id, options, true);
             }
           }
         });
@@ -79,28 +86,33 @@ class ExecutionProviders {
       return status;
     }
 
-    // make sure there are no issues before we change any internal data structures
-    if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
-      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-      return status;
+    ProviderOptions providerOptions;
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+
+      // make sure there are no issues before we change any internal data structures
+      if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+        return status;
+      }
+
+      providerOptions = p_exec_provider->GetProviderOptions();
+
+      // index that provider will have after insertion
+      auto new_provider_idx = exec_providers_.size();
+
+      ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+
+      // update execution provider options
+      exec_provider_options_[provider_id] = providerOptions;
+      exec_provider_ids_.push_back(provider_id);
+      exec_providers_.push_back(p_exec_provider);
     }
-
-    // index that provider will have after insertion
-    auto new_provider_idx = exec_providers_.size();
-
-    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
-
-    // update execution provider options
-    auto providerOptions = p_exec_provider->GetProviderOptions();
-    exec_provider_options_[provider_id] = providerOptions;
 
 #ifdef _WIN32
     LogProviderOptions(provider_id, providerOptions, false);
 #endif
-
-    exec_provider_ids_.push_back(provider_id);
-    exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
 
@@ -147,6 +159,9 @@ class ExecutionProviders {
   // Some compilers emit incomprehensive output if this is allowed
   // with a container that has unique_ptr or something move-only.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
+
+  // Synchronizes provider registration with ETW capture-state snapshots.
+  std::mutex exec_providers_mutex_;
 
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
     const Env& env = Env::Default();
