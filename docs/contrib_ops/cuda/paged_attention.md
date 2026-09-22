@@ -83,8 +83,8 @@ never populated or consumed), `head_sink` / smooth softmax, QK-Norm, quantized c
 
 Structural limits in the current implementation:
 
-- Sequence metadata is canonicalized and cumulative KV lengths are produced by one device kernel;
-  this path has no fixed batch-size limit.
+- Sequence metadata is canonicalized with parallel device kernels and grid-wide scans; this path
+  has no fixed batch-size limit.
 - `block_size % 256 == 0` — see [§18](#18-known-defects-to-fix-first); this is almost certainly a bug.
   *(Partly true. It is a genuine FlashAttention tiling constraint, but a head-size-dependent one. See
   the implementation note in §18.1: validation now accepts any power-of-two `block_size >= 16` and
@@ -1443,7 +1443,6 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `block_table` rank 2 with `dim0 == batch_size`.
 - `cos_cache`/`sin_cache` both present or both absent; required when `do_rotary == 1`.
 - `key_cache_out` must alias `key_cache`; same for value.
-- `batch_size <= 256` (BlockScan limitation — to be lifted, see §18).
 
 **Corrected:**
 - `block_size` must be a power of two in `{16, 32, 64, 128, 256}` (**replaces** `block_size % 256 == 0`; see §18).
@@ -1544,7 +1543,7 @@ reference oracle for every shared feature and catches drift automatically. Run i
 - `block_table` entries of `-1` (unmapped) are masked out.
 - Ragged batches including sequences with **zero** new tokens.
 - `token_count == 0` early-out.
-- `batch_size` at and just above the BlockScan limit (must error, not corrupt).
+- `batch_size` at and above the former 256-sequence BlockScan limit.
 - Sliding-window block pruning: pruned run bit-matches the unpruned run.
 - Rolling sliding-window cache (§9.3): a run holding only `ceil(W / block_size) + 1` blocks per
   sequence, recycled through `slot_mapping` with the evicted `block_table` entries set to `-1`,
@@ -1647,9 +1646,9 @@ These block the feature work and should land ahead of it.
    `block_table`. Guard with an early `return` when
    `token_id >= cumulative_seqlens_q[batch_size]`. (`slot_mapping` removes the search entirely on the
    write path, but the gather path still needs the fix.)
-3. **`batch_size <= 256`.** Replace the per-block `cub::BlockScan` with a grid-wide scan (or a single
-   256-thread block doing a strided serial scan) so continuous batching is not capped at 256
-   concurrent sequences — a real limit for a serving op.
+3. **`batch_size <= 256`.** **Fixed.** Sequence metadata canonicalization now uses grid-wide CUB
+   scans and parallel per-sequence bounds checks, so continuous batching is no longer capped at
+   256 concurrent sequences.
 4. **Per-step D→H synchronization — and it blocks CUDA graph capture.** ~~`max_query_len` (and
    `total_kv_tokens` for MEA) are obtained via `cudaStreamSynchronize` every step, once per layer.
    This is not only a throughput bug for the op's primary use case: `cudaStreamSynchronize` on a

@@ -364,44 +364,49 @@ Status LaunchQkNormRotaryKernel(cudaStream_t stream, T* output, const T* input, 
   return CUDA_CALL(cudaGetLastError());
 }
 
-__global__ void SanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
-                                        int32_t* sanitized_past_seqlens,
-                                        int32_t* cumulative_seqlens_kv,
-                                        const int32_t* cumulative_seqlens_q,
-                                        const int32_t* past_seqlens,
-                                        const int32_t* block_table,
-                                        int batch_size,
-                                        int max_num_blocks_per_seq,
-                                        int block_size,
-                                        int token_count) {
-  if (blockIdx.x != 0 || threadIdx.x != 0) {
+struct MaxInt32 {
+  __host__ __device__ __forceinline__ int32_t operator()(int32_t lhs, int32_t rhs) const {
+    return lhs > rhs ? lhs : rhs;
+  }
+};
+
+struct SaturatingAddInt32 {
+  __host__ __device__ __forceinline__ int32_t operator()(int32_t lhs, int32_t rhs) const {
+    const int64_t sum = static_cast<int64_t>(lhs) + rhs;
+    return sum < INT32_MAX ? static_cast<int32_t>(sum) : INT32_MAX;
+  }
+};
+
+__global__ void ClampCumulativeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
+                                               const int32_t* cumulative_seqlens_q,
+                                               int batch_size,
+                                               int token_count) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index > batch_size) {
     return;
   }
 
-  sanitized_cumulative_seqlens_q[0] = 0;
-  int32_t previous_q = 0;
-  for (int i = 1; i < batch_size; ++i) {
-    const int32_t input_q = cumulative_seqlens_q[i];
-    const int32_t bounded_q = min(token_count, max(previous_q, input_q));
-    sanitized_cumulative_seqlens_q[i] = bounded_q;
-    previous_q = bounded_q;
+  if (index == 0) {
+    sanitized_cumulative_seqlens_q[index] = 0;
+  } else if (index == batch_size) {
+    sanitized_cumulative_seqlens_q[index] = token_count;
+  } else {
+    sanitized_cumulative_seqlens_q[index] = min(token_count, max(0, cumulative_seqlens_q[index]));
   }
-  sanitized_cumulative_seqlens_q[batch_size] = token_count;
+}
 
-  int64_t cumulative_kv = 0;
-  cumulative_seqlens_kv[0] = 0;
-  for (int b = 0; b < batch_size; ++b) {
+__global__ void SanitizePastSequenceLengths(int32_t* sanitized_past_seqlens,
+                                            int32_t* cumulative_seqlens_kv,
+                                            const int32_t* sanitized_cumulative_seqlens_q,
+                                            const int32_t* past_seqlens,
+                                            int batch_size,
+                                            int max_num_blocks_per_seq,
+                                            int block_size) {
+  const int b = blockIdx.x * blockDim.x + threadIdx.x;
+  if (b < batch_size) {
     const int32_t query_length =
         sanitized_cumulative_seqlens_q[b + 1] - sanitized_cumulative_seqlens_q[b];
-    int32_t mapped_blocks = 0;
-    const size_t block_table_offset =
-        static_cast<size_t>(b) * static_cast<size_t>(max_num_blocks_per_seq);
-    while (mapped_blocks < max_num_blocks_per_seq &&
-           block_table[block_table_offset + static_cast<size_t>(mapped_blocks)] >= 0) {
-      ++mapped_blocks;
-    }
-
-    const int64_t mapped_capacity = static_cast<int64_t>(mapped_blocks) * block_size;
+    const int64_t mapped_capacity = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
     const int64_t available_past_capacity = mapped_capacity - query_length;
     const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
     const int64_t input_past_length = past_seqlens[b];
@@ -411,10 +416,32 @@ __global__ void SanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
 
     const int64_t uncapped_kv_length = bounded_past_length + query_length;
     const int64_t kv_length = uncapped_kv_length < mapped_capacity ? uncapped_kv_length : mapped_capacity;
-    cumulative_kv += kv_length;
-    cumulative_kv = cumulative_kv < INT32_MAX ? cumulative_kv : INT32_MAX;
-    cumulative_seqlens_kv[b + 1] = static_cast<int32_t>(cumulative_kv);
+    cumulative_seqlens_kv[b + 1] =
+        static_cast<int32_t>(kv_length < INT32_MAX ? kv_length : INT32_MAX);
+
+    if (b == 0) {
+      cumulative_seqlens_kv[0] = 0;
+    }
   }
+}
+
+Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
+                                               size_t& workspace_bytes,
+                                               cudaStream_t stream) {
+  if (batch_size <= 0 || batch_size > (INT32_MAX - 1) / 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size exceeds the sequence sanitizer indexing limit.");
+  }
+  const int element_count = batch_size + 1;
+  int32_t* placeholder = nullptr;
+  size_t max_scan_bytes = 0;
+  size_t sum_scan_bytes = 0;
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      nullptr, max_scan_bytes, placeholder, placeholder, MaxInt32{}, element_count, stream));
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      nullptr, sum_scan_bytes, placeholder, placeholder, SaturatingAddInt32{}, element_count, stream));
+  workspace_bytes = std::max(max_scan_bytes, sum_scan_bytes);
+  return Status::OK();
 }
 
 Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
@@ -422,17 +449,38 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
                                      int32_t* cumulative_seqlens_kv,
                                      const int32_t* cumulative_seqlens_q,
                                      const int32_t* past_seqlens,
-                                     const int32_t* block_table,
+                                     void* workspace,
+                                     size_t workspace_bytes,
                                      int batch_size,
                                      int max_num_blocks_per_seq,
                                      int block_size,
                                      int token_count,
                                      cudaStream_t stream) {
-  SanitizeSequenceLengths<<<1, 1, 0, stream>>>(
-      sanitized_cumulative_seqlens_q, sanitized_past_seqlens, cumulative_seqlens_kv,
-      cumulative_seqlens_q, past_seqlens, block_table, batch_size,
-      max_num_blocks_per_seq, block_size, token_count);
-  return CUDA_CALL(cudaGetLastError());
+  if (batch_size <= 0 || batch_size > (INT32_MAX - 1) / 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "batch_size exceeds the sequence sanitizer indexing limit.");
+  }
+  constexpr int kThreadsPerBlock = 256;
+  const int cumulative_element_count = batch_size + 1;
+  const int cumulative_blocks = (cumulative_element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  ClampCumulativeSequenceLengths<<<cumulative_blocks, kThreadsPerBlock, 0, stream>>>(
+      sanitized_cumulative_seqlens_q, cumulative_seqlens_q, batch_size, token_count);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      workspace, workspace_bytes,
+      sanitized_cumulative_seqlens_q, sanitized_cumulative_seqlens_q,
+      MaxInt32{}, cumulative_element_count, stream));
+
+  const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
+      sanitized_past_seqlens, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
+      past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
+      workspace, workspace_bytes,
+      cumulative_seqlens_kv, cumulative_seqlens_kv,
+      SaturatingAddInt32{}, cumulative_element_count, stream));
+  return Status::OK();
 }
 
 // Fills seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i])

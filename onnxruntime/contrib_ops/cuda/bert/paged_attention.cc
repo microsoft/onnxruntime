@@ -395,6 +395,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
   int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
   int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
+  size_t sequence_sanitizer_workspace_bytes = 0;
+  ORT_RETURN_IF_ERROR(GetSanitizeSequenceLengthsWorkspaceSize(
+      parameters.batch_size, sequence_sanitizer_workspace_bytes, cuda_stream));
+  auto sequence_sanitizer_workspace =
+      GetScratchBuffer<void>(sequence_sanitizer_workspace_bytes, GetComputeStream(context));
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
@@ -416,7 +421,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
       reinterpret_cast<const int*>(past_seqlens->Data<int>()),
-      sanitized_block_table.get(),
+      sequence_sanitizer_workspace.get(),
+      sequence_sanitizer_workspace_bytes,
       parameters.batch_size,
       parameters.max_num_blocks_per_seq,
       parameters.block_size,
