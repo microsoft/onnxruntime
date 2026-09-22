@@ -110,6 +110,38 @@ TEST(SignalOpsTest, DFT17_Float_radix2_onesided) { TestRadix2DFTFloat(true, kMin
 
 TEST(SignalOpsTest, DFT20_Float_radix2_onesided) { TestRadix2DFTFloat(true, kOpsetVersion20); }
 
+TEST(SignalOpsTest, DFT_EmptySignalDimension) {
+  for (int opset : {kMinOpsetVersion, kOpsetVersion20}) {
+    SCOPED_TRACE(opset);
+    OpTester test("DFT", opset);
+    test.AddInput<float>("input", {1, 0, 1}, {});
+    if (opset == kOpsetVersion20) {
+      test.AddOptionalInputEdge<int64_t>();
+      test.AddInput<int64_t>("axis", {}, {1});
+    } else {
+      test.AddAttribute<int64_t>("axis", 1);
+    }
+    test.AddOutput<float>("output", {1, 0, 2}, {});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(SignalOpsTest, DFT_EmptySignalWithExplicitLength) {
+  OpTester test("DFT", kOpsetVersion20);
+  test.AddInput<float>("input", {1, 0, 1}, {});
+  test.AddInput<int64_t>("dft_length", {}, {2});
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddOutput<float>("output", {1, 2, 2}, std::vector<float>(4));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "DFT input signal dimension must be greater than zero",
+           {}, nullptr, &execution_providers);
+}
+
 TEST(SignalOpsTest, DFT20_Float_Bluestein_DftLengthTruncatesInput) {
   OpTester test("DFT", kOpsetVersion20);
 
