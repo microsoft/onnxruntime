@@ -6,29 +6,18 @@
 
 #include "core/providers/cuda/cuda_external_data_loader_gds.h"
 
-#include <algorithm>
-#include <cerrno>
-#include <cstring>
-#include <limits>
-#include <string>
-#include <string_view>
-
 #include "core/common/common.h"
-#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
 #if defined(ORT_CUDA_GDS_AVAILABLE)
-#include <cufile.h>
+#include "core/providers/cuda/cuda_external_data_loader_gds_api.h"
+
 #include <dlfcn.h>
-#include <fcntl.h>
-#include <unistd.h>
 #endif
 
 namespace onnxruntime {
 namespace cuda {
 namespace {
-
-constexpr size_t kGdsBufferSize = 64 * 1024 * 1024;
 
 #if defined(ORT_CUDA_GDS_AVAILABLE)
 
@@ -40,12 +29,6 @@ common::Status LoadSymbol(void* library, const char* name, T& function) {
   ORT_RETURN_IF(function == nullptr || error != nullptr,
                 "Failed to load ", name, " from libcufile: ",
                 error == nullptr ? "symbol not found" : error);
-  return Status::OK();
-}
-
-common::Status CheckCuFileStatus(CUfileError_t status, std::string_view operation) {
-  ORT_RETURN_IF(status.err != CU_FILE_SUCCESS, operation, " failed: ",
-                cufileop_status_error(status.err), " (", static_cast<int>(status.err), ")");
   return Status::OK();
 }
 
@@ -72,12 +55,14 @@ class CuFileDriver {
     }
   }
 
-  CUfileError_t RegisterHandle(CUfileHandle_t* handle, CUfileDescr_t* descriptor) const {
-    return handle_register_(handle, descriptor);
-  }
-
-  void DeregisterHandle(CUfileHandle_t handle) const {
-    handle_deregister_(handle);
+  GdsReadApi GetReadApi() const {
+    return {handle_register_, handle_deregister_, read_,
+            [](void* destination, const void* source, size_t length, cudaMemcpyKind kind) {
+              return CUDA_CALL(cudaMemcpy(destination, source, length, kind));
+            },
+            [](cudaStream_t stream) {
+              return CUDA_CALL(cudaStreamSynchronize(stream));
+            }};
   }
 
   CUfileError_t RegisterBuffer(const void* buffer, size_t length) const {
@@ -86,11 +71,6 @@ class CuFileDriver {
 
   CUfileError_t DeregisterBuffer(const void* buffer) const {
     return buffer_deregister_(buffer);
-  }
-
-  ssize_t Read(CUfileHandle_t handle, void* buffer, size_t length,
-               off_t file_offset, off_t buffer_offset) const {
-    return read_(handle, buffer, length, file_offset, buffer_offset);
   }
 
   common::Status Initialize() {
@@ -160,59 +140,8 @@ class LinuxGdsLoader final : public GdsLoader {
                       int64_t data_offset,
                       size_t data_length,
                       Tensor& tensor) const override {
-    ORT_RETURN_IF(file_descriptor < 0,
-                  "GPUDirect Storage requires an open POSIX file descriptor.");
-
-    const int direct_descriptor = dup(file_descriptor);
-    ORT_RETURN_IF(direct_descriptor < 0, "Failed to duplicate external-data file descriptor: ",
-                  std::strerror(errno));
-    auto close_file = gsl::finally([direct_descriptor]() {
-      ORT_IGNORE_RETURN_VALUE(close(direct_descriptor));
-    });
-
-    const int original_flags = fcntl(direct_descriptor, F_GETFL);
-    ORT_RETURN_IF(original_flags < 0, "Failed to query external-data file flags: ",
-                  std::strerror(errno));
-    ORT_RETURN_IF(fcntl(direct_descriptor, F_SETFL, original_flags | O_DIRECT) < 0,
-                  "Failed to enable O_DIRECT for GPUDirect Storage: ", std::strerror(errno));
-    auto restore_flags = gsl::finally([direct_descriptor, original_flags]() {
-      ORT_IGNORE_RETURN_VALUE(fcntl(direct_descriptor, F_SETFL, original_flags));
-    });
-
-    CUfileDescr_t descriptor{};
-    descriptor.type = CU_FILE_HANDLE_TYPE_OPAQUE_FD;
-    descriptor.handle.fd = direct_descriptor;
-    CUfileHandle_t file_handle = nullptr;
-    ORT_RETURN_IF_ERROR(CheckCuFileStatus(driver_->RegisterHandle(&file_handle, &descriptor),
-                                          "cuFileHandleRegister"));
-    auto deregister_file = gsl::finally([&]() { driver_->DeregisterHandle(file_handle); });
-
-    auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
-    for (size_t offset = 0; offset < data_length;) {
-      const size_t chunk_size = std::min(kGdsBufferSize, data_length - offset);
-      const auto file_offset = SafeInt<off_t>(data_offset) + offset;
-      const ssize_t bytes_read = driver_->Read(file_handle, gds_buffer_, chunk_size, file_offset, 0);
-      if (bytes_read != static_cast<ssize_t>(chunk_size)) {
-        if (bytes_read == -1) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFileRead failed: ", std::strerror(errno));
-        }
-        if (bytes_read < 0) {
-          const auto cu_file_error = static_cast<CUfileOpError>(-bytes_read);
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFileRead failed: ",
-                                 cufileop_status_error(cu_file_error),
-                                 " (", static_cast<int>(cu_file_error), ")");
-        }
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFileRead returned ", bytes_read,
-                               " bytes; expected ", chunk_size, ".");
-      }
-
-      CUDA_RETURN_IF_ERROR(
-          cudaMemcpy(destination + offset, gds_buffer_, chunk_size, cudaMemcpyDeviceToDevice));
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
-      offset += chunk_size;
-    }
-
-    return Status::OK();
+    return LoadGdsFile(driver_->GetReadApi(), gds_buffer_,
+                       file_descriptor, data_offset, data_length, tensor.MutableDataRaw());
   }
 
  private:

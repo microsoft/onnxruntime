@@ -87,3 +87,10 @@ Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 
 The option only affects initializers stored as ONNX external data and assigned to CUDA memory. Embedded initializers
 and initializers assigned to other execution providers retain their existing paths.
+
+## Native-path tests
+
+On Linux builds with the required cuFile headers, `CudaGdsIoTest.*` exercises the same read loop used by the native
+loader, with injected cuFile and device-copy callbacks. These tests require neither a GPU nor a working GDS installation.
+They cover 64 MiB chunk boundaries, short reads, cuFile/POSIX errors, copy/synchronization failures, handle cleanup,
+and restoration of the original file descriptor's flags. They do not validate native GDS hardware support or performance.
