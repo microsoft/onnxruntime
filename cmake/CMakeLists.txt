@@ -184,6 +184,11 @@ set(onnxruntime_USE_1DS_TELEMETRY
 if(WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
   set(onnxruntime_USE_1DS_TELEMETRY OFF)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
+  message(WARNING "1DS telemetry is not supported for UWP builds. Telemetry will be disabled.")
+  set(onnxruntime_USE_TELEMETRY OFF CACHE BOOL "Build with Telemetry" FORCE)
+  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+endif()
 # Optional 1DS ingestion token. Leave empty to compile in the encoded
 # in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
 set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")

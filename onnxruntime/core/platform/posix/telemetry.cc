@@ -405,9 +405,10 @@ bool PrepareProcessEvent(EventBuilder& event) {
 
 int32_t GetProcessorCount() {
 #ifdef _WIN32
-  SYSTEM_INFO system_info{};
-  ::GetSystemInfo(&system_info);
-  return static_cast<int32_t>(system_info.dwNumberOfProcessors);
+  const DWORD count = ::GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+  return count > static_cast<DWORD>(std::numeric_limits<int32_t>::max())
+             ? std::numeric_limits<int32_t>::max()
+             : static_cast<int32_t>(count);
 #else
   auto n = sysconf(_SC_NPROCESSORS_ONLN);
   if (n <= 0) {

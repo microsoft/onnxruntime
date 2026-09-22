@@ -168,6 +168,22 @@ TEST(DeviceIdWindowsTest, FallsBackToUserProfileWhenAppDataIsUnavailable) {
             user_profile / "AppData" / "Local" / "Microsoft" / "DeveloperTools" / ".onnxruntime");
 }
 
+TEST(DeviceIdWindowsTest, FallsBackToHomeDriveAndPath) {
+  const fs::path home = fs::temp_directory_path() / "ort_device_id_home";
+  const std::wstring home_native = home.native();
+  const std::wstring drive = home.root_name().native();
+  ScopedEnvironmentVariables environment{
+      EnvVarMap{{"LOCALAPPDATA", nullopt},
+                {"APPDATA", nullopt},
+                {"HOME", nullopt},
+                {"USERPROFILE", nullopt},
+                {"HOMEDRIVE", std::string(drive.begin(), drive.end())},
+                {"HOMEPATH", std::string(home_native.begin() + drive.size(), home_native.end())}}};
+
+  EXPECT_EQ(Utf8Path(DeviceId::GetStorageDirectory()),
+            home / "AppData" / "Local" / "Microsoft" / "DeveloperTools" / ".onnxruntime");
+}
+
 TEST(DeviceIdWindowsTest, CreatesUnicodeStorageDirectory) {
   const fs::path app_data = fs::temp_directory_path() / L"ort_device_id_\u6d4b\u8bd5";
   ScopedWideEnvironmentVariable local_app_data(L"LOCALAPPDATA", app_data.native());
@@ -234,6 +250,22 @@ TEST(DeviceIdWindowsDeathTest, RepairsOversizedRegistryValue) {
         const std::string oversized_value(512, 'a');
         registry.WriteValue(REG_SZ, oversized_value.c_str(),
                             static_cast<DWORD>(oversized_value.size() + 1));
+        const std::string value = DeviceId::Instance().GetValue();
+        const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
+                            IsValidGuid(value) &&
+                            registry.ReadValue() == value;
+        registry.Reset();
+        std::_Exit(passed ? EXIT_SUCCESS : EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+
+TEST(DeviceIdWindowsDeathTest, RepairsRegistryValueWithEmbeddedNull) {
+  EXPECT_EXIT(
+      {
+        ScopedRegistryOverride registry;
+        constexpr char kMalformedId[] = "11111111-2222-4333-8444-555555555555\0junk";
+        registry.WriteValue(REG_SZ, kMalformedId, sizeof(kMalformedId));
         const std::string value = DeviceId::Instance().GetValue();
         const bool passed = DeviceId::Instance().GetStatus() == DeviceIdStatus::Corrupted &&
                             IsValidGuid(value) &&

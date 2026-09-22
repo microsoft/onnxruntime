@@ -175,8 +175,15 @@ RegistryRead ReadDeviceIdRegistryValue() {
     return {RegistryReadResult::Invalid, {}};
   }
 
-  buffer[buffer.size() - 1] = '\0';
-  std::string value(buffer.data());
+  size_t value_size = size;
+  if (buffer[value_size - 1] == '\0') {
+    --value_size;
+  }
+  if (std::find(buffer.begin(), buffer.begin() + value_size, '\0') != buffer.begin() + value_size) {
+    return {RegistryReadResult::Invalid, {}};
+  }
+
+  std::string value(buffer.data(), value_size);
   TrimAsciiWhitespace(value);
   return {IsValidGuid(value) ? RegistryReadResult::Valid : RegistryReadResult::Invalid,
           std::move(value)};

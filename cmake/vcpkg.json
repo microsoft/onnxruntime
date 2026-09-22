@@ -107,7 +107,7 @@
       "dependencies": [
         {
           "name": "cpp-client-telemetry",
-          "platform": "!android & !emscripten",
+          "platform": "!android & !emscripten & !uwp",
           "version>=": "3.10.240.1"
         }
       ]
