@@ -260,41 +260,73 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
 TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphSafelyHandlesInvalidIndices) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {{"enable_cuda_graph", "1"}});
+  const std::unordered_map<std::string, std::string> provider_options{{"enable_cuda_graph", "1"}};
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
   const auto model = BuildGatherNDModel();
   Ort::Session session(*ort_env, model.data(), model.size(), so);
 
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
   const std::array<int64_t, 2> data_shape{2, 2};
   const std::array<int64_t, 2> indices_shape{1, 1};
-  std::array<float, 4> data{1.0f, 2.0f, 3.0f, 4.0f};
+  const std::array<int64_t, 2> output_shape{1, 2};
+  const std::array<float, 4> data{1.0f, 2.0f, 3.0f, 4.0f};
   std::array<int64_t, 1> indices{1};
-  std::array<const char*, 2> input_names{"data", "indices"};
-  std::array<const char*, 1> output_names{"output"};
+  const size_t data_bytes = data.size() * sizeof(float);
+  const size_t indices_bytes = indices.size() * sizeof(int64_t);
+  constexpr size_t output_element_count = 2;
+  constexpr size_t output_bytes = output_element_count * sizeof(float);
 
-  auto make_inputs = [&]() {
-    std::vector<Ort::Value> inputs;
-    inputs.push_back(Ort::Value::CreateTensor<float>(
-        memory_info, data.data(), data.size(), data_shape.data(), data_shape.size()));
-    inputs.push_back(Ort::Value::CreateTensor<int64_t>(
-        memory_info, indices.data(), indices.size(), indices_shape.data(), indices_shape.size()));
-    return inputs;
+  void* data_gpu = allocator.Alloc(data_bytes);
+  void* indices_gpu = allocator.Alloc(indices_bytes);
+  void* output_gpu = allocator.Alloc(output_bytes);
+  ASSERT_NE(data_gpu, nullptr);
+  ASSERT_NE(indices_gpu, nullptr);
+  ASSERT_NE(output_gpu, nullptr);
+
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(data_gpu, data.data(), data_bytes, cudaMemcpyHostToDevice));
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(indices_gpu, indices.data(), indices_bytes, cudaMemcpyHostToDevice));
+
+  Ort::Value data_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<float*>(data_gpu), data.size(),
+      data_shape.data(), data_shape.size());
+  Ort::Value indices_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<int64_t*>(indices_gpu), indices.size(),
+      indices_shape.data(), indices_shape.size());
+  Ort::Value output_tensor = Ort::Value::CreateTensor(
+      device_memory_info, static_cast<float*>(output_gpu), output_element_count,
+      output_shape.data(), output_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("data", data_tensor);
+  binding.BindInput("indices", indices_tensor);
+  binding.BindOutput("output", output_tensor);
+
+  const auto run_and_read_output = [&]() {
+    session.Run(Ort::RunOptions{}, binding);
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    std::array<float, output_element_count> output{};
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(output.data(), output_gpu, output_bytes, cudaMemcpyDeviceToHost));
+    return output;
   };
 
-  auto inputs = make_inputs();
-  auto outputs = session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
-                             output_names.data(), output_names.size());
-  const auto* output = outputs.front().GetTensorData<float>();
+  auto output = run_and_read_output();
   EXPECT_FLOAT_EQ(output[0], 3.0f);
   EXPECT_FLOAT_EQ(output[1], 4.0f);
 
   indices[0] = 2;
-  inputs = make_inputs();
-  outputs = session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
-                        output_names.data(), output_names.size());
-  output = outputs.front().GetTensorData<float>();
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(indices_gpu, indices.data(), indices_bytes, cudaMemcpyHostToDevice));
+  output = run_and_read_output();
   EXPECT_FLOAT_EQ(output[0], 0.0f);
   EXPECT_FLOAT_EQ(output[1], 0.0f);
+
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+  allocator.Free(data_gpu);
+  allocator.Free(indices_gpu);
+  allocator.Free(output_gpu);
 }
 
 // Full capture + replay on the user stream, including replay after an in-place input
