@@ -136,8 +136,13 @@ std::string DecodeBase64(const std::string& encoded) {
 std::string GetToken() {
   static constexpr char kXorKey[] = "OnnxRuntime";
   constexpr size_t klen = sizeof(kXorKey) - 1;
+#ifdef _WIN32
+  std::string decoded = DecodeBase64(
+      "fllXSmJHWBYMX1cqWldIYU0KTA0IVnpWD0lkRloSWwhIf11ZQWsQXhZEXFIrX0NMYE1aWVAIAXxDDE5hF11DX1lQd1pdVWVFWUM=");
+#else
   std::string decoded = DecodeBase64(
       "eg8KQWRGDBBdD1YuWl9JahRaTFhZVX4NDUhgRF9MXlhIegxYHGpFXxJEXVd/V0NMa0FXWVEOA3hDCxw3RFhCUF8Edl0NVWRMWEM=");
+#endif
   for (size_t i = 0; i < decoded.size(); ++i) {
     decoded[i] = static_cast<char>(decoded[i] ^ kXorKey[i % klen]);
   }
