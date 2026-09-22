@@ -3259,7 +3259,8 @@ TEST(ResizeOpTest, Scales_CountMismatch_13) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to rank of the data when axes is not provided.",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_OutOfRange_18) {

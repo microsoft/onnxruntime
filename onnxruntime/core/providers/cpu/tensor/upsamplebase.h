@@ -608,17 +608,16 @@ class UpsampleBase {
       }
     }
 
-    scales.resize(onnxruntime::narrow<size_t>(scales_size));
-    memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
-
     if (rank > 0 && !axes_.empty()) {
-      InlinedVector<float> new_scales(size_t(rank), 1.0f);
+      scales.assign(size_t(rank), 1.0f);
       TensorShapeVector normalized_axes;
       ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
       for (size_t i = 0; i < normalized_axes.size(); i++) {
-        new_scales[static_cast<size_t>(normalized_axes[i])] = scales[i];
+        scales[static_cast<size_t>(normalized_axes[i])] = scale_data[i];
       }
-      scales.swap(new_scales);
+    } else {
+      scales.resize(onnxruntime::narrow<size_t>(scales_size));
+      memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
     }
     return ScalesValidation(scales, mode_);
   }

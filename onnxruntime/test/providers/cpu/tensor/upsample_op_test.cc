@@ -948,7 +948,8 @@ TEST(UpsampleOpTest, UpsampleOpScalesCountMismatch_opset9) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to rank of the data when axes is not provided.",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(UpsampleOpTest, NhwcUpsampleOpNearest2XTest_opset9) {
