@@ -8,6 +8,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+inline constexpr int kMatMul8BitsMaxRows = 8;
+
+constexpr bool IsMatMul8BitsSmallM(int m) {
+  return m >= 1 && m <= kMatMul8BitsMaxRows;
+}
+
 template <class T>
 bool TryMatMul2Bits(
     T* output,

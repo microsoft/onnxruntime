@@ -27,6 +27,10 @@
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 
+#ifdef USE_CUDA
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#endif
+
 #if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) &&    \
      !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || \
     defined(USE_CUDA) || defined(USE_WEBGPU)
@@ -927,6 +931,20 @@ void TestInt8SmallMBatchedTiles() {
     }
   }
 }
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Int8SmallMDispatchEligibility) {
+  using onnxruntime::contrib::cuda::IsMatMul8BitsSmallM;
+
+  EXPECT_FALSE(IsMatMul8BitsSmallM(0));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(1));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(5));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(6));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(7));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(8));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(9));
+}
+#endif
 
 template <typename T>
 void TestInt8SmallMFallback() {

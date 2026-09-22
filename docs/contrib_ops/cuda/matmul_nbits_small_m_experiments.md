@@ -1,9 +1,9 @@
 # MatMulNBits Small-M GEMV Profiling Experiments
 
-This file records CUDA `MatMulNBits` 4-bit (M = 2..16) and 8-bit (M = 2..5)
-profiling results for the small-M range (e.g. multi-row decode or short
-prefill) so future kernel and dispatch changes can be compared against a
-stable baseline.
+This file records CUDA `MatMulNBits` 4-bit (M = 2..16) and 8-bit small-M
+profiling results. The historical 8-bit baseline covered M = 2..5; the
+current 8-bit dispatch covers M = 2..8. These measurements provide stable
+comparison points for future kernel and dispatch changes.
 
 > **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
 > toolkit, and ORT build noted in the section header. Treat the numbers as a historical baseline
@@ -75,9 +75,9 @@ Speedup (before / after, >1 means the batched GEMV is faster):
 
 ### Before / After (8-bit)
 
-The 8-bit batched GEMV (`MatMulFloat8bKernelBatched`) covers M=2..5. 8-bit weights are twice the bytes of
-4-bit and the GEMV runs on CUDA cores, so it crosses over to the dequantize + cuBLAS (tensor-core) fallback
-at a lower M than the 4-bit path; M>=6 keeps the fallback. Values are average op latency in microseconds.
+At the time of this baseline, the 8-bit batched GEMV (`MatMulFloat8bKernelBatched`) covered M=2..5.
+8-bit weights are twice the bytes of 4-bit and the GEMV runs on CUDA cores, so this experiment kept
+M>=6 on the dequantize + cuBLAS (tensor-core) fallback. Values are average op latency in microseconds.
 
 Before (dequant + cuBLAS for M>1):
 
@@ -115,11 +115,25 @@ Speedup (before / after, >1 means the batched GEMV is faster):
   its latency is flat across M (e.g. `gate_up` ~172 us, `lm_head` ~1.9 ms even at M=2). The batched small-M
   GEMV reads the quantized weight once and scales with M, giving 2.6-5.7x at M=2 (4-bit) / 1.8-3.1x at M=2
   (8-bit).
-- 4-bit stays at or above parity through M=16; 8-bit wins through M=5 and falls back to dequant + cuBLAS
-  for M>=6, where the tensor-core GEMM beats the CUDA-core GEMV on the heavier 8-bit weights.
+- 4-bit stays at or above parity through M=16. In this historical 8-bit baseline, M>=6 fell back to
+  dequant + cuBLAS. A later exact-shape measurement justified extending the 8-bit dispatch through M=8;
+  see the SM121 result below.
 - M=1 decode is unchanged (same single-row GEMV in both builds).
 - No prepacking is used, so there is no extra resident weight memory and no GEMM tactic profiling at
   session init.
+
+## 2026-09-21 SM121 W8 M=8 Dispatch Validation
+
+This measurement used FP16 activations, W8 block size 64, M=8, K=3584, and N=200064.
+
+| Path | Average op latency |
+|------|-------------------:|
+| Dequantize + GEMM fallback | 15.257 ms |
+| Batched small-M GEMV | 5.846 ms |
+
+The batched path was **2.61x faster** for this shape. Based on this result and the existing 8-row
+kernel tile, the W8 small-M dispatch was extended through M=8. M>=9 continues to use the fallback.
+This is a shape- and device-specific result rather than a general crossover claim for every GPU.
 
 ### Next Experiments
 
