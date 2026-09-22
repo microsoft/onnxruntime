@@ -368,7 +368,7 @@ MlasLayerNormKernelF16Avx2(
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
             const __m256 vs = _mm256_loadu_ps(Scale + i);
             const __m256 vy = _mm256_mul_ps(_mm256_mul_ps(vx, vinv), vs);
-            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT);
             _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
         }
         for (; i < n; ++i) {
@@ -380,7 +380,7 @@ MlasLayerNormKernelF16Avx2(
                 _mm_loadu_si128(reinterpret_cast<const __m128i*>(Input + i)));
             const __m256 vs = _mm256_loadu_ps(Scale + i);
             const __m256 vy = _mm256_mul_ps(_mm256_mul_ps(_mm256_sub_ps(vx, vmean), vinv), vs);
-            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT);
             _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
         }
         for (; i < n; ++i) {
@@ -395,7 +395,7 @@ MlasLayerNormKernelF16Avx2(
             const __m256 vb = _mm256_loadu_ps(Bias + i);
             const __m256 normalized = _mm256_mul_ps(_mm256_sub_ps(vx, vmean), vinv);
             const __m256 vy = _mm256_fmadd_ps(normalized, vs, vb);
-            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+            const __m128i half = _mm256_cvtps_ph(vy, _MM_FROUND_TO_NEAREST_INT);
             _mm_storeu_si128(reinterpret_cast<__m128i*>(Output + i), half);
         }
         for (; i < n; ++i) {
