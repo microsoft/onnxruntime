@@ -68,8 +68,8 @@ number of routed rows.
 The policy exposes `alpha`, `beta`, and `epsilon` as validated non-negative parameters. `alpha` must be at most `1`.
 Their default values are defined with the runtime configuration and covered by option-parsing tests.
 
-Expert identity is `(node_index, node_type, expert_id)`. Ranking is by descending counter. Ties are resolved by
-`expert_id`, then `node_index`, so placement is deterministic.
+Expert identity is `(graph_scope, node_index, node_type, expert_id)`. Ranking is by descending counter. Ties are resolved
+by `expert_id`, then graph scope and node index, so placement is deterministic.
 
 ## Initial counter state
 
@@ -80,10 +80,10 @@ session.moe_expert_counter_state_file=<path>
 ```
 
 The file starts with a format-version line and contains one line per
-`(node_index, node_type, expert_id, counter_value)` record. Loading validates:
+`(graph_scope, node_index, node_type, expert_id, counter_value)` record. Loading validates:
 
 - the format version;
-- node identity and operator type;
+- graph scope, node identity, and operator type;
 - expert index bounds;
 - uniqueness of every expert record;
 - finite, non-negative counter values.
@@ -182,18 +182,25 @@ When `session.moe_cpu_offload_experts` is absent, CPU and CUDA `MoE`/`QMoE` beha
 
 ## State ownership and concurrency
 
-The cache manager owns:
+The root `SessionState` owns a dedicated `MoeExpertState` shared with its subgraph session states. It contains:
 
 - policy parameters;
 - per-node expert counters;
-- the global slot budget;
-- current immutable mappings;
+- the global expert budget and per-node allocation targets.
+
+Kernels access this state through a restricted interface exposed through their kernel context, not by modifying
+`SessionState` directly. Expert identity includes graph scope as well as node and expert IDs, so nodes in different
+subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
+
+The CUDA cache manager owns device-specific resources and execution state:
+
+- CUDA slots and current immutable mappings;
 - pending exchanges and redistribution transfers;
 - CUDA completion events.
 
-Concurrent requests may share immutable CPU weights. Placement updates are serialized per session. Each invocation
-captures a stable mapping snapshot, and a slot cannot be overwritten until all work using its previous contents has
-completed.
+Counter updates and snapshots are synchronized for concurrent `Run()` calls. Concurrent requests may share immutable
+CPU weights. Placement updates are serialized per session. Each invocation captures a stable mapping snapshot, and a
+slot cannot be overwritten until all work using its previous contents has completed.
 
 Errors are explicit. Invalid configuration, invalid initial state, allocation failures, copy failures, and event
 failures fail session initialization or execution rather than silently disabling offload or retaining stale placement.
@@ -204,21 +211,46 @@ Each PR includes the tests and documentation for its own scope.
 
 ### PR 1: runtime cache manager
 
+Provide independently tested cache and policy components without activating offload in the model's kernels.
+
 - Parse and validate the count-or-proportion offload target.
 - Parse and validate `alpha`, `beta`, and `epsilon`.
 - Load the optional counter-state text file and initialize missing counters to zero.
 - Build deterministic all-zero placement.
-- Maintain counters and immutable per-invocation mappings.
+- Implement counter-update helpers and immutable per-invocation mappings.
 - Implement threshold-based per-node exchanges.
 - Implement end-of-inference global redistribution.
 - Manage CUDA slots, streams, events, and atomic mapping publication.
 - Add unit tests for configuration, initial state, ranking, counter updates, exchanges, and redistribution.
 
-### PR 2: MoE and QMoE integration
+### PR 2: session-global expert state and simple counting
 
 Depends on PR 1.
 
-Wire the cache manager into every participating CUDA `MoE` and `QMoE` node using the following strategy.
+- Add `MoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
+- Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
+- Expose restricted kernel-context access for reporting used experts and reading consistent counter snapshots,
+  including the provider bridge needed by CUDA kernels.
+- Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
+- Wire CPU and CUDA MoE/QMoE routing results into simple per-invocation counting:
+
+  ```text
+  c(t+1) = c(t) + (1 if used otherwise 0)
+  ```
+
+- Increment each used expert once per invocation, even if several rows select it; leave unused counters unchanged.
+- Preserve counters across `Run()` calls, isolate sessions, and synchronize concurrent updates.
+- Keep counting opt-in and preserve model outputs and execution placement. Do not enable decay, ranking, placement
+  strategy, offload, swaps, or redistribution in this PR.
+- Test zero and file initialization, used/unused experts, repeated selection within one invocation, persistence across
+  runs, session isolation, subgraph identity, concurrent updates, and CPU/CUDA counting agreement.
+
+### PR 3: adaptive placement and MoE/QMoE offload
+
+Depends on PRs 1 and 2.
+
+Connect the session-global expert state and CUDA cache manager to every participating CUDA `MoE` and `QMoE` node using
+the following strategy.
 
 **Configuration and initial placement**
 
@@ -227,9 +259,7 @@ Wire the cache manager into every participating CUDA `MoE` and `QMoE` node using
 - Apply `session.moe_cpu_offload_experts` globally across all participating nodes, not separately to each node. Values
   greater than `1` specify an integer expert count; values strictly between `0` and `1` specify a proportion. The value
   `1` specifies one expert. Derive the global CUDA budget from the complementary expert count.
-- Associate one counter with every expert of every `MoE` and `QMoE` node.
-- Load initial counters from the optional `session.moe_expert_counter_state_file` text file. Unspecified counters are
-  zero; without a file, all counters are zero.
+- Use the session-global per-expert counters, initialized from the optional text file or to zero.
 - Rank experts by descending counter and select the highest-ranked experts up to the global CUDA budget. Count the
   selected experts belonging to each node to determine that node's initial CUDA allocation. Resolve ties
   deterministically. If all counters are zero, distribute CUDA slots uniformly across nodes instead.
@@ -270,9 +300,9 @@ Wire the cache manager into every participating CUDA `MoE` and `QMoE` node using
 - Verify global budget preservation and redistribution toward complete CUDA-resident nodes after inference.
 - Cover concurrent invocations, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
 
-### PR 3: end-to-end evaluation
+### PR 4: end-to-end evaluation
 
-Depends on PR 2.
+Depends on PR 3.
 
 - Run reproducible CPU-only, CUDA-only, and hybrid evaluations with the same model, prompts, and generation settings.
 - Sweep offload targets and policy parameters, including zero-initialized and file-initialized counters.
