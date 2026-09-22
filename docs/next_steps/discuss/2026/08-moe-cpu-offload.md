@@ -213,13 +213,55 @@ Each PR includes the tests and documentation for its own scope.
 
 Depends on PR 1.
 
-- Retain canonical expert weights on CPU.
-- Dispatch resident experts on CUDA and non-resident experts on CPU.
-- Share routing validation and CPU expert computation between regular and hybrid execution.
-- Connect routing results to counter updates.
-- Trigger placement updates only after node execution completes.
-- Preserve numerical behavior for mixed CPU/CUDA execution.
-- Add integration tests for transfer synchronization, concurrent invocations, numerical correctness, and bounded memory.
+Wire the cache manager into every participating CUDA `MoE` and `QMoE` node using the following strategy.
+
+**Configuration and initial placement**
+
+- Apply `session.moe_cpu_offload_experts` globally across all participating nodes, not separately to each node. Values
+  greater than `1` specify an integer expert count; values strictly between `0` and `1` specify a proportion. The value
+  `1` specifies one expert. Derive the global CUDA budget from the complementary expert count.
+- Associate one counter with every expert of every `MoE` and `QMoE` node.
+- Load initial counters from the optional `session.moe_expert_counter_state_file` text file. Unspecified counters are
+  zero; without a file, all counters are zero.
+- Rank experts by descending counter and select the highest-ranked experts up to the global CUDA budget. Count the
+  selected experts belonging to each node to determine that node's initial CUDA allocation. Resolve ties
+  deterministically. If all counters are zero, distribute CUDA slots uniformly across nodes instead.
+- Retain canonical weights for every expert on CPU and copy only the selected experts to CUDA.
+
+**Each MoE/QMoE invocation**
+
+- Complete any pending exchange or redistribution for the node before it executes, then capture its immutable
+  placement mapping.
+- Dispatch resident experts on CUDA and non-resident experts on CPU, sharing routing validation and CPU expert
+  computation with the regular kernels.
+- After execution, update every expert counter for that node, including unused experts:
+
+  ```text
+  c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
+  ```
+
+- Find the highest counter among the node's CPU experts and the lowest counter among its CUDA experts. If
+  `cpu_max > (1 + epsilon) * cuda_min`, exchange those two experts. Nodes entirely on one device have no local exchange.
+- Enqueue the exchange asynchronously immediately after node execution completes, so the weight copy can overlap
+  subsequent model computation. Publish the new mapping only when the copy completes. The exchange must finish before
+  that node's next invocation; wait for its completion event if necessary.
+
+**After the complete model inference**
+
+- Reevaluate the number of experts kept on CUDA for each `MoE` and `QMoE` while preserving the global offload target.
+- Prioritize the largest possible number of nodes whose experts all reside on CUDA, then maximize retained counter
+  mass. Within each node, select experts by descending counter.
+- Schedule the resulting transfers safely with any pending per-node exchanges. Every affected node must finish its
+  placement update before its next execution.
+
+**Integration tests**
+
+- Exercise global count/proportion settings, text-file initialization, all-zero uniform placement, and counter-based
+  allocation across multiple MoE/QMoE nodes.
+- Verify the exponential update for used and unused experts, the strict epsilon threshold, asynchronous exchange
+  timing, and required completion before the next invocation.
+- Verify global budget preservation and redistribution toward complete CUDA-resident nodes after inference.
+- Cover concurrent invocations, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
 
 ### PR 3: end-to-end evaluation
 
