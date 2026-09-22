@@ -4,6 +4,8 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -199,6 +201,111 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) 
   ASSERT_EQ(cudaSuccess, cudaFree(selected));
   ASSERT_EQ(cudaSuccess, cudaFree(key_cache));
   ASSERT_EQ(cudaSuccess, cudaFree(mask));
+  ASSERT_EQ(cudaSuccess, cudaFree(sine));
+  ASSERT_EQ(cudaSuccess, cudaFree(cosine));
+  ASSERT_EQ(cudaSuccess, cudaFree(weight));
+  ASSERT_EQ(cudaSuccess, cudaFree(key));
+  ASSERT_EQ(cudaSuccess, cudaFree(query));
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(SparseAttentionIndexerCudaKernelTest, DISABLED_QsaHierarchicalLongContextBenchmark) {
+  constexpr int kHeadSize = 128;
+  constexpr int kNumHeads = 4;
+  constexpr int kTokenBudget = 2048;
+  constexpr int kCompressRatio = 4;
+  constexpr int kWarmupIterations = 10;
+  constexpr int kTimedIterations = 100;
+  const char* context_environment = std::getenv("ORT_QSA_BENCH_CONTEXT");
+  const int context_length = context_environment == nullptr ? 65536 : std::stoi(context_environment);
+
+  SparseAttentionIndexerParams params;
+  params.batch_size = 1;
+  params.sequence_length = 1;
+  params.num_heads = kNumHeads;
+  params.head_size = kHeadSize;
+  params.rotary_width = kHeadSize;
+  params.max_rotary_length = context_length;
+  params.compress_ratio = kCompressRatio;
+  params.capacity = kTokenBudget + kCompressRatio - 1;
+  params.scale = 0.5f;
+  params.past_sequence_length = context_length - 1;
+  params.total_sequence_length = context_length;
+  params.past_key_capacity = context_length;
+  params.key_cache_capacity = context_length;
+  params.max_block_count = context_length / kCompressRatio;
+  params.block_topk = kTokenBudget / kCompressRatio;
+  params.use_block_representatives = true;
+
+  cudaStream_t stream = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+  float* query = nullptr;
+  float* key = nullptr;
+  float* weight = nullptr;
+  float* cosine = nullptr;
+  float* sine = nullptr;
+  float* key_cache = nullptr;
+  int32_t* selected = nullptr;
+  float* float_workspace = nullptr;
+  int32_t* int_workspace = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&query), kNumHeads * kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&key), kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&weight), kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess,
+            cudaMalloc(reinterpret_cast<void**>(&cosine), context_length * kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&sine), context_length * kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess,
+            cudaMalloc(reinterpret_cast<void**>(&key_cache), context_length * kHeadSize * sizeof(float)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&selected), params.capacity * sizeof(int32_t)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&float_workspace),
+                                    GetQsaWorkspaceFloatCount(params) * sizeof(float)));
+  ASSERT_EQ(cudaSuccess, cudaMalloc(reinterpret_cast<void**>(&int_workspace),
+                                    GetQsaWorkspaceIntCount(params, false) * sizeof(int32_t)));
+
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(query, 0, kNumHeads * kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(key, 0, kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(weight, 0, kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(cosine, 0, context_length * kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(sine, 0, context_length * kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(key_cache, 0, context_length * kHeadSize * sizeof(float), stream));
+  ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+  const auto launch = [&]() {
+    return LaunchQsaSparseAttentionIndexer<float>(
+        stream, params, query, key, weight, weight, cosine, sine, nullptr, key_cache, selected, key_cache,
+        float_workspace, int_workspace);
+  };
+  ASSERT_TRUE(launch().IsOK());
+  ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+  for (int iteration = 0; iteration < kWarmupIterations; ++iteration) {
+    ASSERT_TRUE(launch().IsOK());
+  }
+
+  cudaEvent_t start = nullptr;
+  cudaEvent_t stop = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaEventCreate(&start));
+  ASSERT_EQ(cudaSuccess, cudaEventCreate(&stop));
+  ASSERT_EQ(cudaSuccess, cudaEventRecord(start, stream));
+  for (int iteration = 0; iteration < kTimedIterations; ++iteration) {
+    ASSERT_TRUE(launch().IsOK());
+  }
+  ASSERT_EQ(cudaSuccess, cudaEventRecord(stop, stream));
+  ASSERT_EQ(cudaSuccess, cudaEventSynchronize(stop));
+  float elapsed_ms = 0.0f;
+  ASSERT_EQ(cudaSuccess, cudaEventElapsedTime(&elapsed_ms, start, stop));
+  const float average_ms = elapsed_ms / kTimedIterations;
+  std::cout << "QSA_HIERARCHICAL context=" << context_length << " average_ms=" << average_ms
+            << " blocks_scanned=" << params.max_block_count
+            << " tile_count=" << (params.max_block_count + 7) / 8
+            << " selected_entries=" << params.block_topk << std::endl;
+  RecordProperty("qsa_hierarchical_ms", std::to_string(average_ms));
+
+  ASSERT_EQ(cudaSuccess, cudaEventDestroy(stop));
+  ASSERT_EQ(cudaSuccess, cudaEventDestroy(start));
+  ASSERT_EQ(cudaSuccess, cudaFree(int_workspace));
+  ASSERT_EQ(cudaSuccess, cudaFree(float_workspace));
+  ASSERT_EQ(cudaSuccess, cudaFree(selected));
+  ASSERT_EQ(cudaSuccess, cudaFree(key_cache));
   ASSERT_EQ(cudaSuccess, cudaFree(sine));
   ASSERT_EQ(cudaSuccess, cudaFree(cosine));
   ASSERT_EQ(cudaSuccess, cudaFree(weight));
