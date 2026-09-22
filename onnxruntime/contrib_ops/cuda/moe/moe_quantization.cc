@@ -1126,6 +1126,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         wtype = use_wfp4afp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
       } else if (is_fp8) {
         wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
+      } else if (use_int_dequant_fallback) {
+        wtype = dtype;
       } else {
         wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
                                            : onnxruntime::llm::nvinfer::DataType::kINT8;

@@ -2039,7 +2039,8 @@ TEST(MoETest, QMoETest_MixedWidthContract_CUDA) {
 static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits,
                                               int64_t max_scratch_bytes = 0,
                                               bool fused_swiglu = false,
-                                              bool with_zero_points = false) {
+                                              bool with_zero_points = false,
+                                              bool use_bf16 = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
   constexpr int64_t hidden_size = 64;
@@ -2081,14 +2082,12 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   const int64_t fc1_rows = fused_swiglu ? 2 * inter_size : inter_size;
   auto [fc1_weights, fc1_zero_points] = make_identity(fc1_bits, fc1_rows, fused_swiglu, with_zero_points);
   auto [fc2_weights, fc2_zero_points] = make_identity(fc2_bits, hidden_size, false, with_zero_points);
-  const std::vector<MLFloat16> fc1_scales(
-      static_cast<size_t>(fc1_rows * (hidden_size / block_size)), MLFloat16(1.0f));
-  const std::vector<MLFloat16> fc2_scales(
-      static_cast<size_t>(hidden_size * (inter_size / block_size)), MLFloat16(1.0f));
+  const std::vector<float> fc1_scales(static_cast<size_t>(fc1_rows * (hidden_size / block_size)), 1.0f);
+  const std::vector<float> fc2_scales(static_cast<size_t>(hidden_size * (inter_size / block_size)), 1.0f);
   std::vector<float> expected = input;
   if (fused_swiglu) {
     for (float& value : expected) {
-      const float rounded = MLFloat16(value).ToFloat();
+      const float rounded = use_bf16 ? BFloat16(value).ToFloat() : MLFloat16(value).ToFloat();
       value = rounded / (1.0f + std::exp(-rounded)) * rounded;
     }
   }
@@ -2108,19 +2107,35 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   }
   tester.AddAttribute<int64_t>("weights_prepacked", 0);
   tester.AddAttribute<int64_t>("block_size", block_size);
-  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
-  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16({1.0f}));
-  tester.AddInput<uint8_t>("fc1_experts_weights",
-                           {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
-  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, fc1_scales);
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddInput<uint8_t>("fc2_experts_weights",
-                           {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
-  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, fc2_scales);
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<uint8_t>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
+  if (use_bf16) {
+    tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, ToBFloat16(input));
+    tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, ToBFloat16({1.0f}));
+    tester.AddInput<uint8_t>("fc1_experts_weights",
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
+    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToBFloat16(fc1_scales));
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights",
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
+    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToBFloat16(fc2_scales));
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddOptionalInputEdge<BFloat16>();
+  } else {
+    tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16({1.0f}));
+    tester.AddInput<uint8_t>("fc1_experts_weights",
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
+    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToFloat16(fc1_scales));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights",
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
+    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToFloat16(fc2_scales));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+  }
   if (with_zero_points) {
     tester.AddInput<uint8_t>("fc1_zero_points",
                              {num_experts, fc1_rows, (hidden_size / block_size + (8 / fc1_bits) - 1) / (8 / fc1_bits)},
@@ -2129,12 +2144,18 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                              {num_experts, hidden_size, (inter_size / block_size + (8 / fc2_bits) - 1) / (8 / fc2_bits)},
                              fc2_zero_points);
   }
-  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  if (use_bf16) {
+    tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, ToBFloat16(expected));
+  } else {
+    tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  }
   tester.SetOutputTolerance(0.02f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
   if (max_scratch_bytes > 0) {
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
@@ -2151,6 +2172,13 @@ TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
   RunQMoEMixedWidthCudaIdentityTest(2, 4);
   RunQMoEMixedWidthCudaIdentityTest(4, 2);
   RunQMoEMixedWidthCudaIdentityTest(2, 2);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaBlockWiseBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, false, true);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaScratchLimit) {
