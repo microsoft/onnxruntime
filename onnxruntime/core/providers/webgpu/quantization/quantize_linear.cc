@@ -175,10 +175,11 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int max_components = GetMaxComponents(x_size);
 
   // scaler - single scaler for all elements
-  bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
+  bool per_layer = block_size_ == 0 &&
+                   (x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1));
 
   // 1D tensor - 1 scaler for per axis
-  bool per_axis = per_layer == false && x_scale_rank == 1;
+  bool per_axis = block_size_ == 0 && per_layer == false && x_scale_rank == 1;
 
   // Compute effective block_size. When block_size_ is 0 (default) but scale is 1D with
   // fewer elements than the input dimension on the axis, infer block_size from the ratio.
