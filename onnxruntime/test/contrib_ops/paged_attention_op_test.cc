@@ -815,7 +815,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                               cumulative_sequence_length_data[b + 1] -
                               cumulative_sequence_length_data[b] - 1;
         const int first_visible_slot =
-            c.local_window_size > 0 ? std::max(0, last_visible_slot + 1 - c.local_window_size) : 0;
+            c.local_window_size > 0 ? std::max(0, new_slot + 1 - c.local_window_size) : 0;
         for (int q_head = 0; q_head < num_heads; ++q_head) {
           const int kv_head = q_head / gqa_factor;
           std::vector<float> scores(last_visible_slot + 1);
@@ -1125,7 +1125,7 @@ bool IsNativeFp16HeadSize256Group6XqaRunnable() {
 // it can legitimately fall back on a device where plain XQA runs. Only the dtype flags pick the
 // specialization, so a minimal two-token probe answers for every case built on that dtype.
 bool IsSpecDecGroup6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache,
-                               int head_size = 256) {
+                                int head_size = 256) {
   IoBindingCase c;
   c.token_count = 2;
   c.cumulative_seqlens_q = {0, 2};
@@ -1646,6 +1646,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize128NonCausalFallsBack) {
   c.num_blocks = 4;
   c.max_num_blocks_per_seq = 2;
   c.past_seqlen = 125;
+  c.local_window_size = 64;
   c.is_causal = false;
   c.int8_cache = true;
   c.irregular_layout = true;
