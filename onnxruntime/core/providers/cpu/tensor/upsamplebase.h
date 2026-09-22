@@ -593,32 +593,32 @@ class UpsampleBase {
     const auto* scale_data = scale->Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_RETURN_IF_NOT(scales_size > 0, "scales size should be greater than 0.");
-    if (scales.empty()) {
-      scales.resize(onnxruntime::narrow<size_t>(scales_size));
-    }
-
-    memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
 
     // since opset 18,
     // we allow scales only specified on axes of interest,
     // in which case the other axes is ignored and use default scale of 1
     // scales_size == axes_.size() should be guaranteed if axes is not empty
-    if (rank > 0 && (scales_size != rank || axes_.size())) {
+    if (rank > 0) {
       if (axes_.empty()) {
         ORT_RETURN_IF_NOT(scales_size == rank,
                           "Number of elements in scales should be equal to rank of the data when axes is not provided.");
       } else {
         ORT_RETURN_IF_NOT(static_cast<int64_t>(axes_.size()) == scales_size,
                           "Number of elements in scales should be equal to number of axes.");
-
-        InlinedVector<float> new_scales(size_t(rank), 1.0f);
-        TensorShapeVector normalized_axes;
-        ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
-        for (size_t i = 0; i < normalized_axes.size(); i++) {
-          new_scales[static_cast<size_t>(normalized_axes[i])] = scales[i];
-        }
-        scales.swap(new_scales);
       }
+    }
+
+    scales.resize(onnxruntime::narrow<size_t>(scales_size));
+    memcpy(scales.data(), scale_data, SafeInt<size_t>(scales_size) * sizeof(float));
+
+    if (rank > 0 && !axes_.empty()) {
+      InlinedVector<float> new_scales(size_t(rank), 1.0f);
+      TensorShapeVector normalized_axes;
+      ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
+      for (size_t i = 0; i < normalized_axes.size(); i++) {
+        new_scales[static_cast<size_t>(normalized_axes[i])] = scales[i];
+      }
+      scales.swap(new_scales);
     }
     return ScalesValidation(scales, mode_);
   }
