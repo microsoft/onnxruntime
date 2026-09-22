@@ -180,6 +180,10 @@ CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int8Groupwise, half, uint8_t, 8
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int4Groupwise, half, cutlass::uint4b_t, 4,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int8Groupwise, __nv_bfloat16, uint8_t, 8,
+                             cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int4Groupwise, __nv_bfloat16, cutlass::uint4b_t, 4,
+                             cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY);
 #else
 CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int8Groupwise, half, uint8_t, 8,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
@@ -521,7 +525,8 @@ class KernelTestFixture : public ::testing::Test {
                                                          reinterpret_cast<const AType*>(d_scales_->data()),
                                                          static_cast<const uint8_t*>(d_uint8_zeros.data()),
                                                          static_cast<const AType*>(nullptr),
-                                                         m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock, s_);
+                                                         m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock, s_,
+                                                         device_prop_.major * 10 + device_prop_.minor);
             },
             warmup_, repeats_, s_);
       }
@@ -594,6 +599,8 @@ class KernelTestFixture : public ::testing::Test {
 #if USE_COMPACT_FPA_INTB_GEMM
 using Fp16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwise, false, false, true>;
 using Fp16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise, false, false, true>;
+using Bf16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int8Groupwise, false, false, true>;
+using Bf16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::BF16Int4Groupwise, false, false, true>;
 #else
 using Fp16Int8GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int8Groupwise>;
 using Fp16Int4GroupwiseTest = KernelTestFixture<wo::KernelType::FP16Int4Groupwise>;
@@ -609,8 +616,9 @@ TEST(FpAIntBGemvTest, SupportUsesDeviceAndKernelArchitectures) {
 
 #if USE_COMPACT_FPA_INTB_GEMM
   EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::FP16Int4Groupwise));
-  EXPECT_FALSE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
+  EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
   EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::FP16Int4Groupwise));
+  EXPECT_FALSE(wo::is_supported(90, 90, wo::KernelType::BF16Int4Groupwise));
 #else
   EXPECT_TRUE(wo::is_supported(80, 80, wo::KernelType::BF16Int4Groupwise));
   EXPECT_TRUE(wo::is_supported(90, 80, wo::KernelType::BF16Int4Groupwise));
@@ -662,6 +670,36 @@ TEST_F(Fp16Int4GroupwiseTest, Fp16_Int4_Gemm_CudaKernel) {
     }
   }
 }
+
+#if USE_COMPACT_FPA_INTB_GEMM
+TEST_F(Bf16Int8GroupwiseTest, BF16_Int8_Gemm_CudaKernel) {
+  int const arch = onnxruntime::llm::common::getSMVersion();
+  if (arch < 80) {
+    GTEST_SKIP() << "bf16 int8 groupwise GEMM kernel requires SM 80 or later";
+  }
+
+  for (auto m : get_m_list()) {
+    for (const auto& [n, k] : get_n_k_list(wo::KernelType::BF16Int8Groupwise)) {
+      InitBuffers(m, n, k, 32);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    }
+  }
+}
+
+TEST_F(Bf16Int4GroupwiseTest, BF16_Int4_Gemm_CudaKernel) {
+  int const arch = onnxruntime::llm::common::getSMVersion();
+  if (arch < 80) {
+    GTEST_SKIP() << "bf16 int4 groupwise GEMM kernel requires SM 80 or later";
+  }
+
+  for (auto m : get_m_list()) {
+    for (const auto& [n, k] : get_n_k_list(wo::KernelType::BF16Int4Groupwise)) {
+      InitBuffers(m, n, k, 32);
+      EXPECT_TRUE(BenchmarkAndVerifyKernel());
+    }
+  }
+}
+#endif
 
 #if !USE_COMPACT_FPA_INTB_GEMM
 TEST_F(Bf16Int8GroupwiseTest, BF16_Int8_Gemm_CudaKernel) {

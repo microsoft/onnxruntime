@@ -144,6 +144,12 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
     ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
+    // The op schema and matmul_nbits_helper::CheckInputs accept bits in {2, 4, 8}. Keep this in
+    // lockstep with the widths the CUDA kernels actually implement: without it a node with an
+    // unimplemented width is accepted and then read with the wrong stride, silently producing
+    // garbage instead of failing.
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "MatMulNBits on the CUDA execution provider supports bits = 2, 4 or 8, but got bits = ", nbits_);
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
@@ -246,9 +252,10 @@ class MatMulNBits final : public CudaKernel {
       if (prepacked) {
 #if USE_COMPACT_FPA_INTB_GEMM
         ORT_ENFORCE(has_fpA_intB_gemm_,
-                    "This compact fpA_intB build supports prepacked weights only for FP16 activations, "
+                    "This compact fpA_intB build supports prepacked weights only for FP16/BF16 activations, "
                     "INT4 or INT8 weights, block_size=32, scale-only quantization without zero points, bias, or g_idx, "
-                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later. Got bits=",
+                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later for FP16 "
+                    "(8.0 or later for BF16). Got bits=",
                     nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
                     ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
                     ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);

@@ -1452,8 +1452,13 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
 
-      If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
-      where pack_size = 8 / expert_weight_bits.
+      Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
+      Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
+
+      fc1_expert_weight_bits, fc2_expert_weight_bits, and fc3_expert_weight_bits optionally override
+      expert_weight_bits for the corresponding projection. An omitted override inherits expert_weight_bits.
+      When SwiGLU is fused, FC3 is stored in FC1 and fc3_expert_weight_bits must be omitted or equal to
+      fc1_expert_weight_bits after inheritance.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1491,6 +1496,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
+        .Attr("fc1_expert_weight_bits",
+              "Optional FC1 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("fc2_expert_weight_bits",
+              "Optional FC2 override for expert_weight_bits. Inherits expert_weight_bits when omitted.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("fc3_expert_weight_bits",
+              "Optional FC3 override for expert_weight_bits. Inherits expert_weight_bits when omitted. "
+              "For fused SwiGLU, the effective FC3 width must equal the effective FC1 width.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("swiglu_fusion",
               "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
               AttributeProto::INT,
@@ -1549,8 +1567,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(2,
                "fc1_experts_weights",
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), "
-               "The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.",
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
+               "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
+               "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(3,
                "fc1_scales",
@@ -1568,7 +1588,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(5,
                "fc2_experts_weights",
-               "3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)",
+               "3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1")
         .Input(6,
                "fc2_scales",
@@ -1588,7 +1610,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)",
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). "
+               "The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits "
+               "when provided, otherwise expert_weight_bits.",
                "T1",
                OpSchema::Optional)
         .Input(9,
@@ -1607,20 +1631,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "fc1_zero_points",
-               "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(fusion_size * inter_size * effective_fc1_bits / 8)), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc1_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(12,
                "fc2_zero_points",
-               "2D tensor with shape (num_experts, hidden_size / pack_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
+               "2D tensor with shape (num_experts, ceil(hidden_size * effective_fc2_bits / 8)), or "
+               "3D tensor with shape (num_experts, hidden_size, "
+               "ceil((inter_size / block_size) * effective_fc2_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(13,
                "fc3_zero_points",
-               "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "2D optional tensor with shape (num_experts, ceil(inter_size * effective_fc3_bits / 8)), or "
+               "3D optional tensor with shape (num_experts, inter_size, "
+               "ceil((hidden_size / block_size) * effective_fc3_bits / 8)) when block_size is provided.",
                "T1",
                OpSchema::Optional)
         .Input(14,

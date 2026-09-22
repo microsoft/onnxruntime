@@ -126,7 +126,8 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option) {
 #if USE_COMPACT_FPA_INTB_GEMM
-  const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                        input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
   ORT_UNUSED_PARAMETER(has_bias);
@@ -136,6 +137,9 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                          input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
 #endif
   if (!dtype_ok) {
+    return false;
+  }
+  if (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 && device_sm < 80) {
     return false;
   }
 
@@ -501,8 +505,18 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
       weightOnlyGemmRunner_ =
           std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
     }
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
+    if (nbits_ == 8) {
+      cuda_kernel_type = KernelType::BF16Int8Groupwise;
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::BF16Int4Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+    }
   } else {
-    ORT_THROW("Compact fpA_intB GEMM only supports FP16 activations");
+    ORT_THROW("Compact fpA_intB GEMM only supports FP16/BF16 activations");
   }
 #else
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -813,6 +827,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
+  ORT_RETURN_IF(nbits_ == 2 && reorder_idx != nullptr,
+                "CUDA MatMulNBits does not support g_idx (reorder_idx) for 2-bit weights.");
 
   const auto* a_data = a->Data<T>();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
@@ -980,7 +996,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            sm_)) {
       return Status::OK();
     }
 
@@ -1001,7 +1018,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            sm_)) {
       LaunchMatMulNBitsBiasAdd<CudaT>(
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           reinterpret_cast<const CudaT*>(bias_data),
@@ -1041,7 +1059,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
-  // Column-wise dequant helper: dispatches 8-bit / 4-bit × typed / uint8 zero-points.
+  // Column-wise dequant helper: dispatches 8/4/2-bit x typed / uint8 zero-points.
   // Used by both the full-N and chunked paths so the offset math stays in one place.
   const int64_t blocks_per_col = K_padded / block_size_;
   auto dequant_column_wise = [&](const uint8_t* chunk_blob,
@@ -1049,31 +1067,18 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                  const void* chunk_zp,
                                  const int32_t* chunk_reorder_idx,
                                  int n_rows) -> Status {
-    if (nbits_ == 8) {
-      if (zero_points && zero_points->IsDataType<T>()) {
-        return Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      } else {
-        return Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      }
-    } else {
-      if (zero_points && zero_points->IsDataType<T>()) {
-        return Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      } else {
-        return Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
-            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
-            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
-      }
+    const bool typed_zero_points = zero_points && zero_points->IsDataType<T>();
+    if (typed_zero_points) {
+      return DequantizeNBits(
+          SafeInt<int>(nbits_), reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+          static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
+          SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
     }
+
+    return DequantizeNBits(
+        SafeInt<int>(nbits_), reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+        static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
+        SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
   };
 
   // Skip full dequant when chunked path will handle it in the GEMM loop
@@ -1102,6 +1107,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           stream));
     } else {
       // row-wise block (4-bit)
+      ORT_RETURN_IF_NOT(nbits_ == 4,
+                        "CUDA MatMulNBits row-wise quantization blocks are only implemented for bits = 4 or 8, but got bits = ",
+                        nbits_);
       K_padded = K_;
       ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
           reinterpret_cast<CudaT*>(b_data),
@@ -1141,17 +1149,17 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         ORT_ENFORCE(column_wise_quant_blk_, "Chunked path requires column-wise quantization blocks");
 
         // Compute per-chunk pointers into the column-wise-packed weight, scale, and ZP arrays.
-        const uint8_t* chunk_blob = blob_data + n_start * (nbits_ == 8 ? K_padded : K_padded / 2);
+        const int64_t elements_per_byte = 8 / nbits_;
+        const uint8_t* chunk_blob = blob_data + n_start * (K_padded / elements_per_byte);
         const auto* chunk_scales = reinterpret_cast<const CudaT*>(scales_data) + n_start * blocks_per_col;
         const void* chunk_zp = nullptr;
         if (zero_points_data) {
           if (zero_points && zero_points->IsDataType<T>()) {
             chunk_zp = reinterpret_cast<const CudaT*>(zero_points_data) + n_start * blocks_per_col;
-          } else if (nbits_ == 8) {
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * blocks_per_col;
           } else {
-            // 4-bit ZP: packed, offset by n_start * ceil(blocks_per_col / 2)
-            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * ((blocks_per_col + 1) / 2);
+            // uint8 ZP rows are bit-packed: ceil(blocks_per_col / elements_per_byte) bytes per output channel.
+            chunk_zp = static_cast<const uint8_t*>(zero_points_data) +
+                       n_start * ((blocks_per_col + elements_per_byte - 1) / elements_per_byte);
           }
         }
         ORT_RETURN_IF_ERROR(dequant_column_wise(
