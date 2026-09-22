@@ -52,15 +52,24 @@ Invalid option strings fail during WebGPU provider creation and list accepted va
 
 ## Dispatch and Implementation Boundaries
 
-`ComputeMatMul` computes shared shape facts once, asks the scheduler for one execution plan, validates its hard prerequisites and configuration type, and switches directly to the matching implementation. Algorithm bodies are extracted into focused helpers where necessary. The generic packed helper takes an explicit Split-K mode and packed configuration; it does not re-run selection or tuning heuristics.
+Introduce `MatMulComputeDispatcher` as the single compute entry point below the MatMul, pointwise Conv, and contrib Attention kernels. Each kernel owns one dispatcher for its lifetime. The dispatcher lazily creates adapter-dependent state from the first compute context and then owns:
 
-The subgroup-matrix optional implementation gains a non-mutating applicability query and an execution method that no longer communicates selection through a `handled` output. This removes trial execution as a dispatch mechanism.
+- one `MatMulAlgorithmScheduler`, which contains selection policy and immutable adapter tuning data; and
+- an optional `SubgroupMatrixMatMulImpl`, which contains only the subgroup-matrix implementation's persistent device state, including cached padded constant weights.
 
-The existing per-kernel cache continues to own device-dependent subgroup-matrix state and the scheduler, so MatMul, pointwise Conv, and Attention callers retain their current caching and behavior.
+The dispatcher does not store a current or previously selected algorithm. Selection occurs for every invocation because shapes, input properties, activation, and bias can differ between calls. The session's forced-test configuration, when present, participates in each selection without becoming mutable dispatcher state. The resulting `MatMulExecutionPlan` is local to that invocation.
+
+For each call, `MatMulComputeDispatcher::Compute` computes shared shape and capability facts once, asks the scheduler for one execution plan, validates the selected algorithm's hard prerequisites and configuration type, and switches directly to the matching implementation. MatMul, pointwise Conv, and contrib Attention delegate through this same entry point rather than coordinating the scheduler and implementations themselves.
+
+The scheduler remains pure policy: it creates plans but does not create device programs, cache tensor data, or execute kernels. `SubgroupMatrixMatMulImpl` is named for the implementation it owns and is reached only when the plan selects `SubgroupMatrix`; its applicability query is non-mutating, and its execution method does not communicate selection through a `handled` output. This removes trial execution as a dispatch mechanism.
+
+The other implementations remain focused stateless functions or program builders unless they acquire persistent state in the future. The naive, Intel subgroup, packed, and packed Split-K paths therefore do not receive empty polymorphic wrapper classes. The generic packed helper takes an explicit Split-K mode and packed configuration; it does not re-run selection or tuning heuristics. WebGPU's existing program cache continues to own reusable compiled programs.
+
+This replaces `MatMulOptImplCache` and the generic `MatMulOptImpl` interface. If another algorithm later needs persistent implementation state, the dispatcher can own a separately named backend for that algorithm without changing scheduler policy or pretending that one object represents whichever algorithm happened to be selected most recently.
 
 ## Compatibility
 
-With no forcing option or vendor override, the common scheduler remains equivalent to the previous selection order. Existing call sites keep using `ComputeMatMul`; the refactor does not change the operator API or model semantics.
+With no forcing option or vendor override, the common scheduler remains equivalent to the previous selection order. The MatMul, pointwise Conv, and contrib Attention operator APIs and model semantics do not change; only their internal MatMul compute ownership moves behind the dispatcher.
 
 The option is intentionally internal and test-only: it is declared with WebGPU provider options for configuration plumbing but is not added to public user documentation.
 
