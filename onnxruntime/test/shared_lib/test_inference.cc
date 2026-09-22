@@ -4174,6 +4174,53 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
 
 #ifdef USE_CUDA
 
+TEST(CApiTest, CUDAProviderOptionsGdsRoundTrip) {
+  constexpr const char* key = "external_data_loader_use_gds";
+  Ort::CUDAProviderOptions cuda_options;
+  cuda_options.Update({});
+  EXPECT_EQ((*cuda_options).external_data_loader_use_gds, 0);
+
+  for (const char* value : {"0", "1", "0"}) {
+    SCOPED_TRACE(value);
+    cuda_options.Update({{key, value}});
+    EXPECT_EQ((*cuda_options).external_data_loader_use_gds, value[0] - '0');
+
+    const auto serialized = cuda_options.GetCUDAProviderOptionsAsString();
+    std::istringstream stream(serialized);
+    std::unordered_map<std::string, std::string> round_trip_options;
+    for (std::string entry; std::getline(stream, entry, ';');) {
+      const auto separator = entry.find('=');
+      ASSERT_NE(separator, std::string::npos) << entry;
+      ASSERT_TRUE(round_trip_options.emplace(
+                                        entry.substr(0, separator), entry.substr(separator + 1))
+                      .second);
+    }
+    ASSERT_EQ(round_trip_options.at(key), value);
+
+    Ort::CUDAProviderOptions restored;
+    restored.Update(round_trip_options);
+    EXPECT_EQ((*restored).external_data_loader_use_gds, value[0] - '0');
+    EXPECT_EQ(restored.GetCUDAProviderOptionsAsString(), serialized);
+  }
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(CApiTest, CUDAProviderOptionsRejectInvalidGdsValue) {
+  const char* keys[] = {"external_data_loader_use_gds"};
+  for (const char* value : {"2", "-1", "invalid", ""}) {
+    SCOPED_TRACE(value);
+    Ort::CUDAProviderOptions cuda_options;
+    cuda_options.Update({{keys[0], "1"}});
+    const char* values[] = {value};
+    Ort::Status status(Ort::GetApi().UpdateCUDAProviderOptions(cuda_options, keys, values, 1));
+    ASSERT_FALSE(status.IsOK());
+    const char* expected_error = value[0] == '\0' ? "key/value cannot be empty" : keys[0];
+    EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr(expected_error));
+    EXPECT_EQ((*cuda_options).external_data_loader_use_gds, 1);
+  }
+}
+#endif
+
 // This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
 TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   Ort::CUDAProviderOptions cuda_options;

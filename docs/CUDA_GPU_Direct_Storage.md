@@ -94,3 +94,5 @@ and initializers assigned to other execution providers retain their existing pat
 multiple buffers, repeated loads, and different host-memory fallback configurations. These tests require a CUDA GPU,
 but use the configured fallback when native GDS is unavailable. A passing result alone does not prove native GDS usage
 or performance. `CudaGdsDriverTest.*` separately checks shared-driver lifetime synchronization without GPU hardware.
+
+`CApiTest.CUDAProviderOptions*Gds*` checks string-based configuration, invalid values, and serialization round trips.
