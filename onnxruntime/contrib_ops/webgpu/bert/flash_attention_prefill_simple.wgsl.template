@@ -2,10 +2,10 @@
 #param has_attention_bias
 #param has_head_sink
 #param has_local_window
-#param is_fp16
 #param is_unidirectional
 #param kv_step_param
 #param q_BNSH
+#param qk_is_fp16
 #param qkv_head_size
 #param qkv_num_heads
 #param use_seqlen_k
@@ -35,10 +35,14 @@ fn get_total_sequence_length(batch_idx: u32) -> u32 {
 }
 #endif
 
-#if is_fp16
-const min_value = q_element_t(-65504.0);
+// Default to f32 scores and online-softmax statistics to avoid fp16 overflow
+// with high-magnitude inputs, independently of the Q/K/V storage type.
+#if qk_is_fp16
+alias qk_precision = f16;
+const min_value = qk_precision(-65504.0);
 #else
-const min_value = q_element_t(-3.4028234663852886e+38f);
+alias qk_precision = f32;
+const min_value = qk_precision(-3.4028234663852886e+38f);
 #endif
 
 // Local (sliding) attention window: key k_idx is attended to only when
@@ -91,10 +95,10 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, tot
 
 // Additive attention bias for score (q_idx, k_idx).
 #if has_attention_bias
-fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> q_element_t {
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> qk_precision {
   // Stored as [batch_size, num_heads, new_seq_length, total_sequence_length].
   if (k_idx_global >= total_seq) {
-    return q_element_t(0);
+    return qk_precision(0);
   }
   // Broadcasting: if a dimension size is 1, use index 0.
   let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
@@ -105,11 +109,11 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let stride_total_seq = uniforms.attn_bias_dim3;
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
-  return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
+  return qk_precision(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
 }
 #else
-fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> q_element_t {
-  return q_element_t(0);
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> qk_precision {
+  return qk_precision(0);
 }
 #endif
 
@@ -150,12 +154,12 @@ $MAIN {
 
   // Running statistics for the online (streaming) softmax.
 #if has_head_sink
-  let sink_value = q_element_t(head_sink[head_idx]);
-  var previous_max : q_element_t = sink_value;
-  var previous_denom : q_element_t = 1;
+  let sink_value = qk_precision(head_sink[head_idx]);
+  var previous_max : qk_precision = sink_value;
+  var previous_denom : qk_precision = 1;
 #else
-  var previous_max : q_element_t = min_value;
-  var previous_denom : q_element_t = 0;
+  var previous_max : qk_precision = min_value;
+  var previous_denom : qk_precision = 0;
 #endif
   let total_sequence_length = get_total_sequence_length(batch_idx);
 
@@ -221,15 +225,16 @@ $MAIN {
     // and each subgroupShuffle lane index folds to a constant. Requires
     // sg_size >= kv_step, which the host guarantees before selecting this shader
     // (subgroup_min_size_ge_8 gate; kv_step is 8 or 16 to match).
-    var qk : array<vec4<q_element_t>, num_qk_vec>;
+    var qk : array<vec4<qk_precision>, num_qk_vec>;
 
     // 1. QK^T. Each lane owns one K column of this tile; subgroup shuffles let
-    //    every thread read all columns and accumulate the dot products.
+    //    every thread read all columns and accumulate the dot products. Native
+    //    precision vec4 dots are converted to qk_precision before accumulation.
     for (var i = 0u; i < head_size_vec; i++) {
       let q_own = q_tile[i];
       let k_local = k_tile[i][sg_id];
       for (var j = 0u; j < kv_step; j++) {
-        qk[j / 4u][j % 4u] += dot(q_own, subgroupShuffle(k_local, j));
+        qk[j / 4u][j % 4u] += qk_precision(dot(q_own, subgroupShuffle(k_local, j)));
       }
     }
 
@@ -247,27 +252,28 @@ $MAIN {
     let local_max = max(max(local_max_vec.x, local_max_vec.y), max(local_max_vec.z, local_max_vec.w));
     let new_max = max(previous_max, local_max);
 
-    // Exponentiate against the new max (in f32 for stability) and accumulate
+    // Exponentiate against the new max in qk_precision and accumulate
     // this tile's denominator contribution.
-    var sum_vec = q_value_t(0);
+    var sum_vec = vec4<qk_precision>(0);
     for (var m = 0u; m < num_qk_vec; m++) {
-      qk[m] = q_value_t(exp(vec4<f32>(qk[m]) - f32(new_max)));
+      qk[m] = exp(qk[m] - new_max);
       sum_vec += qk[m];
     }
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Rescale the carried-over denominator to the new max, then fold in the
     // tile. Guard against a zero denominator.
-    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    let dleft = previous_denom * exp(previous_max - new_max);
     var d = dleft + sum;
-    d = select(d, q_element_t(0.0000001), d == 0);
+    d = select(d, qk_precision(0.0000001), d == 0);
+    var qk_normalized : array<vec4<q_element_t>, num_qk_vec>;
     for (var m = 0u; m < num_qk_vec; m++) {
-      qk[m] = qk[m] / d;
+      qk_normalized[m] = q_value_t(qk[m] / d);
     }
     previous_max = new_max;
     previous_denom = d;
     // Factor to rescale the already-accumulated output for the new denominator.
-    let o_ratio = dleft / d;
+    let o_ratio = q_element_t(dleft / d);
 
     // Deferred V load: fetch this tile's V now, right before it is consumed.
     loadv(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
@@ -279,7 +285,7 @@ $MAIN {
       let v_local = v_tile[i][sg_id];
       var acc = q_value_t(0);
       for (var j = 0u; j < kv_step; j++) {
-        acc += subgroupShuffle(v_local, j) * qk[j / 4u][j % 4u];
+        acc += subgroupShuffle(v_local, j) * qk_normalized[j / 4u][j % 4u];
       }
       o_tile[i] = o_tile[i] * o_ratio + acc;
     }
