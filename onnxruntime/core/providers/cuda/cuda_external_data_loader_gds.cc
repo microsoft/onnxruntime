@@ -161,7 +161,7 @@ class LinuxGdsLoader final : public GdsLoader {
     ORT_RETURN_IF(file_descriptor < 0,
                   "GPUDirect Storage requires an open POSIX file descriptor.");
 
-    const int direct_descriptor = dup(file_descriptor);
+    const int direct_descriptor = fcntl(file_descriptor, F_DUPFD_CLOEXEC, 0);
     ORT_RETURN_IF(direct_descriptor < 0, "Failed to duplicate external-data file descriptor: ",
                   std::strerror(errno));
     auto close_file = gsl::finally([direct_descriptor]() {
