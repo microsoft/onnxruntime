@@ -15,8 +15,10 @@ Status ConvTranspose3DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output");
   const auto* bias = has_bias_ ? &shader.AddInput("bias") : nullptr;
   return WGSL_TEMPLATE_APPLY(shader, "nn/conv_transpose3d.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(components, components_),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(is_channels_last, is_channels_last_),
+                             WGSL_TEMPLATE_PARAMETER(is_prepacked, is_prepacked_),
                              WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(w, w),

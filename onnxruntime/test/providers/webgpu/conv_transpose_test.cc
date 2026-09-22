@@ -96,7 +96,13 @@ class ConvTranspose3DWebGpuTest : public testing::TestWithParam<std::tuple<bool,
     }
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+    test.SetNumRunCalls(2);
+    size_t prepacked_weights = 0;
+    ASSERT_NO_FATAL_FAILURE(test.Config(options).ConfigEp(std::move(ep)).RunWithConfig(&prepacked_weights));
+    if (testing::Test::IsSkipped()) {
+      return;
+    }
+    EXPECT_EQ(prepacked_weights, initializer ? 1U : 0U);
   }
 };
 
@@ -129,6 +135,20 @@ TEST_P(ConvTranspose3DWebGpuTest, Depthwise) {
   ConvTranspose3DAttributes attrs;
   attrs.group = 3;
   Run({1, 3, 2, 2, 2}, {3, 1, 2, 2, 2}, {1, 3, 3, 3, 3}, attrs, true);
+}
+
+TEST_P(ConvTranspose3DWebGpuTest, Vec4GroupsAndBias) {
+  ConvTranspose3DAttributes attrs;
+  attrs.group = 2;
+  // Eight channels per group exercises multiple vec4 loads and a nonzero group offset.
+  Run({2, 16, 2, 2, 2}, {16, 3, 2, 1, 3}, {2, 6, 3, 2, 4}, attrs, true);
+}
+
+TEST_P(ConvTranspose3DWebGpuTest, Vec2GroupAlignment) {
+  ConvTranspose3DAttributes attrs;
+  attrs.group = 2;
+  // Total channels are divisible by four, but each group's six channels require vec2.
+  Run({2, 12, 2, 2, 2}, {12, 3, 2, 1, 3}, {2, 6, 3, 2, 4}, attrs, true);
 }
 
 TEST_P(ConvTranspose3DWebGpuTest, StridesDilationsAndAsymmetricPadding) {

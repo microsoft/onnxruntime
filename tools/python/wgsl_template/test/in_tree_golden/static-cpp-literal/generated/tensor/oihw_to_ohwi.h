@@ -15,9 +15,9 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
-//  3 |
+//  3 | 
 //  4 | #use .getByOffset .setByOffset
-//  5 |
+//  5 | 
 //  6 | fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
 ss << "fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {\n";
 //  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
@@ -38,7 +38,7 @@ ss << "  }\n";
 ss << "  return src_element_t();\n";
 // 14 | }
 ss << "}\n";
-// 15 |
+// 15 | 
 ss << "\n";
 // 16 | fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
 ss << "fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {\n";
@@ -58,11 +58,11 @@ ss << ";\n";
 ss << "  }\n";
 // 23 | }
 ss << "}\n";
-// 24 |
+// 24 | 
 ss << "\n";
 // 25 | var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
 ss << "var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;\n";
-// 26 |
+// 26 | 
 ss << "\n";
 // 27 | $MAIN {
 MainFunctionStart();
@@ -71,7 +71,7 @@ ss << "\n";
 ss << "  let group_co : u32 = workgroup_idx / uniforms.Ci_tiles;\n";
 // 29 |   let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
 ss << "  let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;\n";
-// 30 |
+// 30 | 
 ss << "\n";
 // 31 |   if (group_co >= uniforms.O || group_ci >= uniforms.I) {
 ss << "  if (group_co >= uniforms.O || group_ci >= uniforms.I) {\n";
@@ -79,7 +79,7 @@ ss << "  if (group_co >= uniforms.O || group_ci >= uniforms.I) {\n";
 ss << "    return;\n";
 // 33 |   }
 ss << "  }\n";
-// 34 |
+// 34 | 
 ss << "\n";
 // 35 |   for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
 ss << "  for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {\n";
@@ -91,7 +91,7 @@ ss << "    for (var ci_idx = 0u; ci_idx < 64u; ci_idx += 16u) {\n";
 ss << "      let load_ci_idx = ci_idx + local_idx / 4;\n";
 // 39 |       let load_h_w_idx = local_idx % 4;
 ss << "      let load_h_w_idx = local_idx % 4;\n";
-// 40 |
+// 40 | 
 ss << "\n";
 // 41 |       data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
 ss << "      data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,\n";
@@ -103,7 +103,7 @@ ss << "                                                       h_w_idx * 4 + load
 ss << "    }\n";
 // 45 |     workgroupBarrier();
 ss << "    workgroupBarrier();\n";
-// 46 |
+// 46 | 
 ss << "\n";
 // 47 |     // store
 // 48 |     for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
@@ -121,7 +121,7 @@ ss << "  }\n";
 // 54 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 55 |
+// 55 | 
 
 
   return Status::OK();

@@ -18,8 +18,8 @@ namespace webgpu {
 
 class ConvTranspose3DProgram final : public Program<ConvTranspose3DProgram> {
  public:
-  ConvTranspose3DProgram(bool is_channels_last, bool has_bias)
-      : Program("ConvTranspose3D"), is_channels_last_(is_channels_last), has_bias_(has_bias) {}
+  ConvTranspose3DProgram(bool is_channels_last, bool has_bias, bool is_prepacked, int components)
+      : Program("ConvTranspose3D"), is_channels_last_(is_channels_last), has_bias_(has_bias), is_prepacked_(is_prepacked), components_(components) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -34,6 +34,8 @@ class ConvTranspose3DProgram final : public Program<ConvTranspose3DProgram> {
 
   bool is_channels_last_;
   bool has_bias_;
+  bool is_prepacked_;
+  int components_;
 };
 
 class ConvTranspose2DProgram : public Program<ConvTranspose2DProgram> {

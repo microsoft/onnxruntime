@@ -10,8 +10,10 @@ Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_h
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract parameters
+  auto& __param_components = params.param_components;
   auto& __param_has_bias = params.param_has_bias;
   auto& __param_is_channels_last = params.param_is_channels_last;
+  auto& __param_is_prepacked = params.param_is_prepacked;
 
   // Extract variables
   auto* __var_bias = params.var_bias;
@@ -19,188 +21,283 @@ Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_h
   auto* __var_w = params.var_w;
   auto* __var_x = params.var_x;
 
-//  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
-//  2 | // Licensed under the MIT License.
-//  3 |
-//  4 | #param has_bias
-//  5 | #param is_channels_last
-//  6 |
-//  7 | #use guardAgainstOutOfBoundsWorkgroupSizes getElementAt
-//  8 | #use .rank .offsetToIndices .indicesGet .getByIndices .getByOffset .setByOffset
-//  9 |
-// 10 | $MAIN {
+//   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
+//   2 | // Licensed under the MIT License.
+//   3 | 
+//   4 | #param has_bias
+//   5 | #param is_channels_last
+//   6 | #param is_prepacked
+//   7 | #param components
+//   8 | 
+//   9 | #use guardAgainstOutOfBoundsWorkgroupSizes getElementAt
+//  10 | #use .rank .offsetToIndices .indicesGet .getByIndices .getByOffset .setByOffset
+//  11 | 
+//  12 | #if components == 4
+if (__param_components == 4) {
+//  13 | alias Accumulator = vec4<f32>;
+ss << __str_393;
+//  14 | #elif components == 2
+} else if (__param_components == 2) {
+//  15 | alias Accumulator = vec2<f32>;
+ss << __str_394;
+//  16 | #else
+} else {
+//  17 | alias Accumulator = f32;
+ss << __str_395;
+//  18 | #endif
+}
+//  19 | 
+//  20 | $MAIN {
 MainFunctionStart();
 ss << __str_12;
-// 11 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+//  21 |   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
 ss << __str_216;
 ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_212);
 ss << __str_192;
-// 12 |   let output_indices = output.offsetToIndices(global_idx);
-ss << __str_238;
+//  22 |   let output_indices = output.offsetToIndices(global_idx);
+ss << __str_348;
 ss << __var_output->OffsetToIndices(__str_214);
 ss << __str_192;
-// 13 |   let batch = output.indicesGet(output_indices, 0);
-ss << __str_239;
-ss << __var_output->IndicesGet(__str_223, __str_224);
+//  23 |   let batch = output.indicesGet(output_indices, 0);
+ss << __str_396;
+ss << __var_output->IndicesGet(__str_338, __str_379);
 ss << __str_192;
-// 14 | #if is_channels_last
+//  24 | #if is_channels_last
 if (__param_is_channels_last) {
-// 15 |   let output_channel = output.indicesGet(output_indices, 4);
-ss << __str_240;
-ss << __var_output->IndicesGet(__str_223, __str_225);
+//  25 |   let output_channel = output.indicesGet(output_indices, 4);
+ss << __str_397;
+ss << __var_output->IndicesGet(__str_338, __str_380);
 ss << __str_192;
-// 16 |   let spatial_dim = 1u;
-ss << __str_241;
-// 17 | #else
+//  26 |   let spatial_dim = 1u;
+ss << __str_398;
+//  27 | #else
 } else {
-// 18 |   let output_channel = output.indicesGet(output_indices, 1);
-ss << __str_240;
-ss << __var_output->IndicesGet(__str_223, __str_226);
+//  28 |   let output_channel = output.indicesGet(output_indices, 1);
+ss << __str_397;
+ss << __var_output->IndicesGet(__str_338, __str_381);
 ss << __str_192;
-// 19 |   let spatial_dim = 2u;
-ss << __str_242;
-// 20 | #endif
+//  29 |   let spatial_dim = 2u;
+ss << __str_399;
+//  30 | #endif
 }
-// 21 |   let output_channels_per_group = getElementAt(uniforms.w_shape, 1, w.rank);
-ss << __str_243;
-ss << GetElementAt(__str_227, __str_226, __var_w->Rank());
+//  31 | #if is_prepacked
+if (__param_is_prepacked) {
+//  32 |   let output_channels_per_group = getElementAt(uniforms.w_shape, 3, w.rank);
+ss << __str_400;
+ss << GetElementAt(__str_382, __str_383, __var_w->Rank());
 ss << __str_192;
-// 22 |   let group = output_channel / output_channels_per_group;
-ss << __str_244;
-// 23 |   let w_channel = output_channel % output_channels_per_group;
-ss << __str_245;
-// 24 |   let corner = vec3<i32>(
-ss << __str_246;
-// 25 |       i32(output.indicesGet(output_indices, spatial_dim)),
-ss << __str_247;
-ss << __var_output->IndicesGet(__str_223, __str_228);
-ss << __str_248;
-// 26 |       i32(output.indicesGet(output_indices, spatial_dim + 1u)),
-ss << __str_247;
-ss << __var_output->IndicesGet(__str_223, __str_229);
-ss << __str_248;
-// 27 |       i32(output.indicesGet(output_indices, spatial_dim + 2u))) + vec3<i32>(uniforms.pads);
-ss << __str_247;
-ss << __var_output->IndicesGet(__str_223, __str_230);
-ss << __str_249;
-// 28 |   var value = 0.0f;
-ss << __str_250;
-// 29 |
+//  33 |   let kernel_shape = vec3<u32>(getElementAt(uniforms.w_shape, 0, w.rank),
+ss << __str_401;
+ss << GetElementAt(__str_382, __str_379, __var_w->Rank());
+ss << __str_402;
+//  34 |                                getElementAt(uniforms.w_shape, 1, w.rank),
+ss << __str_403;
+ss << GetElementAt(__str_382, __str_381, __var_w->Rank());
+ss << __str_402;
+//  35 |                                getElementAt(uniforms.w_shape, 2, w.rank));
+ss << __str_403;
+ss << GetElementAt(__str_382, __str_384, __var_w->Rank());
+ss << __str_3;
+//  36 | #else
+} else {
+//  37 |   let output_channels_per_group = getElementAt(uniforms.w_shape, 1, w.rank);
+ss << __str_400;
+ss << GetElementAt(__str_382, __str_381, __var_w->Rank());
+ss << __str_192;
+//  38 |   let kernel_shape = vec3<u32>(getElementAt(uniforms.w_shape, 2, w.rank),
+ss << __str_401;
+ss << GetElementAt(__str_382, __str_384, __var_w->Rank());
+ss << __str_402;
+//  39 |                                getElementAt(uniforms.w_shape, 3, w.rank),
+ss << __str_403;
+ss << GetElementAt(__str_382, __str_383, __var_w->Rank());
+ss << __str_402;
+//  40 |                                getElementAt(uniforms.w_shape, 4, w.rank));
+ss << __str_403;
+ss << GetElementAt(__str_382, __str_380, __var_w->Rank());
+ss << __str_3;
+//  41 | #endif
+}
+//  42 |   let group = output_channel / output_channels_per_group;
+ss << __str_404;
+//  43 |   let w_channel = output_channel % output_channels_per_group;
+ss << __str_405;
+//  44 |   let corner = vec3<i32>(
+ss << __str_406;
+//  45 |       i32(output.indicesGet(output_indices, spatial_dim)),
+ss << __str_407;
+ss << __var_output->IndicesGet(__str_338, __str_385);
+ss << __str_408;
+//  46 |       i32(output.indicesGet(output_indices, spatial_dim + 1u)),
+ss << __str_407;
+ss << __var_output->IndicesGet(__str_338, __str_386);
+ss << __str_408;
+//  47 |       i32(output.indicesGet(output_indices, spatial_dim + 2u))) + vec3<i32>(uniforms.pads);
+ss << __str_407;
+ss << __var_output->IndicesGet(__str_338, __str_387);
+ss << __str_409;
+//  48 |   var value = Accumulator(0);
+ss << __str_410;
+//  49 | 
 ss << __str_12;
-// 30 |   // Gather input positions using signed integer coordinates so padding and stride
-// 31 |   // alignment remain exact even for float16 tensors with large spatial dimensions.
-// 32 |   for (var kd = 0u; kd < getElementAt(uniforms.w_shape, 2, w.rank); kd++) {
-ss << __str_251;
-ss << GetElementAt(__str_227, __str_231, __var_w->Rank());
+//  50 |   // Gather input positions using signed integer coordinates so padding and stride
+//  51 |   // alignment remain exact even for float16 tensors with large spatial dimensions.
+//  52 |   for (var kd = 0u; kd < kernel_shape.x; kd++) {
+ss << __str_411;
+//  53 |     let pos_d = corner.x - i32(kd) * i32(uniforms.dilations.x);
+ss << __str_412;
+//  54 |     if (pos_d < 0 || pos_d % i32(uniforms.strides.x) != 0) {
+ss << __str_413;
+//  55 |       continue;
+ss << __str_414;
+//  56 |     }
+ss << __str_137;
+//  57 |     let id = u32(pos_d) / uniforms.strides.x;
+ss << __str_415;
+//  58 |     if (id >= getElementAt(uniforms.x_shape, spatial_dim, x.rank)) {
+ss << __str_416;
+ss << GetElementAt(__str_388, __str_385, __var_x->Rank());
 ss << __str_252;
-// 33 |     let pos_d = corner.x - i32(kd) * i32(uniforms.dilations.x);
-ss << __str_253;
-// 34 |     if (pos_d < 0 || pos_d % i32(uniforms.strides.x) != 0) {
-ss << __str_254;
-// 35 |       continue;
-ss << __str_255;
-// 36 |     }
+//  59 |       continue;
+ss << __str_414;
+//  60 |     }
 ss << __str_137;
-// 37 |     let id = u32(pos_d) / uniforms.strides.x;
-ss << __str_256;
-// 38 |     if (id >= getElementAt(uniforms.x_shape, spatial_dim, x.rank)) {
-ss << __str_257;
-ss << GetElementAt(__str_232, __str_228, __var_x->Rank());
-ss << __str_258;
-// 39 |       continue;
-ss << __str_255;
-// 40 |     }
-ss << __str_137;
-// 41 |     for (var kh = 0u; kh < getElementAt(uniforms.w_shape, 3, w.rank); kh++) {
-ss << __str_259;
-ss << GetElementAt(__str_227, __str_233, __var_w->Rank());
-ss << __str_260;
-// 42 |       let pos_h = corner.y - i32(kh) * i32(uniforms.dilations.y);
-ss << __str_261;
-// 43 |       if (pos_h < 0 || pos_h % i32(uniforms.strides.y) != 0) {
-ss << __str_262;
-// 44 |         continue;
-ss << __str_263;
-// 45 |       }
-ss << __str_264;
-// 46 |       let ih = u32(pos_h) / uniforms.strides.y;
-ss << __str_265;
-// 47 |       if (ih >= getElementAt(uniforms.x_shape, spatial_dim + 1u, x.rank)) {
-ss << __str_266;
-ss << GetElementAt(__str_232, __str_229, __var_x->Rank());
-ss << __str_258;
-// 48 |         continue;
-ss << __str_263;
-// 49 |       }
-ss << __str_264;
-// 50 |       for (var kw = 0u; kw < getElementAt(uniforms.w_shape, 4, w.rank); kw++) {
-ss << __str_267;
-ss << GetElementAt(__str_227, __str_225, __var_w->Rank());
-ss << __str_268;
-// 51 |         let pos_w = corner.z - i32(kw) * i32(uniforms.dilations.z);
-ss << __str_269;
-// 52 |         if (pos_w < 0 || pos_w % i32(uniforms.strides.z) != 0) {
-ss << __str_270;
-// 53 |           continue;
-ss << __str_271;
-// 54 |         }
+//  61 |     for (var kh = 0u; kh < kernel_shape.y; kh++) {
+ss << __str_417;
+//  62 |       let pos_h = corner.y - i32(kh) * i32(uniforms.dilations.y);
+ss << __str_418;
+//  63 |       if (pos_h < 0 || pos_h % i32(uniforms.strides.y) != 0) {
+ss << __str_419;
+//  64 |         continue;
+ss << __str_420;
+//  65 |       }
+ss << __str_295;
+//  66 |       let ih = u32(pos_h) / uniforms.strides.y;
+ss << __str_421;
+//  67 |       if (ih >= getElementAt(uniforms.x_shape, spatial_dim + 1u, x.rank)) {
+ss << __str_422;
+ss << GetElementAt(__str_388, __str_386, __var_x->Rank());
+ss << __str_252;
+//  68 |         continue;
+ss << __str_420;
+//  69 |       }
+ss << __str_295;
+//  70 |       for (var kw = 0u; kw < kernel_shape.z; kw++) {
+ss << __str_423;
+//  71 |         let pos_w = corner.z - i32(kw) * i32(uniforms.dilations.z);
+ss << __str_424;
+//  72 |         if (pos_w < 0 || pos_w % i32(uniforms.strides.z) != 0) {
+ss << __str_425;
+//  73 |           continue;
+ss << __str_426;
+//  74 |         }
 ss << __str_178;
-// 55 |         let iw = u32(pos_w) / uniforms.strides.z;
-ss << __str_272;
-// 56 |         if (iw >= getElementAt(uniforms.x_shape, spatial_dim + 2u, x.rank)) {
-ss << __str_273;
-ss << GetElementAt(__str_232, __str_230, __var_x->Rank());
-ss << __str_258;
-// 57 |           continue;
-ss << __str_271;
-// 58 |         }
+//  75 |         let iw = u32(pos_w) / uniforms.strides.z;
+ss << __str_427;
+//  76 |         if (iw >= getElementAt(uniforms.x_shape, spatial_dim + 2u, x.rank)) {
+ss << __str_428;
+ss << GetElementAt(__str_388, __str_387, __var_x->Rank());
+ss << __str_252;
+//  77 |           continue;
+ss << __str_426;
+//  78 |         }
 ss << __str_178;
-// 59 |         for (var c = 0u; c < uniforms.input_channels_per_group; c++) {
-ss << __str_274;
-// 60 |           let input_channel = group * uniforms.input_channels_per_group + c;
-ss << __str_275;
-// 61 | #if is_channels_last
+//  79 |         for (var c = 0u; c < uniforms.input_channels_per_group; c += components) {
+ss << __str_429;
+ss << __param_components;
+ss << __str_252;
+//  80 |           let input_channel = group * uniforms.input_channels_per_group + c;
+ss << __str_430;
+//  81 | #if is_channels_last
 if (__param_is_channels_last) {
-// 62 |           let x_indices = x_indices_t(batch, id, ih, iw, input_channel);
-ss << __str_276;
-// 63 | #else
+//  82 |           let x_indices = x_indices_t(batch, id, ih, iw, input_channel / components);
+ss << __str_431;
+ss << __param_components;
+ss << __str_3;
+//  83 |           let x_value = Accumulator(x.getByIndices(x_indices));
+ss << __str_432;
+ss << __var_x->GetByIndices(__str_389);
+ss << __str_3;
+//  84 | #else
 } else {
-// 64 |           let x_indices = x_indices_t(batch, input_channel, id, ih, iw);
-ss << __str_277;
-// 65 | #endif
-}
-// 66 |           let w_indices = w_indices_t(input_channel, w_channel, kd, kh, kw);
-ss << __str_278;
-// 67 |           value += f32(x.getByIndices(x_indices)) * f32(w.getByIndices(w_indices));
-ss << __str_279;
-ss << __var_x->GetByIndices(__str_234);
-ss << __str_280;
-ss << __var_w->GetByIndices(__str_235);
+//  85 | #if components > 1
+if (__param_components > 1) {
+//  86 |           var x_value = Accumulator(0);
+ss << __str_433;
+//  87 |           for (var lane = 0u; lane < components; lane++) {
+ss << __str_434;
+ss << __param_components;
+ss << __str_435;
+//  88 |             let x_indices = x_indices_t(batch, input_channel + lane, id, ih, iw);
+ss << __str_436;
+//  89 |             x_value[lane] = f32(x.getByIndices(x_indices));
+ss << __str_437;
+ss << __var_x->GetByIndices(__str_389);
 ss << __str_3;
-// 68 |         }
+//  90 |           }
+ss << __str_438;
+//  91 | #else
+} else {
+//  92 |           let x_indices = x_indices_t(batch, input_channel, id, ih, iw);
+ss << __str_439;
+//  93 |           let x_value = f32(x.getByIndices(x_indices));
+ss << __str_440;
+ss << __var_x->GetByIndices(__str_389);
+ss << __str_3;
+//  94 | #endif
+}
+//  95 | #endif
+}
+//  96 | #if is_prepacked
+if (__param_is_prepacked) {
+//  97 |           let w_indices = w_indices_t(kd, kh, kw, w_channel, input_channel / components);
+ss << __str_441;
+ss << __param_components;
+ss << __str_3;
+//  98 | #else
+} else {
+//  99 |           let w_indices = w_indices_t(input_channel, w_channel, kd, kh, kw);
+ss << __str_442;
+// 100 | #endif
+}
+// 101 |           value += x_value * Accumulator(w.getByIndices(w_indices));
+ss << __str_443;
+ss << __var_w->GetByIndices(__str_390);
+ss << __str_3;
+// 102 |         }
 ss << __str_178;
-// 69 |       }
-ss << __str_264;
-// 70 |     }
+// 103 |       }
+ss << __str_295;
+// 104 |     }
 ss << __str_137;
-// 71 |   }
+// 105 |   }
 ss << __str_222;
-// 72 | #if has_bias
-if (__param_has_bias) {
-// 73 |   value += f32(bias.getByOffset(output_channel));
-ss << __str_281;
-ss << __var_bias->GetByOffset(__str_236);
-ss << __str_3;
-// 74 | #endif
+// 106 | #if components > 1
+if (__param_components > 1) {
+// 107 |   var result = dot(value, Accumulator(1));
+ss << __str_444;
+// 108 | #else
+} else {
+// 109 |   var result = value;
+ss << __str_445;
+// 110 | #endif
 }
-// 75 |   output.setByOffset(global_idx, output_value_t(value));
+// 111 | #if has_bias
+if (__param_has_bias) {
+// 112 |   result += f32(bias.getByOffset(output_channel));
+ss << __str_446;
+ss << __var_bias->GetByOffset(__str_391);
+ss << __str_3;
+// 113 | #endif
+}
+// 114 |   output.setByOffset(global_idx, output_value_t(result));
 ss << __str_216;
-ss << __var_output->SetByOffset(__str_214, __str_237);
+ss << __var_output->SetByOffset(__str_214, __str_392);
 ss << __str_192;
-// 76 | }
+// 115 | }
 MainFunctionEnd();
 ss << __str_12;
-// 77 |
+// 116 | 
 
 
   return Status::OK();
