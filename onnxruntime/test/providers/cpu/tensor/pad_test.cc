@@ -219,6 +219,52 @@ TYPED_TEST(PadOpTest, Pad_Wrap_1D) {
                                "wrap");
 }
 
+TYPED_TEST(PadOpTest, Pad_Wrap_PadsGreaterThanExtent_1D) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({3},
+                               {T(1), T(2), T(3)},
+                               {5, 4},
+                               false,
+                               T(0),
+                               false,
+                               {12},
+                               {T(2), T(3), T(1), T(2), T(3), T(1), T(2), T(3), T(1), T(2), T(3), T(1)},
+                               "wrap");
+}
+
+TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanSlicedExtent) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({4},
+                               {T(1), T(2), T(3), T(4)},
+                               {5, -2},
+                               false,
+                               T(0),
+                               false,
+                               {7},
+                               {T(2), T(1), T(2), T(1), T(2), T(1), T(2)},
+                               "wrap",
+                               OpTester::ExpectResult::kExpectSuccess,
+                               "",
+                               {kDmlExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanOuterExtent) {
+  using T = TypeParam;
+  RunOnnxOpsetTypedTest<T, 19>({2, 3},
+                               {T(1), T(2), T(3), T(4), T(5), T(6)},
+                               {3, 0, 0, 0},
+                               false,
+                               T(0),
+                               false,
+                               {5, 3},
+                               {T(4), T(5), T(6),
+                                T(1), T(2), T(3),
+                                T(4), T(5), T(6),
+                                T(1), T(2), T(3),
+                                T(4), T(5), T(6)},
+                               "wrap");
+}
+
 #ifdef USE_WEBGPU
 TEST(PadOpTest, Pad_Wrap_WebGpu_LowerPadExceedsInt32Fails) {
   if (DefaultWebGpuExecutionProvider().get() == nullptr) {
