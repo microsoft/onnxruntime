@@ -146,7 +146,7 @@ static ONNX_NAMESPACE::ModelProto CreateFunctionExpansionModel(size_t body_node_
 
   auto* function = model.add_functions();
   function->set_domain("local");
-  function->set_name("Expand");
+  function->set_name("FunctionToExpand");
   function->add_input("function_input");
   function->add_output("function_output");
   auto* function_opset = function->add_opset_import();
@@ -166,7 +166,7 @@ static ONNX_NAMESPACE::ModelProto CreateFunctionExpansionModel(size_t body_node_
   for (size_t i = 0; i < call_count; ++i) {
     auto* node = graph->add_node();
     node->set_domain("local");
-    node->set_op_type("Expand");
+    node->set_op_type("FunctionToExpand");
     node->add_input(previous_value);
     previous_value = "call_" + std::to_string(i);
     node->add_output(previous_value);
@@ -289,7 +289,7 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
 }
 
 TEST(FunctionTest, AotInliningLimitsUnclaimedCallsSharingClaimedFunction) {
-  auto model = CreateRecursiveFunctionExpansionModel(20, 14);
+  auto model = CreateRecursiveFunctionExpansionModel(20, 15);
   std::vector<std::string> log_messages;
   const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages, true);
   EXPECT_FALSE(status.IsOK());
