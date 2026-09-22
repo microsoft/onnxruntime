@@ -161,6 +161,15 @@ Status CheckInputs(MoEParameters& parameters,
   // Fused swiglu doubles the output dimension of FC1 since it fused two GEMMs into one.
   const int64_t fc1_inter_size = is_fused_swiglu ? (inter_size + inter_size) : inter_size;
 
+  // Float zero-points (fractional/asymmetric schemes, e.g. Quark uint2 zp=1.5) are stored
+  // unpacked, one value per group, matching the scales layout -- regardless of bit width.
+  // Integer zero-points remain packed like the weights (PackedByteCountWithPadding).
+  auto zp_element_count = [](const Tensor* zp, int64_t logical_count, int64_t bits) -> int64_t {
+    return (zp != nullptr && !zp->template IsDataType<uint8_t>())
+               ? logical_count
+               : PackedByteCountWithPadding(logical_count, bits);
+  };
+
   if (legacy_shape) {
     // legacy shape does not match column major memory layout. This is for backward compatibility.
     ORT_RETURN_IF((SafeInt<int64_t>(fc1_inter_size) * weight_bits.fc1) % 8 != 0 ||
@@ -214,10 +223,10 @@ Status CheckInputs(MoEParameters& parameters,
     CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, fc2_blocks_per_row);
     CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, fc3_blocks_per_row);
 
-    // Validate zero-point tensors (block-wise)
-    const int64_t fc1_zp_blocks = PackedByteCountWithPadding(fc1_blocks_per_row, weight_bits.fc1);
-    const int64_t fc2_zp_blocks = PackedByteCountWithPadding(fc2_blocks_per_row, weight_bits.fc2);
-    const int64_t fc3_zp_blocks = PackedByteCountWithPadding(fc3_blocks_per_row, weight_bits.fc3);
+    // Validate zero-point tensors (block-wise). Float zero-points are unpacked (one per block).
+    const int64_t fc1_zp_blocks = zp_element_count(fc1_zero_points, fc1_blocks_per_row, weight_bits.fc1);
+    const int64_t fc2_zp_blocks = zp_element_count(fc2_zero_points, fc2_blocks_per_row, weight_bits.fc2);
+    const int64_t fc3_zp_blocks = zp_element_count(fc3_zero_points, fc3_blocks_per_row, weight_bits.fc3);
 
     CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, fc1_inter_size, fc1_zp_blocks);
     CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, hidden_size, fc2_zp_blocks);
@@ -228,13 +237,12 @@ Status CheckInputs(MoEParameters& parameters,
     if (fc1_experts_scales != nullptr) {
       const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
       if (fc1_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
         CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts,
-                           PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
+                           zp_element_count(fc1_zero_points, fc1_inter_size, weight_bits.fc1));
       } else if (fc1_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, 1);
         CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts,
-                           PackedByteCountWithPadding(fc1_inter_size, weight_bits.fc1));
+                           zp_element_count(fc1_zero_points, fc1_inter_size, weight_bits.fc1));
       } else {
         ORT_THROW("fc1_experts_scales must be 2D or 3D tensor");
       }
@@ -243,13 +251,12 @@ Status CheckInputs(MoEParameters& parameters,
     if (fc2_experts_scales != nullptr) {
       const auto& fc2_scales_dims = fc2_experts_scales->Shape().GetDims();
       if (fc2_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
         CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts,
-                           PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
+                           zp_element_count(fc2_zero_points, hidden_size, weight_bits.fc2));
       } else if (fc2_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, 1);
         CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts,
-                           PackedByteCountWithPadding(hidden_size, weight_bits.fc2));
+                           zp_element_count(fc2_zero_points, hidden_size, weight_bits.fc2));
       } else {
         ORT_THROW("fc2_experts_scales must be 2D or 3D tensor");
       }
@@ -258,13 +265,12 @@ Status CheckInputs(MoEParameters& parameters,
     if (fc3_experts_scales != nullptr) {
       const auto& fc3_scales_dims = fc3_experts_scales->Shape().GetDims();
       if (fc3_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
         CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts,
-                           PackedByteCountWithPadding(inter_size, weight_bits.fc3));
+                           zp_element_count(fc3_zero_points, inter_size, weight_bits.fc3));
       } else if (fc3_scales_dims.size() == 3) {
         CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, 1);
         CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts,
-                           PackedByteCountWithPadding(inter_size, weight_bits.fc3));
+                           zp_element_count(fc3_zero_points, inter_size, weight_bits.fc3));
       } else {
         ORT_THROW("fc3_experts_scales must be 2D or 3D tensor");
       }
