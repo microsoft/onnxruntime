@@ -254,10 +254,12 @@ static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
         for (const auto node_index : graph_view.GetNodesInTopologicalOrder()) {
           const auto* node = graph_view.GetNode(node_index);
           if (node != nullptr && node->CanBeInlined()) {
-            return {utils::MakeComputeCapability(
+            std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+            capabilities.push_back(utils::MakeComputeCapability(
                 graph_view, std::vector<const Node*>{node},
                 [node_index]() { return "FirstFunctionCall_" + std::to_string(node_index); },
-                Type(), false)};
+                Type(), false));
+            return capabilities;
           }
         }
 
