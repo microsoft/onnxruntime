@@ -942,7 +942,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   if (group_size > 0 && k % group_size != 0) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRows) {
+  if (!IsProfiledExpandedRowCount(sm, expanded_num_rows)) {
     return false;
   }
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {
