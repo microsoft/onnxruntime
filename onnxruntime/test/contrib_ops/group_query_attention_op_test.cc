@@ -3514,13 +3514,16 @@ static void RunGQACudaCacheAliasingTest(
     bool use_flash,
     bool sliding_window_cache = false,
     int windowed_sequence_length = 0,
-    std::vector<float>* captured_output = nullptr) {
+    std::vector<float>* captured_output = nullptr,
+    std::optional<int32_t> decode_seqlens_k = std::nullopt,
+    bool shared_cache_only = false,
+    bool enable_flash_fast_decode = false) {
   ScopedEnvironmentVariables scoped_env_vars{{
       {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
       {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
       {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
       {"ORT_ENABLE_XQA", "0"},
-      {"ORT_DISABLE_FLASH_DECODE", "1"},
+      {"ORT_DISABLE_FLASH_DECODE", enable_flash_fast_decode ? "0" : "1"},
       {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
   }};
   auto cuda_ep = DefaultCudaExecutionProvider();
@@ -3616,8 +3619,9 @@ static void RunGQACudaCacheAliasingTest(
   auto query_value = make_gpu_value(make_data(query_shape.Size(), 1), query_shape);
   auto key_value = make_gpu_value(key_data, kv_shape);
   auto value_value = make_gpu_value(value_data, kv_shape);
+  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - sequence_length);
   auto seqlens_value =
-      make_gpu_value(std::vector<int32_t>(batch_size, total_length - sequence_length), {batch_size});
+      make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
   std::vector<int32_t> total_length_data{total_length};
   OrtValue total_length_value;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
@@ -3626,6 +3630,9 @@ static void RunGQACudaCacheAliasingTest(
   std::vector<std::vector<float>> reference;
   for (bool share_key : {false, true}) {
     for (bool share_value : {false, true}) {
+      if (shared_cache_only && (!share_key || !share_value)) {
+        continue;
+      }
       if (valid_windowed_cache && (!share_key || !share_value)) {
         continue;
       }
@@ -3692,25 +3699,31 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_EQ(actual.size(), 3u);
       for (int batch = 0; batch < batch_size; ++batch) {
         for (int head = 0; head < kv_num_heads; ++head) {
-          const int expected_cache_length = valid_windowed_cache ? cache_capacity : total_length;
+          const int expected_cache_length =
+              decode_seqlens_k.has_value() ? cache_capacity : (valid_windowed_cache ? cache_capacity : total_length);
+          const int append_offset = decode_seqlens_k.has_value()
+                                        ? std::clamp(seqlens_k_value, 0, cache_capacity - sequence_length)
+                                        : (valid_windowed_cache ? cache_capacity : past_length);
           for (int token = 0; token < expected_cache_length; ++token) {
             for (int channel = 0; channel < head_size; ++channel) {
               const size_t cache_index = ((batch * kv_num_heads + head) * cache_capacity + token) * head_size + channel;
-              const int source_token = valid_windowed_cache ? token + sequence_length : token;
-              const bool from_past = source_token < (valid_windowed_cache ? cache_capacity : past_length);
+              const int source_token = valid_windowed_cache && !decode_seqlens_k.has_value()
+                                           ? token + sequence_length
+                                           : token;
+              const bool from_new =
+                  source_token >= append_offset && source_token < append_offset + sequence_length;
               const size_t past_index =
-                  ((batch * kv_num_heads + head) * cache_capacity + (from_past ? source_token : 0)) *
+                  ((batch * kv_num_heads + head) * cache_capacity + source_token) *
                       head_size +
                   channel;
-              const int new_token =
-                  from_past ? 0 : source_token - (valid_windowed_cache ? cache_capacity : past_length);
+              const int new_token = from_new ? source_token - append_offset : 0;
               const int new_index =
                   ((batch * sequence_length + new_token) * kv_num_heads + head) * head_size +
                   channel;
               EXPECT_EQ(actual[1][cache_index],
-                        (from_past ? past_key_data[past_index] : key_data[new_index]).ToFloat());
+                        (from_new ? key_data[new_index] : past_key_data[past_index]).ToFloat());
               EXPECT_EQ(actual[2][cache_index],
-                        (from_past ? past_value_data[past_index] : value_data[new_index]).ToFloat());
+                        (from_new ? value_data[new_index] : past_value_data[past_index]).ToFloat());
             }
           }
         }
@@ -3734,6 +3747,33 @@ TEST(GroupQueryAttentionTest, CudaCacheAliasingUnfused) {
 TEST(GroupQueryAttentionTest, CudaCacheAliasingFlash) {
 #if USE_FLASH_ATTENTION
   RunGQACudaCacheAliasingTest(true);
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaFlashFastDecodeClampsNegativeSeqlensK) {
+#if USE_FLASH_ATTENTION
+  std::vector<float> invalid_output;
+  std::vector<float> clamped_output;
+  RunGQACudaCacheAliasingTest(true, false, 0, &invalid_output, -5, true, true);
+  RunGQACudaCacheAliasingTest(true, false, 0, &clamped_output, 0, true, true);
+  ExpectOutputsMatch(invalid_output, clamped_output, 0.002f, "negative decode seqlens_k clamp");
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaFlashFastDecodeClampsOversizedSeqlensK) {
+#if USE_FLASH_ATTENTION
+  std::vector<float> invalid_output;
+  std::vector<float> clamped_output;
+  constexpr int cache_capacity = 8;
+  constexpr int sequence_length = 1;
+  RunGQACudaCacheAliasingTest(true, false, 0, &invalid_output, 100, true, true);
+  RunGQACudaCacheAliasingTest(
+      true, false, 0, &clamped_output, cache_capacity - sequence_length, true, true);
+  ExpectOutputsMatch(invalid_output, clamped_output, 0.002f, "oversized decode seqlens_k clamp");
 #else
   GTEST_SKIP() << "FlashAttention is not compiled";
 #endif

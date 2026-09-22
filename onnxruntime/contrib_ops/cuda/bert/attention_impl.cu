@@ -57,6 +57,8 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kMemoryAlignment = 256;
+// Canonicalize untrusted mask metadata on device instead of rejecting it on the host so the
+// attention path remains asynchronous and CUDA Graph capture-safe.
 __global__ void SanitizeMask1DKeySeqLenStartValues(const int32_t* input,
                                                    int32_t* output,
                                                    int32_t batch_size,

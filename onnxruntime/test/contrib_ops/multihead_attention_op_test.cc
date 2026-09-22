@@ -655,6 +655,12 @@ TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartBoundsKeyLengthPerBatch) {
   RunCudaMask1DKeySeqLenStartSanitizationTest(
       {512, 256, 0, 256, 512, 0, 256, 512}, 2);
 }
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesNegativeAndDescendingOffsets) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest(
+      {256, 256, 256, -1, 512, 256, 128, 512}, 2);
+}
+
 #endif
 
 TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
