@@ -242,7 +242,10 @@ TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanSlicedExtent) {
                                false,
                                {7},
                                {T(2), T(1), T(2), T(1), T(2), T(1), T(2)},
-                               "wrap");
+                               "wrap",
+                               OpTester::ExpectResult::kExpectSuccess,
+                               "",
+                               {kDmlExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TYPED_TEST(PadOpTest, Pad_Wrap_PrePadGreaterThanOuterExtent) {
