@@ -2061,6 +2061,32 @@ struct VisitorPriorityQueue {
   void pop() { list_.pop_back(); }
 };
 
+void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (!ort_format_control_edges_.emplace(src_node_index, dst_node_index).second) {
+    return;
+  }
+
+  ++ort_format_control_edge_node_counts_[src_node_index];
+  ++ort_format_control_edge_node_counts_[dst_node_index];
+}
+
+void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (ort_format_control_edges_.erase({src_node_index, dst_node_index}) == 0) {
+    return;
+  }
+
+  const auto decrement_node_count = [this](NodeIndex node_index) {
+    const auto it = ort_format_control_edge_node_counts_.find(node_index);
+    ORT_ENFORCE(it != ort_format_control_edge_node_counts_.end());
+    if (--it->second == 0) {
+      ort_format_control_edge_node_counts_.erase(it);
+    }
+  };
+
+  decrement_node_count(src_node_index);
+  decrement_node_count(dst_node_index);
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                                  const std::function<bool(const Node*, const Node*)>& comp) const {
@@ -3818,32 +3844,6 @@ Status Graph::VerifyInputAndInitializerNames() {
 bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
   return ort_format_control_edge_node_counts_.find(node_index) !=
          ort_format_control_edge_node_counts_.end();
-}
-
-void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (!ort_format_control_edges_.emplace(src_node_index, dst_node_index).second) {
-    return;
-  }
-
-  ++ort_format_control_edge_node_counts_[src_node_index];
-  ++ort_format_control_edge_node_counts_[dst_node_index];
-}
-
-void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
-  if (ort_format_control_edges_.erase({src_node_index, dst_node_index}) == 0) {
-    return;
-  }
-
-  const auto decrement_node_count = [this](NodeIndex node_index) {
-    const auto it = ort_format_control_edge_node_counts_.find(node_index);
-    ORT_ENFORCE(it != ort_format_control_edge_node_counts_.end());
-    if (--it->second == 0) {
-      ort_format_control_edge_node_counts_.erase(it);
-    }
-  };
-
-  decrement_node_count(src_node_index);
-  decrement_node_count(dst_node_index);
 }
 
 void Graph::RestoreOrtFormatControlEdges() {
