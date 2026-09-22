@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cfloat>  // FLT_MAX
 #include <cuda_fp16.h>
+#include <limits>
 #include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -27,8 +28,8 @@ namespace contrib {
 namespace cuda {
 
 __global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sanitized_block_table,
-                                         int element_count, int num_blocks) {
-  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+                                         size_t element_count, int num_blocks) {
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index < element_count) {
     const int32_t block_id = block_table[index];
     sanitized_block_table[index] = block_id >= -1 && block_id < num_blocks ? block_id : -1;
@@ -36,14 +37,18 @@ __global__ void SanitizeBlockTableKernel(const int32_t* block_table, int32_t* sa
 }
 
 Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
-                                int element_count, int num_blocks, cudaStream_t stream) {
+                                size_t element_count, int num_blocks, cudaStream_t stream) {
   if (element_count == 0) {
     return Status::OK();
   }
 
+  if (element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table element count exceeds the CUDA kernel indexing limit.");
+  }
   constexpr int kThreadsPerBlock = 256;
-  const int blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizeBlockTableKernel<<<blocks, kThreadsPerBlock, 0, stream>>>(
+  const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
       block_table, sanitized_block_table, element_count, num_blocks);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -389,8 +394,10 @@ __global__ void SanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
     const int32_t query_length =
         sanitized_cumulative_seqlens_q[b + 1] - sanitized_cumulative_seqlens_q[b];
     int32_t mapped_blocks = 0;
+    const size_t block_table_offset =
+        static_cast<size_t>(b) * static_cast<size_t>(max_num_blocks_per_seq);
     while (mapped_blocks < max_num_blocks_per_seq &&
-           block_table[b * max_num_blocks_per_seq + mapped_blocks] >= 0) {
+           block_table[block_table_offset + static_cast<size_t>(mapped_blocks)] >= 0) {
       ++mapped_blocks;
     }
 

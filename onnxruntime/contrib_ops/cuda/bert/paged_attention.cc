@@ -6,6 +6,7 @@
 #include <limits>
 #include <tuple>
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
@@ -296,7 +297,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return Status::OK();
   }
 
-  const int block_table_element_count = parameters.batch_size * parameters.max_num_blocks_per_seq;
+  const SafeInt<size_t> safe_batch_size(parameters.batch_size);
+  const size_t batch_size = safe_batch_size;
+  const size_t block_table_element_count =
+      safe_batch_size * SafeInt<size_t>(parameters.max_num_blocks_per_seq);
+  if (block_table_element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table element count exceeds the CUDA kernel indexing limit.");
+  }
   auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
   ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
       reinterpret_cast<const int*>(block_table->Data<int>()),
@@ -373,13 +381,20 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.token_count <= device_prop.maxGridSize[1] &&
       GetPagedDecodeSharedMemoryBytes(parameters.head_size) <= static_cast<size_t>(device_prop.sharedMemPerBlock);
 
-  size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
+  const size_t cumulative_sequence_length_count = safe_batch_size + 1;
+  const size_t sanitized_sequence_length_count = SafeInt<size_t>(2) * safe_batch_size + 1;
+  if (sanitized_sequence_length_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence length element count exceeds the CUDA kernel indexing limit.");
+  }
+  const size_t cumulative_seqlens_kv_bytes =
+      SafeInt<size_t>(sizeof(int)) * cumulative_sequence_length_count;
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
-  auto sanitized_sequence_lengths = GetScratchBuffer<int>(
-      2 * parameters.batch_size + 1, GetComputeStream(context));
+  auto sanitized_sequence_lengths =
+      GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
   int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
-  int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + parameters.batch_size + 1;
+  int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.

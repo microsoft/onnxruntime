@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <cuda_runtime.h>
+#include <limits>
 
 #include "core/framework/tensor_shape.h"
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
@@ -189,6 +190,13 @@ TEST(PagedAttentionHelperTest, SanitizeBlockTableAllowsZeroElements) {
   const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
       nullptr, nullptr, 0, 0, nullptr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
+
+TEST(PagedAttentionHelperTest, SanitizeBlockTableRejectsUnsupportedElementCount) {
+  const auto status = onnxruntime::contrib::cuda::LaunchSanitizeBlockTable(
+      nullptr, nullptr, static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1, 0, nullptr);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the CUDA kernel indexing limit"));
 }
 
 TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsCanonicalizesUnsafeInputs) {
