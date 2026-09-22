@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <absl/base/config.h>
+#include <array>
 
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/bfc_arena.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/ort_apis.h"
@@ -240,6 +243,83 @@ TEST(AllocatorTest, IArenaWrapper_AllocFreeReserve) {
   EXPECT_NE(r, nullptr);
   EXPECT_EQ(mock.reserve_count, 1);
   wrapper->Free(r);
+}
+
+TEST(AllocatorTest, IArenaWrapper_CaptureRetainsScratchAcrossPluginBoundary) {
+  for (bool stream_aware : {false, true}) {
+    SCOPED_TRACE(stream_aware);
+    MockArenaOrtAllocator mock;
+    const OrtDevice device{};
+    Stream stream(nullptr, device);
+    if (stream_aware) {
+      mock.AllocOnStream = [](OrtAllocator* allocator, size_t size, OrtSyncStream*) {
+        return MockArenaOrtAllocator::AllocImpl(allocator, size);
+      };
+    }
+    auto arena = std::make_shared<IArenaImplWrappingOrtAllocator>(
+        OrtAllocatorUniquePtr(&mock, [](OrtAllocator*) {}));
+    // KernelInfoGetAllocator returns this C ABI wrapper to the plugin.
+    OrtAllocatorImplWrappingIAllocator kernel_allocator{AllocatorPtr{arena}};
+    OrtAllocator* api_allocator = &kernel_allocator;
+    const std::array<AllocatorPtr, 1> allocators{arena};
+    {
+      ArenaAllocationCapture capture(allocators);
+      ASSERT_STATUS_OK(capture.Begin(false));
+      void* scratch = api_allocator->Alloc(api_allocator, 256);
+      void* reserved = api_allocator->Reserve(api_allocator, 64);
+      void* streamed = api_allocator->AllocOnStream(api_allocator, 512, static_cast<OrtSyncStream*>(&stream));
+      api_allocator->Free(api_allocator, scratch);
+      api_allocator->Free(api_allocator, reserved);
+      api_allocator->Free(api_allocator, streamed);
+      ASSERT_STATUS_OK(capture.End());
+      EXPECT_EQ(mock.alloc_count, 2);
+      EXPECT_EQ(mock.reserve_count, 1);
+      EXPECT_EQ(mock.free_count, 0);
+
+      void* eager_scratch = api_allocator->Alloc(api_allocator, 256);
+      EXPECT_NE(eager_scratch, scratch);
+      api_allocator->Free(api_allocator, eager_scratch);
+      for (int pass = 0; pass < 3; ++pass) {
+        ASSERT_STATUS_OK(capture.Begin(true));
+        EXPECT_EQ(api_allocator->Alloc(api_allocator, 256), scratch);
+        EXPECT_EQ(api_allocator->Reserve(api_allocator, 64), reserved);
+        EXPECT_EQ(api_allocator->AllocOnStream(api_allocator, 512, static_cast<OrtSyncStream*>(&stream)), streamed);
+        api_allocator->Free(api_allocator, scratch);
+        api_allocator->Free(api_allocator, reserved);
+        api_allocator->Free(api_allocator, streamed);
+        ASSERT_STATUS_OK(capture.End());
+      }
+      EXPECT_EQ(mock.alloc_count, 3);
+      EXPECT_EQ(mock.reserve_count, 1);
+      EXPECT_EQ(mock.free_count, 1);
+    }
+    EXPECT_EQ(mock.free_count, 4);
+  }
+}
+
+TEST(AllocatorTest, IArenaWrapper_CaptureRejectsChangedScratch) {
+  MockArenaOrtAllocator mock;
+  auto arena = std::make_shared<IArenaImplWrappingOrtAllocator>(
+      OrtAllocatorUniquePtr(&mock, [](OrtAllocator*) {}));
+  const std::array<AllocatorPtr, 1> allocators{arena};
+  const OrtDevice device{};
+  Stream stream(nullptr, device);
+  ArenaAllocationCapture capture(allocators);
+  ASSERT_STATUS_OK(capture.Begin(false));
+  void* scratch = arena->AllocOnStream(256, &stream);
+  arena->Free(scratch);
+  ASSERT_STATUS_OK(capture.End());
+  for (int mismatch = 0; mismatch < 3; ++mismatch) {
+    ASSERT_STATUS_OK(capture.Begin(true));
+    if (mismatch == 0) {
+      EXPECT_THROW(arena->AllocOnStream(512, &stream), OnnxRuntimeException);
+    } else if (mismatch == 1) {
+      EXPECT_THROW(arena->Alloc(256), OnnxRuntimeException);
+    } else {
+      EXPECT_THROW(arena->Reserve(256), OnnxRuntimeException);
+    }
+    capture.Cancel();
+  }
 }
 
 TEST(AllocatorTest, IArenaWrapper_ShrinkForwards) {

@@ -60,8 +60,9 @@ class ArenaAllocationCapture {
 
  private:
   friend class BFCArena;
+  friend class IArenaImplWrappingOrtAllocator;
   struct Allocation {
-    BFCArena* arena;
+    IAllocator* arena;
     void* pointer;
     size_t size;
     Stream* stream;
@@ -70,9 +71,9 @@ class ArenaAllocationCapture {
     bool freed{false};
   };
 
-  bool Handles(const BFCArena* arena) const;
-  void* Allocate(BFCArena& arena, size_t size, Stream* stream, bool reserve);
-  bool Free(BFCArena& arena, void* pointer);
+  bool Handles(const IAllocator* arena) const;
+  void* Allocate(IAllocator& arena, size_t size, Stream* stream, bool reserve);
+  bool Free(IAllocator& arena, void* pointer);
 
   static thread_local ArenaAllocationCapture* current_;
   InlinedVector<AllocatorPtr> allocators_;

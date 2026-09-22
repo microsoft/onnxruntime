@@ -3092,13 +3092,18 @@ common::Status InferenceSession::Initialize() {
                 : AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type());
 
         if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
-          ORT_RETURN_IF_NOT(ep->Type() == kCudaExecutionProvider && ep->GetOrtEp() == nullptr,
-                            "Partitioned CUDA capture requires the built-in CUDA execution provider.");
+          ORT_RETURN_IF_NOT(ep->Type() == kCudaExecutionProvider,
+                            "Partitioned CUDA capture requires the CUDA execution provider.");
           if (!can_capture_whole_graph) {
 #if !defined(ORT_ENABLE_STREAM) || defined(ENABLE_TRAINING)
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "Partitioned CUDA capture requires an inference build with stream support.");
 #else
+            if (const auto* plugin_ep = ep->GetOrtEp()) {
+              ORT_RETURN_IF_NOT(plugin_ep->ort_version_supported >= 26 &&
+                                    plugin_ep->OnRunStart && plugin_ep->OnRunEnd && plugin_ep->Sync,
+                                "Partitioned CUDA capture requires plugin run callbacks and synchronization.");
+            }
             ORT_RETURN_IF_NOT(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                               "Partitioned CUDA capture requires sequential execution.");
             for (const auto& registered_ep : execution_providers_) {
@@ -3229,7 +3234,7 @@ common::Status InferenceSession::Initialize() {
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
       ORT_RETURN_IF_NOT(partitioned_cuda_graph_ep_ != nullptr ||
                             cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled(),
-                        "Partitioned CUDA capture requires an ONNX model and the built-in CUDA EP with enable_cuda_graph=1.");
+                        "Partitioned CUDA capture requires an ONNX model and the CUDA EP with enable_cuda_graph=1.");
     }
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
@@ -3918,14 +3923,18 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #endif
 
 #ifdef ORT_ENABLE_STREAM
-      DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
-      if (run_options.sync_stream != nullptr) {
+      std::optional<DeviceStreamCollectionHolder> device_stream_collection_holder;
+      // Partitioned execution validates thread affinity before acquiring its own retained streams.
+      if (!partitioned_graph_execution_ || graph_annotation_id == -1) {
+        device_stream_collection_holder.emplace(session_state_.get());
+      }
+      if (device_stream_collection_holder && run_options.sync_stream != nullptr) {
         if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
           // XXX: Not tested in Parallel execution mode and disabled at this time.
           LOGS(*session_logger_, WARNING) << "Setting sync stream is not supported in parallel execution mode.";
         } else {
           ORT_RETURN_IF_ERROR_SESSIONID_(
-              device_stream_collection_holder.p_->SetStreamOverride(run_options.sync_stream));
+              device_stream_collection_holder->p_->SetStreamOverride(run_options.sync_stream));
         }
       }
 #endif
@@ -3939,7 +3948,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                        session_options_.execution_mode,
                                        run_options,
 #ifdef ORT_ENABLE_STREAM
-                                       device_stream_collection_holder,
+                                       *device_stream_collection_holder,
 #endif
                                        run_logger,
                                        run_profiler ? &*run_profiler : nullptr
@@ -3978,7 +3987,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // EP is still inside its capture window.
       // Graph capture, if any, ends when xp->OnRunEnd() returns above, so it is safe here.
 #ifdef ORT_ENABLE_STREAM
-      DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+      DeviceStreamCollection* device_stream_collection =
+          device_stream_collection_holder ? device_stream_collection_holder->p_.get() : nullptr;
       if (device_stream_collection) {
         bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));

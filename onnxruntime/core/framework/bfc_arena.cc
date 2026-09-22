@@ -545,12 +545,12 @@ void ArenaAllocationCapture::Cancel() {
   }
 }
 
-bool ArenaAllocationCapture::Handles(const BFCArena* arena) const {
+bool ArenaAllocationCapture::Handles(const IAllocator* arena) const {
   return std::any_of(allocators_.begin(), allocators_.end(),
                      [arena](const AllocatorPtr& allocator) { return allocator.get() == arena; });
 }
 
-void* ArenaAllocationCapture::Allocate(BFCArena& arena, size_t size, Stream* stream, bool reserve) {
+void* ArenaAllocationCapture::Allocate(IAllocator& arena, size_t size, Stream* stream, bool reserve) {
   if (replay_) {
     ORT_ENFORCE(cursor_ < allocations_.size(), "CUDA partition allocated additional scratch during capture.");
     auto& allocation = allocations_[cursor_++];
@@ -567,7 +567,7 @@ void* ArenaAllocationCapture::Allocate(BFCArena& arena, size_t size, Stream* str
   return pointer;
 }
 
-bool ArenaAllocationCapture::Free(BFCArena& arena, void* pointer) {
+bool ArenaAllocationCapture::Free(IAllocator& arena, void* pointer) {
   for (auto& allocation : allocations_) {
     if (allocation.arena == &arena && allocation.pointer == pointer) {
       ORT_ENFORCE(!allocation.freed, "CUDA partition scratch was freed twice.");

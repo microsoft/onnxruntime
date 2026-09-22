@@ -3,6 +3,7 @@
 
 #include "core/framework/partitioned_graph_execution.h"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <thread>
@@ -88,7 +89,7 @@ struct PartitionedGraphExecution::Impl {
     for (const auto& [device, allocator] : state.GetAllocators()) {
       if (device.Type() == OrtDevice::GPU) {
         ORT_ENFORCE(allocator->AsArena() != nullptr,
-                    "Partitioned CUDA capture requires the built-in CUDA arena allocator.");
+                    "Partitioned CUDA capture requires a CUDA arena allocator.");
         allocators.push_back(allocator);
       }
     }
@@ -138,13 +139,12 @@ struct PartitionedGraphExecution::Impl {
   }
 
   Status Execute(CapturedRun& state, const RunOptions& options, const logging::Logger& logger) {
-    // The built-in CUDA EP needs two regular runs before capture. The first allocates outputs;
-    // the second records scratch; capture then reuses both without allocating new device memory.
-    const int first_pass = state.ready ? 3 : 0;
-    for (int pass = first_pass; pass <= 3; ++pass) {
-      if (pass == 3 && first_pass != 3) {
-        break;
-      }
+    // Allocate outputs, then retain scratch before capture. Plugin warm-ups use graph ID -1
+    // because the plugin may otherwise start capturing before either preparation pass finishes.
+    // Its configurable warm-up count is subsequently honored with a bounded capture retry loop.
+    const bool plugin = provider.GetOrtEp() != nullptr;
+    const int max_capture_attempts = plugin ? 8 : 1;
+    for (int pass = state.ready ? 2 : 0; pass < 2 + max_capture_attempts; ++pass) {
       for (size_t i = 0; i < partitions.size(); ++i) {
         const auto& partition = partitions[i];
         ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
@@ -155,23 +155,24 @@ struct PartitionedGraphExecution::Impl {
           continue;
         }
         auto& captured = *state.partitions[i];
-        if (pass == 3) {
+        if (pass >= 2 && provider.IsGraphCaptured(captured.graph_id)) {
           for (const auto& [offset, signature] : captured.signatures) {
             const auto* value = state.frame->GetNodeInputOrOutputMLValue(offset);
             ORT_RETURN_IF_NOT(value != nullptr, "A captured partition value is missing.");
             ORT_RETURN_IF_ERROR(signature.Check(*value));
           }
-          ORT_RETURN_IF_NOT(provider.IsGraphCaptured(captured.graph_id), "CUDA partition graph is missing.");
           LOGS(logger, INFO) << "Replaying CUDA partition " << i << " with internal graph id " << captured.graph_id;
           failed = true;
           ORT_RETURN_IF_ERROR(provider.ReplayGraph(captured.graph_id, true));
           failed = false;
           continue;
         }
+        ORT_RETURN_IF(state.ready, "CUDA partition graph is missing.");
 
         RunOptions partition_options;
+        const int capture_id = plugin && pass < 2 ? -1 : captured.graph_id;
         ORT_RETURN_IF_ERROR(partition_options.config_options.AddConfigEntry(
-            kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(captured.graph_id).c_str()));
+            kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(capture_id).c_str()));
         failed = true;
         ORT_RETURN_IF_ERROR(provider.OnRunStart(partition_options));
         bool ended = false;
@@ -191,7 +192,7 @@ struct PartitionedGraphExecution::Impl {
           }
         });
         if (pass != 0) {
-          ORT_RETURN_IF_ERROR(captured.scratch.Begin(pass == 2));
+          ORT_RETURN_IF_ERROR(captured.scratch.Begin(pass >= 2));
         }
         ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger));
         if (pass != 0) {
@@ -199,9 +200,10 @@ struct PartitionedGraphExecution::Impl {
         }
         ended = true;
         ORT_RETURN_IF_ERROR(provider.OnRunEnd(true, partition_options));
-        ORT_RETURN_IF(provider.IsGraphCaptured(captured.graph_id) != (pass == 2),
+        const bool captured_graph = provider.IsGraphCaptured(captured.graph_id);
+        ORT_RETURN_IF(captured_graph && pass < 2,
                       "Unexpected CUDA partition capture warm-up behavior.");
-        if (pass == 2) {
+        if (captured_graph) {
           ORT_RETURN_IF_ERROR(SaveSignatures(state, partition, captured));
         }
         failed = false;
@@ -209,9 +211,15 @@ struct PartitionedGraphExecution::Impl {
       failed = true;
       ORT_RETURN_IF_ERROR(state.streams.p_->CleanUp(true));
       failed = false;
+      if (pass >= 2 &&
+          std::all_of(state.partitions.begin(), state.partitions.end(),
+                      [&](const auto& captured) { return !captured || provider.IsGraphCaptured(captured->graph_id); })) {
+        state.ready = true;
+        return Status::OK();
+      }
     }
-    state.ready = true;
-    return Status::OK();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA partition capture did not complete after ",
+                           max_capture_attempts, " capture attempts.");
   }
 
   Status Run(const RunOptions& options, int graph_id, FeedsFetchesManager& manager,
