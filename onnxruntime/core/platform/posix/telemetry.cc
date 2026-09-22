@@ -403,6 +403,19 @@ bool PrepareProcessEvent(EventBuilder& event) {
   return true;
 }
 
+#ifdef _WIN32
+bool PrepareProcessEvent(EventProperties& event) {
+  if (!telemetry_internal::ShouldSampleSession(
+          GetAppSessionGuid(), 0,
+          telemetry_internal::kProcessEventSampleRatePercent)) {
+    return false;
+  }
+
+  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  return true;
+}
+#endif
+
 int32_t GetProcessorCount() {
 #ifdef _WIN32
   const DWORD count = ::GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
@@ -1289,8 +1302,20 @@ void PosixTelemetry::LogRuntimePerf(
 
 void PosixTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   RunTelemetryOperation("LogExecutionProviderEvent", [&]() {
-    // Not applicable for non-Windows platforms (LUID is Windows-specific)
+#ifdef _WIN32
+    if (!IsEnabled() || adapterLuid == nullptr) {
+      return;
+    }
+
+    auto event = telemetry_internal::BuildExecutionProviderEvent(*adapterLuid);
+    if (!PrepareProcessEvent(event)) {
+      return;
+    }
+
+    LogEventAsync(std::move(event));
+#else
     (void)adapterLuid;
+#endif
   });
 }
 
@@ -1299,12 +1324,49 @@ void PosixTelemetry::LogDriverInfoEvent(
     const std::wstring_view& driver_names,
     const std::wstring_view& driver_versions) const {
   RunTelemetryOperation("LogDriverInfoEvent", [&]() {
-    // Not applicable for non-Windows platforms
+#ifdef _WIN32
+    if (!IsEnabled()) {
+      return;
+    }
+
+    auto event = telemetry_internal::BuildDriverInfoEvent(device_class, driver_names, driver_versions);
+    if (!PrepareProcessEvent(event)) {
+      return;
+    }
+
+    LogEventAsync(std::move(event));
+#else
     (void)device_class;
     (void)driver_names;
     (void)driver_versions;
+#endif
   });
 }
+
+#ifdef _WIN32
+namespace telemetry_internal {
+
+EventProperties BuildExecutionProviderEvent(const LUID& adapter_luid) {
+  return EventBuilder("ExecutionProviderEvent", EventPriority::NORMAL)
+      .AddUInt32("adapterLuidLowPart", adapter_luid.LowPart)
+      .AddUInt32("adapterLuidHighPart", static_cast<uint32_t>(adapter_luid.HighPart))
+      .Build();
+}
+
+EventProperties BuildDriverInfoEvent(
+    std::string_view device_class,
+    std::wstring_view driver_names,
+    std::wstring_view driver_versions) {
+  return EventBuilder("DriverInfo", EventPriority::NORMAL)
+      .AddUInt32("schemaVersion", 0)
+      .AddStringAllowEmpty("deviceClass", std::string(device_class))
+      .AddStringAllowEmpty("driverNames", ToUTF8String(driver_names))
+      .AddStringAllowEmpty("driverVersions", ToUTF8String(driver_versions))
+      .Build();
+}
+
+}  // namespace telemetry_internal
+#endif
 
 void PosixTelemetry::LogAutoEpSelection(
     uint32_t session_id, const std::string& selection_policy,

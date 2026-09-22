@@ -24,6 +24,16 @@ class EventProperties;
 
 namespace onnxruntime {
 
+#ifdef _WIN32
+namespace telemetry_internal {
+::Microsoft::Applications::Events::EventProperties BuildExecutionProviderEvent(const LUID& adapter_luid);
+::Microsoft::Applications::Events::EventProperties BuildDriverInfoEvent(
+    std::string_view device_class,
+    std::wstring_view driver_names,
+    std::wstring_view driver_versions);
+}  // namespace telemetry_internal
+#endif
+
 /**
  * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
  *
