@@ -10,7 +10,6 @@
 #include <cerrno>
 #include <cstring>
 #include <limits>
-#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -61,34 +60,16 @@ class CuFileDriver {
   using SetBoolParameterFn = decltype(&cuFileSetParameterBool);
   using ReadFn = decltype(&cuFileRead);
 
+  CuFileDriver() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CuFileDriver);
+
   ~CuFileDriver() {
-    std::unique_lock<std::mutex> lock(GlobalMutex(), std::defer_lock);
-    if (registered_as_active_) {
-      lock.lock();
-    }
     if (driver_initialized_) {
       ORT_IGNORE_RETURN_VALUE(driver_close_());
     }
     if (library_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(dlclose(library_));
     }
-  }
-
-  static common::Status Acquire(std::shared_ptr<CuFileDriver>& driver) {
-    static std::weak_ptr<CuFileDriver> active_driver;
-    std::lock_guard lock(GlobalMutex());
-
-    driver = active_driver.lock();
-    if (driver) {
-      return Status::OK();
-    }
-
-    auto candidate = std::shared_ptr<CuFileDriver>(new CuFileDriver());
-    ORT_RETURN_IF_ERROR(candidate->Initialize());
-    candidate->registered_as_active_ = true;
-    active_driver = candidate;
-    driver = std::move(candidate);
-    return Status::OK();
   }
 
   CUfileError_t RegisterHandle(CUfileHandle_t* handle, CUfileDescr_t* descriptor) const {
@@ -110,12 +91,6 @@ class CuFileDriver {
   ssize_t Read(CUfileHandle_t handle, void* buffer, size_t length,
                off_t file_offset, off_t buffer_offset) const {
     return read_(handle, buffer, length, file_offset, buffer_offset);
-  }
-
- private:
-  static std::mutex& GlobalMutex() {
-    static std::mutex mutex;
-    return mutex;
   }
 
   common::Status Initialize() {
@@ -150,11 +125,9 @@ class CuFileDriver {
     return Status::OK();
   }
 
-  CuFileDriver() = default;
-
+ private:
   void* library_{nullptr};
   bool driver_initialized_{false};
-  bool registered_as_active_{false};
   DriverOpenFn driver_open_{nullptr};
   DriverCloseFn driver_close_{nullptr};
   HandleRegisterFn handle_register_{nullptr};
@@ -244,7 +217,7 @@ class LinuxGdsLoader final : public GdsLoader {
 
  private:
   common::Status Initialize(int device_id) {
-    ORT_RETURN_IF_ERROR(CuFileDriver::Acquire(driver_));
+    ORT_RETURN_IF_ERROR(driver_.Acquire());
 
     CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
     CUDA_RETURN_IF_ERROR(cudaMalloc(&gds_buffer_, kGdsBufferSize));
@@ -256,7 +229,7 @@ class LinuxGdsLoader final : public GdsLoader {
 
   LinuxGdsLoader() = default;
 
-  std::shared_ptr<CuFileDriver> driver_;
+  GdsDriverHandle<CuFileDriver> driver_;
   void* gds_buffer_{nullptr};
   bool gds_buffer_registered_{false};
 };

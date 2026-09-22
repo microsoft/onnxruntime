@@ -18,6 +18,8 @@ external-data file -> registered CUDA staging buffer -> CUDA arena initializer
 The reusable staging buffer bounds additional GPU memory usage to 64 MiB per CUDA external-data loader. Each
 device-to-device copy completes before that buffer is reused. String and Boolean initializers retain the existing
 loading path because they require host-side conversion.
+Loaders share a process-wide cuFile driver. Its final release and subsequent initialization are serialized, so a
+new loader cannot configure or reopen the driver until the previous driver has finished closing.
 
 GDS requires:
 
