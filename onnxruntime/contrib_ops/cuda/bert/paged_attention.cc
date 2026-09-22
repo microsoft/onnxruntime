@@ -500,6 +500,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // its bounds are the only replay-safe source of per-step information. The synchronization is
   // therefore gone for every configuration CUDA Graphs can reach, including an unquantized cache.
   const bool needs_readback = !has_metadata_bounds && (needs_dense_kv || xqa_candidate);
+  if (needs_readback && onnxruntime::llm::common::isCapturing(cuda_stream)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "PagedAttention requires input 'attention_metadata' when CUDA graph capture needs "
+        "replay-stable attention bounds.");
+  }
 
   if (!needs_readback) {
     max_query_len = max_query_len_bound;
@@ -512,37 +518,21 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         static_cast<int64_t>(parameters.batch_size) * max_kv_len_bound));
   } else {
     const int kCumulativeCount = parameters.batch_size + 1;
-    const size_t host_block_table_size =
-        static_cast<size_t>(parameters.batch_size) * parameters.max_num_blocks_per_seq;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
-    auto host_past_seqlens = this->AllocateBufferOnCPUPinned<int>(parameters.batch_size);
-    auto host_block_table = this->AllocateBufferOnCPUPinned<int>(host_block_table_size);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
                                          reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_past_seqlens.get(),
-                                         reinterpret_cast<const int*>(past_seqlens->Data<int>()),
-                                         sizeof(int) * static_cast<size_t>(parameters.batch_size),
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_block_table.get(),
-                                         reinterpret_cast<const int*>(block_table->Data<int>()),
-                                         sizeof(int) * host_block_table_size,
-                                         cudaMemcpyDeviceToHost,
-                                         cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
-    ORT_RETURN_IF_ERROR(paged_attention_helper::CheckBlockTableAndPastSeqLensValues(
+    ORT_RETURN_IF_ERROR(paged_attention_helper::CheckSequenceLengthValues(
         cum_q_pinned.get(),
-        host_past_seqlens.get(),
-        host_block_table.get(),
+        cum_kv_pinned.get(),
         parameters.batch_size,
         parameters.max_num_blocks_per_seq,
         parameters.block_size,
-        parameters.num_blocks,
         parameters.token_count));
 
     for (int i = 0; i < parameters.batch_size; ++i) {
