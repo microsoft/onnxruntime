@@ -24,7 +24,7 @@ from llama_inputs import (
     verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
-from models.torch_export_patches.cache_helper import make_dynamic_cache
+from models.torch_export_patches.cache_helper import get_dynamic_cache_key_value, make_dynamic_cache
 from transformers import AutoConfig
 from transformers import __version__ as transformers_version
 from transformers.cache_utils import DynamicCache
@@ -91,7 +91,8 @@ def torch_deepcopy(value):
     if hasattr(value, "clone"):
         return value.clone()
     if isinstance(value, DynamicCache):
-        return make_dynamic_cache(torch_deepcopy(list(zip(value.key_cache, value.value_cache, strict=False))))
+        key_cache, value_cache = get_dynamic_cache_key_value(value)
+        return make_dynamic_cache(torch_deepcopy(list(zip(key_cache, value_cache, strict=False))))
     # We should have a code using serialization, deserialization assuming a model
     # cannot be exported without them.
     raise NotImplementedError(f"torch_deepcopy not implemented for type {type(value)}")

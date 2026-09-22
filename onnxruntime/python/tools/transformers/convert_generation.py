@@ -3397,8 +3397,14 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     input_ids = inputs["input_ids"]
     attention_mask = inputs["attention_mask"]
 
+    vocab_size = model.config.vocab_size
+    if input_ids.max() >= vocab_size:
+        input_ids = input_ids.masked_fill(attention_mask == 0, model.config.pad_token_id)
+        input_ids = input_ids.masked_fill(input_ids >= vocab_size, tokenizer.unk_token_id)
+
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words)[:-1]  # exclude the last token (EOS)
+    bad_words_ids = [word_id if word_id < vocab_size else tokenizer.unk_token_id for word_id in bad_words_ids]
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
     if args.vocab_mask:
         logger.debug("bad_words_ids", bad_words_ids)  # noqa: PLE1205
@@ -3408,7 +3414,6 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     config = model.config
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
-    vocab_size = config.vocab_size
     logger.debug(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
 
     torch_decoded_sequences = []
@@ -3522,8 +3527,19 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
         print(ort_sequences)
         print(ort_decoded_sequences)
         print("-" * 50)
-        # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
-        is_same = torch_decoded_sequences == ort_decoded_sequences
+
+        def generated_content(sequence):
+            tokens = []
+            for index, token in enumerate(sequence):
+                token_id = int(token)
+                if index > 0 and token_id in (eos_token_id, pad_token_id):
+                    break
+                tokens.append(token_id)
+            return tokens
+
+        torch_content = [generated_content(sequence) for sequence in torch_sequences.reshape(-1, torch_sequences.shape[-1])]
+        ort_content = [generated_content(sequence) for sequence in ort_sequences.reshape(-1, ort_sequences.shape[-1])]
+        is_same = torch_content == ort_content
         print("Torch and ORT result is ", "same" if is_same else "different")
         output["parity"] = is_same
 
