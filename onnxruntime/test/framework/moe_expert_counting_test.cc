@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <fstream>
 
 #include "core/framework/session_state.h"
@@ -133,7 +134,8 @@ void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool co
     feeds.emplace("condition", cond);
   }
   std::vector<OrtValue> outputs;
-  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, {"output"}, &outputs));
+  const std::array<std::string, 1> output_names{"output"};
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
   ASSERT_EQ(outputs.size(), 1U);
   for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
     EXPECT_EQ(value.ToFloat(), 0.f);
