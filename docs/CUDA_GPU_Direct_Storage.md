@@ -2,7 +2,7 @@
 
 The CUDA execution provider can use NVIDIA GPUDirect Storage (GDS) to load ONNX external initializers without
 staging file data in CPU memory. GDS is opt-in. If it cannot be initialized or cannot read an external-data file,
-ONNX Runtime logs a warning and uses the existing pinned-host-buffer loader for the rest of the session.
+ONNX Runtime logs a warning and uses the configured pinned/pageable host-memory fallback for the rest of the session.
 
 ## Data path
 
@@ -33,7 +33,7 @@ GDS requires:
 ONNX Runtime loads `libcufile` dynamically, so enabling the option does not add a mandatory runtime dependency for
 users who keep GDS disabled. It requests PCI P2PDMA, which can provide GDS without `nvidia-fs` on supported recent
 kernels, GPUs, and storage devices. It also disables cuFile compatibility mode: if the storage stack cannot provide
-a native GDS path, ONNX Runtime uses its configured pinned-buffer fallback instead of cuFile's internal POSIX fallback.
+a native GDS path, ONNX Runtime uses its configured host-memory fallback instead of cuFile's internal POSIX fallback.
 GDS is attempted only for external-data ranges whose offset and length are both 4 KiB aligned. An unaligned
 initializer uses the configured fallback without disabling GDS for later aligned initializers.
 The build checks for the required cuFile configuration API. Older CUDA toolkits without it remain supported,
