@@ -266,13 +266,17 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
 
   switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
+#if MIGRAPHX_VERSION_MAJOR > 2 || (MIGRAPHX_VERSION_MAJOR == 2 && MIGRAPHX_VERSION_MINOR >= 9)
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16:
+#endif
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+#if MIGRAPHX_VERSION_MAJOR > 2 || (MIGRAPHX_VERSION_MAJOR == 2 && MIGRAPHX_VERSION_MINOR >= 9)
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT4E2M1:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ:
+#endif
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
