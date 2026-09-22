@@ -1751,10 +1751,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     src_node.MutableRelationships().output_edges.erase(Node::EdgeEnd(dst_node));
     dst_node.MutableRelationships().input_edges.erase(Node::EdgeEnd(src_node));
     dst_node.MutableRelationships().control_inputs.erase(src_node.Name());
-    ort_format_control_edges_.erase(
-        std::remove(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-                    std::pair{src_node_index, dst_node_index}),
-        ort_format_control_edges_.end());
+    UnregisterOrtFormatControlEdge(src_node_index, dst_node_index);
     return;
   }
 
@@ -2144,6 +2141,10 @@ struct GroupNode {
 
       for (auto output_edge_it = node->OutputEdgesBegin(); output_edge_it != node->OutputEdgesEnd();
            ++output_edge_it) {
+        if (output_edge_it->IsControlEdge()) {
+          continue;
+        }
+
         const Node* output_node = &output_edge_it->GetNode();
         // Only if the output arg is used by nodes outside the group, then it is an output arg.
         if (std::find(nodes.begin(), nodes.end(), output_node) == nodes.end()) {
@@ -2339,6 +2340,10 @@ void FindBranchGraph(
     }
 
     for (auto output_it = n->OutputEdgesBegin(); output_it != n->OutputEdgesEnd(); ++output_it) {
+      if (output_it->IsControlEdge()) {
+        continue;
+      }
+
       const Node* output_node = &output_it->GetNode();
       const size_t dest_in_port = output_it->GetDstArgIndex();
       if (std::find(branch_graph.begin(), branch_graph.end(), output_node) == branch_graph.end()) {
@@ -2523,6 +2528,10 @@ void Graph::MemoryEfficientTopologicalSort(const Node* yield_op,
 
     for (auto input_edge_it = current->InputEdgesBegin(); input_edge_it != current->InputEdgesEnd();
          ++input_edge_it) {
+      if (input_edge_it->IsControlEdge()) {
+        continue;
+      }
+
       const NodeArg* input_arg = current->InputDefs()[input_edge_it->GetDstArgIndex()];
       if (!input_arg->Exists()) {
         continue;
@@ -3807,10 +3816,34 @@ Status Graph::VerifyInputAndInitializerNames() {
 }
 
 bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
-  return std::any_of(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-                     [node_index](const auto& control_edge) {
-                       return control_edge.first == node_index || control_edge.second == node_index;
-                     });
+  return ort_format_control_edge_node_counts_.find(node_index) !=
+         ort_format_control_edge_node_counts_.end();
+}
+
+void Graph::RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (!ort_format_control_edges_.emplace(src_node_index, dst_node_index).second) {
+    return;
+  }
+
+  ++ort_format_control_edge_node_counts_[src_node_index];
+  ++ort_format_control_edge_node_counts_[dst_node_index];
+}
+
+void Graph::UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
+  if (ort_format_control_edges_.erase({src_node_index, dst_node_index}) == 0) {
+    return;
+  }
+
+  const auto decrement_node_count = [this](NodeIndex node_index) {
+    const auto it = ort_format_control_edge_node_counts_.find(node_index);
+    ORT_ENFORCE(it != ort_format_control_edge_node_counts_.end());
+    if (--it->second == 0) {
+      ort_format_control_edge_node_counts_.erase(it);
+    }
+  };
+
+  decrement_node_count(src_node_index);
+  decrement_node_count(dst_node_index);
 }
 
 void Graph::RestoreOrtFormatControlEdges() {
@@ -3821,10 +3854,8 @@ void Graph::RestoreOrtFormatControlEdges() {
       continue;
     }
 
-    const bool nodes_are_connected = std::any_of(
-        src_node->OutputEdgesBegin(), src_node->OutputEdgesEnd(),
-        [dst_node_index](const Node::EdgeEnd& edge) { return edge.GetNode().Index() == dst_node_index; });
-    if (nodes_are_connected) {
+    const auto control_edge = src_node->relationships_.output_edges.find(Node::EdgeEnd(*dst_node));
+    if (control_edge != src_node->relationships_.output_edges.end()) {
       dst_node->relationships_.control_inputs.insert(src_node->Name());
     } else {
       Node::AddControlEdgeBetweenNodes(*src_node, *dst_node);
@@ -5155,11 +5186,7 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   }
 
   Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
-  const auto control_edge = std::pair{src_node_index, dst_node_index};
-  if (std::find(ort_format_control_edges_.begin(), ort_format_control_edges_.end(), control_edge) ==
-      ort_format_control_edges_.end()) {
-    ort_format_control_edges_.push_back(control_edge);
-  }
+  RegisterOrtFormatControlEdge(src_node_index, dst_node_index);
   SetGraphResolveNeeded();
   SetGraphProtoSyncNeeded();
 
@@ -6168,6 +6195,23 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
   }
 
   auto new_node_idx = fused_node.Index();
+  const InlinedHashSet<NodeIndex> fused_node_indices(sub_graph.nodes.begin(), sub_graph.nodes.end());
+  InlinedVector<std::pair<NodeIndex, NodeIndex>> replaced_control_edges;
+  InlinedVector<std::pair<NodeIndex, NodeIndex>> replacement_control_edges;
+  for (const auto& control_edge : ort_format_control_edges_) {
+    const bool replace_src = fused_node_indices.find(control_edge.first) != fused_node_indices.end();
+    const bool replace_dst = fused_node_indices.find(control_edge.second) != fused_node_indices.end();
+    if (!replace_src && !replace_dst) {
+      continue;
+    }
+
+    replaced_control_edges.push_back(control_edge);
+    if (replace_src != replace_dst) {
+      replacement_control_edges.emplace_back(
+          replace_src ? new_node_idx : control_edge.first,
+          replace_dst ? new_node_idx : control_edge.second);
+    }
+  }
 
   // Remove nodes that were fused
   for (auto node_index : sub_graph.nodes) {
@@ -6183,6 +6227,11 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto producer_idx = producer.Index();
       auto src_idx = input_edge.GetSrcArgIndex();
       auto dst_idx = input_edge.GetDstArgIndex();
+
+      if (input_edge.IsControlEdge()) {
+        RemoveEdge(producer_idx, node_index, src_idx, dst_idx);
+        continue;
+      }
 
       // if this input is an input of the fused node add an edge for that
       if (dst_idx < static_cast<int>(node->InputDefs().size())) {
@@ -6209,6 +6258,11 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
       auto src_idx = output_edge.GetSrcArgIndex();
       auto dst_idx = output_edge.GetDstArgIndex();
 
+      if (output_edge.IsControlEdge()) {
+        RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
+        continue;
+      }
+
       // if this output is an output of the fused node add an edge for that
       auto it = output_indexes.find(node->OutputDefs()[src_idx]->Name());
       if (it != output_indexes.cend()) {
@@ -6219,6 +6273,17 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
     }
 
     RemoveNode(node_index);
+  }
+
+  for (const auto& control_edge : replaced_control_edges) {
+    UnregisterOrtFormatControlEdge(control_edge.first, control_edge.second);
+  }
+  for (const auto& control_edge : replacement_control_edges) {
+    auto* src_node = GetNode(control_edge.first);
+    auto* dst_node = GetNode(control_edge.second);
+    ORT_ENFORCE(src_node != nullptr && dst_node != nullptr);
+    Node::AddControlEdgeBetweenNodes(*src_node, *dst_node);
+    RegisterOrtFormatControlEdge(control_edge.first, control_edge.second);
   }
 
   NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
@@ -7132,8 +7197,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   for (const auto& node : Nodes()) {
     for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
-      if (edge->GetSrcArgIndex() == INT_MAX && edge->GetDstArgIndex() == INT_MAX) {
-        ort_format_control_edges_.push_back({node.Index(), edge->GetNode().Index()});
+      if (edge->IsControlEdge()) {
+        RegisterOrtFormatControlEdge(node.Index(), edge->GetNode().Index());
       }
     }
   }

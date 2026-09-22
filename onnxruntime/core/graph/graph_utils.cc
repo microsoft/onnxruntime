@@ -549,7 +549,7 @@ std::vector<const Node*> FindParentsByType(const Node& node, const std::string& 
   // there is no need of extra work like FindChildrenByType
   std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
   for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
-    if (it->GetNode().OpType().compare(parent_type) == 0) {
+    if (!it->IsControlEdge() && it->GetNode().OpType().compare(parent_type) == 0) {
       parents[it->GetDstArgIndex()] = &(it->GetNode());
     }
   }
@@ -566,7 +566,7 @@ std::vector<const Node*> FindChildrenByType(const Node& node, const std::string&
   //     and the 2nd dimension stores the edges from the output.
   std::vector<std::vector<const Node*>> children(node.OutputDefs().size(), std::vector<const Node*>());
   for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
-    if (it->GetNode().OpType().compare(child_type) == 0) {
+    if (!it->IsControlEdge() && it->GetNode().OpType().compare(child_type) == 0) {
       children[it->GetSrcArgIndex()].push_back(&(it->GetNode()));
     }
   }
@@ -650,7 +650,9 @@ const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index) {
 std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
   std::vector<GraphEdge> input_edges;
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+    if (!it->IsControlEdge()) {
+      input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+    }
   }
 
   return input_edges;
@@ -672,7 +674,9 @@ std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node, size_t ind
 std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    if (!it->IsControlEdge()) {
+      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    }
   }
 
   return output_edges;
@@ -723,6 +727,10 @@ static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std:
   // check that there are only edges for one output, and set the output_name
   if (node.GetOutputEdgesCount() > 0) {
     for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      if (it->IsControlEdge()) {
+        continue;
+      }
+
       if (first_output == unassigned) {
         first_output = it->GetSrcArgIndex();
       } else if (first_output != it->GetSrcArgIndex()) {
@@ -730,7 +738,9 @@ static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std:
       }
     }
 
-    output_name = &node.OutputDefs()[first_output]->Name();
+    if (first_output != unassigned) {
+      output_name = &node.OutputDefs()[first_output]->Name();
+    }
   }
 
   // outputs could also be direct graph outputs so check if there are any graph outputs that
@@ -762,6 +772,14 @@ bool IsOutputUsed(const Node& node, int index) {
 }
 
 bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& logger) {
+  const auto has_control_edge = [](Node::EdgeConstIterator begin, Node::EdgeConstIterator end) {
+    return std::any_of(begin, end, [](const Node::EdgeEnd& edge) { return edge.IsControlEdge(); });
+  };
+  if (has_control_edge(node.InputEdgesBegin(), node.InputEdgesEnd()) ||
+      has_control_edge(node.OutputEdgesBegin(), node.OutputEdgesEnd())) {
+    return false;
+  }
+
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
     return false;

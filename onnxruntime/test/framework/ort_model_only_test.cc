@@ -6,6 +6,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -460,6 +461,42 @@ TEST(OrtModelTest, AddControlEdgeMarksResolvedGraphDirty) {
   const auto status = graph.Resolve();
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, FusingControlEdgeEndpointPreservesDependency) {
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(LoadOrtModel(
+      BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true), model));
+  auto& graph = model->MainGraph();
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(0);
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "FusedSource";
+  meta_def->domain = "test";
+  meta_def->since_version = 1;
+  sub_graph.SetMetaDef(std::move(meta_def));
+
+  auto& fused_node = graph.BeginFuseSubGraph(sub_graph, "fused_source");
+  const auto fused_node_index = fused_node.Index();
+  graph.FinalizeFuseSubGraph(sub_graph, fused_node);
+
+  auto* destination = graph.GetNode(1);
+  ASSERT_NE(destination, nullptr);
+  EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"fused_source"});
+  ASSERT_EQ(destination->GetInputEdgesCount(), 1);
+  EXPECT_TRUE(destination->InputEdgesBegin()->IsControlEdge());
+  EXPECT_EQ(destination->InputEdgesBegin()->GetNode().Index(), fused_node_index);
+
+  graph.SetGraphResolveNeeded();
+  ASSERT_STATUS_OK(graph.Resolve());
+  destination = graph.GetNode(1);
+  ASSERT_NE(destination, nullptr);
+  EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"fused_source"});
+  ASSERT_EQ(destination->GetInputEdgesCount(), 1);
+  EXPECT_EQ(destination->InputEdgesBegin()->GetNode().Index(), fused_node_index);
 }
 #endif
 

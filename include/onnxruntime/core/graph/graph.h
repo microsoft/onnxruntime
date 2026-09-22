@@ -123,6 +123,10 @@ class Node {
     @returns the destination arg index of <*this> edge.*/
     int GetDstArgIndex() const { return dst_arg_index_; }
 
+    bool IsControlEdge() const noexcept {
+      return src_arg_index_ == INT_MAX && dst_arg_index_ == INT_MAX;
+    }
+
    private:
     const Node* node_;
     const int src_arg_index_;
@@ -1903,6 +1907,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InitInputsInitializersOutputs();
 
   bool HasOrtFormatControlEdge(NodeIndex node_index) const;
+  void RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
+  void UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
   void RestoreOrtFormatControlEdges();
 
   // Initialize overridable initializers container
@@ -2118,7 +2124,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   bool graph_proto_sync_needed_ = false;
 
-  InlinedVector<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
+  std::set<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
+  InlinedHashMap<NodeIndex, size_t> ort_format_control_edge_node_counts_;
 
   // The topological order of node index used to do node and op match verification temporarily.
   std::vector<NodeIndex> nodes_in_topological_order_;
