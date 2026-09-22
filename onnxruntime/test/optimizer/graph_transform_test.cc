@@ -2988,11 +2988,11 @@ TEST_F(GraphTransformationTests, LabelEncoderFusionIgnoresMismatchedEmptyAttribu
     const auto& node_attributes = node.GetAttributes();
     const auto& next_attributes = next_node.GetAttributes();
     if (next_node.OpType() == "LabelEncoder" &&
-        node_attributes.find("values_int64s") != node_attributes.end() &&
-        next_attributes.find("keys_int64s") != next_attributes.end() &&
+        node_attributes.find("values_strings") != node_attributes.end() &&
+        next_attributes.find("keys_strings") != next_attributes.end() &&
         next_attributes.find("values_int64s") != next_attributes.end() &&
         next_attributes.find("values_strings") == next_attributes.end()) {
-      target = &next_node;
+      target = graph.GetNode(next_node.Index());
       break;
     }
   }
