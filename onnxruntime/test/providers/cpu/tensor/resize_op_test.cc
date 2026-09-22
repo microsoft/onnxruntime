@@ -3136,6 +3136,22 @@ TEST(ResizeOpTest, Axes_and_Scale_18) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ResizeOpTest, Axes_Roi_18) {
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<std::vector<int64_t>>("axes", {2});
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("roi", {2}, {0.0f, 1.0f});
+  test.AddInput<float>("scales", {1}, {0.5f}, true);
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.0f, 4.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(ResizeOpTest, Axes_and_Size_18) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
@@ -3485,8 +3501,7 @@ TEST(ResizeOpTest, Roi_TooShortForAxes_18) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "roi input length",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
-            kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {
