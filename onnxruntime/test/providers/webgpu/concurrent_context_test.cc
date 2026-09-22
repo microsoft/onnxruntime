@@ -34,6 +34,8 @@
 #include <atomic>
 #include <barrier>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -49,6 +51,7 @@
 #include "core/platform/env.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -58,6 +61,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {
@@ -172,6 +176,50 @@ class ErrorSink {
 };
 
 }  // namespace
+
+TEST(WebGpuConcurrentContextTestStandalone, ShaderDumpWritesRemainComplete) {
+  TemporaryDirectory temp_dir{ORT_TSTR("webgpu_shader_dump_test")};
+  const auto dump_path = std::filesystem::path(temp_dir.Path()) / ORT_TSTR("shaders.txt");
+  constexpr int kThreads = 8;
+  constexpr int kRecordsPerThread = 100;
+  constexpr size_t kPayloadSize = 4096;
+
+  {
+    auto dump_shader = webgpu::detail::CreateShaderDumpFunction(ToUTF8String(dump_path.native()));
+    std::barrier start{kThreads};
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+    for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+      threads.emplace_back([&, thread_id] {
+        start.arrive_and_wait();
+        for (int record_id = 0; record_id < kRecordsPerThread; ++record_id) {
+          const std::string marker = "record-" + std::to_string(thread_id) + "-" + std::to_string(record_id);
+          dump_shader(marker + "-start\n" + std::string(kPayloadSize, static_cast<char>('a' + thread_id)) +
+                      "\n" + marker + "-end");
+        }
+      });
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  }
+
+  std::ifstream dump_file(dump_path);
+  ASSERT_TRUE(dump_file.is_open());
+  const std::string contents{std::istreambuf_iterator<char>{dump_file}, std::istreambuf_iterator<char>{}};
+  for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+    for (int record_id = 0; record_id < kRecordsPerThread; ++record_id) {
+      const std::string marker = "record-" + std::to_string(thread_id) + "-" + std::to_string(record_id);
+      const std::string record = marker + "-start\n" +
+                                 std::string(kPayloadSize, static_cast<char>('a' + thread_id)) +
+                                 "\n" + marker + "-end\n";
+      const size_t position = contents.find(record);
+      ASSERT_NE(position, std::string::npos) << "Missing or corrupted shader dump record " << marker;
+      EXPECT_EQ(contents.find(record, position + 1), std::string::npos)
+          << "Duplicate shader dump record " << marker;
+    }
+  }
+}
 
 // Fixture: builds the shared model once and provides session/feed factories. A long-lived
 // keepalive session pins the shared WebGPU context (ref-count > 0) for the whole test so that

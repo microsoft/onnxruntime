@@ -24,6 +24,10 @@ class Tensor;
 namespace webgpu {
 class WebGpuContext;
 
+namespace detail {
+std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path);
+}
+
 // Callback state for asynchronous pipeline creation. The created pipeline is written into
 // `pipeline` by the callback, so only this (heap-allocated) object must remain alive until the
 // future completes.
