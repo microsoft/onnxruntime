@@ -521,11 +521,6 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    // Convert to channels last
-    if (transform->has_channels_last_attrib_) {
-      node->SetAttributeInt("channels_last", 1);
-    }
-
     size_t rank = shape->dim_size();
     std::vector<int64_t> input_perm = ChannelFirstToLastPerm(rank);
     std::vector<int64_t> output_perm = ChannelLastToFirstPerm(rank);
@@ -540,7 +535,13 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       input_perms[3] = &input_perm;
     }
 
-    WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
+    if (!WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm})) {
+      continue;
+    }
+
+    if (transform->has_channels_last_attrib_) {
+      node->SetAttributeInt("channels_last", 1);
+    }
 
     // Replace the operator if needed
     if (node->Domain() != transform->domain_ ||

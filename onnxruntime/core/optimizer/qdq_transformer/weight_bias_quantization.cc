@@ -133,10 +133,12 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
         if (!weight_shape && dq_1->InputDefs()[0]) {
           weight_shape = dq_1->InputDefs()[0]->Shape();
         }
-        if (axis < 0 && !weight_shape) {
-          continue;
+        if (axis < 0) {
+          if (!weight_shape) {
+            continue;
+          }
+          axis = HandleNegativeAxis(axis, weight_shape->dim_size());
         }
-        axis = HandleNegativeAxis(axis, weight_shape->dim_size());
       }
 
       int64_t expected_axis = 0;
