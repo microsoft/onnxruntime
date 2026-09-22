@@ -697,7 +697,7 @@ TEST(MultiHeadAttentionTest, CpuSharedCacheCopiesEachHeadFromCorrectInputStride)
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, CpuSharedCacheSupportsDistinctValueHeadSize) {
+TEST(MultiHeadAttentionTest, SharedCacheRejectsDistinctValueHeadSize) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
 
@@ -711,13 +711,15 @@ TEST(MultiHeadAttentionTest, CpuSharedCacheSupportsDistinctValueHeadSize) {
   tester.AddInput<float>("past_value", {1, 1, 3, 1}, {100.0f, -1.0f, -1.0f}, true);
   tester.AddInput<int32_t>("past_sequence_length", {1}, {1}, true);
 
-  tester.AddOutput<float>("output", {1, 2, 1}, {50.0f, 50.0f});
-  tester.AddOutput<float>("present_key", {1, 1, 3, 2}, {10.0f, 11.0f, 2.0f, 3.0f, 4.0f, 5.0f});
-  tester.AddOutput<float>("present_value", {1, 1, 3, 1}, {100.0f, 20.0f, 30.0f});
+  tester.AddOutput<float>("output", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddOutput<float>("present_key", {1, 1, 3, 2}, std::vector<float>(6));
+  tester.AddOutput<float>("present_value", {1, 1, 3, 1}, std::vector<float>(3));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Input 'past_value' dimension 3 should be same as head_size",
+             {}, nullptr, &execution_providers);
 }
 
 TEST(MultiHeadAttentionTest, SharedCacheRequiresPresentOutputs) {
