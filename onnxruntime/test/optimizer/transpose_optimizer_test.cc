@@ -12,6 +12,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
@@ -5342,6 +5343,196 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
       }
     }
   }
+}
+
+TEST(TransposeOptimizerTests, PerAxisQAxisExceedsTransposePermNoOpt) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::nullopt);
+    auto* identity_out = builder.MakeIntermediate<float>(std::nullopt);
+    auto* transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>(5, -1));
+    auto* output = builder.MakeOutput<uint8_t>(std::vector<int64_t>(5, -1));
+    auto* dq_input = builder.MakeInput<uint8_t>({1}, {uint8_t{1}});
+    auto* dq_output = builder.MakeOutput();
+
+    builder.AddNode("Identity", {input}, {identity_out});
+    auto& transpose = builder.AddNode("Transpose", {identity_out}, {transpose_out});
+    transpose.AddAttribute("perm", std::vector<int64_t>{1, 0});
+    auto& quantize = builder.AddQuantizeLinearNode<uint8_t>(
+        transpose_out, std::vector<float>(3, 0.05f), std::vector<uint8_t>(3, 0), output);
+    quantize.AddAttribute("axis", static_cast<int64_t>(4));
+    builder.AddDequantizeLinearNode<uint8_t>(dq_input, 0.05f, static_cast<uint8_t>(0), dq_output);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const Node* transpose = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        transpose = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(transpose != nullptr);
+    TEST_RETURN_IF_NOT(transpose->InputDefs()[0]->Shape() == nullptr);
+    TEST_RETURN_IF_NOT(transpose->OutputDefs()[0]->Shape() != nullptr &&
+                       transpose->OutputDefs()[0]->Shape()->dim_size() == 5);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("Transpose") != 0 && op_to_count.at("Transpose") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("QuantizeLinear") != 0 && op_to_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("DequantizeLinear") != 0 && op_to_count.at("DequantizeLinear") == 1);
+
+    const Node* quantize = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "QuantizeLinear") {
+        quantize = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(quantize != nullptr);
+    const Node* transpose = graph.GetProducerNode(quantize->InputDefs()[0]->Name());
+    TEST_RETURN_IF_NOT(transpose != nullptr && transpose->OpType() == "Transpose");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermutation) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformRejectsPerAxisDQAxisExceedingPermutation", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* dq_input = builder.MakeInput<uint8_t>(std::vector<int64_t>{1, 1, 1, 1, 3},
+                                              std::vector<uint8_t>{1, 2, 3});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1, 1, 1, 1, 3});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1, 1, 1, 3});
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Identity", {dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
+  onnx_transpose_optimization::api::NodeRef* identity = nullptr;
+  for (auto& node : nodes) {
+    if (node->OpType() == "Identity") {
+      identity = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(identity, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_FALSE(layout_transformation::WrapTransposesAroundNode(*api_graph, *identity, {&perm}, {&perm}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.count("Transpose"), 0);
+  EXPECT_EQ(identity->Inputs()[0], dq_output->Name());
+}
+
+TEST(TransposeOptimizerTests, LayoutTransformAllowsDQWithUnavailableQuantizationInfo) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformAllowsDQWithUnavailableQuantizationInfo", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* dq_input = MakeInput<uint8_t>(builder, std::nullopt, {1, 1, 1, 1, 3},
+                                      std::vector<uint8_t>{1, 2, 3});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>(std::nullopt);
+  auto* output = builder.MakeOutput<float>(std::nullopt);
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Identity", {dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
+  onnx_transpose_optimization::api::NodeRef* identity = nullptr;
+  for (auto& node : nodes) {
+    if (node->OpType() == "Identity") {
+      identity = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(identity, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_TRUE(layout_transformation::WrapTransposesAroundNode(*api_graph, *identity, {&perm}, {&perm}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.count("Transpose"), 1);
+  EXPECT_EQ(op_to_count.at("Transpose"), 2);
+  const auto* input_transpose = graph.GetProducerNode(std::string(identity->Inputs()[0]));
+  ASSERT_NE(input_transpose, nullptr);
+  EXPECT_EQ(input_transpose->OpType(), "Transpose");
+  EXPECT_EQ(input_transpose->InputDefs()[0]->Name(), dq_output->Name());
+  EXPECT_EQ(dq.InputDefs()[0]->Name(), dq_input->Name());
+}
+
+TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("LayoutTransformPreflightsAllInputsBeforeMutation", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* valid_input = builder.MakeInput<float>({1, 1}, {1.0f});
+  auto* dq_input = MakeInput<uint8_t>(builder, std::vector<int64_t>{1, 1, 1, 1, 3}, {1, 1, 1, 1, 3},
+                                      std::vector<uint8_t>{1, 2, 3});
+  auto* scale = builder.MakeInitializer<float>({3}, {0.05f, 0.05f, 0.05f});
+  auto* zero_point = builder.MakeInitializer<uint8_t>({3}, {0, 0, 0});
+  auto* dq_output = builder.MakeIntermediate<float>(std::nullopt);
+  auto* output = builder.MakeOutput<float>(std::nullopt);
+  auto& dq = builder.AddNode("DequantizeLinear", {dq_input, scale, zero_point}, {dq_output});
+  dq.AddAttribute("axis", static_cast<int64_t>(4));
+  builder.AddNode("Add", {valid_input, dq_output}, {output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
+  onnx_transpose_optimization::api::NodeRef* add = nullptr;
+  for (auto& node : nodes) {
+    if (node->OpType() == "Add") {
+      add = node.get();
+      break;
+    }
+  }
+  ASSERT_NE(add, nullptr);
+
+  const std::vector<int64_t> perm{1, 0};
+  EXPECT_FALSE(layout_transformation::WrapTransposesAroundNode(*api_graph, *add, {&perm, &perm}, {}));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.count("Transpose"), 0);
+  EXPECT_EQ(add->Inputs()[0], valid_input->Name());
+  EXPECT_EQ(add->Inputs()[1], dq_output->Name());
 }
 
 // Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
