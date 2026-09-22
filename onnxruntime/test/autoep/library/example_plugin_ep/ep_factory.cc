@@ -31,11 +31,13 @@ int CompatibilityRank(OrtCompiledModelCompatibility c) {
 }
 }  // namespace
 
-ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
+ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger,
+                                   bool create_duplicate_virtual_devices)
     : OrtEpFactory{},
       ApiPtrs(apis),
       default_logger_{default_logger},
       ep_name_{ep_name},
+      create_duplicate_virtual_devices_{create_duplicate_virtual_devices},
       default_memory_info_{nullptr},
       readonly_memory_info_{nullptr},
       host_accessible_memory_info_{nullptr} {
@@ -115,6 +117,12 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 }
 
+ExampleEpFactory::~ExampleEpFactory() {
+  for (auto* device : virtual_hardware_devices_) {
+    ep_api.ReleaseHardwareDevice(device);
+  }
+}
+
 /*static*/
 const char* ORT_API_CALL ExampleEpFactory::GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
@@ -149,51 +157,104 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
   size_t& num_ep_devices = *p_num_ep_devices;
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
+  auto add_ep_device = [&](const OrtHardwareDevice& device) -> OrtStatus* {
+    auto key_value_pairs_deleter = [factory](OrtKeyValuePairs* kvps) {
+      if (kvps != nullptr) {
+        factory->ort_api.ReleaseKeyValuePairs(kvps);
+      }
+    };
+
+    OrtKeyValuePairs* raw_ep_metadata = nullptr;
+    factory->ort_api.CreateKeyValuePairs(&raw_ep_metadata);
+    std::unique_ptr<OrtKeyValuePairs, decltype(key_value_pairs_deleter)> ep_metadata(raw_ep_metadata,
+                                                                                     key_value_pairs_deleter);
+
+    OrtKeyValuePairs* raw_ep_options = nullptr;
+    factory->ort_api.CreateKeyValuePairs(&raw_ep_options);
+    std::unique_ptr<OrtKeyValuePairs, decltype(key_value_pairs_deleter)> ep_options(raw_ep_options,
+                                                                                    key_value_pairs_deleter);
+
+    // random example using made up values
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), "supported_devices", "CrackGriffin 7+");
+    // Example os_driver_version. A real EP would read the OS driver version from the device.
+    // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
+    // GroupQueryAttention Value cache layout preference. "BNSH" here because GetCapabilityImpl()
+    // only claims Mul, Custom_Mul and EPContext nodes, so this EP cannot fuse the
+    // Transpose -> GroupQueryAttention -> Transpose sequence that ORT inserts for "BNHS".
+    // Reporting "BNHS" without implementing that fusion would steer applications into a layout
+    // this EP cannot execute any faster, and the transposes would run for real.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
+    // Report weightless support for all initializers.
+    factory->ort_api.AddKeyValuePair(ep_metadata.get(), kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
+    factory->ort_api.AddKeyValuePair(ep_options.get(), "run_really_fast", "true");
+
+    // OrtEpDevice copies ep_metadata and ep_options.
+    OrtEpDevice* ep_device = nullptr;
+    auto* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata.get(), ep_options.get(),
+                                                               &ep_device);
+    if (status != nullptr) {
+      return status;
+    }
+
+    // Register the allocator info required by the EP.
+    // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
+    // OrtDeviceMemoryType_HOST_ACCESSIBLE is also optional and exposes CPU-accessible memory on the EP device.
+    status = factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_);
+    if (status != nullptr) {
+      return status;
+    }
+
+    status = factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_);
+    if (status != nullptr) {
+      return status;
+    }
+
+    status = factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->host_accessible_memory_info_);
+    if (status != nullptr) {
+      return status;
+    }
+
+    ep_devices[num_ep_devices++] = ep_device;
+    return nullptr;
+  };
+
+  if (factory->create_duplicate_virtual_devices_) {
+    // Exercise the multi-device AutoEP case without relying on host hardware: both virtual devices belong to this
+    // factory and therefore expose the same custom-op domains. Session creation must register each domain only once.
+    for (size_t i = 0; i < factory->virtual_hardware_devices_.size() && num_ep_devices < max_ep_devices; ++i) {
+      if (factory->virtual_hardware_devices_[i] == nullptr) {
+        OrtKeyValuePairs* virtual_device_metadata = nullptr;
+        factory->ort_api.CreateKeyValuePairs(&virtual_device_metadata);
+        factory->ort_api.AddKeyValuePair(virtual_device_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+
+        auto* status = factory->ep_api.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_CPU,
+                                                            factory->vendor_id_, static_cast<uint32_t>(i),
+                                                            factory->vendor_.c_str(), virtual_device_metadata,
+                                                            &factory->virtual_hardware_devices_[i]);
+        factory->ort_api.ReleaseKeyValuePairs(virtual_device_metadata);
+        if (status != nullptr) {
+          return status;
+        }
+      }
+
+      auto* status = add_ep_device(*factory->virtual_hardware_devices_[i]);
+      if (status != nullptr) {
+        return status;
+      }
+    }
+
+    return nullptr;
+  }
+
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     // C API
     const OrtHardwareDevice& device = *devices[i];
     if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      // these can be returned as nullptr if you have nothing to add.
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
-      factory->ort_api.CreateKeyValuePairs(&ep_metadata);
-      factory->ort_api.CreateKeyValuePairs(&ep_options);
-
-      // random example using made up values
-      factory->ort_api.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
-      // Example os_driver_version. A real EP would read the OS driver version from the device.
-      // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
-      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
-      // GroupQueryAttention Value cache layout preference. "BNSH" here because GetCapabilityImpl()
-      // only claims Mul, Custom_Mul and EPContext nodes, so this EP cannot fuse the
-      // Transpose -> GroupQueryAttention -> Transpose sequence that ORT inserts for "BNHS".
-      // Reporting "BNHS" without implementing that fusion would steer applications into a layout
-      // this EP cannot execute any faster, and the transposes would run for real.
-      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
-      // Report weightless support for all initializers.
-      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
-      factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
-
-      // OrtEpDevice copies ep_metadata and ep_options.
-      OrtEpDevice* ep_device = nullptr;
-      auto* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
-                                                                 &ep_device);
-
-      factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
-      factory->ort_api.ReleaseKeyValuePairs(ep_options);
-
+      auto* status = add_ep_device(device);
       if (status != nullptr) {
         return status;
       }
-
-      // register the allocator info required by the EP.
-      // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
-      // OrtDeviceMemoryType_HOST_ACCESSIBLE is also optional and exposes CPU-accessible memory on the EP device.
-      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
-      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
-      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->host_accessible_memory_info_));
-
-      ep_devices[num_ep_devices++] = ep_device;
     }
 
     // C++ API equivalent. Throws on error.
