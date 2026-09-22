@@ -909,9 +909,28 @@ static ONNX_NAMESPACE::ModelProto CreateForwardedNestedGraphAttributeModel() {
   return model_proto;
 }
 
+static ONNX_NAMESPACE::ModelProto CreateDirectNestedGraphAttributeModel() {
+  auto model_proto = CreateForwardedNestedGraphAttributeModel();
+  auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+  auto* forwarder = model_proto.mutable_functions(model_proto.functions_size() - 2);
+  auto* direct_binding = forwarder->mutable_node(0)->mutable_attribute(0);
+  direct_binding->clear_ref_attr_name();
+  *direct_binding->mutable_g() = root_call->attribute(0).g();
+  return model_proto;
+}
+
 TEST(FunctionTest, ForwardedGraphAttributePreservesNestedReferenceBindings) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateForwardedNestedGraphAttributeModel(), nullptr, logger);
+  const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, DirectGraphAttributePreservesNestedReferenceBindings) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateDirectNestedGraphAttributeModel(), nullptr, logger);
   const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
