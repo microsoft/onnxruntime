@@ -68,22 +68,23 @@ Status GroupNormOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const int64_t groups = helper.Get(is_contrib ? "groups" : "num_groups", static_cast<int64_t>(0));
 
   // WebNN instanceNormalization is 4D-only, but group normalization is rank-agnostic: we always
-  // normalize on a 4D [N, G, merged, 1] tensor, so any input rank >= 3 is supported by reshaping
-  // in and out (mirrors how instanceNormalization handles non-4D input in normalization_op_builder).
+  // normalize on a 4D [N, G, merged_count, 1] tensor, so any input rank >= 3 is supported by
+  // reshaping in and out (mirrors how instanceNormalization handles non-4D input in
+  // normalization_op_builder).
   const size_t rank = input_shape.size();
   const size_t channel_axis = channels_last ? rank - 1 : 1;  // NHWC: last; NCHW: 1.
   const uint32_t batch = SafeInt<uint32_t>(input_shape[0]);
   const uint32_t channels = SafeInt<uint32_t>(input_shape[channel_axis]);
   const uint32_t group_count = SafeInt<uint32_t>(groups);
 
-  // merged = (C / G) * product(spatial dims). Spatial = every dim except batch and channel.
-  uint32_t spatial = 1;
+  // merged_count = (C / G) * product(spatial dims). Spatial = every dim except batch and channel.
+  uint32_t spatial_count = 1;
   for (size_t i = 1; i < rank; ++i) {
     if (i != channel_axis) {
-      spatial *= SafeInt<uint32_t>(input_shape[i]);
+      spatial_count *= SafeInt<uint32_t>(input_shape[i]);
     }
   }
-  const uint32_t merged = (channels / group_count) * spatial;
+  const uint32_t merged_count = (channels / group_count) * spatial_count;
 
   // NCHW shape the normalization runs on (channel at index 1). We reshape/affine/reshape in this
   // layout, then transpose back for channels_last. Spatial dims keep their original order.
@@ -157,7 +158,7 @@ Status GroupNormOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   }
 
   // Reshape to [N, G, (C/G)*spatial, 1] (4D MVN variant with trailing unit dimension).
-  std::vector<uint32_t> pre_mvn_shape{batch, group_count, merged, 1};
+  std::vector<uint32_t> pre_mvn_shape{batch, group_count, merged_count, 1};
   common_options.set("label", node.Name() + "_reshape_pre_mvn");
   emscripten::val grouped = wnn_builder.call<emscripten::val>(
       "reshape", input, emscripten::val::array(pre_mvn_shape), common_options);
@@ -267,7 +268,7 @@ bool GroupNormOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     return false;
   }
   // Group normalization needs a batch, a channel and at least one spatial dim. It is normalized on
-  // a 4D [N, G, merged, 1] tensor internally, so any rank >= 3 is supported (see AddToModelBuilderImpl).
+  // a 4D [N, G, merged_count, 1] tensor internally, so any rank >= 3 is supported (see AddToModelBuilderImpl).
   if (input_shape.size() < 3) {
     LOGS(logger, VERBOSE) << op_type << " requires input rank >= 3.";
     return false;
@@ -368,7 +369,7 @@ bool GroupNormOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& 
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
   }
-  // instanceNormalization always runs on the 4D [N, G, merged, 1] tensor, while the per-channel
+  // instanceNormalization always runs on the 4D [N, G, merged_count, 1] tensor, while the per-channel
   // mul/add run at the input rank.
   return IsRankSupportedByWebNNOp(wnn_limits, "instanceNormalization", "input", 4, node.Name(), logger) &&
          IsRankSupportedByWebNNOp(wnn_limits, "mul", "a", input_shape.size(), node.Name(), logger) &&
