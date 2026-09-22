@@ -74,8 +74,14 @@ TEST_F(ExperimentalCApiTest, ConsistentLookup) {
   EXPECT_EQ(fn1, fn2);
 }
 
+TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsUsesIntroductionVersion) {
+  EXPECT_NE(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV31"), nullptr);
+  EXPECT_EQ(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV29"), nullptr);
+  EXPECT_EQ(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV30"), nullptr);
+}
+
 TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsPreserveOutputsOnInvalidArguments) {
-  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV29_FnOrThrow(api_);
+  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV31_FnOrThrow(api_);
 #if !defined(ORT_MINIMAL_BUILD)
   constexpr auto expected_error = ORT_INVALID_ARGUMENT;
 #else
@@ -102,7 +108,7 @@ TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsPreserveOutputsOnInvalidArgument
 }
 
 TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsReportStatsOrUnsupported) {
-  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV29_FnOrThrow(api_);
+  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV31_FnOrThrow(api_);
   int64_t reclaimed_bytes = 123;
   size_t arena_count = 456;
   Ort::Status status{fn("test", false, &reclaimed_bytes, &arena_count)};

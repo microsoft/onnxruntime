@@ -1206,8 +1206,6 @@ struct ProviderHost {
   virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) = 0;
-  virtual Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
-                                                           size_t requested_bytes, void** workspace) = 0;
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
@@ -1452,6 +1450,10 @@ struct ProviderHost {
       int execution_device_id,
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
+
+  // Append new bridge methods to preserve existing vtable slots.
+  virtual Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
+                                                           size_t requested_bytes, void** workspace) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

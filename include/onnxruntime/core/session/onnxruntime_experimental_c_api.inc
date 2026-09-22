@@ -47,8 +47,12 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * \param[in] shrink Whether to call Shrink once on each registered GPU arena.
  * \param[out] reclaimed_bytes Total bytes released by Shrink. Unchanged on failure.
  * \param[out] arena_count Number of registered GPU arenas. Unchanged on failure.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \since Version 1.31.
  */
-ORT_EXPERIMENTAL_API(29, OrtStatusPtr, OrtApi_DebugLogAndShrinkGpuArenas,
+ORT_EXPERIMENTAL_API(31, OrtStatusPtr, OrtApi_DebugLogAndShrinkGpuArenas,
                      _In_ const char* checkpoint,
                      bool shrink,
                      _Out_ int64_t* reclaimed_bytes,

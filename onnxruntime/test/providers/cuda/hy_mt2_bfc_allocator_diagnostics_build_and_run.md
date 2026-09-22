@@ -132,7 +132,7 @@ $OrtInstall\lib\cmake\onnxruntime
 The diagnostic API is experimental and is looked up by this exact name:
 
 ```text
-OrtApi_DebugLogAndShrinkGpuArenas_SinceV29
+OrtApi_DebugLogAndShrinkGpuArenas_SinceV31
 ```
 
 It is available only when `onnxruntime.dll` was built from a source revision
@@ -723,7 +723,7 @@ Set it before launching the benchmark process.
 ### `GPU arena diagnostic function is unavailable`
 
 The process loaded an `onnxruntime.dll` without
-`OrtApi_DebugLogAndShrinkGpuArenas_SinceV29`, usually because a packaged ORT
+`OrtApi_DebugLogAndShrinkGpuArenas_SinceV31`, usually because a packaged ORT
 DLL appeared earlier in the runtime search path. Check loaded-module paths
 and compare hashes in `$Deploy`, `$FoundryEpDir`, and any directory prepended
 to `PATH`.

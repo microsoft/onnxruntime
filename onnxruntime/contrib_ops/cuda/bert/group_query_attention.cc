@@ -509,9 +509,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       sliding_window_cache_ ||
       (parameters.total_sequence_length > 0 &&
        parameters.total_sequence_length <= max_total_sequence_length_);
-  if (declared_workspace_bytes != 0 && workspace_bound_satisfied) {
+  if (declared_workspace_bytes != 0) {
+    // Trace the declared slot even when this run's scalar bound requires scratch.
+    // Memory-pattern keys contain input shapes, not total_sequence_length's value.
     ORT_RETURN_IF_ERROR(context->GetPreallocatedWorkspace(
         /*slot_id=*/0, declared_workspace_bytes, &preallocated_workspace));
+    if (!workspace_bound_satisfied) {
+      preallocated_workspace = nullptr;
+    }
   }
 #endif
   size_t preallocated_workspace_offset = 0;

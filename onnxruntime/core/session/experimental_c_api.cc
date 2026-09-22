@@ -59,7 +59,7 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
+ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV31,
                     _In_ const char* checkpoint,
                     bool shrink,
                     _Out_ int64_t* reclaimed_bytes,
