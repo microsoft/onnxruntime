@@ -59,9 +59,9 @@ Status LaunchXQAPagedKernel(
     void* workspace,
     size_t workspace_size);
 
-// Multi-token speculative-verification launcher. The implementation is deliberately limited to
-// the DFlash2 target geometry: FP16/BF16 query/output, H256, group size 6, and matching native or
-// INT8/FP8 paged KV, or packed INT4 with FP16 query/output and the PER_CHANNEL scale folding above.
+// Multi-token speculative-verification launcher. The DFlash2 target geometry supports group size
+// 6 with query lengths 2..8. H256 supports the existing native and quantized cache variants; H128
+// additionally supports FP16 query/output with an INT8 paged KV cache.
 Status LaunchXQAPagedSpecDecKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -93,11 +93,12 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
     const cudaDeviceProp& device_prop,
     int batch_size,
     int kv_num_heads,
+    int head_size,
     int max_pages_per_seq,
     int max_query_len,
     XqaQuantType kv_quant_type);
 
-size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(XqaQuantType kv_quant_type);
+size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(int head_size, XqaQuantType kv_quant_type);
 
 // Workspace bytes required by LaunchXQAPagedKernel (semaphores + multi-block scratch). The paged
 // and contiguous kernels share the CTA tile and the scratch layout, so this is GetXQAScratchSize
