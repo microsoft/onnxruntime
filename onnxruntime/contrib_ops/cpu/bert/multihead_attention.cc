@@ -266,10 +266,9 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  if (use_decoder_masked_multihead_attention) {
+  if (parameters.past_present_share_buffer) {
     // No production use-case will incur this copy cost as the implementation of
-    // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
-    // must be shared to have parity in the outputs.
+    // shared-buffer attention requires the past and present buffers to be bound to the same memory.
     // This is just to circumvent the OpTester's limitation of not being able to bind a specific
     // buffer to inputs/outputs.
     auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
@@ -277,15 +276,17 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
     auto* present_value_data = (present_value == nullptr) ? nullptr : present_value->MutableData<T>();
 
-    if (present_key_data != past_key_data) {
+    if (present_key_data != nullptr && present_key_data != past_key_data) {
       DUMP_CPU_STRING("Copying past_key to present_key for OpTester");
       memcpy(present_key_data, past_key_data, past_key->SizeInBytes());
     }
-    if (present_value_data != past_value_data) {
+    if (present_value_data != nullptr && present_value_data != past_value_data) {
       DUMP_CPU_STRING("Copying past_value to present_value for OpTester");
       memcpy(present_value_data, past_value_data, past_value->SizeInBytes());
     }
+  }
 
+  if (use_decoder_masked_multihead_attention) {
     return ApplyAttentionWithBeams(Q.GetMutable<Tensor>()->MutableData<T>(),
                                    K.GetMutable<Tensor>()->MutableData<T>(),
                                    V.GetMutable<Tensor>()->MutableData<T>(),
@@ -303,7 +304,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         key_padding_mask, nullptr /* past */, past_key, past_value,
                         output, present_key, present_value, output_qk,
                         batch_size, q_sequence_length, kv_sequence_length,
-                        qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
+                        qk_head_size, v_head_size, v_hidden_size, attn_bias, context,
+                        parameters.past_sequence_length, parameters.past_present_share_buffer);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
