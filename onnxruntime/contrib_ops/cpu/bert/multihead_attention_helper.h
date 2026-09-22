@@ -118,7 +118,8 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, int num_heads, 
 
 template <typename T>
 Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
-                 int batch_size, int num_heads, int head_size, bool past_present_share_buffer,
+                 int batch_size, int num_heads, int head_size, int v_head_size,
+                 bool past_present_share_buffer,
                  int& past_sequence_length, int& max_sequence_length) {
   const auto& past_key_dims = past_key->Shape().GetDims();
   const auto& past_value_dims = past_value->Shape().GetDims();
@@ -165,9 +166,9 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
                            "Input 'past_key' dimension 3 should be same as head_size, got ",
                            past_key_dims[3]);
   }
-  if (past_value_dims[3] != head_size) {
+  if (past_value_dims[3] != v_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'past_value' dimension 3 should be same as value head size, got ",
                            past_value_dims[3]);
   }
   past_sequence_length = static_cast<int>(past_key_dims[2]);
@@ -335,7 +336,7 @@ Status CheckInputs(const T* query,
   //     key_padding_mask (K/V)     : (B) or (3 * B + 2) or (B, T) or (B, S, T)
   //     attention_bias             : (B, N, S, T), (1, N, S, T), (B, 1, S, T) or (1, 1, S, T)
   //     past_key                   : (B, N, P, H) or None. Past state is only allowed for Q_K_V_BSNH.
-  //     past_value                 : (B, N, P, H) or None. Past state is only allowed for Q_K_V_BSNH.
+  //     past_value                 : (B, N, P, H_v) or None. Past state is only allowed for Q_K_V_BSNH.
   // ---------------------------------------------------------------
   // DecoderMaskedMultiHeadAttention inputs (S == 1, D == D_v):
   // ---------------------------------------------------------------
@@ -361,7 +362,7 @@ Status CheckInputs(const T* query,
   //  The following inputs are not used in cross attention (so they are None for cross attention):
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
   //                                  For CUDA, past_present_share_buffer is always True.
-  //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
+  //     past_value                 : (B, N, P, H_v), or (B, N, M, H_v) when past_present_share_buffer is True.
   //                                  For CUDA, past_present_share_buffer is always True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True.
   //  CUDA version has extra inputs (beam_width, cache_indirection) that are not checked in the class.
@@ -404,7 +405,8 @@ Status CheckInputs(const T* query,
   int max_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, past_seq_len,
-                                  batch_size, num_heads, head_size, past_present_share_buffer,
+                                  batch_size, num_heads, head_size, v_hidden_size / num_heads,
+                                  past_present_share_buffer,
                                   past_sequence_length, max_sequence_length));
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

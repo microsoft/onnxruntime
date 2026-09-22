@@ -146,6 +146,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_value = context->Output(2, present_value_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
+  if (parameters.past_present_share_buffer &&
+      (present_key == nullptr || present_value == nullptr)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Shared past/present buffer requires both present_key and present_value outputs.");
+  }
+
   bool use_decoder_masked_multihead_attention = false;
   if (cache_indirection != nullptr) {
     bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH &&
