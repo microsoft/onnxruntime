@@ -298,15 +298,18 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       mgx_type = migraphx_shape_half_type;
       break;
+#if MIGRAPHX_VERSION_MAJOR > 2 || (MIGRAPHX_VERSION_MAJOR == 2 && MIGRAPHX_VERSION_MINOR >= 9)
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       mgx_type = migraphx_shape_bf16_type;
       break;
+#endif
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       mgx_type = migraphx_shape_float_type;
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       mgx_type = migraphx_shape_double_type;
       break;
+#if MIGRAPHX_VERSION_MAJOR > 2 || (MIGRAPHX_VERSION_MAJOR == 2 && MIGRAPHX_VERSION_MINOR >= 9)
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
       mgx_type = migraphx_shape_fp8e4m3fnuz_type;
       break;
@@ -322,6 +325,7 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:
       mgx_type = migraphx_shape_fp4x2_type;
       break;
+#endif
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       mgx_type = migraphx_shape_int8_type;
       break;
