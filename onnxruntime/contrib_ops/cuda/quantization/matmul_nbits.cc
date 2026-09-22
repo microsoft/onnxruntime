@@ -127,7 +127,7 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int device_sm, int fpa_intb_option) {
 #if USE_COMPACT_FPA_INTB_GEMM
   const bool dtype_ok = input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-                        (input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 && nbits != 2);
+                        input0_elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 #else
   ORT_UNUSED_PARAMETER(has_zero_points);
   ORT_UNUSED_PARAMETER(has_bias);
@@ -528,14 +528,19 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
           std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::BF16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
-    } else {
+    } else if (nbits_ == 4) {
       cuda_kernel_type = KernelType::BF16Int4Groupwise;
       weightOnlyGemmRunner_ =
           std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::BF16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleOnly>>();
     }
   } else {
     ORT_THROW("Compact fpA_intB GEMM only supports FP16/BF16 activations");

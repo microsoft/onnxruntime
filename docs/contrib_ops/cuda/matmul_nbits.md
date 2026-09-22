@@ -268,8 +268,7 @@ tile saturates the SMs while keeping scratch ≲128 MB.
 for CUDA builds. Its default kernel set is intentionally compact, excludes the
 native Hopper kernel, and covers the SM80-layout RC model contract:
 
-- FP16 activations and INT2, INT4 or INT8 weights, or BF16 activations and INT4
-  or INT8 weights,
+- FP16 or BF16 activations and INT2, INT4 or INT8 weights,
 - scale-only quantization with no zero-points, bias, or `g_idx`, at
   `block_size=32` for 4/8-bit and `block_size=64` for 2-bit (2-bit has no valid
   `block_size=32`; see §6.1),
@@ -278,15 +277,15 @@ native Hopper kernel, and covers the SM80-layout RC model contract:
 - unpacked weights or `weight_prepacked=1` (the SM80 layout).
 
 Set `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON` to build the legacy full kernel
-matrix. Full mode additionally supports BF16 with INT2, `block_size=128`,
-`block_size=64` for 4/8-bit, zero-points, bias, and the native SM90 layout
+matrix. Full mode additionally supports `block_size=128`, `block_size=64` for
+4/8-bit, zero-points, bias, and the native SM90 layout
 (`weight_prepacked=2`). The native SM90 kernel supports only
 `block_size ∈ {64, 128}`; see §2.1.
 
 ### 6.1 2-bit weights
 
 `bits=2` reuses the SM80 column-interleaved weight layout. The compact set
-carries the FP16 scale-only variant at `block_size=64`; BF16, `block_size=128`
+carries the FP16/BF16 scale-only variants at `block_size=64`; `block_size=128`
 and zero-points need `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON`. Relative to 4-bit
 the eligibility rules add two constraints:
 

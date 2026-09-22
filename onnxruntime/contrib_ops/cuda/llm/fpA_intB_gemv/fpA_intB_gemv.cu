@@ -49,13 +49,15 @@ void kernel_launcher(int kernel_arch, Params& params, cudaStream_t s) {
               "The compact fpA_intB GEMV does not support the SM90 weight layout");
   ORT_ENFORCE(params.type == KernelType::FP16Int8Groupwise || params.type == KernelType::FP16Int4Groupwise ||
                   params.type == KernelType::FP16Int2Groupwise ||
-                  params.type == KernelType::BF16Int8Groupwise || params.type == KernelType::BF16Int4Groupwise,
-              "The compact fpA_intB GEMV supports FP16 groupwise kernels and BF16 INT4/INT8 kernels");
+                  params.type == KernelType::BF16Int8Groupwise || params.type == KernelType::BF16Int4Groupwise ||
+                  params.type == KernelType::BF16Int2Groupwise,
+              "The compact fpA_intB GEMV supports only FP16/BF16 groupwise kernels");
   EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
   EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
   EXEC(KernelType::FP16Int2Groupwise, FP16DetailsA, Int2DetailsW, ColumnMajorInterleaved, true);
   EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
   EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+  EXEC(KernelType::BF16Int2Groupwise, BF16DetailsA, Int2DetailsW, ColumnMajorInterleaved, true);
 #else
   if (kernel_arch < 80) {
     EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
