@@ -59,7 +59,7 @@ constexpr int64_t kDefaultBits = 8;
 constexpr int64_t kDefaultBits = 4;
 #endif
 
-// A representative eligible configuration: fp16, block_size 32, aligned N/K, unprepacked,
+// A representative eligible configuration: fp16/bf16, block_size 32, aligned N/K, unprepacked,
 // fpA_intB option ON, SM80. Returns true iff the node is fpA_intB-eligible.
 bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
                   int64_t nbits = kDefaultBits, int64_t block_size = 32,
@@ -155,7 +155,7 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
 TEST(MatMulNBitsWorkspace, EligibilityBasic) {
   EXPECT_TRUE(CheckDefault());
 #if USE_COMPACT_FPA_INTB_GEMM
-  EXPECT_FALSE(CheckDefault(kBf16));
+  EXPECT_TRUE(CheckDefault(kBf16));
 #else
   EXPECT_TRUE(CheckDefault(kBf16));
 #endif
@@ -164,6 +164,17 @@ TEST(MatMulNBitsWorkspace, EligibilityBasic) {
 TEST(MatMulNBitsWorkspace, EligibilityRejectsFp32) {
   // CUDA registers an FP32 MatMulNBits variant that must never be reported as fpA_intB-eligible.
   EXPECT_FALSE(CheckDefault(kFp32));
+}
+
+TEST(MatMulNBitsWorkspace, EligibilityBf16RequiresSm80) {
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8, 32,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8, 32,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
 }
 
 TEST(MatMulNBitsWorkspace, EligibilityOptionGate) {
@@ -197,7 +208,8 @@ TEST(MatMulNBitsWorkspace, EligibilityInt8Alignment) {
 TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 4));
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8));
-  EXPECT_FALSE(CheckDefault(kBf16));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8, /*block_size*/ 64));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightPrepackedSm90));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,

@@ -47,10 +47,13 @@ void kernel_launcher(int kernel_arch, Params& params, cudaStream_t s) {
 #if USE_COMPACT_FPA_INTB_GEMM
   ORT_ENFORCE(kernel_arch < 90 || kernel_arch >= 100,
               "The compact fpA_intB GEMV does not support the SM90 weight layout");
-  ORT_ENFORCE(params.type == KernelType::FP16Int8Groupwise || params.type == KernelType::FP16Int4Groupwise,
-              "The compact fpA_intB GEMV supports only FP16 groupwise kernels");
+  ORT_ENFORCE(params.type == KernelType::FP16Int8Groupwise || params.type == KernelType::FP16Int4Groupwise ||
+                  params.type == KernelType::BF16Int8Groupwise || params.type == KernelType::BF16Int4Groupwise,
+              "The compact fpA_intB GEMV supports only FP16/BF16 groupwise kernels");
   EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
   EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+  EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+  EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
 #else
   if (kernel_arch < 80) {
     EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
@@ -91,12 +94,18 @@ bool is_supported(int device_arch, int kernel_arch, KernelType kernel_type) {
 
   const bool is_fp16 = kernel_type == KernelType::FP16Int8Groupwise ||
                        kernel_type == KernelType::FP16Int4Groupwise;
-#if USE_COMPACT_FPA_INTB_GEMM
-  const bool is_sm90_layout = kernel_arch >= 90 && kernel_arch < 100;
-  return is_fp16 && !is_sm90_layout;
-#else
   const bool is_bf16 = kernel_type == KernelType::BF16Int8Groupwise ||
                        kernel_type == KernelType::BF16Int4Groupwise;
+#if USE_COMPACT_FPA_INTB_GEMM
+  const bool is_sm90_layout = kernel_arch >= 90 && kernel_arch < 100;
+  if (!is_fp16 && !is_bf16) {
+    return false;
+  }
+  if ((device_arch < 80 || kernel_arch < 80) && is_bf16) {
+    return false;
+  }
+  return !is_sm90_layout;
+#else
   if (!is_fp16 && !is_bf16) {
     return false;
   }
