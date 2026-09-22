@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "core/graph/model.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
-#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -24,31 +22,17 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
 }
 
 TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejected) {
-  Model model("ConvTransposeWithDynamicPads missing Pads", false, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}, {kMSDomain, 1}}, {},
-              DefaultLoggingManager().DefaultLogger());
-  Graph& graph = model.MainGraph();
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+  test.AddInput<float>("X", {1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1, 1}, {1.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
 
-  ONNX_NAMESPACE::TypeProto tensor_type;
-  auto* tensor = tensor_type.mutable_tensor_type();
-  tensor->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  tensor->mutable_shape()->add_dim()->set_dim_value(1);
-  tensor->mutable_shape()->add_dim()->set_dim_value(1);
-  tensor->mutable_shape()->add_dim()->set_dim_value(1);
-
-  auto& input = graph.GetOrCreateNodeArg("X", &tensor_type);
-  auto& weight = graph.GetOrCreateNodeArg("W", &tensor_type);
-  auto& output = graph.GetOrCreateNodeArg("Y", nullptr);
-  graph.SetInputs({&input, &weight});
-  graph.SetOutputs({&output});
-
-  auto& node = graph.AddNode("conv_transpose", "ConvTransposeWithDynamicPads", "",
-                             {&input, &weight}, {&output}, nullptr, kMSDomain);
-  node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
-
-  const auto status = graph.Resolve();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("input size 2 not in range"), std::string::npos);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dynamic pads tensor is required.",
+           {}, nullptr, &execution_providers);
 }
 
 // Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.

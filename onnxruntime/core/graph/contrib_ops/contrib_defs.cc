@@ -1812,7 +1812,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
-                                .Input(2, "Pads", "", "tensor(int64)")
+                                .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(
                                     0,
