@@ -266,17 +266,19 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
     }
 
-    if (hasInputShape(ctx, 2)) {
+    if (ctx.hasInput(2)) {
       //   Input 0 (query) has shape (batch_size, sequence_length, num_heads * head_size)
       //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
       //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
       //   Output 0 has shape (batch_size, sequence_length, num_heads * head_size)
       ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
 
-      auto& value_shape = getInputShape(ctx, 2);
-      auto& value_dims = value_shape.dim();
-      if (value_dims.size() == 3 && value_dims[1].has_dim_value()) {
-        kv_sequence_length = value_dims[1].dim_value();
+      if (hasInputShape(ctx, 2)) {
+        auto& value_shape = getInputShape(ctx, 2);
+        auto& value_dims = value_shape.dim();
+        if (value_dims.size() == 3 && value_dims[1].has_dim_value()) {
+          kv_sequence_length = value_dims[1].dim_value();
+        }
       }
     } else {
       // Packed QKV:
@@ -425,7 +427,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         int64_t hidden_size = query_dims[2].dim_value();
         int64_t head_size = 0;
 
-        if (hasInputShape(ctx, 2)) {
+        if (ctx.hasInput(2)) {
           // query shape is (batch_size, sequence_length, num_heads * head_size)
           head_size = hidden_size / num_heads;
         } else {
