@@ -2972,6 +2972,44 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
+TEST_F(GraphTransformationTests, LabelEncoderFusionIgnoresMismatchedEmptyAttribute) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* target = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "LabelEncoder" || node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    auto& next_node = *node.OutputNodesBegin();
+    const auto& node_attributes = node.GetAttributes();
+    const auto& next_attributes = next_node.GetAttributes();
+    if (next_node.OpType() == "LabelEncoder" &&
+        node_attributes.find("values_int64s") != node_attributes.end() &&
+        next_attributes.find("keys_int64s") != next_attributes.end() &&
+        next_attributes.find("values_int64s") != next_attributes.end() &&
+        next_attributes.find("values_strings") == next_attributes.end()) {
+      target = &next_node;
+      break;
+    }
+  }
+
+  ASSERT_NE(target, nullptr);
+  target->AddAttribute("values_strings", std::vector<std::string>{});
+
+  GraphTransformerManager transformer_manager{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("LabelEncoderFusionTest");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<LabelEncoderFusion>()));
+  ASSERT_STATUS_OK(transformer_manager.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("ai.onnx.ml.LabelEncoder"), 7);
+}
+
 TEST_F(GraphTransformationTests, NotWhereFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/not_where.onnx";
   std::shared_ptr<Model> model;
