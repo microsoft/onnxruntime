@@ -193,9 +193,11 @@ completed.
 Errors are explicit. Invalid configuration, invalid initial state, allocation failures, copy failures, and event
 failures fail session initialization or execution rather than silently disabling offload or retaining stale placement.
 
-## Implementation plan
+## Pull request plan
 
-### Runtime cache manager
+Each PR includes the tests and documentation for its own scope.
+
+### PR 1: runtime cache manager
 
 - Parse and validate the count-or-proportion offload target.
 - Parse and validate `alpha`, `beta`, and `epsilon`.
@@ -205,8 +207,11 @@ failures fail session initialization or execution rather than silently disabling
 - Implement threshold-based per-node exchanges.
 - Implement end-of-inference global redistribution.
 - Manage CUDA slots, streams, events, and atomic mapping publication.
+- Add unit tests for configuration, initial state, ranking, counter updates, exchanges, and redistribution.
 
-### MoE and QMoE integration
+### PR 2: MoE and QMoE integration
+
+Depends on PR 1.
 
 - Retain canonical expert weights on CPU.
 - Dispatch resident experts on CUDA and non-resident experts on CPU.
@@ -214,8 +219,18 @@ failures fail session initialization or execution rather than silently disabling
 - Connect routing results to counter updates.
 - Trigger placement updates only after node execution completes.
 - Preserve numerical behavior for mixed CPU/CUDA execution.
+- Add integration tests for transfer synchronization, concurrent invocations, numerical correctness, and bounded memory.
 
-### Validation
+### PR 3: end-to-end evaluation
+
+Depends on PR 2.
+
+- Run reproducible CPU-only, CUDA-only, and hybrid evaluations with the same model, prompts, and generation settings.
+- Sweep offload targets and policy parameters, including zero-initialized and file-initialized counters.
+- Record the latency, throughput, memory, placement, and transfer metrics listed below.
+- Commit evaluation scripts, aggregate results, and documented commands; keep oversized raw traces outside the repository.
+
+## Validation
 
 Tests cover:
 
