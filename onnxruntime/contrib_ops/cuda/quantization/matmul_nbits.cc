@@ -159,21 +159,38 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
   }
 
 #if USE_COMPACT_FPA_INTB_GEMM
-  const bool base_ok = block_size == 32 && (nbits == 4 || nbits == 8) &&
+  // 2-bit needs block_size >= 64 (one B fragment spans a whole 64-element K tile), so the
+  // compact set carries block_size 64 for it where 4/8-bit carry 32.
+  const bool base_ok = (nbits == 2 ? block_size == 64 : block_size == 32) &&
+                       (nbits == 2 || nbits == 4 || nbits == 8) &&
                        !has_zero_points && !has_g_idx && !has_bias &&
                        weight_prepacked != kMatMulNBitsWeightPrepackedSm90 &&
-                       N % (nbits == 8 ? 32 : 64) == 0 &&
+                       N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
                        K % block_size == 0 && device_sm >= 75;
 #else
   // block_size in {32,64,128} already guarantees block_size != 0, so K % block_size is well-defined.
+  // 2-bit shares the SM80 column-interleaved layout but has no native SM90 kernel, so the Hopper
+  // prepacked layout is rejected for it below.
   const bool base_ok = (block_size == 32 || block_size == 64 || block_size == 128) &&
-                       (nbits == 4 || nbits == 8) &&
+                       (nbits == 2 || nbits == 4 || nbits == 8) &&
                        !has_g_idx &&
-                       N % (nbits == 8 ? 32 : 64) == 0 &&
+                       N % (nbits == 8 ? 32 : (nbits == 4 ? 64 : 128)) == 0 &&
                        K % block_size == 0 &&
                        device_sm >= 75;
 #endif
   if (!base_ok) {
+    return false;
+  }
+
+  // 2-bit weights have no native SM90 (Hopper) mixed-GEMM kernel; they always use the SM80 layout.
+  if (nbits == 2 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) {
+    return false;
+  }
+
+  // At 2 bits one B fragment (one ldsm.x4 per warp) spans a whole 64-element K tile and the GEMV
+  // applies one scale to each thread's 64-element run, so a quantization group cannot be smaller
+  // than 64.
+  if (nbits == 2 && block_size < 64) {
     return false;
   }
 
@@ -496,57 +513,79 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   KernelType cuda_kernel_type;
 #if USE_COMPACT_FPA_INTB_GEMM
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::FP16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
-    } else {
+    } else if (nbits_ == 4) {
       cuda_kernel_type = KernelType::FP16Int4Groupwise;
       weightOnlyGemmRunner_ =
           std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::FP16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    ORT_ENFORCE((nbits_ == 4 || nbits_ == 8) && block_size_ == 32 && !has_zero_points_ && !has_bias_);
+    ORT_ENFORCE((nbits_ == 2 || nbits_ == 4 || nbits_ == 8) &&
+                block_size_ == (nbits_ == 2 ? 64 : 32) && !has_zero_points_ && !has_bias_);
     if (nbits_ == 8) {
       cuda_kernel_type = KernelType::BF16Int8Groupwise;
       weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
-    } else {
+    } else if (nbits_ == 4) {
       cuda_kernel_type = KernelType::BF16Int4Groupwise;
       weightOnlyGemmRunner_ =
           std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+    } else {
+      cuda_kernel_type = KernelType::BF16Int2Groupwise;
+      weightOnlyGemmRunner_ =
+          std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleOnly>>();
     }
   } else {
     ORT_THROW("Compact fpA_intB GEMM only supports FP16/BF16 activations");
   }
 #else
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+    cuda_kernel_type = nbits_ == 8   ? KernelType::FP16Int8Groupwise
+                       : nbits_ == 4 ? KernelType::FP16Int4Groupwise
+                                     : KernelType::FP16Int2Groupwise;
     if (has_zero_points_) {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleAndZeros>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleAndZeros>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleAndZeros>>();
       }
     } else {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint2b_t, kScaleOnly>>();
       }
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+    cuda_kernel_type = nbits_ == 8   ? KernelType::BF16Int8Groupwise
+                       : nbits_ == 4 ? KernelType::BF16Int4Groupwise
+                                     : KernelType::BF16Int2Groupwise;
     if (has_zero_points_) {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleAndZeros>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleAndZeros>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleAndZeros>>();
       }
     } else {
       if (nbits_ == 8) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
       } else if (nbits_ == 4) {
         weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+      } else if (nbits_ == 2) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint2b_t, kScaleOnly>>();
       }
     }
   }
@@ -581,8 +620,8 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 
 template <typename T>
 void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m) {
-  // Number of 16-bit elements after casting int8/int4 to fp16.
-  int n_16b = static_cast<int>(N_ / (nbits_ == 8 ? 2 : 4));
+  // Number of 16-bit elements after casting int2/int4/int8 to fp16.
+  int n_16b = static_cast<int>(N_ / (16 / nbits_));
 
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
@@ -641,15 +680,19 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
       // Transpose the weight and add default zero point.
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
           stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
+    } else if (nbits_ == 2) {
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint2_transposed_to_int8_direct_cuda(
+          stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     } else {
       onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
           stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     }
 
     using onnxruntime::llm::kernels::weight_only::QuantType;
-    QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
+    QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : (nbits_ == 2 ? QuantType::W2_A16 : QuantType::W8_A16);
 
-    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
+    // The LDSM row-permutation tile is 8 * kInterleave rows: 16 for 8-bit, 32 for 4-bit, 64 for 2-bit.
+    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(64);
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
         FpAIntBPackingSmForKernel(),
@@ -712,24 +755,30 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
     fpA_intB_zero_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
     CudaT* scaled_zero_points = reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get());
 
+    constexpr float kDefaultZeroPoint2Bit = 2.0f;
     constexpr float kDefaultZeroPoint4Bit = 8.0f;
     constexpr float kDefaultZeroPoint8Bit = 128.0f;
-    const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
+    const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit
+                                                 : (nbits_ == 2 ? kDefaultZeroPoint2Bit : kDefaultZeroPoint8Bit);
     const auto* zero_points_data = tensor.DataRaw();
 
     // The scaled zero point will be zero for the default zero point, so there is no need to scale when it is nullptr.
     if (!tensor.IsDataType<T>()) {  // zero point is uint8_t type
       if (nbits_ == 4) {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<4, CudaT, uint8_t>(
+            stream, reinterpret_cast<const uint8_t*>(zero_points_data),
+            transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
+      } else if (nbits_ == 2) {
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<2, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
             transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       } else {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<0, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
             transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       }
     } else {  // zero point is not uint8_t type
-      onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+      onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<0, CudaT, CudaT>(
           stream, reinterpret_cast<const CudaT*>(zero_points_data),
           transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
     }
@@ -930,9 +979,13 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type;
         if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          cuda_kernel_type = nbits_ == 8   ? KernelType::FP16Int8Groupwise
+                             : nbits_ == 4 ? KernelType::FP16Int4Groupwise
+                                           : KernelType::FP16Int2Groupwise;
         } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          cuda_kernel_type = nbits_ == 8   ? KernelType::BF16Int8Groupwise
+                             : nbits_ == 4 ? KernelType::BF16Int4Groupwise
+                                           : KernelType::BF16Int2Groupwise;
         }
 
         void const* pre_quant_scale_ptr = nullptr;

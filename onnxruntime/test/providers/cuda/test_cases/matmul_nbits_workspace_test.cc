@@ -240,6 +240,10 @@ TEST(MatMulNBitsWorkspace, EligibilityRejectsFp32) {
 }
 
 TEST(MatMulNBitsWorkspace, EligibilityBf16RequiresSm80) {
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, 64,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, 64,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
   EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
                             kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
   EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
@@ -283,6 +287,8 @@ TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8));
   EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4));
   EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, /*block_size*/ 64));
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, /*block_size*/ 128));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8, /*block_size*/ 64));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightPrepackedSm90));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,

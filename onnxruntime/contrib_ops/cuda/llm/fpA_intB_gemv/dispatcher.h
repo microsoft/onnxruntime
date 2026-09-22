@@ -204,15 +204,20 @@ __device__ __forceinline__ void mma(void* acc, void* w_pack2, void* act) {
   }
 }
 
+// Reduces the per-lane partial dot product across the lanes that share an output column.
+//
+// A lane's column is ((tid / ThreadsPerInterleavedTile) % Interleave), so the lane-id bits in
+// [ThreadsPerInterleavedTile, ThreadsPerInterleavedTile * Interleave) select the column and must
+// NOT be summed across; every other bit is a K offset and must be. Descending masks keep the
+// float accumulation order of the hand-written Interleave in {1,2,4} sequence this replaces.
 template <int Interleave, int ThreadsPerInterleavedTile, typename T>
 __device__ __forceinline__ T warp_reduce_sum(T& val) {
-  val += __shfl_xor_sync(~0, val, 16);
-  val += __shfl_xor_sync(~0, val, 8);
-  if (Interleave != 2 && Interleave != 4)
-    val += __shfl_xor_sync(~0, val, 4);
-  if (Interleave != 4)
-    val += __shfl_xor_sync(~0, val, 2);
-  val += __shfl_xor_sync(~0, val, 1);
+#pragma unroll
+  for (int mask = 16; mask >= 1; mask >>= 1) {
+    if (mask < ThreadsPerInterleavedTile || mask >= ThreadsPerInterleavedTile * Interleave) {
+      val += __shfl_xor_sync(~0, val, mask);
+    }
+  }
   return val;
 }
 
@@ -291,6 +296,8 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
   static_assert(CtaN % 2 == 0);
   if constexpr (GroupSize != 0) {
     static_assert((CtaK / Details::kInterleave) % GroupSize == 0);
+    // One scale per thread covers its whole StepK run of weights.
+    static_assert(GroupSize % StepK == 0);
   }
 
   int const origin_k = k, interleaved_k = k * Details::kInterleave;
@@ -311,7 +318,7 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
 
   // Kept as CtaN scalar loads rather than the vectorized ScalesAccess/load_scales form used by
   // the FP4 MoE GEMV: that form needs kInterleave == 1 to make the CtaN scales contiguous, and
-  // every layout reaching this dense kernel is ColumnMajorInterleaved (kInterleave 2 or 4).
+  // every layout reaching this dense kernel is ColumnMajorInterleaved (kInterleave 2, 4 or 8).
   GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
       scales,
       (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
@@ -382,7 +389,13 @@ void exec_kernel(Params& params, cudaStream_t s) {
 
 template <typename Details, int GroupSize, bool EnableActScale, bool EnableZero, bool EnableBias, bool ApplyAlphaInAdvance>
 void dispatcher(Params& params, cudaStream_t s) {
-#define DISPATCHER_FOR_M(target_m, CtaM, CtaN, Threads)                                            \
+  // Each block keeps a CtaN * StepK half tile of dequantized weights in registers, so CtaN is
+  // halved for the 2-bit layout, whose StepK is 64 instead of the 4/8-bit 32/16. That holds the
+  // register footprint (and the columns covered per block, CtaN * kInterleave) at the value the
+  // 4-bit kernel was tuned for.
+  static constexpr int CtaN = Details::kStepK >= 64 ? (EnableZero ? 2 : 4) : (EnableZero ? 4 : 8);
+
+#define DISPATCHER_FOR_M(target_m, CtaM, Threads)                                                  \
   do {                                                                                             \
     if (params.m == target_m) {                                                                    \
       exec_kernel<Details, CtaM, CtaN, Threads, GroupSize, EnableActScale, EnableZero, EnableBias, \
@@ -391,39 +404,21 @@ void dispatcher(Params& params, cudaStream_t s) {
     }                                                                                              \
   } while (0);
 
-  if constexpr (EnableZero) {
-    DISPATCHER_FOR_M(1, 1, 4, 128);
-    DISPATCHER_FOR_M(2, 2, 4, 128);
-    DISPATCHER_FOR_M(3, 3, 4, 128);
-    DISPATCHER_FOR_M(4, 4, 4, 128);
-    DISPATCHER_FOR_M(5, 5, 4, 128);
-    DISPATCHER_FOR_M(6, 6, 4, 128);
-    DISPATCHER_FOR_M(7, 7, 4, 128);
-    DISPATCHER_FOR_M(8, 8, 4, 128);
-    DISPATCHER_FOR_M(9, 9, 4, 128);
-    DISPATCHER_FOR_M(10, 10, 4, 128);
-    DISPATCHER_FOR_M(11, 11, 4, 128);
-    DISPATCHER_FOR_M(12, 12, 4, 128);
-    DISPATCHER_FOR_M(13, 13, 4, 128);
-    DISPATCHER_FOR_M(14, 14, 4, 128);
-    DISPATCHER_FOR_M(15, 15, 4, 128);
-  } else {
-    DISPATCHER_FOR_M(1, 1, 8, 128);
-    DISPATCHER_FOR_M(2, 2, 8, 128);
-    DISPATCHER_FOR_M(3, 3, 8, 128);
-    DISPATCHER_FOR_M(4, 4, 8, 128);
-    DISPATCHER_FOR_M(5, 5, 8, 128);
-    DISPATCHER_FOR_M(6, 6, 8, 128);
-    DISPATCHER_FOR_M(7, 7, 8, 128);
-    DISPATCHER_FOR_M(8, 8, 8, 128);
-    DISPATCHER_FOR_M(9, 9, 8, 128);
-    DISPATCHER_FOR_M(10, 10, 8, 128);
-    DISPATCHER_FOR_M(11, 11, 8, 128);
-    DISPATCHER_FOR_M(12, 12, 8, 128);
-    DISPATCHER_FOR_M(13, 13, 8, 128);
-    DISPATCHER_FOR_M(14, 14, 8, 128);
-    DISPATCHER_FOR_M(15, 15, 8, 128);
-  }
+  DISPATCHER_FOR_M(1, 1, 128);
+  DISPATCHER_FOR_M(2, 2, 128);
+  DISPATCHER_FOR_M(3, 3, 128);
+  DISPATCHER_FOR_M(4, 4, 128);
+  DISPATCHER_FOR_M(5, 5, 128);
+  DISPATCHER_FOR_M(6, 6, 128);
+  DISPATCHER_FOR_M(7, 7, 128);
+  DISPATCHER_FOR_M(8, 8, 128);
+  DISPATCHER_FOR_M(9, 9, 128);
+  DISPATCHER_FOR_M(10, 10, 128);
+  DISPATCHER_FOR_M(11, 11, 128);
+  DISPATCHER_FOR_M(12, 12, 128);
+  DISPATCHER_FOR_M(13, 13, 128);
+  DISPATCHER_FOR_M(14, 14, 128);
+  DISPATCHER_FOR_M(15, 15, 128);
   ORT_THROW("unsupported m");
 #undef DISPATCHER_FOR_M
 }
@@ -452,18 +447,30 @@ void check_pointer(Params& params, cudaStream_t s) {
 
 template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s) {
-  if constexpr (isGroupwise) {
-    if (params.groupsize == 32) {
-      check_pointer<Details, 32>(params, s);
-      return;
-#if !USE_COMPACT_FPA_INTB_GEMM
-    } else if (params.groupsize == 64) {
-      check_pointer<Details, 64>(params, s);
-      return;
-    } else if (params.groupsize == 128) {
-      check_pointer<Details, 128>(params, s);
-      return;
+#if USE_COMPACT_FPA_INTB_GEMM
+  constexpr bool kCompact = true;
+#else
+  constexpr bool kCompact = false;
 #endif
+  if constexpr (isGroupwise) {
+    // A thread dequantizes kStepK consecutive weights with a single scale, so a group smaller
+    // than kStepK has no valid instantiation (kStepK is 64 for 2-bit weights).
+    if (params.groupsize == 32) {
+      if constexpr (Details::kStepK <= 32) {
+        check_pointer<Details, 32>(params, s);
+        return;
+      }
+    } else if (params.groupsize == 64) {
+      // The compact set carries block_size 64 for 2-bit only, since 2-bit cannot use 32.
+      if constexpr (!kCompact || Details::kStepK >= 64) {
+        check_pointer<Details, 64>(params, s);
+        return;
+      }
+    } else if (params.groupsize == 128) {
+      if constexpr (!kCompact) {
+        check_pointer<Details, 128>(params, s);
+        return;
+      }
     }
   }
 
