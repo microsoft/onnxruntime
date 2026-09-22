@@ -131,7 +131,7 @@ cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA kernels" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
-  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16/BF16 INT4/INT8 set" OFF
+  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16/BF16 INT2/INT4/INT8 set" OFF
   "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" ON)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
@@ -852,7 +852,7 @@ if (onnxruntime_USE_CUDA)
         message( STATUS "Enable full FpA IntB GEMM kernel set for CUDA EP")
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
       else()
-        message( STATUS "Enable compact non-Hopper FP16/BF16 INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
+        message( STATUS "Enable compact non-Hopper FP16/BF16 INT2/INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1 -DUSE_COMPACT_FPA_INTB_GEMM=1)
       endif()
     endif()
