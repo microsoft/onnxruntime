@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -31,6 +30,7 @@
 #include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -1386,8 +1386,8 @@ TEST(SparseAttentionIndexerTest, QsaQwenHierarchicalTopKAllEqual) {
 }
 
 void RunQsaQwenHierarchicalTopKRepresentativeScores(bool with_ties) {
-  const char* context_environment = std::getenv("ORT_QSA_TEST_CONTEXT");
-  const int context_length = context_environment == nullptr ? 8192 : std::stoi(context_environment);
+  const std::string context_environment = Env::Default().GetEnvironmentVar("ORT_QSA_TEST_CONTEXT");
+  const int context_length = context_environment.empty() ? 8192 : std::stoi(context_environment);
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
