@@ -4,12 +4,12 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_impl.h"
+#include "core/platform/env.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -216,8 +216,8 @@ TEST(SparseAttentionIndexerCudaKernelTest, DISABLED_QsaHierarchicalLongContextBe
   constexpr int kCompressRatio = 4;
   constexpr int kWarmupIterations = 10;
   constexpr int kTimedIterations = 100;
-  const char* context_environment = std::getenv("ORT_QSA_BENCH_CONTEXT");
-  const int context_length = context_environment == nullptr ? 65536 : std::stoi(context_environment);
+  const std::string context_environment = Env::Default().GetEnvironmentVar("ORT_QSA_BENCH_CONTEXT");
+  const int context_length = context_environment.empty() ? 65536 : std::stoi(context_environment);
 
   SparseAttentionIndexerParams params;
   params.batch_size = 1;
