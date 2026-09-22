@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -44,8 +45,8 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr int64_t kSequenceLength = 1024;
 constexpr int64_t kPastSequenceLength = 1;
+constexpr int64_t kDefaultSequenceLength = 1024;
 
 struct ModelProfile {
   const char* name;
@@ -93,10 +94,10 @@ const ModelProfile& GetModelProfile() {
             kQwen3_8BProfile.name, ", but got: ", model_name);
 }
 
-std::string BuildMaxShapeOverride(const ModelProfile& profile) {
+std::string BuildMaxShapeOverride(const ModelProfile& profile, int64_t sequence_length) {
   std::ostringstream shapes;
-  shapes << "input_ids:[1," << kSequenceLength << "]"
-         << ";attention_mask:[1," << kPastSequenceLength + kSequenceLength << "]";
+  shapes << "input_ids:[1," << sequence_length << "]"
+         << ";attention_mask:[1," << kPastSequenceLength + sequence_length << "]";
   const std::string cache_shape =
       ":[1," + std::to_string(profile.num_key_value_heads) + "," +
       std::to_string(kPastSequenceLength) + "," +
@@ -117,6 +118,20 @@ std::string GetBinaryEnvironmentValue(const char* name, const char* default_valu
 
   ORT_ENFORCE(value == "0" || value == "1", name, " must be 0 or 1, but got: ", value);
   return value;
+}
+
+int64_t GetPositiveInt64EnvironmentValue(const char* name, int64_t default_value) {
+  const std::string value = Env::Default().GetEnvironmentVar(name);
+  if (value.empty()) {
+    return default_value;
+  }
+
+  int64_t parsed_value = 0;
+  const auto [end, error] =
+      std::from_chars(value.data(), value.data() + value.size(), parsed_value);
+  ORT_ENFORCE(error == std::errc{} && end == value.data() + value.size() && parsed_value > 0,
+              name, " must be a positive integer, but got: ", value);
+  return parsed_value;
 }
 
 ComPtr<IDXGIAdapter3> GetDxgiAdapterForWebGpu() {
@@ -229,6 +244,8 @@ class WddmMemorySampler {
 // ORT_WEBGPU_WORKSPACE_BENCHMARK_PREALLOCATION to 0 or 1.
 TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   const ModelProfile& profile = GetModelProfile();
+  const int64_t sequence_length = GetPositiveInt64EnvironmentValue(
+      "ORT_WEBGPU_WORKSPACE_BENCHMARK_SEQUENCE_LENGTH", kDefaultSequenceLength);
   std::string model_path_utf8 =
       Env::Default().GetEnvironmentVar("ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH");
   if (model_path_utf8.empty()) {
@@ -247,7 +264,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   SessionOptions session_options;
   session_options.session_logid = "WebGpuQwen25WorkspacePreallocationBenchmark";
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsMaxShapeOverride, BuildMaxShapeOverride(profile).c_str()));
+      kOrtSessionOptionsMaxShapeOverride, BuildMaxShapeOverride(profile, sequence_length).c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsEnableStaticWorkspacePreallocation,
       enable_workspace_preallocation.c_str()));
@@ -324,9 +341,9 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   }
 
   std::vector<int64_t> input_ids(
-      static_cast<size_t>(kSequenceLength), profile.bos_token_id);
+      static_cast<size_t>(sequence_length), profile.bos_token_id);
   std::vector<int64_t> attention_mask(
-      static_cast<size_t>(kPastSequenceLength + kSequenceLength), 1);
+      static_cast<size_t>(kPastSequenceLength + sequence_length), 1);
   std::vector<MLFloat16> past_data(
       static_cast<size_t>(
           profile.num_key_value_heads * kPastSequenceLength * profile.head_size),
@@ -335,13 +352,13 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   NameMLValMap feeds;
   OrtValue input_ids_value;
   CreateMLValue<int64_t>(
-      std::array<int64_t, 2>{1, kSequenceLength},
+      std::array<int64_t, 2>{1, sequence_length},
       input_ids.data(), OrtMemoryInfo(), &input_ids_value);
   feeds.emplace("input_ids", input_ids_value);
 
   OrtValue attention_mask_value;
   CreateMLValue<int64_t>(
-      std::array<int64_t, 2>{1, kPastSequenceLength + kSequenceLength},
+      std::array<int64_t, 2>{1, kPastSequenceLength + sequence_length},
       attention_mask.data(), OrtMemoryInfo(), &attention_mask_value);
   feeds.emplace("attention_mask", attention_mask_value);
 
@@ -361,14 +378,24 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
   const std::vector<std::string> output_names{"logits"};
   std::vector<OrtValue> fetches;
   constexpr int kWarmupRuns = 5;
+  std::array<size_t, kWarmupRuns> wddm_warmup_live_local_bytes{};
+  std::array<size_t, kWarmupRuns> wddm_warmup_post_clear_local_bytes{};
   for (int i = 0; i < kWarmupRuns; ++i) {
     fetches.clear();
+    if (i > 0) {
+      wddm_warmup_post_clear_local_bytes[static_cast<size_t>(i - 1)] =
+          GetWddmLocalUsageBytes(dxgi_adapter.Get());
+    }
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    wddm_warmup_live_local_bytes[static_cast<size_t>(i)] =
+        GetWddmLocalUsageBytes(dxgi_adapter.Get());
   }
   ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
   ASSERT_EQ(fetches.front().Get<Tensor>().Shape(),
-            TensorShape({1, kSequenceLength, profile.vocab_size}));
+            TensorShape({1, sequence_length, profile.vocab_size}));
   fetches.clear();
+  wddm_warmup_post_clear_local_bytes.back() =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
 
   size_t workspace_pattern_peak_bytes = 0;
   if (const MemoryPatternGroup* workspace_patterns =
@@ -446,6 +473,7 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
 
   std::cout << "[ WEBGPU WORKSPACE BENCHMARK ]"
             << " model=" << profile.name
+            << " sequence_length=" << sequence_length
             << " workspace_preallocation=" << enable_workspace_preallocation
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " planned_workspace_slots=" << planned_workspace_slots
@@ -486,8 +514,14 @@ TEST(MatMulNBitsWorkspace, WebGpuQwen25WorkspacePreallocationBenchmark) {
             << " measurement_peak_bytes=" << measurement_peak_bytes
             << " measurement_peak_delta_bytes=" << measurement_peak_delta_bytes
             << " final_bytes_in_use=" << after_memory_measurement.bytes_in_use
-            << " final_max_bytes_in_use=" << after_memory_measurement.max_bytes_in_use
-            << std::endl;
+            << " final_max_bytes_in_use=" << after_memory_measurement.max_bytes_in_use;
+  for (size_t i = 0; i < static_cast<size_t>(kWarmupRuns); ++i) {
+    std::cout << " wddm_warmup_" << i + 1
+              << "_live_local_mib=" << to_mib(wddm_warmup_live_local_bytes[i])
+              << " wddm_warmup_" << i + 1
+              << "_post_clear_local_mib=" << to_mib(wddm_warmup_post_clear_local_bytes[i]);
+  }
+  std::cout << std::endl;
 }
 
 }  // namespace test

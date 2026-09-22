@@ -5,20 +5,25 @@
 - Build: Release, Dawn Vulkan backend
 - GPU: NVIDIA GeForce RTX 5090 Laptop GPU
 - Models: Qwen 2.5 1.5B and 7B, plus a Qwen 3 8B applicability check
-- Workload: batch 1 cached prefill with 1,024 new tokens and a one-token KV cache
+- Workload: batch 1 cached prefill with a configurable number of new tokens and
+  a one-token KV cache
 - Warmup runs: 5
 - Memory-measurement runs: 3
 - Timed runs: 30
 - Storage-buffer cache: disabled
-- Three baseline and three workspace-only measurements ran in separate fresh
-  processes, using the balanced order baseline/planned, planned/baseline,
-  baseline/planned
+- The primary 1,024-token results use three baseline and three workspace-only
+  measurements in separate fresh processes, using the balanced order
+  baseline/planned, planned/baseline, baseline/planned
+- The long-context tables state the number of fresh processes per mode and use
+  reversed ordering where more than one process per mode was run
 
 The WebGPU benchmark is
 `MatMulNBitsWorkspace.WebGpuQwen25WorkspacePreallocationBenchmark`. Set
 `ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL` to `qwen2.5-1.5b`, `qwen2.5-7b`, or
 `qwen3-8b`,
-`ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH` to the model and use
+`ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH` to the model,
+`ORT_WEBGPU_WORKSPACE_BENCHMARK_SEQUENCE_LENGTH` to a positive token count
+(default 1,024), and use
 `ORT_WEBGPU_WORKSPACE_BENCHMARK_PREALLOCATION=0` or `1` to select the
 configuration.
 
@@ -27,7 +32,12 @@ including activations, outputs, and kernel workspaces. Persistent initializer
 buffers use a separate read-only allocator and are not included in these figures.
 The phase-local allocator high-water mark is updated synchronously by allocation
 and free operations. WDDM local-memory usage is sampled every 5 ms through
-`IDXGIAdapter3::QueryVideoMemoryInfo`.
+`IDXGIAdapter3::QueryVideoMemoryInfo`. The long-context whole-run WDDM peak is
+the maximum observed across initialization, each warmup, and measured inference.
+For configurations that failed before those measurements completed,
+`nvidia-smi` sampled device usage every 250 ms from an idle GPU. Those failed-run
+peaks are lower bounds because the allocation that triggered the OOM never
+became resident.
 
 ## Qwen 2.5 1.5B
 
@@ -118,6 +128,66 @@ the hundreds-of-MiB difference is far larger than the controlled 37.00 MiB
 workspace buffer and varied substantially between runs. The exact allocator
 high-water mark is the reliable memory comparison; no feature-attributable WDDM
 delta is claimed.
+
+## Long-context scaling and capacity
+
+`Runs/mode` is the number of fresh processes for each configuration. For
+example, three runs/mode means three baseline and three planned processes. Each
+process still contains five warmups, three memory-measurement runs, and 30 timed
+runs. The tables report the median process value; with two processes, that is
+the midpoint of the two results. Single-process-per-mode comparisons are
+preliminary.
+
+### Successful workloads
+
+| Model | New tokens | Runs/mode | Average latency: baseline / planned | P50: baseline / planned | P90: baseline / planned | P99: baseline / planned |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen 2.5 1.5B | 8,192 | 2 | 1,904.38 / 1,761.00 ms (**-7.5%**) | 1,902.65 / 1,740.03 ms | 1,972.00 / 1,836.91 ms | 2,005.22 / 1,933.06 ms |
+| Qwen 2.5 1.5B | 10,240 | 1 | 2,375.76 / 2,305.65 ms (**-3.0%**) | 2,383.76 / 2,302.69 ms | 2,425.77 / 2,349.66 ms | 2,464.66 / 2,373.53 ms |
+| Qwen 2.5 7B | 4,096 | 3 | 1,707.81 / 1,690.61 ms (**-1.0%**) | 1,705.59 / 1,681.66 ms | 1,750.74 / 1,737.67 ms | 1,791.88 / 1,793.44 ms |
+| Qwen 2.5 7B | 4,608 | 1 | 1,962.51 / 1,915.41 ms (**-2.4%**) | 1,956.99 / 1,919.21 ms | 2,004.38 / 1,952.92 ms | 2,029.38 / 1,973.93 ms |
+
+The 8K 1.5B workload used two order-balanced pairs. Planning improved average
+latency by 9.8% in baseline/planned order and by 5.1% in planned/baseline order.
+The other extended workload with three runs/mode, 7B at 4K, was effectively
+latency-neutral. The 10K 1.5B and 4.5K 7B comparisons have only one process per
+mode and need repetition before treating their latency differences as stable.
+
+### Memory and allocations
+
+| Model | New tokens | Whole-run WDDM peak: baseline / planned | Default allocator peak: baseline / planned | Planned workspace-pattern peak | Allocation calls: baseline / planned |
+|---|---:|---:|---:|---:|---:|
+| Qwen 2.5 1.5B | 8,192 | 15,103.8 / 14,015.8 MiB (**-1,088.0 MiB**) | 2,646.1 / 2,762.1 MiB | 140.0 MiB | 1,293 / 1,041 |
+| Qwen 2.5 1.5B | 10,240 | 21,361.3 / 19,276.3 MiB (**-2,085.0 MiB**) | 3,307.6 / 3,452.6 MiB | 175.0 MiB | 1,293 / 1,041 |
+| Qwen 2.5 7B | 4,096 | 19,604.8 / 18,420.8 MiB (**-1,184.0 MiB**) | 1,468.1 / 1,588.1 MiB | 148.0 MiB | 1,293 / 1,041 |
+| Qwen 2.5 7B | 4,608 | 22,139.8 / 20,110.3 MiB (**-2,029.5 MiB**) | 1,651.6 / 1,786.6 MiB | 166.5 MiB | 1,293 / 1,041 |
+
+Planning consistently removed 252 allocations across the three
+memory-measurement runs, or 84 allocations per inference. It also increased the
+controlled allocator peak because the reusable workspace backing buffer remains
+logically live. The lower WDDM peaks therefore do not mean that the workspace
+requires less logical memory. They indicate less driver-level residency under
+these memory-intensive workloads, consistent with avoiding repeated transient
+buffer allocation, deferred destruction, pooling, and fragmentation in
+Dawn/Vulkan. Unlike the exact allocator measurements, WDDM residency remains
+driver-managed and workload-dependent.
+
+### OOM capacity boundary
+
+| Model | New tokens | Baseline observed peak | Planned observed peak | Result |
+|---|---:|---:|---:|---|
+| Qwen 2.5 1.5B | 12,288 | >=22,697 MiB | >=23,519 MiB | Both OOM |
+| Qwen 2.5 7B | 5,120 | >=23,354 MiB | >=22,579 MiB | Both OOM |
+| Qwen 2.5 7B | 6,144 | >=23,604 MiB | >=23,641 MiB | Both OOM |
+| Qwen 2.5 7B | 8,192 | >=23,640 MiB | >=23,664 MiB | Both OOM |
+| Qwen 2.5 7B | 12,288 | >=23,683 MiB | >=23,683 MiB | Both OOM |
+
+All failures reproduced from zero reported GPU usage in fresh processes and
+failed during the first warmup with
+`vkAllocateMemory failed with VK_ERROR_OUT_OF_DEVICE_MEMORY`. Workspace
+planning did not extend the maximum runnable context. On this 24,463 MiB GPU,
+the tested Qwen 2.5 7B capacity boundary is between 4,608 and 5,120 new tokens;
+the Qwen 2.5 1.5B boundary is between 10,240 and 12,288 new tokens.
 
 ## Qwen 3 8B
 
