@@ -128,7 +128,7 @@ falls through to progressively more general ones:
 
 ```mermaid
 flowchart TD
-  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 32/64/128, sm>=75}
+  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 32/64/128, FP16 sm>=75 / BF16 sm>=80}
   F -- yes --> FP[fpA_intB CUDA GEMV<br/>or CUTLASS grouped GEMM] --> R[return]
   F -- no --> G{reorder_idx == null<br/>and zero_points not typed-T?}
   G -- no --> DQ
@@ -268,14 +268,15 @@ tile saturates the SMs while keeping scratch ≲128 MB.
 for CUDA builds. Its default kernel set is intentionally compact, excludes the
 native Hopper kernel, and covers the SM80-layout RC model contract:
 
-- FP16 activations and INT4 or INT8 weights,
+- FP16 or BF16 activations and INT4 or INT8 weights,
 - scale-only quantization with `block_size=32` and no zero-points, bias, or
   `g_idx`,
-- `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`, and `sm_ >= 75`,
+- `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`, and `sm_ >= 75` for
+  FP16 or `sm_ >= 80` for BF16,
 - unpacked weights or `weight_prepacked=1` (the SM80 layout).
 
 Set `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON` to build the legacy full kernel
-matrix. Full mode additionally supports BF16, block sizes 64 and 128,
+matrix. Full mode additionally supports block sizes 64 and 128,
 zero-points, bias, and the native SM90 layout (`weight_prepacked=2`). The
 native SM90 kernel supports only `block_size ∈ {64, 128}`; see §2.1.
 
@@ -301,9 +302,9 @@ Prepacked weights are intentionally strict:
   flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
   var) is ignored for prepacked weights — the layout choice was fixed at export
   time and cannot be turned off at run time.
-- Nonzero `weight_prepacked` requires FP16 input `A` in the default compact
-  build, or FP16/BF16 in a full build, because only the CUDA fpA_intB path
-  consumes this layout.
+- Nonzero `weight_prepacked` requires FP16 or BF16 input `A` in the default
+  compact build or a full build, because only the CUDA fpA_intB path consumes
+  this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
   the SM80 layout, `2` is the native SM90 (Hopper) layout. `2` additionally
   requires a compute-capability 9.0 device and `block_size ∈ {64, 128}` and is

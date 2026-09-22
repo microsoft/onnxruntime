@@ -172,9 +172,9 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
       if(onnxruntime_USE_FPA_INTB_GEMM AND NOT onnxruntime_USE_FPA_INTB_GEMM_FULL AND
          ((_src MATCHES "/fpA_intB_gemm/" AND
-          NOT _src MATCHES "/fpA_intB_gemm/fp16_int(4|8)_gemm_scaleonly\\.cu$") OR
+          NOT _src MATCHES "/fpA_intB_gemm/(fp16|bf16)_int(4|8)_gemm_scaleonly\\.cu$") OR
           (_src MATCHES "/fpA_intB_gemv/dispatcher_" AND
-          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_fp16_int(4|8)\\.cu$")))
+          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_(fp16|bf16)_int(4|8)\\.cu$")))
         list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
       elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
