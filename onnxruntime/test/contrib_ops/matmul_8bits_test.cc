@@ -956,6 +956,44 @@ TEST(MatMulNBits, Int8SmallMDispatchEligibility) {
   EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k + 8, block_size, 121, true));
   EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, 32, 121, true));
 }
+
+TEST(MatMulNBits, Fp16_Int8_Sm121QualifiedM6To8) {
+  if (GetCudaArchitecture() != 1210) {
+    GTEST_SKIP() << "The M=6..8 dispatch is qualified only on SM121";
+  }
+
+  constexpr int64_t n = 200064;
+  constexpr int64_t k = 3584;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t blocks_per_k = k / block_size;
+  const auto one = MLFloat16(1.0f);
+  const auto expected_value = MLFloat16(static_cast<float>(k));
+
+  for (const int64_t m : {6, 7, 8}) {
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("bits", QBits);
+    test.AddAttribute<int64_t>("accuracy_level", 0);
+
+    test.AddInput<MLFloat16>("A", {m, k}, std::vector<MLFloat16>(m * k, one), false);
+    test.AddInput<uint8_t>("B", {n, blocks_per_k, block_size},
+                           std::vector<uint8_t>(static_cast<size_t>(n * k), 129), true);
+    test.AddInput<MLFloat16>("scales", {n, blocks_per_k},
+                             std::vector<MLFloat16>(n * blocks_per_k, one), true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<MLFloat16>();
+    test.AddOutput<MLFloat16>("Y", {m, n},
+                              std::vector<MLFloat16>(m * n, expected_value));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+}
 #endif
 
 template <typename T>
