@@ -21,7 +21,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
   test.Run();
 }
 
-TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejected) {
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedAtRuntime) {
   OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
   test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
   test.AddInput<float>("X", {1, 1, 1}, {1.0f});
