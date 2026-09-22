@@ -9,7 +9,7 @@ Arm, Kleidi, KleidiAI, KleidiCV and Kleidi Libraries are registered trademarks o
 - KleidiAI tagged release: [`v1.31.0`](https://github.com/ARM-software/kleidiai/tree/v1.31.0)
 - ONNX Runtime release: [`v1.30.0`](https://github.com/microsoft/onnxruntime/tree/v1.30.0)
 - ONNX Runtime KleidiAI pin: [`v1.20.0`](https://github.com/ARM-software/kleidiai/tree/v1.20.0)
-- Last updated date: `2026-09-16`
+- Last updated date: `2026-09-22`
 
 ## Summary
 
