@@ -1635,3 +1635,98 @@ ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_DEFAULT_TILING=0 \
   `ORT_FP4_GEMV_DEFAULT_TILING=0` opt-out.
 - The autotuner is still the right tool for shapes the heuristic gets wrong; it
   now starts from a better default and overrides it only when it measures a win.
+
+## 2026-08-06 Packed BF16 MXFP4 Interleaved Decode: H200 Shape Sweep
+
+### Goal and change
+
+PR #31159 changed the interleaved MXFP4 GEMV inner loop to keep all `CtaN`
+quantized weight tiles live before decoding them. On the BF16 path, which must
+accumulate in FP32, this increased the packed decoder's register pressure and
+regressed DeepSeek V4 Flash speculative verification from about 26 ms to 38 ms.
+
+The retained fast specialization restores the low-register schedule:
+
+- decode four E2M1 values per instruction with the packed decoder;
+- reuse one 16-byte quantized-weight buffer and consume each output column
+  immediately instead of keeping every column's tile live;
+- use `CtaN=2, Threads=128` for the packed FP32 specialization;
+- preserve the PR fallback at `CtaN=4, Threads=128` as a separately compiled
+  kernel.
+
+Set `ORT_DISABLE_MOE_GEMV_FAST=1` before process start to select that fallback.
+The switch is cached on first use, so controlled A/B measurements must use
+separate processes. It does not disable GEMV; `ORT_ENABLE_FP4_GEMV=0` remains
+the switch for routing away from FP4 GEMV entirely.
+
+### Setup
+
+- GPU: NVIDIA H200, SM90, GPU 7, idle before and after the sweep.
+- ORT branch: `tlwu/deepseek_v4_flash_0731_op`, PR #31159 cherry-pick
+  `5440fcd2a5` plus the working-tree fast-path fix.
+- Build: CUDA 13.0, cuDNN 9.23, FP4 QMoE enabled.
+- Workload: production `QMoE` graph builder from
+  `test_qmoe_fp4_cuda.py`, BF16 MXFP4, group size 32, fused SwiGLU FC1 and
+  symmetric FC2 in each invocation.
+- Timing: one GPU, 100 warmups, 15 batches of 100 CUDA-event-timed calls;
+  reported values are medians of batch medians.
+- Fast arm: `ORT_DISABLE_MOE_GEMV_FAST` unset (`CtaN=2`, packed decoder).
+- Fallback arm: `ORT_DISABLE_MOE_GEMV_FAST=1` (`CtaN=4`, per-element decoder).
+
+The shapes cover a minimum supported tile, GPT-OSS dimensions, an asymmetric
+Qwen-style MoE, and a large DeepSeek-style MoE. Each row measures the complete
+QMoE invocation, containing FC1 (`N=2I, K=H`) and FC2 (`N=H, K=I`).
+
+### H200 results
+
+| Shape `H x I` | Expanded rows | Fast `CtaN=2` ms | Fallback `CtaN=4` ms | Speedup |
+|---|---:|---:|---:|---:|
+| 512 x 512 | 1 | 0.040176 | 0.043952 | 1.094x |
+| 512 x 512 | 4 | 0.044272 | 0.044816 | 1.012x |
+| 512 x 512 | 16 | 0.049856 | 0.051968 | 1.042x |
+| 512 x 512 | 64 | 0.065920 | 0.088800 | 1.347x |
+| 2880 x 2880 | 1 | 0.048464 | 0.063936 | 1.319x |
+| 2880 x 2880 | 4 | 0.072288 | 0.111120 | 1.537x |
+| 2880 x 2880 | 16 | 0.166624 | 0.297088 | 1.783x |
+| 2880 x 2880 | 64 | 0.526336 | 1.050464 | 1.996x |
+| 2048 x 512 | 1 | 0.045952 | 0.046240 | 1.006x |
+| 2048 x 512 | 8 | 0.053328 | 0.059808 | 1.122x |
+| 2048 x 512 | 32 | 0.081664 | 0.111184 | 1.361x |
+| 2048 x 512 | 64 | 0.118800 | 0.179680 | 1.512x |
+| 7168 x 2048 | 1 | 0.058912 | 0.068768 | 1.167x |
+| 7168 x 2048 | 4 | 0.095264 | 0.148704 | 1.561x |
+| 7168 x 2048 | 16 | 0.240400 | 0.457360 | 1.902x |
+| 7168 x 2048 | 64 | 0.811904 | 1.670400 | 2.057x |
+
+No measured shape regressed. The 512-wide, low-row cases are effectively near
+parity; benefits increase with dimensions and expanded rows. CUPTI confirmed
+that the two arms launched the intended production kernels. At 2880 x 2880 and
+four expanded rows, the packed FC1 kernel measured 23.00 us versus 46.34 us
+(2.02x), and FC2 measured 12.82 us versus 25.16 us (1.96x).
+
+### DeepSeek V4 Flash end-to-end check
+
+Eight H200 GPUs, BF16 model, prompt length 1024, past length 1024, 20 repeats:
+
+| Mode | K=1 ms | K=6 ms |
+|---|---:|---:|
+| Packed fast path | 15.621 | 26.014 |
+| `ORT_DISABLE_MOE_GEMV_FAST=1` | 17.922 | 38.409 |
+
+The packed specialization restores the pre-PR K=6 target of about 26.038 ms.
+
+### Validation and limitations
+
+- `test_qmoe_fp4_cuda.py`: 31/31 tests passed with the fast path enabled.
+- BF16 decode and SM80-layout parity subset: 5/5 passed independently with
+  the fast path enabled and with `ORT_DISABLE_MOE_GEMV_FAST=1`.
+- Only H200 hardware was available for this run. The matrix includes dimensions
+  representative of A100/H100 deployments and the kernel supports SM80+, but
+  these numbers are not direct A100 or H100 measurements. Re-run the same
+  separate-process A/B before changing the default for another architecture.
+
+### Decision
+
+Keep the packed specialization enabled by default for qualifying BF16 MXFP4
+interleaved GEMV shapes. Keep `ORT_DISABLE_MOE_GEMV_FAST=1` as an escape hatch
+for unprofiled shapes and architectures.
