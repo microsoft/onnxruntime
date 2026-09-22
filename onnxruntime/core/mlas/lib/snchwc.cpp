@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "snchwc.h"
 
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
@@ -67,16 +68,6 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     float* Output;
     MLAS_POOLING_KIND PoolingKind;
 };
-
-//
-// Define the convolution kernel flags.
-//
-
-#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     0x00000001
-#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
-#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
-#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
-#define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
 
 size_t
 MLASCALL
@@ -1142,6 +1133,9 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
+#if defined(MLAS_TARGET_AMD64)
+        Kernel = MlasNchwcSelectDepthwiseKernel(Kernel, WorkBlock->BackendKernelSelectorConfig);
+#endif
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
 #endif
