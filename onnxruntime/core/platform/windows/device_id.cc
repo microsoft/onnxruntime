@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,7 @@ namespace {
 
 constexpr char kDeviceIdRegistryKey[] = "SOFTWARE\\Microsoft\\DeveloperTools\\.onnxruntime";
 constexpr char kDeviceIdRegistryValue[] = "deviceid";
+constexpr wchar_t kDeviceIdDirectory[] = L"Microsoft\\DeveloperTools\\.onnxruntime";
 constexpr size_t kMaxDeviceIdSize = 256;
 
 enum class RegistryReadResult {
@@ -195,14 +197,14 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
   return status == ERROR_SUCCESS;
 }
 
-std::string GetEnvironmentValue(const char* name) {
-  const DWORD required_size = ::GetEnvironmentVariableA(name, nullptr, 0);
+std::wstring GetEnvironmentValue(const wchar_t* name) {
+  const DWORD required_size = ::GetEnvironmentVariableW(name, nullptr, 0);
   if (required_size == 0) {
     return {};
   }
 
-  std::string value(required_size, '\0');
-  const DWORD value_size = ::GetEnvironmentVariableA(name, value.data(), required_size);
+  std::wstring value(required_size, L'\0');
+  const DWORD value_size = ::GetEnvironmentVariableW(name, value.data(), required_size);
   if (value_size == 0 || value_size >= required_size) {
     return {};
   }
@@ -211,9 +213,45 @@ std::string GetEnvironmentValue(const char* name) {
   return value;
 }
 
-std::filesystem::path GetAbsoluteEnvironmentPath(const char* name) {
+std::filesystem::path GetAbsoluteEnvironmentPath(const wchar_t* name) {
   std::filesystem::path path(GetEnvironmentValue(name));
   return path.is_absolute() ? path : std::filesystem::path{};
+}
+
+std::string WideToUtf8(std::wstring_view value) {
+  if (value.empty()) {
+    return {};
+  }
+
+  const int required_size = ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+                                                  static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+  if (required_size == 0) {
+    return {};
+  }
+
+  std::string result(required_size, '\0');
+  return ::WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                               result.data(), required_size, nullptr, nullptr) == required_size
+             ? result
+             : std::string{};
+}
+
+std::wstring Utf8ToWide(std::string_view value) {
+  if (value.empty()) {
+    return {};
+  }
+
+  const int required_size =
+      ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
+  if (required_size == 0) {
+    return {};
+  }
+
+  std::wstring result(required_size, L'\0');
+  return ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                               result.data(), required_size) == required_size
+             ? result
+             : std::wstring{};
 }
 
 }  // namespace
@@ -255,20 +293,20 @@ bool DeviceId::IsValidGUID(const std::string& value) {
 }
 
 std::string DeviceId::GetStorageDirectory() {
-  for (const char* variable : {"LOCALAPPDATA", "APPDATA"}) {
+  for (const wchar_t* variable : {L"LOCALAPPDATA", L"APPDATA"}) {
     const std::filesystem::path app_data = GetAbsoluteEnvironmentPath(variable);
     if (!app_data.empty()) {
-      return (app_data / kDeviceIdDir).string();
+      return WideToUtf8((app_data / kDeviceIdDirectory).native());
     }
   }
 
-  std::filesystem::path home = GetAbsoluteEnvironmentPath("HOME");
+  std::filesystem::path home = GetAbsoluteEnvironmentPath(L"HOME");
   if (home.empty()) {
-    home = GetAbsoluteEnvironmentPath("USERPROFILE");
+    home = GetAbsoluteEnvironmentPath(L"USERPROFILE");
   }
   if (home.empty()) {
-    const std::string home_drive = GetEnvironmentValue("HOMEDRIVE");
-    const std::string home_path = GetEnvironmentValue("HOMEPATH");
+    const std::wstring home_drive = GetEnvironmentValue(L"HOMEDRIVE");
+    const std::wstring home_path = GetEnvironmentValue(L"HOMEPATH");
     const std::filesystem::path combined_home(home_drive + home_path);
     if (combined_home.is_absolute()) {
       home = combined_home;
@@ -276,7 +314,7 @@ std::string DeviceId::GetStorageDirectory() {
   }
   return home.empty()
              ? std::string{}
-             : (home / "AppData" / "Local" / kDeviceIdDir).string();
+             : WideToUtf8((home / L"AppData" / L"Local" / kDeviceIdDirectory).native());
 }
 
 std::string DeviceId::EnsureStorageDirectory() {
@@ -288,9 +326,14 @@ std::string DeviceId::EnsureStorageDirectory() {
 }
 
 bool DeviceId::CreateDirectoryTree(const std::string& path, bool /*leaf*/) {
+  const std::wstring wide_path = Utf8ToWide(path);
+  if (wide_path.empty()) {
+    return false;
+  }
+
   std::error_code error;
-  std::filesystem::create_directories(path, error);
-  return !error && std::filesystem::is_directory(path, error);
+  std::filesystem::create_directories(wide_path, error);
+  return !error && std::filesystem::is_directory(wide_path, error);
 }
 
 void DeviceId::InitializeInternal() {

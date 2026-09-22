@@ -1996,13 +1996,6 @@ else()
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
-    if(onnxruntime_USE_1DS_TELEMETRY
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
-       AND NOT onnxruntime_BUILD_SHARED_LIB)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(MSTelemetry CONFIG)\n\
-        ")
-    endif()
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT

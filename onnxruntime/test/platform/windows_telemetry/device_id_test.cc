@@ -39,6 +39,10 @@ bool IsValidGuid(const std::string& value) {
   return true;
 }
 
+fs::path Utf8Path(const std::string& value) {
+  return fs::path(std::u8string(value.begin(), value.end()));
+}
+
 class ScopedRegistryOverride {
  public:
   ScopedRegistryOverride()
@@ -111,6 +115,35 @@ class ScopedRegistryOverride {
   bool overridden_{};
 };
 
+class ScopedWideEnvironmentVariable {
+ public:
+  ScopedWideEnvironmentVariable(const wchar_t* name, const std::wstring& value) : name_(name) {
+    const DWORD required_size = ::GetEnvironmentVariableW(name_.c_str(), nullptr, 0);
+    if (required_size != 0) {
+      original_value_.resize(required_size, L'\0');
+      const DWORD value_size =
+          ::GetEnvironmentVariableW(name_.c_str(), original_value_.data(), required_size);
+      ORT_ENFORCE(value_size != 0 && value_size < required_size);
+      original_value_.resize(value_size);
+      was_defined_ = true;
+    }
+    ORT_ENFORCE(::SetEnvironmentVariableW(name_.c_str(), value.c_str()));
+  }
+
+  ~ScopedWideEnvironmentVariable() {
+    EXPECT_TRUE(::SetEnvironmentVariableW(name_.c_str(),
+                                          was_defined_ ? original_value_.c_str() : nullptr));
+  }
+
+  ScopedWideEnvironmentVariable(const ScopedWideEnvironmentVariable&) = delete;
+  ScopedWideEnvironmentVariable& operator=(const ScopedWideEnvironmentVariable&) = delete;
+
+ private:
+  std::wstring name_;
+  std::wstring original_value_;
+  bool was_defined_{};
+};
+
 TEST(DeviceIdWindowsTest, FallsBackToAbsoluteAppData) {
   const fs::path app_data = fs::temp_directory_path() / "ort_device_id_app_data";
   ScopedEnvironmentVariables environment{
@@ -119,7 +152,7 @@ TEST(DeviceIdWindowsTest, FallsBackToAbsoluteAppData) {
                 {"HOME", nullopt},
                 {"USERPROFILE", nullopt}}};
 
-  EXPECT_EQ(fs::path(DeviceId::GetStorageDirectory()),
+  EXPECT_EQ(Utf8Path(DeviceId::GetStorageDirectory()),
             app_data / "Microsoft" / "DeveloperTools" / ".onnxruntime");
 }
 
@@ -131,8 +164,21 @@ TEST(DeviceIdWindowsTest, FallsBackToUserProfileWhenAppDataIsUnavailable) {
                 {"HOME", "relative-home"},
                 {"USERPROFILE", user_profile.string()}}};
 
-  EXPECT_EQ(fs::path(DeviceId::GetStorageDirectory()),
+  EXPECT_EQ(Utf8Path(DeviceId::GetStorageDirectory()),
             user_profile / "AppData" / "Local" / "Microsoft" / "DeveloperTools" / ".onnxruntime");
+}
+
+TEST(DeviceIdWindowsTest, CreatesUnicodeStorageDirectory) {
+  const fs::path app_data = fs::temp_directory_path() / L"ort_device_id_\u6d4b\u8bd5";
+  ScopedWideEnvironmentVariable local_app_data(L"LOCALAPPDATA", app_data.native());
+
+  const fs::path storage_dir = Utf8Path(DeviceId::EnsureStorageDirectory());
+  EXPECT_EQ(storage_dir, app_data / "Microsoft" / "DeveloperTools" / ".onnxruntime");
+  EXPECT_TRUE(fs::is_directory(storage_dir));
+
+  std::error_code error;
+  fs::remove_all(app_data, error);
+  EXPECT_FALSE(error);
 }
 
 TEST(DeviceIdWindowsDeathTest, CreatesMissingRegistryValue) {
