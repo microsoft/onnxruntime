@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -2892,36 +2894,335 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& exten
   return nullptr;
 }
 
-// Recursive worker for PushedTransposeCancels. Returns false as soon as a Transpose that would merge rather than
-// cancel is reached, or, when `tolerate_stranded_branches` is false, as soon as a branch ends without a Transpose.
-// Sets `found` when a cancelling Transpose is reached.
-static bool PushedTransposeCancelsImpl(const api::GraphRef& graph, std::string_view value,
-                                       const std::vector<int64_t>& cancel_perm,
-                                       const HandlerMap& extended_handlers, bool tolerate_stranded_branches,
-                                       std::unordered_set<std::string>& visited, bool& found) {
-  std::string value_str(value);
-  if (!visited.insert(value_str).second) {
-    return true;
+enum class CancelWalkResult : int8_t {
+  kFail = 0,
+  kNoCancel = 1,
+  kCancel = 2,
+};
+
+static constexpr int8_t kCancelWalkInProgress = -1;
+
+static CancelWalkResult CombineCancelWalk(CancelWalkResult a, CancelWalkResult b) {
+  if (a == CancelWalkResult::kFail || b == CancelWalkResult::kFail) {
+    return CancelWalkResult::kFail;
+  }
+  if (a == CancelWalkResult::kCancel || b == CancelWalkResult::kCancel) {
+    return CancelWalkResult::kCancel;
+  }
+  return CancelWalkResult::kNoCancel;
+}
+
+static std::string CancelWalkCacheKey(std::string_view value, const std::vector<int64_t>& pushed_perm,
+                                      bool tolerate_stranded_branches) {
+  std::string key;
+  key.reserve(value.size() + pushed_perm.size() * 4 + 8);
+  key.append(value);
+  key.push_back(tolerate_stranded_branches ? 'T' : 'F');
+  key.push_back('#');
+  for (size_t i = 0; i < pushed_perm.size(); ++i) {
+    if (i != 0) {
+      key.push_back(',');
+    }
+    key.append(std::to_string(pushed_perm[i]));
+  }
+  return key;
+}
+
+// Permutation of the Transpose that would be inserted on every nonempty output if `pushed_perm` were pushed through
+// `node`. nullopt if the handler would refuse the push or the output permutation cannot be determined read-only.
+static std::optional<std::vector<int64_t>> PreviewReduceOutputPerm(OptimizerCtx& ctx, api::NodeRef& node,
+                                                                   const std::vector<int64_t>& pushed_perm) {
+  const bool old_style = (node.OpType() == "ReduceSum" && ctx.opset < 13) ||
+                         (node.OpType() != "ReduceSum" && ctx.opset < 18);
+  const int64_t keepdims = node.GetAttributeIntDefault("keepdims", 1);
+
+  if (old_style) {
+    std::optional<std::vector<int64_t>> axes = node.GetAttributeInts("axes");
+    if (axes == std::nullopt) {
+      if (keepdims == 0) {
+        return std::nullopt;
+      }
+      return pushed_perm;
+    }
+    if (!NormalizeAndValidateAxes(*axes, pushed_perm.size())) {
+      return std::nullopt;
+    }
+    if (keepdims == 0) {
+      return SqueezePerm(SortedAxesForTransposedInput(*axes, pushed_perm), pushed_perm);
+    }
+    return pushed_perm;
   }
 
-  const auto consumers = graph.GetValueConsumers(value);
+  const bool keepdims_bool = keepdims != 0;
+  const auto& inputs = node.Inputs();
+  bool empty_axes = inputs.size() < 2 || inputs[1] == "";
+  std::unique_ptr<api::TensorRef> axes_const;
+  if (!empty_axes) {
+    axes_const = ctx.graph.GetConstant(inputs[1]);
+    if (axes_const != nullptr && axes_const->NumElements() == 0) {
+      empty_axes = true;
+    }
+  }
+  if (empty_axes) {
+    const bool noop = node.GetAttributeIntDefault("noop_with_empty_axes", 0) != 0;
+    if (noop || keepdims_bool) {
+      return pushed_perm;
+    }
+    return std::nullopt;
+  }
+  if (axes_const == nullptr) {
+    return std::nullopt;
+  }
+  auto axes = DataInt64(*axes_const);
+  if (!NormalizeAndValidateAxes(axes, pushed_perm.size())) {
+    return std::nullopt;
+  }
+  if (keepdims_bool) {
+    return pushed_perm;
+  }
+  return SqueezePerm(SortedAxesForTransposedInput(axes, pushed_perm), pushed_perm);
+}
+
+static std::optional<std::vector<int64_t>> PreviewPushedOutputPerm(OptimizerCtx& ctx, api::NodeRef& node,
+                                                                   const std::vector<int64_t>& pushed_perm) {
+  const HandlerInfo* info = GetHandler(node, ctx.extended_handlers);
+  if (info == nullptr || !info->transposes_outputs) {
+    return std::nullopt;
+  }
+
+  const std::string_view op = node.OpType();
+  const size_t rank = pushed_perm.size();
+
+  if (op == "Squeeze") {
+    auto axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1, /*opset*/ 13);
+    if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, rank)) {
+      return std::nullopt;
+    }
+    return SqueezePerm(SortedAxesForTransposedInput(*axes, pushed_perm), pushed_perm);
+  }
+
+  if (op == "Unsqueeze") {
+    auto axes = ReadFromAttrOrInput(ctx, node, "axes", /*inp_index*/ 1, /*opset*/ 13);
+    if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, rank + axes->size())) {
+      return std::nullopt;
+    }
+    return UnsqueezePerm(*axes, pushed_perm);
+  }
+
+  if (op == "Gather") {
+    int64_t axis = node.GetAttributeIntDefault("axis", 0);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return std::nullopt;
+    }
+    const auto inputs = node.Inputs();
+    if (inputs.size() < 2) {
+      return std::nullopt;
+    }
+    auto indices_const = ctx.graph.GetConstant(inputs[1]);
+    if (indices_const == nullptr || !indices_const->Shape().empty()) {
+      return std::nullopt;
+    }
+    const int64_t new_axis = pushed_perm[gsl::narrow_cast<size_t>(axis)];
+    return SqueezePerm({new_axis}, pushed_perm);
+  }
+
+  if (op == "Slice") {
+    if (ctx.opset < 10) {
+      std::optional<std::vector<int64_t>> axes = node.GetAttributeInts("axes");
+      if (axes == std::nullopt) {
+        std::optional<std::vector<int64_t>> starts = node.GetAttributeInts("starts");
+        if (starts == std::nullopt) {
+          return std::nullopt;
+        }
+        axes = std::vector<int64_t>();
+        axes->reserve(starts->size());
+        for (size_t i = 0; i < starts->size(); ++i) {
+          axes->push_back(gsl::narrow_cast<int64_t>(i));
+        }
+      }
+      if (!NormalizeAndValidateAxes(*axes, rank)) {
+        return std::nullopt;
+      }
+      return pushed_perm;
+    }
+
+    const auto inputs = node.Inputs();
+    if (inputs.size() < 4 || inputs[3] == "") {
+      if (inputs.size() < 2) {
+        return std::nullopt;
+      }
+      auto starts_value_info = ctx.graph.GetValueInfo(inputs[1]);
+      const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
+      if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0 ||
+          static_cast<uint64_t>((*starts_shape)[0]) > rank) {
+        return std::nullopt;
+      }
+      return pushed_perm;
+    }
+
+    auto axes_const = ctx.graph.GetConstant(inputs[3]);
+    if (axes_const == nullptr) {
+      return std::nullopt;
+    }
+    auto axes = TensorIntData(*axes_const, axes_const->DType());
+    if (!NormalizeAndValidateAxes(axes, rank)) {
+      return std::nullopt;
+    }
+    return pushed_perm;
+  }
+
+  if (op == "ArgMin" || op == "ArgMax") {
+    int64_t keepdims = node.GetAttributeIntDefault("keepdims", 1);
+    int64_t axis = node.GetAttributeIntDefault("axis", 0);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return std::nullopt;
+    }
+    if (keepdims != 0) {
+      return pushed_perm;
+    }
+    const int64_t new_axis = pushed_perm[gsl::narrow_cast<size_t>(axis)];
+    return SqueezePerm({new_axis}, pushed_perm);
+  }
+
+  if (op.size() >= 6 && op.substr(0, 6) == "Reduce") {
+    return PreviewReduceOutputPerm(ctx, node, pushed_perm);
+  }
+
+  if (op == "Concat") {
+    std::optional<int64_t> axis = node.GetAttributeInt("axis");
+    if (axis == std::nullopt || !NormalizeAndValidateAxis(*axis, rank)) {
+      return std::nullopt;
+    }
+    return pushed_perm;
+  }
+
+  if (op == "Split") {
+    int64_t axis = node.GetAttributeIntDefault("axis", 0);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return std::nullopt;
+    }
+    return pushed_perm;
+  }
+
+  if (op == "Softmax" || op == "Hardmax" || op == "LogSoftmax") {
+    if (ctx.opset >= 13) {
+      int64_t axis = node.GetAttributeIntDefault("axis", -1);
+      if (!NormalizeAndValidateAxis(axis, rank)) {
+        return std::nullopt;
+      }
+      return pushed_perm;
+    }
+    int64_t axis = node.GetAttributeIntDefault("axis", 1);
+    if (!NormalizeAndValidateAxis(axis, rank)) {
+      return std::nullopt;
+    }
+    for (size_t i = 0; i < rank; ++i) {
+      const bool to_lhs = i < gsl::narrow_cast<size_t>(axis);
+      const bool from_lhs = pushed_perm[i] < axis;
+      if (to_lhs != from_lhs) {
+        return std::nullopt;
+      }
+    }
+    return pushed_perm;
+  }
+
+  if (op == "QuantizeLinear" || op == "DequantizeLinear") {
+    if (ctx.opset >= 13) {
+      const auto inputs = node.Inputs();
+      if (inputs.size() < 2) {
+        return std::nullopt;
+      }
+      auto inp_shape = ctx.graph.GetValueInfo(inputs[1])->Shape();
+      const bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
+      if (!scalar_params) {
+        int64_t axis = node.GetAttributeIntDefault("axis", 1);
+        if (!NormalizeAndValidateAxis(axis, rank)) {
+          return std::nullopt;
+        }
+      }
+    }
+    return pushed_perm;
+  }
+
+  if (op == "Tile") {
+    const auto inputs = node.Inputs();
+    if (inputs.size() < 2) {
+      return std::nullopt;
+    }
+    auto repeats_const = ctx.graph.GetConstant(inputs[1]);
+    if (repeats_const != nullptr && repeats_const->NumElements() != rank) {
+      return std::nullopt;
+    }
+    return pushed_perm;
+  }
+
+  if (op == "Pad") {
+    if (ctx.opset < 11) {
+      std::optional<std::vector<int64_t>> pads = node.GetAttributeInts("pads");
+      if (pads == std::nullopt || pads->size() != rank * 2) {
+        return std::nullopt;
+      }
+    }
+    return pushed_perm;
+  }
+
+  return pushed_perm;
+}
+
+// Follows outputs through handlers that transpose their outputs to find the Transposes that a Transpose with
+// `pushed_perm` on `value` would eventually meet. Returns true only if at least one cancelling Transpose is reached
+// and none of them would merely merge.
+//
+// `tolerate_stranded_branches` decides what a branch that ends without a Transpose means. With false the query fails,
+// which is what the cost model wants: the pushed Transpose has to be consumed everywhere to be free. With true the
+// branch is ignored and the pushed Transpose is left sitting on it.
+static CancelWalkResult PushedTransposeCancelsImpl(OptimizerCtx& ctx, std::string_view value,
+                                                   const std::vector<int64_t>& pushed_perm,
+                                                   bool tolerate_stranded_branches) {
+  const std::string key = CancelWalkCacheKey(value, pushed_perm, tolerate_stranded_branches);
+  const auto cached = ctx.pushed_transpose_cancels_cache.find(key);
+  if (cached != ctx.pushed_transpose_cancels_cache.end()) {
+    if (cached->second == kCancelWalkInProgress) {
+      return CancelWalkResult::kNoCancel;
+    }
+    return static_cast<CancelWalkResult>(cached->second);
+  }
+
+  ctx.pushed_transpose_cancels_cache[key] = kCancelWalkInProgress;
+
+  const auto consumers = ctx.graph.GetValueConsumers(value);
+  CancelWalkResult result = CancelWalkResult::kNoCancel;
+  if (!consumers->comprehensive) {
+    if (!tolerate_stranded_branches) {
+      result = CancelWalkResult::kFail;
+      ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
+      return result;
+    }
+  }
+
   if (consumers->nodes.empty()) {
-    return tolerate_stranded_branches;
+    result = tolerate_stranded_branches ? CancelWalkResult::kNoCancel : CancelWalkResult::kFail;
+    ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
+    return result;
   }
 
+  const std::vector<int64_t> cancel_perm = InvertPerm(pushed_perm);
   for (auto& consumer : consumers->nodes) {
     if (consumer->IsOp("Transpose")) {
-      if (GetPermAttrIfValid(*consumer) != cancel_perm) {
-        return false;
+      const auto consumer_perm = GetPermAttrIfValid(*consumer);
+      if (!consumer_perm.has_value() || *consumer_perm != cancel_perm) {
+        result = CancelWalkResult::kFail;
+        break;
       }
-      found = true;
+      result = CombineCancelWalk(result, CancelWalkResult::kCancel);
       continue;
     }
 
-    const HandlerInfo* info = GetHandler(*consumer, extended_handlers);
-    if (info == nullptr || !info->transposes_outputs) {
+    const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, pushed_perm);
+    if (!output_perm.has_value()) {
       if (!tolerate_stranded_branches) {
-        return false;
+        result = CancelWalkResult::kFail;
+        break;
       }
       continue;
     }
@@ -2930,31 +3231,24 @@ static bool PushedTransposeCancelsImpl(const api::GraphRef& graph, std::string_v
       if (out.empty()) {
         continue;
       }
-      if (!PushedTransposeCancelsImpl(graph, out, cancel_perm, extended_handlers, tolerate_stranded_branches, visited,
-                                      found)) {
-        return false;
+      result = CombineCancelWalk(
+          result, PushedTransposeCancelsImpl(ctx, out, *output_perm, tolerate_stranded_branches));
+      if (result == CancelWalkResult::kFail) {
+        break;
       }
+    }
+    if (result == CancelWalkResult::kFail) {
+      break;
     }
   }
 
-  return true;
+  ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
+  return result;
 }
 
-// Follows outputs through handlers that transpose their outputs to find the Transposes that a Transpose pushed onto
-// `value` would eventually meet. Returns true only if at least one is reached and all of them have perm `cancel_perm`,
-// so the pushed Transpose is cancelled rather than merged into a Transpose that stays in the graph.
-//
-// `tolerate_stranded_branches` decides what a branch that ends without a Transpose means. With false the query fails,
-// which is what the cost model wants: the pushed Transpose has to be consumed everywhere to be free. With true the
-// branch is ignored and the pushed Transpose is left sitting on it.
-static bool PushedTransposeCancels(const api::GraphRef& graph, std::string_view value,
-                                   const std::vector<int64_t>& cancel_perm, const HandlerMap& extended_handlers,
-                                   bool tolerate_stranded_branches) {
-  std::unordered_set<std::string> visited;
-  bool found = false;
-  return PushedTransposeCancelsImpl(graph, value, cancel_perm, extended_handlers, tolerate_stranded_branches, visited,
-                                    found) &&
-         found;
+static bool PushedTransposeCancels(OptimizerCtx& ctx, std::string_view value,
+                                   const std::vector<int64_t>& pushed_perm, bool tolerate_stranded_branches) {
+  return PushedTransposeCancelsImpl(ctx, value, pushed_perm, tolerate_stranded_branches) == CancelWalkResult::kCancel;
 }
 
 // True if every Transpose providing `perm` to `node` has `node` as its only consumer.
@@ -2987,44 +3281,48 @@ static bool IncomingTransposeIsSolelyConsumedByNode(const api::GraphRef& graph, 
   return saw_matching_transpose;
 }
 
-static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
+static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
                          const std::vector<int64_t>& perm,
                          const std::unordered_set<std::string>& outputs_leading_to_transpose,
                          const HandlerInfo& info,
-                         const std::vector<size_t>& input_indices,
-                         const HandlerMap& extended_handlers) {
+                         const std::vector<size_t>& input_indices) {
   // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
   // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
   // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
   // repeated runs of the optimizer to have a transpose toggle between two inputs of a binary op.
-  int cost = EstimateTransposeInputsCost(graph, node, perm, input_indices, extended_handlers);
+  int cost = EstimateTransposeInputsCost(ctx.graph, node, perm, input_indices, ctx.extended_handlers);
 
   if (cost < 0 && info.transposes_outputs) {
     // If the output will be transposed and won't ultimately cancel, factor in that cost.
-    // A downstream Transpose only makes the inserted output Transpose free when:
-    //   - it would cancel with the pushed perm, or
-    //   - the incoming Transpose is unique to this node, so merging still drops a Transpose.
+    // A downstream Transpose only makes an inserted output Transpose free when it would cancel with the pushed perm.
     // Shared incoming Transpose + merge is a no-op on Transpose count (the shared Transpose remains).
-    bool has_beneficial_downstream_transpose = false;
+    // Unique incoming Transpose can still be a win if at most one output Transpose remains after the push.
+    bool all_pushed_outputs_cancel = true;
+    int kept_output_transposes = 0;
     auto outputs = node.Outputs();
     int out_cost = 0;
-    const std::vector<int64_t> cancel_perm = InvertPerm(perm);
     // Having multiple outputs is rare. When it happens (Split), the total size of the outputs isn't much larger
     // than the largest input. Cost is rank currently, so just use the largest cost (rank) over all outputs.
     for (auto out : outputs) {
-      out_cost = std::max(out_cost, EstimateValueRank(graph, out));
-      if (outputs_leading_to_transpose.find(std::string(out)) == outputs_leading_to_transpose.end()) {
+      if (out.empty()) {
         continue;
       }
-
-      if (PushedTransposeCancels(graph, out, cancel_perm, extended_handlers,
-                                 /*tolerate_stranded_branches*/ false) ||
-          IncomingTransposeIsSolelyConsumedByNode(graph, node, perm)) {
-        has_beneficial_downstream_transpose = true;
+      out_cost = std::max(out_cost, EstimateValueRank(ctx.graph, out));
+      const bool leads_to_transpose =
+          outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end();
+      const bool can_cancel =
+          leads_to_transpose && PushedTransposeCancels(ctx, out, perm, /*tolerate_stranded_branches*/ false);
+      if (can_cancel) {
+        continue;
       }
+      all_pushed_outputs_cancel = false;
+      ++kept_output_transposes;
     }
 
-    if (!has_beneficial_downstream_transpose) {
+    const bool waive_output_cost =
+        all_pushed_outputs_cancel ||
+        (kept_output_transposes <= 1 && IncomingTransposeIsSolelyConsumedByNode(ctx.graph, node, perm));
+    if (!waive_output_cost) {
       cost += out_cost;
     }
   }
@@ -3033,18 +3331,16 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
 }
 
 // Default cost check. Returns `true` if pushing the Transpose through the node is considered to be beneficial.
-static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+static bool DefaultCostCheck(OptimizerCtx& ctx, const api::NodeRef& node,
                              const std::vector<int64_t>& perm,
                              const std::unordered_set<std::string>& outputs_leading_to_transpose,
                              const HandlerInfo& info,
-                             const std::vector<size_t> transposable_input_indices,
-                             const HandlerMap& extended_handlers) {
+                             const std::vector<size_t> transposable_input_indices) {
   if (node.IsOp("Transpose")) {
     return true;
   }
 
-  int cost = CalculateCost(graph, node, perm, outputs_leading_to_transpose, info, transposable_input_indices,
-                           extended_handlers);
+  int cost = CalculateCost(ctx, node, perm, outputs_leading_to_transpose, info, transposable_input_indices);
   return cost < 0;
 }
 
@@ -3057,7 +3353,7 @@ static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 // Giving the unit up only buys something if the relocated Transpose is cancelled downstream. Merging is not enough:
 // the merged Transpose stays in the graph, so the unit is spent for nothing. Branches that never reach a Transpose
 // are accepted, since the relocated Transpose simply rides along on them.
-static bool PushBreaksTransposeQDQNodeUnit(const OptimizerCtx& ctx, const api::NodeRef& transpose,
+static bool PushBreaksTransposeQDQNodeUnit(OptimizerCtx& ctx, const api::NodeRef& transpose,
                                            const api::NodeRef& node, const std::vector<int64_t>& perm) {
   if (node.OpType() != "QuantizeLinear") {
     return false;
@@ -3074,8 +3370,7 @@ static bool PushBreaksTransposeQDQNodeUnit(const OptimizerCtx& ctx, const api::N
     return false;
   }
 
-  return !PushedTransposeCancels(ctx.graph, node.Outputs()[0], InvertPerm(perm), ctx.extended_handlers,
-                                 /*tolerate_stranded_branches*/ true);
+  return !PushedTransposeCancels(ctx, node.Outputs()[0], perm, /*tolerate_stranded_branches*/ true);
 }
 
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
@@ -3100,19 +3395,22 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    const bool push = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices,
-                                       ctx.extended_handlers) &&
-                      !PushBreaksTransposeQDQNodeUnit(ctx, transpose, node, perm);
-    cost = push ? CostCheckResult::kPushTranspose : CostCheckResult::kStop;
+    cost = DefaultCostCheck(ctx, node, perm, outputs_leading_to_transpose, *info, input_indices)
+               ? CostCheckResult::kPushTranspose
+               : CostCheckResult::kStop;
   }
 
-  if (cost == CostCheckResult::kStop) {
+  if (cost != CostCheckResult::kPushTranspose || PushBreaksTransposeQDQNodeUnit(ctx, transpose, node, perm)) {
     return false;
   }
 
   std::vector<int64_t> perm_inv = InvertPerm(perm);
   HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, outputs_leading_to_transpose};
-  return info->handler_fn(args);
+  const bool modified = info->handler_fn(args);
+  if (modified) {
+    ctx.pushed_transpose_cancels_cache.clear();
+  }
+  return modified;
 }
 
 // Returns nullopt if graph opset is unsupported.

@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <gsl/gsl>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -54,6 +56,10 @@ struct OptimizerCtx {
   // Handlers for ops that are not in the ONNX opset, or for ONNX ops where special handling is required.
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
+
+  // Memo of cancellation walks for the current OptimizeImpl invocation. Cleared after a successful rewrite.
+  // Values: -1 in-progress, 0 fail, 1 no cancel, 2 cancel.
+  std::unordered_map<std::string, int8_t> pushed_transpose_cancels_cache;
 };
 
 /// <summary>
