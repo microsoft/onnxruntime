@@ -3244,6 +3244,25 @@ TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
+TEST(ResizeOpTest, Scales_CountMismatch_13) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> scales(16, 1.0f);
+  std::vector<float> Y(16, 0.0f);
+
+  OpTester test("Resize", 13);
+  test.AddAttribute("mode", "nearest");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, std::vector<float>{});
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in scales should be equal to rank of the data when axes is not provided.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
 TEST(ResizeOpTest, Axes_OutOfRange_18) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
