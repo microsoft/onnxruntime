@@ -1,5 +1,6 @@
 #param bit_width
 #param has_attention_bias
+#param has_qkv_bias
 #param has_head_sink
 #param has_local_window
 #param is_qualcomm
@@ -81,7 +82,11 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
                head_idx * head_size_vec;
 #endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
+#if has_qkv_bias
+    q_tile[idx] = (q[idx + offset] + qkv_bias[head_idx * head_size_vec + idx]) * alpha;
+#else
     q_tile[idx] = q[idx + offset] * alpha;
+#endif
   }
 }
 

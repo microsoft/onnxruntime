@@ -28,19 +28,22 @@ inline int Log2OfPowerOfTwo(int value) {
 
 class HadamardTransformProgram final : public Program<HadamardTransformProgram> {
  public:
-  HadamardTransformProgram(int slice_size_log2, int components)
+  HadamardTransformProgram(int slice_size_log2, int components, bool has_bias)
       : Program{"HadamardTransform"},
         slice_size_log2_(slice_size_log2),
-        components_(components) {}
+        components_(components),
+        has_bias_(has_bias) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_slices", ProgramUniformVariableDataType::Uint32});
+      {"num_slices", ProgramUniformVariableDataType::Uint32},
+      {"bias_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   int slice_size_log2_;
   int components_;
+  bool has_bias_;
 };
 
 // Apply the normalized Walsh-Hadamard transform.
@@ -52,10 +55,14 @@ class HadamardTransformProgram final : public Program<HadamardTransformProgram> 
 // Otherwise, the last dimension of the tensor shape is used.
 // The transform size must be a power of 2 (>= 4).
 // All elements are divided into slices of that size, each transformed independently.
+// If bias is provided, its first bias_size values repeat across the flattened input
+// and are added before the transform. bias_size must be a multiple of the slice size.
 Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
                               const Tensor* input,
                               Tensor* output,
-                              int explicit_slice_size = 0);
+                              int explicit_slice_size = 0,
+                              const Tensor* bias = nullptr,
+                              int bias_size = 0);
 
 }  // namespace webgpu
 }  // namespace contrib

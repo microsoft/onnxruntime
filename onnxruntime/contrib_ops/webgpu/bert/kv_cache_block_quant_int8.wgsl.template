@@ -8,6 +8,7 @@
 #param components
 #param compressed_head_size_u32
 #param has_past
+#param has_qkv_bias
 #param head_size
 #param kv_BNSH
 #param past_present_share_buffer
@@ -101,6 +102,11 @@ $MAIN {
     } else {
       value_to_quantize = value.getByOffset(src_base + i);
     }
+#if has_qkv_bias
+    let bias_offset = select(uniforms.key_bias_offset, uniforms.value_bias_offset, is_value) +
+                      head * HEAD_SIZE_VEC + i;
+    value_to_quantize += qkv_bias[bias_offset];
+#endif
 #if components == 4
     block_values[i * 4u] = f32(value_to_quantize[0]);
     block_values[i * 4u + 1u] = f32(value_to_quantize[1]);

@@ -17,6 +17,9 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
+  if (has_qkv_bias_) {
+    shader.AddInput("qkv_bias", ShaderUsage::UseUniform);
+  }
   // present_key/present_value are u32 arrays containing one scale and packed values.
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
@@ -43,6 +46,7 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, head_size_log2_),
                              WGSL_TEMPLATE_PARAMETER(has_past, has_past_),
+                             WGSL_TEMPLATE_PARAMETER(has_qkv_bias, has_qkv_bias_),
                              WGSL_TEMPLATE_PARAMETER(kv_BNSH, kv_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
@@ -58,6 +62,7 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
 Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                                         const Tensor* K, const Tensor* past_key, Tensor* present_key,
                                         const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                                        const Tensor* qkv_bias,
                                         uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
                                         uint32_t num_q_tiles, const Tensor* total_seqlen) {
   const int head_size = parameters.head_size_;
@@ -82,8 +87,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
+  const bool has_qkv_bias = qkv_bias != nullptr && !kv_BNSH;
 
-  TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
+  TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH, has_qkv_bias,
                                     parameters.past_present_share_buffer_,
                                     head_size_log2, components,
                                     compressed_head_size_u32,
@@ -101,6 +107,10 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, kv_num_heads, head_size / components};
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
+  }
+
+  if (has_qkv_bias) {
+    program.AddInput({qkv_bias, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
 
   if (use_seqlen_k) {
@@ -130,9 +140,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
-                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components,
-                 compressed_head_size_u32)
+      .CacheHint(has_past, parameters.qkv_format_, has_qkv_bias, parameters.past_present_share_buffer_,
+                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(copy_sequence_length)},
@@ -144,7 +153,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                             {past_input_seq_length},
                             {present_seq_length},
                             {tile_size},
-                            {static_cast<uint32_t>(parameters.total_sequence_length_)}});
+                            {static_cast<uint32_t>(parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(has_qkv_bias ? parameters.hidden_size_ / components : 0)},
+                            {static_cast<uint32_t>(has_qkv_bias ? 2 * parameters.hidden_size_ / components : 0)}});
 
   return context.RunProgram(program);
 }
