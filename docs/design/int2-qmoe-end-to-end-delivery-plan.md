@@ -12,10 +12,11 @@ The critical path is:
 
 ```text
 Mixed-width QMoE contract
-  -> CPU reference and deterministic tests
-  -> Olive quantization and Mobius export
+  -> deterministic packed test vectors and scalar reference
   -> CUDA correctness path
   -> packed CUDA decode kernel
+  -> CPU reference and cross-provider parity
+  -> Olive quantization and Mobius export
   -> bounded or native CUDA prefill path
   -> Qwen model validation and release evidence
 ```
@@ -136,34 +137,7 @@ Deliverables:
 
 Exit gate: one raw mixed FC1 INT2 / FC2 INT4 model validates identically on all registered QMoE providers, even where execution returns a clear unsupported-status error.
 
-### Workstream 2: CPU Reference
-
-CPU is the semantic oracle for model production and CUDA validation.
-
-Deliverables:
-
-- Extend CPU QMoE from one shared width to independent FC widths.
-- Reuse the existing INT2 MLAS LUT path for FC1 where eligible.
-- Preserve the existing INT4 path for FC2.
-- Cover routing, fused SwiGLU, bias, empty experts, multiple tokens, and top-k greater than one.
-- Compare against a scalar explicit-dequantization reference using all INT2 codes 0, 1, 2, and 3.
-
-Exit gate: deterministic mixed-width CPU QMoE tests pass and the exported model matches the quantized PyTorch reference within agreed tolerances.
-
-### Workstream 3: Olive and Mobius
-
-Deliverables:
-
-- Add or qualify selective mixed-precision QMoE quantization.
-- Export the approved FC-specific bit-width contract.
-- Emit portable raw `[E, N, K / pack_size]` weights.
-- Validate FC1 gate/up interleaving and FC2 orientation.
-- Add graph, initializer-binding, external-data, and numerical-parity tests.
-- Produce a small checked-in synthetic model and a reproducible Qwen conversion command.
-
-Exit gate: a clean environment can convert the selected checkpoint and run the exported model on the CPU reference path without manual graph edits.
-
-### Workstream 4: CUDA Correctness
+### Workstream 2: CUDA Correctness
 
 The correctness path must not reuse an INT4 type or layout for INT2.
 
@@ -174,13 +148,13 @@ Deliverables:
 - Implement bit-exact INT2 dequantization with block scales and correct row-local packed zero-point addressing.
 - Execute FC1 through a bounded dequantization plus existing dense MoE runner for correctness.
 - Keep FC2 on its existing INT4 path where possible.
-- Add CPU/CUDA parity tests.
+- Compare against deterministic scalar explicit-dequantization and quantized PyTorch references using all INT2 codes 0, 1, 2, and 3.
 
 Persistent full-model INT2-to-FP16 dequantization expands the affected payload by approximately 8x. It is acceptable only for small tests and as an oracle. The test implementation must have an explicit memory bound and must not be presented as production support.
 
 Exit gate: CUDA executes synthetic and reduced Qwen mixed-width models correctly without interpreting INT2 as INT4 or allocating unbounded scratch.
 
-### Workstream 5: CUDA Packed Decode
+### Workstream 3: CUDA Packed Decode
 
 The first performance milestone is fused packed execution for decode and low expanded-row counts, where expanded rows are approximately `num_tokens * top_k`.
 
@@ -195,6 +169,33 @@ Deliverables:
 - Add fused-versus-reference correctness tests and M=1 end-to-end benchmarks.
 
 Exit gate: packed QMoE improves decode latency or throughput over the agreed INT4 baseline while preserving the accepted model quality.
+
+### Workstream 4: CPU Reference and Cross-Provider Parity
+
+CPU provides the portable regression oracle after the CUDA execution contract is proven.
+
+Deliverables:
+
+- Extend CPU QMoE from one shared width to independent FC widths.
+- Reuse the existing INT2 MLAS LUT path for FC1 where eligible.
+- Preserve the existing INT4 path for FC2.
+- Cover routing, fused SwiGLU, bias, empty experts, multiple tokens, and top-k greater than one.
+- Compare CPU and CUDA against the same scalar explicit-dequantization reference.
+
+Exit gate: deterministic mixed-width CPU QMoE tests pass, CPU and CUDA agree within frozen tolerances, and both match the quantized PyTorch reference.
+
+### Workstream 5: Olive and Mobius
+
+Deliverables:
+
+- Add or qualify selective mixed-precision QMoE quantization.
+- Export the approved FC-specific bit-width contract.
+- Emit portable raw `[E, N, K / pack_size]` weights.
+- Validate FC1 gate/up interleaving and FC2 orientation.
+- Add graph, initializer-binding, external-data, and numerical-parity tests.
+- Produce a small checked-in synthetic model and a reproducible Qwen conversion command.
+
+Exit gate: a clean environment can convert the selected checkpoint and run the exported model on CUDA, then reproduce the result on the CPU reference path without manual graph edits.
 
 ### Workstream 6: CUDA Prefill
 
@@ -232,32 +233,33 @@ Merged as [#32697](https://github.com/microsoft/onnxruntime/pull/32697). Mixed-w
 - Shared shape and packing helpers.
 - Backward-compatibility and validation tests.
 
-### PR 2: CPU Mixed QMoE
-
-- FC1 INT2 and FC2 INT4 execution.
-- Scalar and MLAS parity tests.
-- Routing and SwiGLU coverage.
-
-### PR 3: Olive/Mobius Export
-
-- Selective recipe and manifest.
-- Fused QMoE graph export.
-- Weight-binding and numerical-parity tests.
-
-PR 2 and PR 3 can proceed in parallel on the merged contract.
-
-### PR 4: CUDA Correctness
+### PR 2: CUDA Correctness
 
 - INT2 validation and dequantization.
 - Bounded fallback.
-- CPU/CUDA parity tests.
+- Scalar-reference and quantized-PyTorch parity tests.
 
-### PR 5: CUDA Packed Decode
+### PR 3: CUDA Packed Decode
 
 - Runtime prepack.
 - Fused FC1 INT2 decode.
 - FC2 INT4 integration.
 - Correctness and decode benchmarks.
+
+### PR 4: CPU Mixed QMoE and Parity
+
+- FC1 INT2 and FC2 INT4 execution.
+- Scalar and MLAS parity tests.
+- Routing and SwiGLU coverage.
+- CPU/CUDA cross-provider parity tests.
+
+### PR 5: Olive/Mobius Export
+
+- Selective recipe and manifest.
+- Fused QMoE graph export.
+- Weight-binding and numerical-parity tests.
+
+PR 4 and PR 5 can proceed in parallel after the CUDA execution contract is established.
 
 ### PR 6: CUDA Prefill
 
@@ -277,13 +279,13 @@ With one engineer, a production-quality mixed-width QMoE path spanning schema, t
 
 | Weeks | Contract/CPU owner | Olive/Mobius owner | CUDA owner | Model-validation owner |
 | --- | --- | --- | --- | --- |
-| 1-2 | Freeze contract and add validation | Prototype recipe/export against draft contract | Prototype INT2 extraction and layouts | Freeze models, metrics, and baselines |
-| 3-4 | Complete CPU mixed-width reference | Complete graph and parity tests | Complete bounded correctness path | Run first quality comparison |
-| 5-6 | Support integration fixes | Produce full external-data model | Implement and tune packed decode | Validate decode quality and memory |
+| 1-2 | Maintain merged contract and deterministic test vectors | Prototype recipe/export against merged contract | Complete bounded correctness path | Freeze models, metrics, and baselines |
+| 3-4 | Support CUDA reference validation | Continue graph and initializer work | Implement and tune packed decode | Run first CUDA quality comparison |
+| 5-6 | Complete CPU mixed-width reference and parity | Produce full external-data model | Harden packed decode; prototype bounded prefill | Validate decode quality and memory |
 | 7-8 | Regression and compatibility tests | Reproducible conversion package | Integrate bounded prefill; prototype grouped GEMM | End-to-end decode and TTFT report |
 | 9-12 | Follow-up coverage | Export hardening | Native grouped-GEMM tuning and architecture coverage | Release qualification |
 
-An eight-week milestone should commit to a reviewable mixed-width contract, reproducible export, CPU reference, CUDA correctness, and packed decode on one GPU architecture. Production prefill performance and broad architecture coverage are follow-up commitments unless additional CUDA staffing is assigned.
+An eight-week milestone should commit to the merged mixed-width contract, CUDA correctness and packed decode on one GPU architecture, a CPU parity path, and reproducible export. Production prefill performance and broad architecture coverage are follow-up commitments unless additional CUDA staffing is assigned.
 
 ## Acceptance Criteria
 
