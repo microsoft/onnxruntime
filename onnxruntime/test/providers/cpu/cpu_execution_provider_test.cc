@@ -100,6 +100,26 @@ TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanDisableKleidiAi) {
   EXPECT_FALSE(config.use_kleidiai);
 }
 
+TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorDefaultsToNchwcDepthwiseSlidingEnabled) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  ConfigOptions config_options;
+
+  SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
+
+  EXPECT_TRUE(config.nchwc_depthwise_sliding_kernel);
+}
+
+TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanDisableNchwcDepthwiseSliding) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  ConfigOptions config_options;
+  const Status add_config_status = config_options.AddConfigEntry(kOrtSessionOptionsMlasNchwcDepthwiseSliding, "0");
+  ASSERT_TRUE(add_config_status.IsOK()) << add_config_status.ErrorMessage();
+
+  SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
+
+  EXPECT_FALSE(config.nchwc_depthwise_sliding_kernel);
+}
+
 TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorParsesKleidiAiConvIgemmMaxWork) {
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
   ConfigOptions config_options;
