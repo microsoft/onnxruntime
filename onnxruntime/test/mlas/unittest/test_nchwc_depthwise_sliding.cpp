@@ -85,12 +85,12 @@ std::string Describe(const DepthwiseCase& c, size_t threads) {
 }
 
 std::vector<float> RunConv(const DepthwiseCase& c, const std::vector<float>& input, const std::vector<float>& filter,
-                       const std::vector<float>& bias, const std::vector<float>& initial_output,
-                       MLAS_THREADPOOL* tp, bool sliding) {
-  const int64_t oh = (int64_t(c.height + c.pad_top + c.pad_bottom) - int64_t(c.dilation * (c.kh - 1) + 1)) /
-                         int64_t(c.stride) + 1;
-  const int64_t ow = (int64_t(c.width + c.pad_left + c.pad_right) - int64_t(c.dilation * (c.kw - 1) + 1)) /
-                         int64_t(c.stride) + 1;
+                           const std::vector<float>& bias, const std::vector<float>& initial_output,
+                           MLAS_THREADPOOL* tp, bool sliding) {
+  const int64_t kernel_extent_h = int64_t(c.dilation * (c.kh - 1) + 1);
+  const int64_t kernel_extent_w = int64_t(c.dilation * (c.kw - 1) + 1);
+  const int64_t oh = (int64_t(c.height + c.pad_top + c.pad_bottom) - kernel_extent_h) / int64_t(c.stride) + 1;
+  const int64_t ow = (int64_t(c.width + c.pad_left + c.pad_right) - kernel_extent_w) / int64_t(c.stride) + 1;
   const int64_t input_shape[] = {int64_t(c.batch), int64_t(c.channels), int64_t(c.height), int64_t(c.width)};
   const int64_t output_shape[] = {int64_t(c.batch), int64_t(c.channels), oh, ow};
   const int64_t kernel[] = {int64_t(c.kh), int64_t(c.kw)};
@@ -179,8 +179,22 @@ class NchwcDepthwiseSlidingTest : public testing::Test {
 TEST_F(NchwcDepthwiseSlidingTest, SamePaddingShapes) {
   const size_t b = block_size_;
   uint32_t seed = 1;
-  const size_t sides[][2] = {{1, 1}, {1, 2}, {2, 1}, {3, 3}, {5, 4}, {7, 7}, {8, 8}, {9, 13},
-                             {13, 9}, {16, 16}, {17, 23}, {32, 32}, {64, 64}, {3, 70}};
+  const size_t sides[][2] = {
+      {1, 1},
+      {1, 2},
+      {2, 1},
+      {3, 3},
+      {5, 4},
+      {7, 7},
+      {8, 8},
+      {9, 13},
+      {13, 9},
+      {16, 16},
+      {17, 23},
+      {32, 32},
+      {64, 64},
+      {3, 70},
+  };
   for (size_t k : {3, 5, 7}) {
     for (const auto& hw : sides) {
       for (bool bias : {false, true}) {

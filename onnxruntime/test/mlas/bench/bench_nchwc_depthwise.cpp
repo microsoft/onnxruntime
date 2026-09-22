@@ -67,10 +67,17 @@ void NCHWC_DEPTHWISE(benchmark::State& state) {
   }
 }
 
-void DepthwiseArgs(benchmark::internal::Benchmark* b) {
+void DepthwiseArgs(benchmark::Benchmark* b) {
   b->ArgNames({"C", "HW", "K", "Threads", "Sliding"});
-  const std::vector<std::pair<int64_t, int64_t>> shapes = {{64, 64}, {128, 32}, {256, 16}, {512, 8},
-                                                           {32, 112}, {96, 56}, {240, 28}};
+  const std::vector<std::pair<int64_t, int64_t>> shapes = {
+      {64, 64},
+      {128, 32},
+      {256, 16},
+      {512, 8},
+      {32, 112},
+      {96, 56},
+      {240, 28},
+  };
   for (const auto& shape : shapes) {
     for (int64_t k : {3, 5, 7}) {
       for (int64_t threads : {1, 4}) {
