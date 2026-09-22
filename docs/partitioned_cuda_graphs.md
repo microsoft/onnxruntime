@@ -5,11 +5,23 @@ the CPU executor. Consequently it cannot support offloaded CPU computation insid
 the same session. Shape-only CPU nodes are a limited exception, not CPU offloading.
 
 The opt-in partitioned execution prototype retains the original ONNX model and
-uses its normal CPU/CUDA placement. It walks the partitioned graph sequentially,
-runs CPU nodes and device copies eagerly, and captures contiguous CUDA compute
+uses its normal CPU/CUDA placement. At initialization, it selects the existing
+whole-session capture/replay path if placement satisfies the CUDA EP's normal
+capture policy. This includes all-CUDA graphs, eligible CPU shape nodes without
+device-copy nodes, and empty graphs. This path preserves the user's memory-pattern
+setting and normal capture/replay behavior; it does not allocate partition-specific
+retained frames or scratch.
+
+Otherwise, it walks the partitioned graph sequentially, runs CPU nodes and device
+copies eagerly, and captures contiguous CUDA compute
 partitions separately. This supports CPU prefixes, CPU suffixes, and CPU computation
 between multiple CUDA partitions. It does not capture CPU computation or move
 weights between devices during a run.
+
+Selection is based on the finalized graph placement, not a runtime capture attempt.
+Unsupported control flow is still rejected; capture errors do not silently trigger
+a switch between execution modes. CPU shape nodes allowed by whole-session capture
+retain its existing requirement that their results remain valid across replays.
 
 ## Configuration
 
@@ -47,8 +59,9 @@ unchanged addresses, shapes, and types for each `gpu_graph_id`. Updating their
 contents is supported. CPU embedding inputs can therefore contain different token
 IDs on every invocation. Device copies between model nodes are handled internally.
 
-The first invocation for each graph ID performs two warm-up passes and one capture
-pass. A retained execution frame keeps intermediate tensors alive. CUDA scratch
+When partitioned execution is selected, the first invocation for each graph ID
+performs two warm-up passes and one capture pass. A retained execution frame keeps
+intermediate tensors alive. CUDA scratch
 allocations are recorded during the second warm-up, retained, and reused at the
 same addresses during capture. Later invocations execute CPU partitions and copies
 again, but replay the CUDA partitions instead of invoking their kernels.
@@ -61,8 +74,12 @@ buckets.
 
 ## Prototype constraints
 
-- Built-in CUDA EP only, with its default BFC arena; plugin EPs and shared or
-  external allocators are not supported.
+The option requires the built-in CUDA EP with capture enabled and an ONNX model
+without control flow. The additional constraints below apply when partitioned
+execution is selected; eligible whole-session graphs follow the existing CUDA
+capture requirements instead.
+
+- Default CUDA BFC arena only; shared or external allocators are not supported.
 - Sequential inference only; captured invocations must use the same host thread.
   Control flow, asynchronous host kernels, partial execution, and per-run stream
   overrides are not supported.
@@ -95,6 +112,10 @@ and mixed CPU/CUDA execution with two CUDA partitions separated by CPU work.
 Changing input values between replays must change the output, and the CUDA EP must
 report that both partition graphs were captured. Additional buckets and eager
 execution between replays must preserve the original capture.
+Routing coverage also checks all-CUDA graphs, CPU shape nodes without device
+copies, and empty graphs. Eligible graphs must capture under the user-supplied graph
+ID instead of the partition executor's internal IDs, and preserve enabled or disabled
+memory-pattern settings. Mixed-device graphs must still select partitioned execution.
 
 Real-model evaluation must compare eager and captured output parity, confirm
 partition replay in logs, and measure peak VRAM and prefill/decode latency. A

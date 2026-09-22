@@ -262,6 +262,9 @@ class SessionState {
   */
   bool GetEnableMemoryPattern() const;
 
+  // Used during initialization when graph placement requires partitioned capture.
+  void DisableMemoryPattern() { enable_mem_pattern_ = false; }
+
   /**
   Get enable memory re-use flag.
   */

@@ -499,10 +499,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       kOrtSessionOptionsEnablePartitionedCudaGraph, "0");
   ORT_ENFORCE(partitioned_capture == "0" || partitioned_capture == "1",
               "session.enable_partitioned_cuda_graph must be 0 or 1.");
-  if (partitioned_capture == "1") {
-    // A retained frame, rather than a per-run memory pattern, owns captured intermediates.
-    session_options_.enable_mem_pattern = false;
-  }
 
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -3089,40 +3085,52 @@ common::Status InferenceSession::Initialize() {
                                   ep->Type()));
         }
 
+        const auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
+        const bool can_capture_whole_graph =
+            policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES
+                ? AreAllComputeNodesAssignedToEpOrCpu(graph, ep->Type())
+                : AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type());
+
         if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
-#if !defined(ORT_ENABLE_STREAM) || defined(ENABLE_TRAINING)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Partitioned CUDA capture requires an inference build with stream support.");
-#else
           ORT_RETURN_IF_NOT(ep->Type() == kCudaExecutionProvider && ep->GetOrtEp() == nullptr,
                             "Partitioned CUDA capture requires the built-in CUDA execution provider.");
-          ORT_RETURN_IF_NOT(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                            "Partitioned CUDA capture requires sequential execution.");
-          for (const auto& registered_ep : execution_providers_) {
-            ORT_RETURN_IF(registered_ep.get() != ep.get() && registered_ep->Type() != kCpuExecutionProvider,
-                          "Partitioned CUDA capture supports only CPU and CUDA execution providers.");
-          }
-          ORT_RETURN_IF(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1",
-                        "Partitioned CUDA capture does not support shared environment allocators.");
-          for (const auto& node : graph.Nodes()) {
-            ORT_RETURN_IF(node.GetExecutionProviderType() != kCpuExecutionProvider &&
-                              node.GetExecutionProviderType() != kCudaExecutionProvider,
-                          "Partitioned CUDA capture supports only CPU and CUDA nodes.");
-          }
-          partitioned_cuda_graph_ep_ = ep.get();
-          is_concurrent_run_supported_ = false;
-          LOGS(*session_logger_, WARNING) << "Experimental partitioned CUDA capture is enabled. "
-                                             "Captured intermediates and scratch remain allocated per graph id.";
-          break;
+          if (!can_capture_whole_graph) {
+#if !defined(ORT_ENABLE_STREAM) || defined(ENABLE_TRAINING)
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Partitioned CUDA capture requires an inference build with stream support.");
+#else
+            ORT_RETURN_IF_NOT(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
+                              "Partitioned CUDA capture requires sequential execution.");
+            for (const auto& registered_ep : execution_providers_) {
+              ORT_RETURN_IF(registered_ep.get() != ep.get() && registered_ep->Type() != kCpuExecutionProvider,
+                            "Partitioned CUDA capture supports only CPU and CUDA execution providers.");
+            }
+            ORT_RETURN_IF(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1",
+                          "Partitioned CUDA capture does not support shared environment allocators.");
+            for (const auto& node : graph.Nodes()) {
+              ORT_RETURN_IF(node.GetExecutionProviderType() != kCpuExecutionProvider &&
+                                node.GetExecutionProviderType() != kCudaExecutionProvider,
+                            "Partitioned CUDA capture supports only CPU and CUDA nodes.");
+            }
+            partitioned_cuda_graph_ep_ = ep.get();
+            is_concurrent_run_supported_ = false;
+            // A retained frame, rather than a per-run memory pattern, owns captured intermediates.
+            session_options_.enable_mem_pattern = false;
+            session_state_->DisableMemoryPattern();
+            LOGS(*session_logger_, WARNING) << "Experimental partitioned CUDA capture is enabled. "
+                                               "Captured intermediates and scratch remain allocated per graph id.";
+            break;
 #endif
+          }
+          LOGS(*session_logger_, INFO) << "Graph placement supports whole-session CUDA capture; "
+                                          "partitioned capture is not needed.";
         }
 
-        auto policy = ep->GetGraphCaptureNodeAssignmentPolicy();
         if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
           // Ensure that all nodes have been partitioned to the EP or CPU EP && there are no memcpy nodes.
           // The reasoning is that certain shape nodes will be forced onto CPU and as long as there are
           // no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP.
-          if (!AreAllComputeNodesAssignedToEpOrCpu(graph, ep->Type())) {
+          if (!can_capture_whole_graph) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
                                           << " as all compute graph nodes have not been partitioned to the "
                                           << ep->Type();
@@ -3145,7 +3153,7 @@ common::Status InferenceSession::Initialize() {
           }
         } else {
           // AllNodesOnEp: all nodes in the main graph must be assigned to this EP.
-          if (!AreAllNodesInMainGraphAssignedToOneEp(graph, ep->Type())) {
+          if (!can_capture_whole_graph) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
                                           << "as all the graph nodes have not been assigned to "
                                           << ep->Type();
@@ -3219,7 +3227,8 @@ common::Status InferenceSession::Initialize() {
     }
 
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
-      ORT_RETURN_IF_NOT(partitioned_cuda_graph_ep_ != nullptr,
+      ORT_RETURN_IF_NOT(partitioned_cuda_graph_ep_ != nullptr ||
+                            cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled(),
                         "Partitioned CUDA capture requires an ONNX model and the built-in CUDA EP with enable_cuda_graph=1.");
     }
 
