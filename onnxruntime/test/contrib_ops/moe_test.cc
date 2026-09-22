@@ -2094,13 +2094,18 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   }
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  const int64_t expert_bits = fc1_bits == 2 && fc2_bits == 2 ? 2 : 4;
   tester.AddAttribute<int64_t>("k", 1);
   tester.AddAttribute<std::string>("activation_type", fused_swiglu ? "swiglu" : "identity");
   tester.AddAttribute<int64_t>("swiglu_fusion", fused_swiglu ? 1 : 0);
-  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-  tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
-  tester.AddAttribute<int64_t>("fc2_expert_weight_bits", fc2_bits);
-  tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
+  tester.AddAttribute<int64_t>("expert_weight_bits", expert_bits);
+  if (fc1_bits != expert_bits) {
+    tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+    tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
+  }
+  if (fc2_bits != expert_bits) {
+    tester.AddAttribute<int64_t>("fc2_expert_weight_bits", fc2_bits);
+  }
   tester.AddAttribute<int64_t>("weights_prepacked", 0);
   tester.AddAttribute<int64_t>("block_size", block_size);
   tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
@@ -2132,7 +2137,7 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   SessionOptions session_options;
   if (max_scratch_bytes > 0) {
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-        "ep.cuda.qmoe_mixed_width_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
+        "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
   }
   tester.Run(session_options,
              max_scratch_bytes > 0 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
