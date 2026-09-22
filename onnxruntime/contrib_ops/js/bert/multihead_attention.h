@@ -16,6 +16,8 @@ using onnxruntime::js::JsKernel;
 class MultiHeadAttention : public JsKernel, AttentionBase {
  public:
   explicit MultiHeadAttention(const OpKernelInfo& info) : JsKernel(info), AttentionBase(info, false) {
+    const int64_t kv_num_heads = info.GetAttrOrDefault<int64_t>("kv_num_heads", num_heads_);
+    ORT_ENFORCE(kv_num_heads == num_heads_, "Grouped query MultiHeadAttention is not implemented for JavaScript");
     JSEP_INIT_KERNEL_ATTRIBUTE(MultiHeadAttention, ({
                                  "numHeads" : $1,
                                  "isUnidirectional" : $2,

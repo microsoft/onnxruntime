@@ -124,6 +124,121 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
+    def test_multi_head_attention_grouped_query_shapes(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "MultiHeadAttention",
+                    ["query", "key", "value"],
+                    ["output", "present_key", "present_value"],
+                    domain="com.microsoft",
+                    num_heads=4,
+                    kv_num_heads=2,
+                )
+            ],
+            "MultiHeadAttention_GroupedQuery",
+            [
+                helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "query_sequence", 32]),
+                helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "kv_sequence", 16]),
+                helper.make_tensor_value_info("value", TensorProto.FLOAT, ["batch", "kv_sequence", 12]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        inferred_shapes = {
+            output.name: [
+                dim.dim_param if dim.dim_param else dim.dim_value for dim in output.type.tensor_type.shape.dim
+            ]
+            for output in inferred.graph.output
+        }
+        self.assertEqual(inferred_shapes["output"], ["batch", "query_sequence", 24])
+        self.assertEqual(inferred_shapes["present_key"], ["batch", 2, "kv_sequence", 8])
+        self.assertEqual(inferred_shapes["present_value"], ["batch", 2, "kv_sequence", 6])
+
+    def test_multi_head_attention_grouped_query_indivisible_value_hidden_size(self):
+        # value hidden size 13 is not divisible by kv_num_heads, which the runtime rejects. Shape inference must
+        # leave the affected dimensions unknown instead of truncating the division.
+        graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "MultiHeadAttention",
+                    ["query", "key", "value"],
+                    ["output", "present_key", "present_value"],
+                    domain="com.microsoft",
+                    num_heads=4,
+                    kv_num_heads=2,
+                )
+            ],
+            "MultiHeadAttention_GroupedQuery_IndivisibleValue",
+            [
+                helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "query_sequence", 32]),
+                helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "kv_sequence", 16]),
+                helper.make_tensor_value_info("value", TensorProto.FLOAT, ["batch", "kv_sequence", 13]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        output_dims = {output.name: list(output.type.tensor_type.shape.dim) for output in inferred.graph.output}
+
+        # Truncating 13 // 2 would report 26 for the output hidden size and 6 for the value head size.
+        self.assertFalse(output_dims["output"][2].HasField("dim_value"))
+        self.assertFalse(output_dims["present_value"][3].HasField("dim_value"))
+
+        # The key hidden size is still divisible, so present_key stays fully known.
+        self.assertEqual(output_dims["present_key"][1].dim_value, 2)
+        self.assertEqual(output_dims["present_key"][3].dim_value, 8)
+
+    def test_multi_head_attention_invalid_head_counts(self):
+        # num_heads is not a multiple of kv_num_heads, so the runtime rejects the model. Shape inference must not
+        # advertise an output shape for it.
+        graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "MultiHeadAttention",
+                    ["query", "key", "value"],
+                    ["output"],
+                    name="mha",
+                    domain="com.microsoft",
+                    num_heads=4,
+                    kv_num_heads=3,
+                )
+            ],
+            "MultiHeadAttention_InvalidHeadCounts",
+            [
+                helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "query_sequence", 32]),
+                helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "kv_sequence", 24]),
+                helper.make_tensor_value_info("value", TensorProto.FLOAT, ["batch", "kv_sequence", 24]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        with self.assertRaisesRegex(ValueError, r"num_heads \(4\) shall be a multiple of kv_num_heads \(3\)"):
+            SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [
