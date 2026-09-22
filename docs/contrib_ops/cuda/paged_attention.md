@@ -1868,9 +1868,10 @@ introduces correction terms in both the QK and PV products.
 
 ### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
-**The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode,
-gather, and the H256/group-6 single-token and speculative XQA specializations read packed INT4
-caches. Other sub-byte values remain deferred.
+**The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode and
+gather read packed INT4 caches. The H256/group-6 single-token and speculative XQA specializations
+also read them for FP16 queries when K and V use `PER_CHANNEL` scales and scale folding is enabled;
+other INT4 configurations use the portable paths. Other sub-byte values remain deferred.
 A `k_cache_bit_width` / `v_cache_bit_width` pair would be redundant against the cache tensor's
 element type for native formats and could not distinguish INT4 from FP4.
 
