@@ -38,6 +38,7 @@ from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail as OrtFail
 
 try:
     from onnx import TensorProto
@@ -2071,27 +2072,44 @@ class TestGegluQMoECPU(unittest.TestCase):
         run_parity_with_mlas_q4_mode(geglu_moe.parity_check, enable_mlas_q4_gemm)
 
 
+# (batch_size, sequence_length, block_size, onnx_dtype, float_zp_value)
+# Covers both scale/zp dtypes (float32 and float16 -- the zp tensor is emitted in the graph's
+# element dtype, so this exercises both the float and MLFloat16 kernel branches) and more than
+# one fractional zero-point. zp=1.5 gives the symmetric Quark grid {-1.5,-0.5,0.5,1.5}*scale;
+# zp=2.25 gives an asymmetric grid {-2.25,-1.25,-0.25,0.75}*scale -- both unrepresentable on the
+# integer zero-point grid, so both take the dedicated float dequant path.
 float_zp_blockwise_test_cases = [
-    (1, 32, 32),
-    (2, 16, 32),
-    (1, 32, 64),
+    (1, 32, 32, TensorProto.FLOAT, 1.5),
+    (2, 16, 32, TensorProto.FLOAT, 1.5),
+    (1, 32, 64, TensorProto.FLOAT, 1.5),
+    (1, 32, 32, TensorProto.FLOAT16, 1.5),
+    (1, 32, 64, TensorProto.FLOAT16, 1.5),
+    (1, 32, 32, TensorProto.FLOAT, 2.25),
+    (2, 16, 32, TensorProto.FLOAT16, 2.25),
 ]
 
 
 class TestFloatZeroPointQMoECPU(unittest.TestCase):
     """Parity tests for 2-bit block-wise QMoE with fractional float zero-points.
 
-    This is the feature this PR adds: unpacked float zero-points (constant 1.5, matching the
+    This is the feature this PR adds: unpacked float zero-points (e.g. constant 1.5, matching the
     Quark uint2 gemma-4 export) that dequantize as (code - zp) * scale. The float zero-point is
     unrepresentable on the integer code grid, so it exercises the dedicated float branch in
-    DequantizeBlockWithMlas rather than the integer/LUT fast paths."""
+    DequantizeBlockWithMlas rather than the integer/LUT fast paths. Both FC1 (interleaved,
+    gated) and FC2 zero-points are float in every case."""
 
     @parameterized.expand(float_zp_blockwise_test_cases)
-    def test_float_zp_qmoe_2bit_blockwise_parity_cpu(self, batch_size, sequence_length, block_size):
+    def test_float_zp_qmoe_2bit_blockwise_parity_cpu(
+        self, batch_size, sequence_length, block_size, onnx_dtype, float_zp_value
+    ):
         torch.manual_seed(1500)
         numpy.random.seed(1500)
 
-        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, block_size={block_size}"
+        dtype_name = ort_dtype_name_map[onnx_dtype]
+        test_config = (
+            f"batch_size={batch_size}, sequence_length={sequence_length}, block_size={block_size}, "
+            f"dtype={dtype_name}, float_zp={float_zp_value}"
+        )
         print(f"Running 2-bit float zero-point block-wise test: {test_config}")
 
         config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
@@ -2101,16 +2119,16 @@ class TestFloatZeroPointQMoECPU(unittest.TestCase):
             batch_size=batch_size,
             sequence_length=sequence_length,
             quant_bits=2,
-            onnx_dtype=TensorProto.FLOAT,
+            onnx_dtype=onnx_dtype,
             block_size=block_size,
-            float_zp_value=1.5,
+            float_zp_value=float_zp_value,
         )
 
         # Full torch-vs-ORT parity. parity_check() builds the model/session (setting moe.ort_sess)
-        # and raises AssertionError if max_diff exceeds the FP32:2 tolerance. It returns early
-        # WITHOUT asserting when the session build fails, so we assert the session and a finite
-        # output explicitly afterwards to guarantee the test cannot silently pass on a build/type
-        # failure (e.g. the TZ constraint rejecting float zero-points).
+        # and raises AssertionError if max_diff exceeds the dtype-specific tolerance. It returns
+        # early WITHOUT asserting when the session build fails, so we assert the session and a
+        # finite output explicitly afterwards to guarantee the test cannot silently pass on a
+        # build/type failure (e.g. the TZ constraint rejecting float zero-points).
         moe.parity_check()
 
         self.assertIsNotNone(moe.moe_onnx_graph, "float zero-point QMoE ONNX graph was not created.")
@@ -2127,6 +2145,85 @@ class TestFloatZeroPointQMoECPU(unittest.TestCase):
         self.assertEqual(tuple(ort_output.shape), (batch_size, sequence_length, config.hidden_size))
         self.assertFalse(torch.isnan(ort_output).any(), "float zero-point QMoE output contains NaNs.")
         self.assertFalse(torch.isinf(ort_output).any(), "float zero-point QMoE output contains Infs.")
+
+    def _build_float_zp_graph(self, *, quant_bits, block_size, num_experts=2):
+        """Build a QMoE ONNX graph whose zero-points are unpacked float (scales layout).
+
+        Returns the serialized model. Used by the rejection tests below to feed the kernel float
+        zero-points in modes it must reject (non-2-bit, or row-wise), so we can assert the guard in
+        CheckInputs fires instead of silently dropping the zero-point.
+        """
+        hidden_size, inter_size, top_k = 64, 128, 2
+        pack = 8 // quant_bits
+        fc1_out = 2 * inter_size  # gated/interleaved doubled FC1
+
+        def packed_weight(out_features, in_features):
+            return torch.randint(0, 256, (num_experts, out_features, in_features // pack), dtype=torch.uint8)
+
+        if block_size > 0:
+            fc1_blocks = (hidden_size + block_size - 1) // block_size
+            fc2_blocks = (inter_size + block_size - 1) // block_size
+            fc1_scale_shape = (num_experts, fc1_out, fc1_blocks)
+            fc2_scale_shape = (num_experts, hidden_size, fc2_blocks)
+        else:
+            fc1_scale_shape = (num_experts, fc1_out)
+            fc2_scale_shape = (num_experts, hidden_size)
+
+        fc1_scales = torch.rand(fc1_scale_shape, dtype=torch.float32) * 0.05 + 0.01
+        fc2_scales = torch.rand(fc2_scale_shape, dtype=torch.float32) * 0.05 + 0.01
+        # Float zero-points laid out exactly like the scales -> detected as float by the kernel.
+        fc1_zp = torch.full(fc1_scale_shape, 1.5, dtype=torch.float32)
+        fc2_zp = torch.full(fc2_scale_shape, 1.5, dtype=torch.float32)
+
+        return create_cpu_moe_onnx_graph(
+            hidden_size=hidden_size,
+            sequence_length=8,
+            num_experts=num_experts,
+            top_k=top_k,
+            intermediate_size=inter_size,
+            torch_dtype=torch.float32,
+            onnx_dtype=TensorProto.FLOAT,
+            fc1_experts_weights=packed_weight(fc1_out, hidden_size),
+            fc2_experts_weights=packed_weight(hidden_size, inter_size),
+            fc1_scales=fc1_scales,
+            fc2_scales=fc2_scales,
+            fc1_zero_points=fc1_zp,
+            fc2_zero_points=fc2_zp,
+            use_swiglu=True,
+            use_quant=True,
+            quant_bits=quant_bits,
+            swiglu_fusion=1,
+            block_size=block_size,
+        )
+
+    @parameterized.expand(
+        [
+            ("4bit_blockwise", 4, 32),
+            ("8bit_blockwise", 8, 32),
+            ("2bit_rowwise", 2, 0),
+        ]
+    )
+    def test_float_zp_qmoe_unsupported_mode_rejected_cpu(self, _name, quant_bits, block_size):
+        """Float zero-points are only wired through the 2-bit block-wise dequant path. Every other
+        mode (4/8-bit, or row-wise) must be rejected up front rather than silently reading the
+        float pointer as integers or dropping the zero-point. The schema (TZ) allows float, so the
+        rejection happens in the kernel; assert running the model raises rather than producing a
+        wrong-but-finite result."""
+        graph = self._build_float_zp_graph(quant_bits=quant_bits, block_size=block_size)
+        self.assertIsNotNone(graph, "failed to build the float zero-point rejection graph.")
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.log_severity_level = 3
+        try:
+            sess = onnxruntime.InferenceSession(graph, sess_options, providers=ort_provider)
+        except Exception:
+            # Rejected at session/kernel-match time -- also an acceptable rejection.
+            return
+
+        hidden = numpy.random.randn(8, 64).astype(numpy.float32)
+        router = numpy.random.randn(8, 2).astype(numpy.float32)
+        with self.assertRaises(OrtFail):
+            sess.run(None, {"input": hidden, "router_probs": router})
 
 
 @unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
