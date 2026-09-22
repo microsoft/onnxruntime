@@ -6110,5 +6110,84 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
+
+// Pushing a Transpose through an activation is what lets Conv+activation fusion run after layout
+// transformation: the layout transform leaves Conv(NHWC) -> Transpose -> activation, and only once
+// the Transpose moves past the activation does the Conv's sole consumer become the activation.
+// Without a handler the Transpose stays wedged in between and the fusion silently does not happen.
+static void RunActivationTransposeTestCase(const std::string& op_type, const std::string& domain,
+                                           const std::function<void(Node&)>& decorate = nullptr,
+                                           bool add_bias = false, bool expect_pushed = true) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, 4, 6, 3}}, {2, 4, 6, 3}, -1.0f, 1.0f);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* activation_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+    std::vector<NodeArg*> activation_inputs{transpose_1_out_0};
+    if (add_bias) {
+      // The transposed value is {2, 3, 4, 6}; FastGelu's bias runs along its last dimension.
+      activation_inputs.push_back(MakeInput<float>(builder, {{6}}, {6}, -1.0f, 1.0f));
+    }
+
+    auto& activation = builder.AddNode(op_type, activation_inputs, {activation_out_0}, domain);
+    if (decorate) {
+      decorate(activation);
+    }
+
+    auto& transpose_2 = builder.AddNode("Transpose", {activation_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph = [expect_pushed](InferenceSessionWrapper& session) {
+    const int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    if (expect_pushed) {
+      EXPECT_EQ(transpose_cost, 0);
+    } else {
+      EXPECT_GT(transpose_cost, 0);
+    }
+  };
+
+  // TransformerTester also runs the model and compares against the un-optimized baseline, so a
+  // handler that moved the Transpose but changed the maths would fail here too.
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18, 22});
+}
+
+TEST(TransposeOptimizerTests, TestElu) {
+  RunActivationTransposeTestCase("Elu", kOnnxDomain);
+  RunActivationTransposeTestCase("Elu", kOnnxDomain,
+                                 [](Node& node) { node.AddAttribute("alpha", 0.5f); });
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(TransposeOptimizerTests, TestContribQuickGelu) {
+  RunActivationTransposeTestCase("QuickGelu", kMSDomain);
+  RunActivationTransposeTestCase("QuickGelu", kMSDomain,
+                                 [](Node& node) { node.AddAttribute("alpha", 1.702f); });
+}
+
+TEST(TransposeOptimizerTests, TestContribGelu) {
+  RunActivationTransposeTestCase("Gelu", kMSDomain);
+}
+
+TEST(TransposeOptimizerTests, TestContribFastGeluWithoutBias) {
+  RunActivationTransposeTestCase("FastGelu", kMSDomain);
+}
+
+// FastGelu's optional bias is pinned to the last dimension of its input (bias_gelu_helper::CheckInputs
+// requires a rank-1 bias whose length matches it), so a layout change would misapply it. The Transpose
+// must stay put.
+TEST(TransposeOptimizerTests, TestContribFastGeluWithBiasIsNotPushed) {
+  RunActivationTransposeTestCase("FastGelu", kMSDomain, /*decorate*/ nullptr, /*add_bias*/ true,
+                                 /*expect_pushed*/ false);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 }  // namespace test
 }  // namespace onnxruntime

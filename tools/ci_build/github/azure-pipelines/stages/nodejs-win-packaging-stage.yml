@@ -32,7 +32,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-VS2022-Latest
+      name: onnxruntime-Win-CPU-2022
       os: windows
     templateContext:
       sdl:
@@ -64,9 +64,7 @@ stages:
         build_py_lto_flag: --enable_lto
 
     steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:

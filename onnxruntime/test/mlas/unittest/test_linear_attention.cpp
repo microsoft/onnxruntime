@@ -269,13 +269,24 @@ class MlasLinearAttentionTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    // (d_k, d_v) pairs chosen to straddle two independent boundaries:
+    // (d_k, d_v) pairs chosen to straddle three independent boundaries:
     //   - the d_k*d_v >= 4096 SGEMM threshold in the portable kernel (4096 is
     //     the inclusive boundary);
-    //   - the AVX-512 kernel's eligibility envelope, d_k % 16 == 0 &&
-    //     d_k <= 256 && d_v % 32 == 0. {32,64}, {64,64}, {128,128} are
-    //     eligible; the rest exercise the fallback to the portable kernel,
-    //     including {272,32} which fails only the d_k <= 256 bound.
+    //   - the AVX-512 envelope, d_k % 16 == 0 && d_k <= 256 && d_v % 32 == 0;
+    //   - the NEON envelope, which differs only in accepting d_k % 4 == 0,
+    //     since its q.k reduction is 4 wide rather than 16.
+    //
+    // Eligible on both: {32,64}, {64,64}, {48,96}, {128,128}, {256,32}.
+    // Eligible on NEON only (d_k % 4 but not % 16): {12,32}, {20,32}.
+    // Fallback everywhere: {8,8}, {16,16}, {24,40} fail d_v % 32, and
+    // {272,32} fails only the d_k <= 256 bound.
+    //
+    // The last four entries exist for specific edges, so do not drop them
+    // without checking what they cover: {12,32} runs the 4-wide dot tail with
+    // the 16-wide main loop skipped entirely, {20,32} runs main and tail
+    // together, and {256,32} is the accept side of d_k <= 256 - which is also
+    // the exact fit of both kernels' fixed d_k staging buffers, where an
+    // off-by-one would smash the stack.
     static const int kShapes[][2] = {
         {8, 8},
         {16, 16},
@@ -285,6 +296,23 @@ class MlasLinearAttentionTest : public MlasTestBase {
         {48, 96},
         {128, 128},
         {272, 32},
+        {12, 32},
+        {20, 32},
+        {256, 32},
+        // d_k not a multiple of 4, all three remainders. The SVE kernel loads
+        // key/query/decay weights four at a time for its lane-indexed FMA, so
+        // these are the only shapes that reach its scalar remainder path -- and
+        // every other d_k in this table is a multiple of 4. That path lives in
+        // the hand-written FULL-panel bodies, which only run when d_v holds a
+        // complete panel: 8 vectors of svcntw() words, i.e. 8 * 64 = 512 floats
+        // at the architectural maximum VL of 2048 bits. d_v = 512 therefore
+        // guarantees at least one full panel -- and so remainder coverage in
+        // the assembly -- at every legal vector length, where a smaller d_v
+        // would quietly demote these cases to the trailing-panel intrinsics at
+        // larger VLs and test nothing.
+        {13, 512},
+        {14, 512},
+        {15, 512},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,
@@ -345,6 +373,15 @@ class MlasLinearAttentionTest : public MlasTestBase {
            MlasLinearAttentionDecayNone, MlasLinearAttentionBetaShared,
            1.0f, 1, true);
     }
+
+    // Long sequence. Decay multiplies the entire state on every token, so exp()
+    // error compounds over T; the rest of this matrix tops out at T=17, which is
+    // far too short to see it. NOUT=8 is the widest readout group, and the
+    // per-key-dim layout is the one that evaluates d_k exponentials per token.
+    // d_k=d_v=64 with a single kv head keeps the scalar oracle affordable.
+    Test(1, 1024, 8, 1, 1, 64, 64, MlasLinearAttentionRuleGatedDelta,
+         MlasLinearAttentionDecayPerKeyDim, MlasLinearAttentionBetaPerHead,
+         0.125f, 1, true);
 
     // Thread partitioning: 8 threads against B*H_kv == 1 exercises the clamp to
     // the task count; 3 threads against 8 tasks exercises the remainder split.

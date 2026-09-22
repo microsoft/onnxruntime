@@ -539,6 +539,13 @@ struct CudaKernelAdapterRuntimeConfig {
   bool do_copy_in_default_stream = true;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
+  std::mutex captured_host_buffers_mutex;
+  std::vector<std::shared_ptr<void>> captured_host_buffers;
+
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) {
+    std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
+    captured_host_buffers.push_back(std::move(buffer));
+  }
 };
 template <typename T>
 struct SizeOf {
@@ -848,6 +855,20 @@ struct _IsInf<nv_bfloat16, detect_positive, detect_negative> {
     } else {
       return false;
     }
+  }
+};
+
+// cuda_utils.h only specializes NumericLimits for onnxruntime::BFloat16. Without this the plugin's
+// nv_bfloat16 mapping falls back to std::numeric_limits, whose primary template returns 0, so
+// kernels that pad with Lowest() (TopK, reductions) rank the padding above every negative input.
+template <>
+struct NumericLimits<nv_bfloat16> {
+  __inline__ __host__ __device__ static nv_bfloat16 Lowest() {
+    return __nv_bfloat16_raw{0xFF7FU};  // -3.38953139e38
+  }
+
+  __inline__ __host__ __device__ static nv_bfloat16 Max() {
+    return __nv_bfloat16_raw{0x7F7FU};  // 3.38953139e38
   }
 };
 #endif
@@ -1258,6 +1279,14 @@ class CudaKernel : public OpKernel {
   }
 
   template <typename T>
+  inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
+    auto deleter = buffer.get_deleter();
+    runtime_config_->RetainBufferForGraphCapture(
+        std::shared_ptr<void>(buffer.release(),
+                              [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
+  template <typename T>
   class CudaAsyncBuffer {
    public:
     CudaAsyncBuffer(const CudaKernel* ok) : gpu_(nullptr, [](T*) {}), count_(0), op_kernel_(ok) {}
@@ -1286,7 +1315,15 @@ class CudaKernel : public OpKernel {
           ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
         }
         if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        if (s != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(static_cast<cudaStream_t>(s), &capture_status));
+        }
+        if (capture_status != cudaStreamCaptureStatusNone) {
+          op_kernel_->RetainBufferForGraphCapture(std::move(cpu_));
+        } else {
+          op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        }
       }
       return Status::OK();
     }

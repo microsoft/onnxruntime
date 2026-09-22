@@ -77,12 +77,12 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
       !gamma_dims[0].has_dim_value() ||
       gamma_shape.dim(0).dim_value() != hidden_size) {
     fail_shape_inference(
-        "gamma should have 2 dimension, dimension size known, "
+        "gamma should have 1 dimension, dimension size known, "
         "and same hidden size as word_embedding.");
   }
 
   auto& beta_shape = getInputShape(ctx, 6);
-  auto& beta_dims = gamma_shape.dim();
+  auto& beta_dims = beta_shape.dim();
   if (beta_dims.size() != 1 ||
       !beta_dims[0].has_dim_value() ||
       beta_shape.dim(0).dim_value() != hidden_size) {

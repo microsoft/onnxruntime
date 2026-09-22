@@ -70,9 +70,9 @@ struct Params {
   }
 };
 
-void kernel_launcher(int arch, Params& params, cudaStream_t s);
+void kernel_launcher(int kernel_arch, Params& params, cudaStream_t s);
 
-bool is_supported(int arch, KernelType kernel_type);
+bool is_supported(int device_arch, int kernel_arch, KernelType kernel_type);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

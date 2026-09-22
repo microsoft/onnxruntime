@@ -1,0 +1,233 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// Fused paged FlashAttention prefill kernel.
+//
+// This mirrors the shared-memory (workgroup-cooperative) code path of
+// bert/flash_attention.wgsl.template but reads K/V through the paged cache
+// (block_table + block_size layout) instead of a dense present_key /
+// present_value tensor. Everything outside loadk() / loadv() — Q load, tiled
+// QK^T, online softmax, PV accumulation, causal masking, and output write —
+// is a direct port of the dense shader's shm_path.
+//
+// Simplifications vs. the dense template (v1):
+//   * TurboQuant is not supported (the paged cache is never TQ-packed).
+//   * attention_bias / head_sink are not supported (dispatch already gates
+//     the fused paged prefill path off when either is present).
+//   * Q is always BSNH (dispatch requires Q_K_V_BSNH).
+//   * seqlens_k and seqlens_q are always present (per-batch KV/Q lengths).
+//   * This shader implements only the shared-memory algorithm. It uses no
+//     subgroup intrinsics, so it runs correctly on every WebGPU adapter
+//     (subgroup adapters are welcome to take it too rather than falling
+//     back to gather + dense-FA + subgroup). A paged subgroup-shuffle
+//     variant may be added later if benchmarks on subgroup adapters show
+//     it is preferable.
+//
+// Alignment invariant: paged_attention_helper enforces block_size to be a
+// power of two >= 16, and ShouldRunFusedPagedPrefill additionally rejects
+// block_size < max_k_step. max_k_step is 32 (fp16, head <= 128) or 16
+// otherwise, and k_start advances by max_k_step starting at 0. Because both
+// block_size and max_k_step are powers of two and block_size >= max_k_step,
+// block_size is a multiple of max_k_step, so every K tile lies fully inside
+// a single paged block — one block_table lookup per tile per workgroup.
+// Tests: EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing exercises the
+// transition between two non-contiguous logical pages.
+
+#param is_fp16
+#param is_unidirectional
+#param qkv_head_size
+#param qkv_num_heads
+#param max_k_step_param
+#param q_varlen
+
+#use .getByIndices .getByOffset .setByOffset
+
+const head_size : u32 = qkv_head_size;
+const num_heads : u32 = qkv_num_heads;
+
+#if is_fp16
+const min_value = q_element_t(-65504.0);
+#else
+const min_value = q_element_t(-3.4028234663852886e+38f);
+#endif
+
+const max_k_step : u32 = max_k_step_param;
+const vec_factor : u32 = 4u;
+const head_size_vec : u32 = head_size / vec_factor;
+
+// K and V tiles in shared memory. Budget = 2 * head_size * max_k_step *
+// element_size B (two tiles, k and v). Sized for the 16 KiB shm budget
+// enforced by ShouldRunFusedPagedPrefill:
+//   * fp16 head_size 128, max_k_step 32 -> 2 * 128 * 32 * 2 = 16 KiB
+//   * fp16 head_size 256, max_k_step 16 -> 2 * 256 * 16 * 2 = 16 KiB
+// (matches the dense FA sizing at shm-path adapters.)
+var<workgroup> k_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
+var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
+
+// Private per-lane state.
+var<private> q_tile : array<q_value_t, head_size_vec>;
+var<private> o_tile : array<q_value_t, head_size_vec>;
+var<private> qk_scores : array<q_element_t, max_k_step>;
+
+fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
+#if q_varlen
+  // Varlen Q: raw packed layout [token_count, num_heads, head_size].
+  // Q row index = cumulative_seqlens_q[batch_idx] + q_idx_global.
+  // Cast the i32 storage buffer element to u32 before arithmetic; WGSL
+  // forbids mixed-signedness in a single expression.
+  let q_row = u32(cumulative_seqlens_q[batch_idx]) + q_idx_global;
+  let offset = q_row * head_size_vec * num_heads + head_idx * head_size_vec;
+#else
+  // BSNH: [batch_size, sequence_length, num_heads, head_size]
+  let offset = batch_idx * uniforms.new_sequence_length * head_size_vec * num_heads +
+               q_idx_global * head_size_vec * num_heads +
+               head_idx * head_size_vec;
+#endif
+  for (var idx : u32 = 0; idx < head_size_vec; idx++) {
+    q_tile[idx] = q.getByOffset(idx + offset) * alpha;
+  }
+}
+
+fn loadk(k_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_seq : u32) {
+  // Paged K cache layout: [num_blocks, block_size, kv_num_heads, head_size].
+  // block_size is a multiple of max_k_step (see alignment note at file top),
+  // so the whole tile lives in one paged block — one block_table lookup.
+  let kv_head_idx = head_idx / uniforms.n_reps;
+  let block_slot_in_batch = k_start / uniforms.block_size;
+  let base_slot = k_start % uniforms.block_size;
+  let block_id = u32(block_table.getByIndices(vec2<u32>(batch_idx, block_slot_in_batch)));
+  let block_row_stride = uniforms.kv_num_heads * head_size_vec;
+  let base_offset = (block_id * uniforms.block_size + base_slot) * block_row_stride +
+                    kv_head_idx * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * max_k_step; idx += workgroup_size_x) {
+    let slot = idx / head_size_vec;
+    let vec_idx = idx % head_size_vec;
+    let offset = base_offset + slot * block_row_stride + vec_idx;
+    k_tile[slot][vec_idx] = select(q_value_t(0), key_cache.getByOffset(offset), k_start + slot < total_seq);
+  }
+}
+
+fn loadv(v_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_seq : u32) {
+  let kv_head_idx = head_idx / uniforms.n_reps;
+  let block_slot_in_batch = v_start / uniforms.block_size;
+  let base_slot = v_start % uniforms.block_size;
+  let block_id = u32(block_table.getByIndices(vec2<u32>(batch_idx, block_slot_in_batch)));
+  let block_row_stride = uniforms.kv_num_heads * head_size_vec;
+  let base_offset = (block_id * uniforms.block_size + base_slot) * block_row_stride +
+                    kv_head_idx * head_size_vec;
+  for (var idx : u32 = local_idx; idx < head_size_vec * max_k_step; idx += workgroup_size_x) {
+    let slot = idx / head_size_vec;
+    let vec_idx = idx % head_size_vec;
+    let offset = base_offset + slot * block_row_stride + vec_idx;
+    v_tile[slot][vec_idx] = select(q_value_t(0), value_cache.getByOffset(offset), v_start + slot < total_seq);
+  }
+}
+
+fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
+#if q_varlen
+  // Varlen output: raw packed layout [token_count, num_heads, head_size].
+  let q_row = u32(cumulative_seqlens_q[batch_idx]) + o_idx_global;
+  let offset = q_row * num_heads * head_size_vec + head_idx * head_size_vec;
+#else
+  // Output layout matches dense FA: BSNH [batch_size, sequence_length, num_heads, head_size]
+  let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
+               o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
+#endif
+  for (var idx : u32 = 0; idx < head_size_vec; idx++) {
+    output.setByOffset(offset + idx, o_tile[idx]);
+  }
+}
+
+$MAIN {
+  let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
+  let head_idx = batch_head_idx % num_heads;
+  let batch_idx = batch_head_idx / num_heads;
+
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
+
+  // Load Q for this lane's row.
+  let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
+#if q_varlen
+  // Varlen mode: q_idx_global is dispatch-clamped to max_seqlen_q, but the
+  // real per-batch Q length may be shorter. Gate on seqlens_q[batch_idx] to
+  // avoid stomping into the next batch's Q / output row.
+  let valid_q = q_idx_global < u32(seqlens_q[batch_idx]);
+#else
+  let valid_q = q_idx_global < uniforms.new_sequence_length;
+#endif
+  if (valid_q) {
+    loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
+  }
+
+  var previous_max : q_element_t = min_value;
+  var previous_denom : q_element_t = 0;
+  // Per-batch total KV length (past + new).
+  let total_sequence_length = u32(seqlens_k[batch_idx]) + 1u;
+
+#if is_unidirectional
+  // Causal masking loop bound.
+  // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
+  let q_len_b = u32(seqlens_q[batch_idx]);
+  let past_sequence_length = total_sequence_length - q_len_b;
+  let max_causal_len_for_workgroup = past_sequence_length +
+                                     (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
+  let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
+  let seq_causal_length = past_sequence_length + q_idx_global + 1;
+#else
+  let loop_bound = total_sequence_length;
+  let seq_causal_length = total_sequence_length;
+#endif
+
+  for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
+    workgroupBarrier();
+    loadk(k_start, batch_idx, head_idx, local_idx, total_sequence_length);
+    loadv(k_start, batch_idx, head_idx, local_idx, total_sequence_length);
+    workgroupBarrier();
+
+    for (var k = 0u; k < max_k_step; k++) {
+      var score = q_element_t(0);
+      for (var i = 0u; i < head_size_vec; i++) {
+        score += dot(q_tile[i], k_tile[k][i]);
+      }
+      qk_scores[k] = select(min_value, score, k_start + k < seq_causal_length);
+    }
+
+    var local_max = min_value;
+    for (var k = 0u; k < max_k_step; k++) {
+      local_max = max(local_max, qk_scores[k]);
+    }
+    let new_max = max(previous_max, local_max);
+
+    var sum = q_element_t(0);
+    for (var k = 0u; k < max_k_step; k++) {
+      let exp_val = q_element_t(exp(f32(qk_scores[k]) - f32(new_max)));
+      qk_scores[k] = exp_val;
+      sum += exp_val;
+    }
+
+    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    var d = dleft + sum;
+    d = select(d, q_element_t(0.0000001), d == 0);
+
+    for (var k = 0u; k < max_k_step; k++) {
+      qk_scores[k] = qk_scores[k] / d;
+    }
+    previous_max = new_max;
+    previous_denom = d;
+    let o_ratio = dleft / d;
+
+    for (var i : u32 = 0; i < head_size_vec; i++) {
+      var acc = q_value_t(0);
+      for (var k = 0u; k < max_k_step; k++) {
+        acc += v_tile[k][i] * qk_scores[k];
+      }
+      o_tile[i] = o_tile[i] * o_ratio + acc;
+    }
+  }
+
+  if (valid_q) {
+    writeo(batch_idx, q_idx_global, head_idx);
+  }
+}  // MAIN

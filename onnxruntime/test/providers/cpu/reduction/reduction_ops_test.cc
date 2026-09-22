@@ -2038,6 +2038,44 @@ TEST(ReductionOpTest, ReduceMeanAxesInitializerOpset18) {
            {kDnnlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset13) {
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset18) {
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f,
+                                        3.0f, 4.0f,
+                                        5.0f, 6.0f,
+                                        7.0f, 8.0f,
+                                        9.0f, 10.0f,
+                                        11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, {0, 2}, true);
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 #ifdef USE_DNNL
 TEST(ReductionOpTest, ReduceMean_bfloat16) {
 #ifdef USE_DNNL
@@ -6351,6 +6389,55 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
           kTensorrtExecutionProvider,
           kWebGpuExecutionProvider,
       });
+}
+
+TEST(ReductionOpTest, EmptySetMissingOptionalAxesReducesAllDimensions) {
+  OpTester test("ReduceSum", 20);
+  test.AddInput<float>("data", {2, 0, 4}, {});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetAxesMustBeVector) {
+  const std::vector<std::pair<std::vector<int64_t>, std::vector<int64_t>>> axes_cases{
+      {{}, {1}},
+      {{2, 0}, {}},
+  };
+  for (const char* const op : {"ReduceSum", "ReduceLogSumExp"}) {
+    for (const auto& [axes_shape, axes_data] : axes_cases) {
+      OpTester test(op, 20);
+      test.AddInput<float>("data", {2, 0, 4}, {});
+      test.AddInput<int64_t>("axes", axes_shape, axes_data);
+      test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+      test.Config(OpTester::ExpectResult::kExpectFailure, "An axes tensor must be a vector tensor.")
+          .ConfigEp(DefaultCpuExecutionProvider())
+          .RunWithConfig();
+    }
+  }
+}
+
+void TestEmptySetNoopWithEmptyAxes(const std::string& op, bool omit_axes) {
+  OpTester test(op, 20);
+  test.AddInput<float>("data", {2, 0, 4}, {});
+  if (omit_axes) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("axes", {0}, {}, true);
+  }
+  test.AddAttribute<int64_t>("noop_with_empty_axes", 1);
+  test.AddOutput<float>("reduced", {2, 0, 4}, {});
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(ReductionOpTest, EmptySetNoopWithMissingAxes) {
+  TestEmptySetNoopWithEmptyAxes("ReduceSum", true);
+  TestEmptySetNoopWithEmptyAxes("ReduceLogSumExp", true);
+}
+
+TEST(ReductionOpTest, EmptySetNoopWithEmptyAxes) {
+  TestEmptySetNoopWithEmptyAxes("ReduceSum", false);
+  TestEmptySetNoopWithEmptyAxes("ReduceLogSumExp", false);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1) {

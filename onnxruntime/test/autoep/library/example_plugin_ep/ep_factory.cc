@@ -164,6 +164,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       // Example os_driver_version. A real EP would read the OS driver version from the device.
       // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
       factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
+      // GroupQueryAttention Value cache layout preference. "BNSH" here because GetCapabilityImpl()
+      // only claims Mul, Custom_Mul and EPContext nodes, so this EP cannot fuse the
+      // Transpose -> GroupQueryAttention -> Transpose sequence that ORT inserts for "BNHS".
+      // Reporting "BNHS" without implementing that fusion would steer applications into a layout
+      // this EP cannot execute any faster, and the transposes would run for real.
+      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
       // Report weightless support for all initializers.
       factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
@@ -243,6 +249,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string ep_context_embed_mode;
   std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
+  std::string use_default_cpu_allocator;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
@@ -251,12 +258,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                  ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
+                                                 "0", use_default_cpu_allocator));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
+  config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
 
   // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
   // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
@@ -349,6 +359,19 @@ void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr,
   } else {
     delete static_cast<CustomAllocator*>(allocator);
   }
+}
+
+OrtStatus* ExampleEpFactory::ResetArenaChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
+  OrtStatus* status = nullptr;
+  try {
+    std::lock_guard<std::mutex> lock{mutex_};
+    status = arena_allocator_ ? arena_allocator_->ResetChunksUsingStream(stream_impl) : nullptr;
+  } catch (const std::exception& ex) {
+    status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+  } catch (...) {
+    status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, "ResetArenaChunksUsingStream failed.");
+  }
+  return status;
 }
 
 /*static*/

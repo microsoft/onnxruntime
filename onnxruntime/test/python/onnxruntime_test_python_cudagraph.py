@@ -5,6 +5,7 @@ import unittest
 
 import numpy as np
 from helper import get_name
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 
@@ -60,6 +61,62 @@ class CudaGraphHelper:
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
+    def test_gather_nd_cuda_graph_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        # Distinct layouts ensure each captured GatherND launch needs different stride metadata.
+        graph = helper.make_graph(
+            [
+                helper.make_node("GatherND", ["data_0", "indices_0"], ["output_0"]),
+                helper.make_node("GatherND", ["data_1", "indices_1"], ["output_1"]),
+            ],
+            "gather_nd_cuda_graph",
+            [
+                helper.make_tensor_value_info("data_0", TensorProto.FLOAT, [2, 3, 4]),
+                helper.make_tensor_value_info("indices_0", TensorProto.INT64, [2, 2]),
+                helper.make_tensor_value_info("data_1", TensorProto.FLOAT, [3, 2, 5]),
+                helper.make_tensor_value_info("indices_1", TensorProto.INT64, [2, 2]),
+            ],
+            [
+                helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [2, 4]),
+                helper.make_tensor_value_info("output_1", TensorProto.FLOAT, [2, 5]),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), providers=providers)
+        shapes = {
+            "data_0": [2, 3, 4],
+            "indices_0": [2, 2],
+            "data_1": [3, 2, 5],
+            "indices_1": [2, 2],
+            "output_0": [2, 4],
+            "output_1": [2, 5],
+        }
+        cuda_graph_helper = CudaGraphHelper(session, shapes)
+        inputs = {
+            "data_0": np.arange(24, dtype=np.float32).reshape(shapes["data_0"]),
+            "indices_0": np.array([[0, 1], [1, 2]], dtype=np.int64),
+            "data_1": np.arange(30, dtype=np.float32).reshape(shapes["data_1"]),
+            "indices_1": np.array([[0, 1], [2, 0]], dtype=np.int64),
+        }
+        expected_outputs = {
+            "output_0": np.array([[4, 5, 6, 7], [20, 21, 22, 23]], dtype=np.float32),
+            "output_1": np.array([[5, 6, 7, 8, 9], [20, 21, 22, 23, 24]], dtype=np.float32),
+        }
+
+        cuda_graph_helper.update_inputs(inputs)
+        cuda_graph_helper.io_binding.synchronize_inputs()
+        for _ in range(4):  # Two warmups, capture, then replay after PrepareCompute has returned.
+            session.run_with_iobinding(cuda_graph_helper.io_binding)
+            cuda_graph_helper.io_binding.synchronize_outputs()
+
+        for output_name, expected_output in expected_outputs.items():
+            np.testing.assert_array_equal(cuda_graph_helper.get_output(output_name), expected_output)
+
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
