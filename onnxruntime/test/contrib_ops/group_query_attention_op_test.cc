@@ -87,6 +87,11 @@ static void RunGQASeqlensKTestTyped(
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
 
+  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
+  if (!execution_provider) {
+    GTEST_SKIP() << "Requested execution provider is not available";
+  }
+
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
@@ -139,11 +144,6 @@ static void RunGQASeqlensKTestTyped(
   // Tolerance is intentionally loose: these tests validate shape acceptance, not output values.
   if (expect == OpTester::ExpectResult::kExpectSuccess) {
     tester.SetOutputTolerance(1e6f);
-  }
-
-  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
-  if (target_ep == GqaTargetEp::kCuda && !execution_provider) {
-    GTEST_SKIP() << "CUDA EP not available";
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
