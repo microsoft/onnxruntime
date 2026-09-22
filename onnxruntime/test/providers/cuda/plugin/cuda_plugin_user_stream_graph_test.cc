@@ -257,26 +257,10 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
 
-TEST_F(CudaPluginUserStreamGraphTest, RejectsGatherNDWithCudaGraph) {
-  Ort::SessionOptions so;
-  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {{"enable_cuda_graph", "1"}});
-  const auto model = BuildGatherNDModel();
-
-  try {
-    Ort::Session session(*ort_env, model.data(), model.size(), so);
-    FAIL() << "Expected CUDA graph capture with GatherND to be rejected";
-  } catch (const Ort::Exception& error) {
-    EXPECT_EQ(error.GetOrtErrorCode(), ORT_FAIL);
-    EXPECT_NE(std::string(error.what()).find("CUDA graph capture does not support GatherND because runtime index validation "
-                                             "requires host-visible error reporting"),
-              std::string::npos);
-  }
-}
-
-TEST_F(CudaPluginUserStreamGraphTest, GatherNDValidatesIndices) {
+TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphSafelyHandlesInvalidIndices) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
-  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {});
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {{"enable_cuda_graph", "1"}});
   const auto model = BuildGatherNDModel();
   Ort::Session session(*ort_env, model.data(), model.size(), so);
 
@@ -306,14 +290,11 @@ TEST_F(CudaPluginUserStreamGraphTest, GatherNDValidatesIndices) {
 
   indices[0] = 2;
   inputs = make_inputs();
-  try {
-    ORT_IGNORE_RETURN_VALUE(session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
-                                        output_names.data(), output_names.size()));
-    FAIL() << "Expected out-of-bounds GatherND index to be rejected";
-  } catch (const Ort::Exception& error) {
-    EXPECT_EQ(error.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-    EXPECT_NE(std::string(error.what()).find("invalid index found, index = 2"), std::string::npos);
-  }
+  outputs = session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
+                        output_names.data(), output_names.size());
+  output = outputs.front().GetTensorData<float>();
+  EXPECT_FLOAT_EQ(output[0], 0.0f);
+  EXPECT_FLOAT_EQ(output[1], 0.0f);
 }
 
 // Full capture + replay on the user stream, including replay after an in-place input

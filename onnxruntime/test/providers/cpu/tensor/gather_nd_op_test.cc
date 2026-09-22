@@ -402,7 +402,7 @@ TEST(GatherNDOpTest, GatherND_zero_dim_error) {
 }
 
 #ifdef USE_CUDA
-TEST(GatherNDOpTest, GatherND_invalid_index_cuda_error) {
+TEST(GatherNDOpTest, GatherND_invalid_index_cuda_zero_filled) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
@@ -415,14 +415,14 @@ TEST(GatherNDOpTest, GatherND_invalid_index_cuda_error) {
   std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
   cuda_only_ep.push_back(DefaultCudaExecutionProvider());
 
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "invalid index found, index = 1048576",
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+           "",
            {},
            nullptr,
            &cuda_only_ep);
 }
 
-TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_error) {
+TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_zero_filled) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
   }
@@ -435,16 +435,16 @@ TEST(GatherNDOpTest, GatherND_zero_dim_negative_index_cuda_error) {
   std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cuda_only_ep;
   cuda_only_ep.push_back(DefaultCudaExecutionProvider());
 
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "invalid index found, index = -1",
+  test.Run(OpTester::ExpectResult::kExpectSuccess,
+           "",
            {},
            nullptr,
            &cuda_only_ep);
 }
 
-TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
+TEST(GatherNDOpTest, GatherNDCudaGraphCaptureSupportsBoundsCheck) {
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
-  GTEST_SKIP() << "This test validates the built-in CUDA EP session diagnostic, not the dynamic plugin adapter.";
+  GTEST_SKIP() << "This test validates the built-in CUDA EP, not the dynamic plugin adapter.";
 #endif
 
   if (!HasCudaEnvironment(0)) {
@@ -461,13 +461,10 @@ TEST(GatherNDOpTest, GatherNDCudaGraphCaptureIsRejected) {
 
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<int64_t>("indices", {1, 1}, {0});
-  test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  test.AddInput<int64_t>("indices", {1, 1}, {2});
+  test.AddOutput<float>("output", {1, 2}, {0.0f, 0.0f});
 
   test.ConfigEp(std::move(cuda_ep));
-  test.Config(OpTester::ExpectResult::kExpectFailure,
-              "CUDA graph capture does not support GatherND because runtime index validation "
-              "requires host-visible error reporting");
   test.RunWithConfig();
 }
 

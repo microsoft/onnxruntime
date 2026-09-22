@@ -217,16 +217,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return ss.str();
 }
 
-static bool HasGatherNDNode(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "GatherND" && node.Domain() == kOnnxDomain) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 #if !defined(ORT_MINIMAL_BUILD)
 
 static bool HasControlflowNodes(const Graph& graph) {
@@ -3071,16 +3061,6 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      for (const auto& ep : execution_providers_) {
-        if (ep->IsGraphCaptureEnabled() &&
-            ep->Type() == kCudaExecutionProvider &&
-            HasGatherNDNode(graph)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "CUDA graph capture does not support GatherND because runtime index validation "
-                                 "requires host-visible error reporting");
-        }
-      }
-
       // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
       // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
       for (const auto& ep : execution_providers_) {
@@ -3199,16 +3179,6 @@ common::Status InferenceSession::Initialize() {
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
                                                   cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    }
-
-    for (const auto& ep : execution_providers_) {
-      if (ep->IsGraphCaptureEnabled() &&
-          ep->Type() == kCudaExecutionProvider &&
-          HasGatherNDNode(graph)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "CUDA graph capture does not support GatherND because runtime index validation "
-                               "requires host-visible error reporting");
-      }
     }
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,

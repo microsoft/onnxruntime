@@ -72,11 +72,7 @@ Status GatherNDBase::PrepareCompute(
   const TIndex* indices_data = indices_tensor->Data<TIndex>();
   IAllocatorUniquePtr<TIndex> indices_device_buffer;
 
-  // Use on-device validation kernel to avoid full D2H copy for large indices tensors
-  // This kernel records only the first invalid index into a 1-element device buffer,
-  // then copies back only that value for error reporting.
   if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
-    // For CPU-resident indices, fall back to host-side validation
     const size_t num_slices_size_t = static_cast<size_t>(num_slices);
     const size_t num_slice_dims_size_t = static_cast<size_t>(num_slice_dims);
     for (size_t slice_idx = 0; slice_idx < num_slices_size_t; ++slice_idx) {
@@ -91,24 +87,7 @@ Status GatherNDBase::PrepareCompute(
         }
       }
     }
-  } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
-    // Use on-device validation and copy back only the first invalid index for error reporting.
-    TArray<int64_t> input_dims(input_shape.GetDims());
-    auto validation_result_buffer = GetScratchBuffer<GatherNDValidationResult>(1, alloc_stream);
-    const auto validation_result = ValidateIndicesAndReturnFirstInvalidIndex<TIndex>(
-        cuda_stream,
-        batch_dims,
-        input_dims,
-        num_slices,
-        num_slice_dims,
-        indices_data,
-        validation_result_buffer.get());
-
-    if (validation_result.position != -1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "invalid index found, index = ", validation_result.value);
-    }
-  } else {
+  } else if (indices_tensor->Location().device.Type() != OrtDevice::GPU) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Unsupported device type for indices tensor in CUDA GatherND");
   }
