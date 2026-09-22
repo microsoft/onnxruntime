@@ -209,7 +209,6 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
  public:
   FlashAttentionPrefillSimpleProgram(const std::string& kernel_name,
                                      bool has_attention_bias,
-                                     bool is_fp16,
                                      bool is_unidirectional,
                                      int qkv_head_size,
                                      int qkv_num_heads,
@@ -221,7 +220,6 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
                                      bool has_head_sink)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
-        is_fp16_(is_fp16),
         is_unidirectional_(is_unidirectional),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
@@ -248,7 +246,6 @@ class FlashAttentionPrefillSimpleProgram final : public Program<FlashAttentionPr
 
  private:
   bool has_attention_bias_;
-  bool is_fp16_;
   bool is_unidirectional_;
   int qkv_head_size_;
   int qkv_num_heads_;
@@ -273,7 +270,6 @@ Status ApplyFlashAttentionPrefillSimple(onnxruntime::webgpu::ComputeContext& con
                                         Tensor* attn_output,
                                         const WebgpuAttentionParameters& parameters,
                                         bool has_attention_bias,
-                                        bool is_fp16,
                                         bool use_seqlen_k,
                                         bool has_local_window,
                                         int local_window_size,
