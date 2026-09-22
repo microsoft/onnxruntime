@@ -5428,8 +5428,9 @@ TEST(TransposeOptimizerTests, LayoutTransformRejectsPerAxisDQAxisExceedingPermut
 
   auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                 /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
   onnx_transpose_optimization::api::NodeRef* identity = nullptr;
-  for (auto& node : api_graph->Nodes()) {
+  for (auto& node : nodes) {
     if (node->OpType() == "Identity") {
       identity = node.get();
       break;
@@ -5468,8 +5469,9 @@ TEST(TransposeOptimizerTests, LayoutTransformAllowsDQWithUnavailableQuantization
 
   auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                 /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
   onnx_transpose_optimization::api::NodeRef* identity = nullptr;
-  for (auto& node : api_graph->Nodes()) {
+  for (auto& node : nodes) {
     if (node->OpType() == "Identity") {
       identity = node.get();
       break;
@@ -5514,8 +5516,9 @@ TEST(TransposeOptimizerTests, LayoutTransformPreflightsAllInputsBeforeMutation) 
 
   auto api_graph = MakeApiGraph(graph, TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                 /*new_node_ep*/ nullptr);
+  auto nodes = api_graph->Nodes();
   onnx_transpose_optimization::api::NodeRef* add = nullptr;
-  for (auto& node : api_graph->Nodes()) {
+  for (auto& node : nodes) {
     if (node->OpType() == "Add") {
       add = node.get();
       break;
