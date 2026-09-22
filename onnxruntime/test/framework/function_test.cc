@@ -804,6 +804,9 @@ static void WrapLocalFunctionChainInReferencedGraphAttribute(ONNX_NAMESPACE::Mod
   auto* wrapper_onnx_opset = wrapper->add_opset_import();
   wrapper_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
   wrapper_onnx_opset->set_version(16);
+  auto* wrapper_local_opset = wrapper->add_opset_import();
+  wrapper_local_opset->set_domain("local");
+  wrapper_local_opset->set_version(1);
 
   auto* if_node = wrapper->add_node();
   if_node->set_op_type("If");
@@ -887,6 +890,12 @@ static ONNX_NAMESPACE::ModelProto CreateForwardedNestedGraphAttributeModel() {
   forwarder->set_name("F");
   forwarder->add_attribute("A");
   forwarder->add_attribute("B");
+  auto* forwarder_onnx_opset = forwarder->add_opset_import();
+  forwarder_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  forwarder_onnx_opset->set_version(16);
+  auto* forwarder_local_opset = forwarder->add_opset_import();
+  forwarder_local_opset->set_domain("local");
+  forwarder_local_opset->set_version(1);
   auto* forwarded_call = forwarder->add_node();
   forwarded_call->set_domain("local");
   forwarded_call->set_op_type("G");
@@ -899,6 +908,12 @@ static ONNX_NAMESPACE::ModelProto CreateForwardedNestedGraphAttributeModel() {
   consumer->set_domain("local");
   consumer->set_name("G");
   consumer->add_attribute("body");
+  auto* consumer_onnx_opset = consumer->add_opset_import();
+  consumer_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  consumer_onnx_opset->set_version(16);
+  auto* consumer_local_opset = consumer->add_opset_import();
+  consumer_local_opset->set_domain("local");
+  consumer_local_opset->set_version(1);
   auto* if_node = consumer->add_node();
   if_node->set_op_type("If");
   auto* body_ref = if_node->add_attribute();
@@ -939,13 +954,27 @@ TEST(FunctionTest, DirectGraphAttributePreservesNestedReferenceBindings) {
 
 static ONNX_NAMESPACE::ModelProto CreateTerminatingCrossBoundGraphAttributeModel() {
   ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
   auto* graph = model_proto.mutable_graph();
+  graph->set_name("terminating_cross_bound_graph_attributes");
 
   for (const auto* function_name : {"F", "G"}) {
     auto* function = model_proto.add_functions();
     function->set_domain("local");
     function->set_name(function_name);
     function->add_attribute("body");
+    auto* function_onnx_opset = function->add_opset_import();
+    function_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+    function_onnx_opset->set_version(16);
+    auto* function_local_opset = function->add_opset_import();
+    function_local_opset->set_domain("local");
+    function_local_opset->set_version(1);
 
     auto* if_node = function->add_node();
     if_node->set_op_type("If");
