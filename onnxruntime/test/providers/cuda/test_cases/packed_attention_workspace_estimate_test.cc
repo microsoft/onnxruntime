@@ -21,6 +21,7 @@
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
+#include "test/providers/cuda/internal_testing/cuda_internal_test_helpers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -548,7 +549,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedAttentionKernelDeclaresOneAlign
 
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   const std::string model_bytes = BuildPackedAttentionKernelModel(
       PackedAttentionWorkspaceOperator::PackedAttention);
@@ -598,7 +599,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, PackedMultiHeadAttentionKernelDeclare
 
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   const std::string model_bytes = BuildPackedAttentionKernelModel(
       PackedAttentionWorkspaceOperator::PackedMultiHeadAttention);

@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#include "test/providers/cuda/internal_testing/cuda_internal_test_helpers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -286,7 +287,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   {
     InferenceSessionWrapper session(make_session_options(1024),
                                     GetEnvironment());
-    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+    auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
     if (cuda_ep->GetDeviceProp().major < 8) {
       GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
     }
@@ -339,7 +340,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     InferenceSessionWrapper session(make_session_options(accepted_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(provider_info)));
+        CreateCudaInternalTestExecutionProvider(provider_info)));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -359,7 +360,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     InferenceSessionWrapper session(make_session_options(rejected_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(provider_info)));
+        CreateCudaInternalTestExecutionProvider(provider_info)));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -885,7 +886,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
 
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
   if (cuda_ep->GetDeviceProp().major < 8) {
     GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
   }
@@ -945,7 +946,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresBoundedNonWindowedR
 
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   const std::string model_bytes =
       BuildGroupQueryAttentionKernelModel(/*sliding_window_cache=*/false);

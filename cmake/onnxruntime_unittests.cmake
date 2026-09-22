@@ -1020,9 +1020,19 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
 
   if (WIN32)
-    # Windows uses the bridge-free chain tests in providers/cuda instead of this provider-internal session test.
-    list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+    # Session tests need the core runtime, not the provider's bridge definitions.
+    # Keep them in the executable and access provider internals through a test-only,
+    # explicitly loaded interface (no executable/module import-library cycle).
+    set(onnxruntime_cuda_internal_session_tests
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_external_data_loader_test.cc"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/group_query_attention_workspace_estimate_test.cc"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/packed_attention_workspace_estimate_test.cc"
       "${TEST_SRC_DIR}/providers/cuda/test_cases/matmul_nbits_e2e_workspace_test.cc")
+    list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src ${onnxruntime_cuda_internal_session_tests})
+    list(APPEND all_tests ${onnxruntime_cuda_internal_session_tests}
+      "${TEST_SRC_DIR}/providers/cuda/internal_testing/cuda_internal_test_helpers.cc")
+    list(APPEND onnxruntime_test_providers_cuda_ut_src
+      "${TEST_SRC_DIR}/providers/cuda/internal_testing/cuda_internal_test_api.cc")
   endif()
 
   # onnxruntime_providers_cuda_ut is only for unittests.
@@ -1060,9 +1070,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
   endif()
 
-  if (NOT WIN32)
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
-  endif()
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
@@ -1470,6 +1478,13 @@ block()
   if (NOT WIN32 AND TARGET onnxruntime_providers_cuda_ut)
     # The dlopen'd CUDA test module runs full sessions and resolves their core symbols from this executable.
     set_target_properties(onnxruntime_provider_test PROPERTIES ENABLE_EXPORTS 1)
+  endif()
+
+  if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    target_link_libraries(onnxruntime_provider_test PRIVATE CUDA::cudart)
+    if (NOT onnxruntime_CUDA_MINIMAL)
+      target_link_libraries(onnxruntime_provider_test PRIVATE CUDNN::cudnn)
+    endif()
   endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
