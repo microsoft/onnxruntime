@@ -428,7 +428,11 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
         const auto* destination = graph.GetNode(1);
         ASSERT_NE(source, nullptr);
         ASSERT_NE(destination, nullptr);
+#if !defined(ORT_MINIMAL_BUILD)
         const size_t expected_edge_count = control_only ? 1 : 2;
+#else
+        constexpr size_t expected_edge_count = 1;
+#endif
         EXPECT_EQ(source->GetOutputEdgesCount(), expected_edge_count);
         EXPECT_EQ(destination->GetInputEdgesCount(), expected_edge_count);
         EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"source"});
