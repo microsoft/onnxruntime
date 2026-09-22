@@ -906,13 +906,12 @@ TEST(MatMulNBits, BFloat16_Int8_Chunked_BFloat16ZeroPoint) {
   }
 }
 
-// Exercises the CUDA small-M batched GEMV tiles for 8-bit: CtaM in {2,4,8} (M=3,5 hit the row-skip
-// path) and CtaN in {1,2} (N divisible / not divisible by 16). 8-bit caps the batched path at M=5.
-TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
+template <typename T>
+void TestInt8SmallMBatchedTiles() {
   constexpr float abs_error = 0.1f;
   constexpr float rel_error = 0.02f;
-  for (auto block_size : {32, 128}) {
-    for (auto m : {2, 3, 4, 5}) {
+  for (auto block_size : {16, 32, 64, 128, 256}) {
+    for (auto m : {2, 3, 4, 5, 6, 7, 8}) {
       for (auto n : {256, 24}) {  // N=256 -> CtaN=2, N=24 -> CtaN=1
         for (auto has_zeropoint : {false, true}) {
           TestOptions8Bits opts{};
@@ -922,11 +921,45 @@ TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
           opts.zp_is_typed = false;
           opts.output_abs_error = abs_error;
           opts.output_rel_error = rel_error;
-          RunTest8Bits<MLFloat16>(opts);
+          RunTest8Bits<T>(opts);
         }
       }
     }
   }
+}
+
+template <typename T>
+void TestInt8SmallMFallback() {
+  for (auto n : {256, 24}) {
+    for (auto has_zeropoint : {false, true}) {
+      TestOptions8Bits opts{};
+      opts.M = 9, opts.N = n, opts.K = 1024;
+      opts.block_size = 64;
+      opts.has_zero_point = has_zeropoint;
+      opts.zp_is_typed = false;
+      opts.output_abs_error = 0.1f;
+      opts.output_rel_error = 0.02f;
+      RunTest8Bits<T>(opts);
+    }
+  }
+}
+
+// Exercises every CUDA small-M batched GEMV tile for 8-bit: CtaM in {2,4,8} (odd row counts hit
+// the row-skip path), CtaN in {1,2}, and every supported block size.
+TEST(MatMulNBits, Float32_Int8_SmallMBatchedTiles) {
+  TestInt8SmallMBatchedTiles<float>();
+}
+
+TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
+  TestInt8SmallMBatchedTiles<MLFloat16>();
+}
+
+TEST(MatMulNBits, Float32_Int8_SmallMFallback) {
+  TestInt8SmallMFallback<float>();
+}
+
+TEST(MatMulNBits, Fp16_Int8_SmallMFallback) {
+  TestInt8SmallMFallback<MLFloat16>();
 }
 
 TEST(MatMulNBits, BFloat16_Int8_SmallMBatchedTiles) {
@@ -934,24 +967,15 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMBatchedTiles) {
     GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
   }
 
-  constexpr float abs_error = 0.1f;
-  constexpr float rel_error = 0.02f;
-  for (auto block_size : {32, 128}) {
-    for (auto m : {2, 3, 4, 5}) {
-      for (auto n : {256, 24}) {
-        for (auto has_zeropoint : {false, true}) {
-          TestOptions8Bits opts{};
-          opts.M = m, opts.N = n, opts.K = 1024;
-          opts.block_size = block_size;
-          opts.has_zero_point = has_zeropoint;
-          opts.zp_is_typed = false;
-          opts.output_abs_error = abs_error;
-          opts.output_rel_error = rel_error;
-          RunTest8Bits<BFloat16>(opts);
-        }
-      }
-    }
+  TestInt8SmallMBatchedTiles<BFloat16>();
+}
+
+TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
   }
+
+  TestInt8SmallMFallback<BFloat16>();
 }
 #endif
 

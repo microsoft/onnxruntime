@@ -31,7 +31,7 @@ bool TryMatMul8Bits(
   constexpr int kElementsPerThreadPerIteration = 8;
   constexpr int kWarpSize = onnxruntime::cuda::GPU_WARP_SIZE;
 
-  if (m < 1 || m > 5 || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  if (m < 1 || m > 8 || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
   constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
