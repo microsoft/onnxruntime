@@ -165,15 +165,20 @@ static void RunGQASeqlensKTest(
     bool provide_past = false,
     int past_seq_len = 0,
     const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    const std::optional<std::vector<int64_t>>& total_seq_len_shape = std::nullopt,
+    const std::optional<std::vector<int32_t>>& total_seq_len_data = std::nullopt,
+    bool total_seq_len_is_initializer = false,
     GqaTargetEp target_ep = GqaTargetEp::kCpu) {
   if (target_ep == GqaTargetEp::kCuda) {
     RunGQASeqlensKTestTyped<MLFloat16>(
         seqlens_k_data, total_seq_len, batch_size, sequence_length, expect, expected_message,
-        provide_past, past_seq_len, seqlens_k_shape, target_ep);
+        provide_past, past_seq_len, seqlens_k_shape, target_ep,
+        total_seq_len_shape, total_seq_len_data, total_seq_len_is_initializer);
   } else {
     RunGQASeqlensKTestTyped<float>(
         seqlens_k_data, total_seq_len, batch_size, sequence_length, expect, expected_message,
-        provide_past, past_seq_len, seqlens_k_shape, target_ep);
+        provide_past, past_seq_len, seqlens_k_shape, target_ep,
+        total_seq_len_shape, total_seq_len_data, total_seq_len_is_initializer);
   }
 }
 
@@ -962,7 +967,10 @@ TEST(GroupQueryAttentionTest, CudaOversizedSeqlensKIsSanitized) {
       "",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      std::nullopt,
+      /*seqlens_k_shape=*/std::nullopt,
+      /*total_seq_len_shape=*/std::nullopt,
+      /*total_seq_len_data=*/std::nullopt,
+      /*total_seq_len_is_initializer=*/false,
       GqaTargetEp::kCuda);
 }
 #endif
