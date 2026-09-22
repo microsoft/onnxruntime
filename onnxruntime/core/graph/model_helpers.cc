@@ -6,6 +6,7 @@
 #include "core/graph/model_helpers.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -112,9 +113,12 @@ void CollectLocalFunctionCalls(
   }
 }
 
+struct AttributeBindingContext;
+
 struct BoundAttribute {
   const ONNX_NAMESPACE::AttributeProto* proto;
   const Graph* graph;
+  std::shared_ptr<const AttributeBindingContext> context;
 };
 
 struct AttributeBinding {
@@ -123,6 +127,11 @@ struct AttributeBinding {
 };
 
 using AttributeBindings = InlinedVector<AttributeBinding>;
+
+struct AttributeBindingContext {
+  AttributeBindings bindings;
+};
+
 using ModelLocalFunctions =
     std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>;
 
@@ -139,7 +148,8 @@ struct FunctionValidationState {
                       [](const AttributeBinding& lhs, const AttributeBinding& rhs) {
                         return lhs.name == rhs.name &&
                                lhs.attribute.proto == rhs.attribute.proto &&
-                               lhs.attribute.graph == rhs.attribute.graph;
+                               lhs.attribute.graph == rhs.attribute.graph &&
+                               lhs.attribute.context == rhs.attribute.context;
                       });
   }
 };
@@ -156,6 +166,7 @@ struct FunctionValidationStateHash {
       combine(std::hash<std::string_view>{}(binding.name));
       combine(std::hash<const void*>{}(binding.attribute.proto));
       combine(std::hash<const void*>{}(binding.attribute.graph));
+      combine(std::hash<const void*>{}(binding.attribute.context.get()));
     }
 
     return result;
@@ -176,13 +187,23 @@ const BoundAttribute* FindAttributeBinding(const AttributeBindings& bindings,
 
 BoundAttribute ResolveAttribute(const ONNX_NAMESPACE::AttributeProto& attr,
                                 const AttributeBindings& bindings,
+                                const std::shared_ptr<const AttributeBindingContext>& context,
                                 const Graph* graph = nullptr) {
   if (attr.ref_attr_name().empty()) {
     return {&attr, graph};
   }
 
   const auto* binding = FindAttributeBinding(bindings, attr.ref_attr_name());
-  return binding == nullptr ? BoundAttribute{} : *binding;
+  if (binding == nullptr) {
+    return {};
+  }
+
+  auto resolved = *binding;
+  if (resolved.context == nullptr) {
+    resolved.context = context;
+  }
+
+  return resolved;
 }
 
 void SetAttributeBinding(AttributeBindings& bindings,
@@ -230,17 +251,21 @@ Status ValidateBoundAttributeCallDepth(
     return Status::OK();
   }
 
+  const auto& attribute_bindings =
+      attribute.context == nullptr ? bindings : attribute.context->bindings;
+
   if (attribute.graph != nullptr) {
     ORT_RETURN_IF_ERROR(ValidateGraphCallDepth(
-        *attribute.graph, bindings, call_depth, model_local_functions, validated_states));
+        *attribute.graph, attribute_bindings, call_depth, model_local_functions, validated_states));
   } else if (attribute.proto->has_g()) {
     ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
-        attribute.proto->g().node(), bindings, call_depth, model_local_functions, validated_states));
+        attribute.proto->g().node(), attribute_bindings, call_depth,
+        model_local_functions, validated_states));
   }
 
   for (const auto& graph : attribute.proto->graphs()) {
     ORT_RETURN_IF_ERROR(ValidateProtoNodesCallDepth(
-        graph.node(), bindings, call_depth, model_local_functions, validated_states));
+        graph.node(), attribute_bindings, call_depth, model_local_functions, validated_states));
   }
 
   return Status::OK();
@@ -285,6 +310,9 @@ Status ValidateProtoNodesCallDepth(
     size_t call_depth,
     const ModelLocalFunctions& model_local_functions,
     ValidatedFunctionStates& validated_states) {
+  const auto context = std::make_shared<AttributeBindingContext>(
+      AttributeBindingContext{bindings});
+
   for (const auto& node : nodes) {
     const auto function_id = function_utils::GetFunctionIdentifier(
         node.domain(), node.op_type(), node.overload());
@@ -292,7 +320,7 @@ Status ValidateProtoNodesCallDepth(
     if (function_it != model_local_functions.end()) {
       AttributeBindings callee_bindings;
       for (const auto& attr : node.attribute()) {
-        const auto resolved_attr = ResolveAttribute(attr, bindings);
+        const auto resolved_attr = ResolveAttribute(attr, bindings, context);
         if (resolved_attr.proto != nullptr) {
           SetAttributeBinding(callee_bindings, attr.name(), resolved_attr);
         }
@@ -305,7 +333,7 @@ Status ValidateProtoNodesCallDepth(
 
     for (const auto& attr : node.attribute()) {
       ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
-          ResolveAttribute(attr, bindings), bindings, call_depth,
+          ResolveAttribute(attr, bindings, context), bindings, call_depth,
           model_local_functions, validated_states));
     }
   }
@@ -319,6 +347,9 @@ Status ValidateGraphCallDepth(
     size_t call_depth,
     const ModelLocalFunctions& model_local_functions,
     ValidatedFunctionStates& validated_states) {
+  const auto context = std::make_shared<AttributeBindingContext>(
+      AttributeBindingContext{bindings});
+
   for (const auto& node : graph.Nodes()) {
     const auto function_id = function_utils::GetFunctionIdentifier(
         node.Domain(), node.OpType(), node.Overload());
@@ -330,7 +361,7 @@ Status ValidateGraphCallDepth(
         if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
           attribute_graph = node.GetGraphAttribute(attr_name);
         }
-        const auto resolved_attr = ResolveAttribute(attr, bindings, attribute_graph);
+        const auto resolved_attr = ResolveAttribute(attr, bindings, context, attribute_graph);
         if (resolved_attr.proto != nullptr) {
           SetAttributeBinding(callee_bindings, attr_name, resolved_attr);
         }
@@ -347,7 +378,7 @@ Status ValidateGraphCallDepth(
         attribute_graph = node.GetGraphAttribute(attr_name);
       }
       ORT_RETURN_IF_ERROR(ValidateBoundAttributeCallDepth(
-          ResolveAttribute(attr, bindings, attribute_graph),
+          ResolveAttribute(attr, bindings, context, attribute_graph),
           bindings, call_depth, model_local_functions, validated_states));
     }
   }

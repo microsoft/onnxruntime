@@ -763,6 +763,7 @@ static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t
 }
 
 TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
   ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
 }
@@ -854,6 +855,64 @@ TEST(FunctionTest, DefaultGraphAttributeContributesToLocalFunctionDepth) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(std::move(model_proto), nullptr, logger);
   const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateForwardedNestedGraphAttributeModel() {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+  root_call->set_op_type("F");
+
+  auto* forwarded_attr = root_call->add_attribute();
+  forwarded_attr->set_name("A");
+  forwarded_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* nested_if = forwarded_attr->mutable_g()->add_node();
+  nested_if->set_op_type("If");
+  auto* nested_ref = nested_if->add_attribute();
+  nested_ref->set_name("then_branch");
+  nested_ref->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  nested_ref->set_ref_attr_name("B");
+
+  auto* chain_attr = root_call->add_attribute();
+  chain_attr->set_name("B");
+  chain_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* chain_call = chain_attr->mutable_g()->add_node();
+  chain_call->set_domain("local");
+  chain_call->set_op_type("function_0");
+
+  auto* forwarder = model_proto.add_functions();
+  forwarder->set_domain("local");
+  forwarder->set_name("F");
+  forwarder->add_attribute("A");
+  forwarder->add_attribute("B");
+  auto* forwarded_call = forwarder->add_node();
+  forwarded_call->set_domain("local");
+  forwarded_call->set_op_type("G");
+  auto* forwarded_binding = forwarded_call->add_attribute();
+  forwarded_binding->set_name("body");
+  forwarded_binding->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  forwarded_binding->set_ref_attr_name("A");
+
+  auto* consumer = model_proto.add_functions();
+  consumer->set_domain("local");
+  consumer->set_name("G");
+  consumer->add_attribute("body");
+  auto* if_node = consumer->add_node();
+  if_node->set_op_type("If");
+  auto* body_ref = if_node->add_attribute();
+  body_ref->set_name("then_branch");
+  body_ref->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  body_ref->set_ref_attr_name("body");
+
+  return model_proto;
+}
+
+TEST(FunctionTest, ForwardedGraphAttributePreservesNestedReferenceBindings) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateForwardedNestedGraphAttributeModel(), nullptr, logger);
+  const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
