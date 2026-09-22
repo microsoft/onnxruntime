@@ -1400,24 +1400,11 @@ void PosixTelemetry::LogAutoEpSelection(
 void PosixTelemetry::LogProviderOptions(const std::string& provider_id,
                                         const std::string& provider_options_string,
                                         bool capture_state) const {
-  RunTelemetryOperation("LogProviderOptions", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder(capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions",
-                                EventPriority::NORMAL);
-    if (!PrepareProcessEvent(builder)) {
-      return;
-    }
-    auto event = builder.AddUInt32("schemaVersion", 0)
-                     .AddStringAllowEmpty("providerId", provider_id)
-                     .AddStringAllowEmpty("providerOptions", provider_options_string)
-                     .AddStringAllowEmpty("frameworkName", ORT_CALLER_FRAMEWORK)
-                     .Build();
-
-    LogEventAsync(std::move(event));
-  });
+  // Provider options can contain paths, credentials, or custom EP data. Keep them on the
+  // local Windows TraceLogging channel rather than uploading them through 1DS.
+  (void)provider_id;
+  (void)provider_options_string;
+  (void)capture_state;
 }
 #endif
 
