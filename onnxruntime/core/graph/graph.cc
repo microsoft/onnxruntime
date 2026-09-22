@@ -5106,12 +5106,14 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  ort_format_control_edges_.erase(
-      std::remove_if(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
-                     [p_index](const auto& control_edge) {
-                       return control_edge.first == p_index || control_edge.second == p_index;
-                     }),
-      ort_format_control_edges_.end());
+  for (auto it = ort_format_control_edges_.begin(); it != ort_format_control_edges_.end();) {
+    if (it->first == p_index || it->second == p_index) {
+      const auto control_edge = *it++;
+      UnregisterOrtFormatControlEdge(control_edge.first, control_edge.second);
+    } else {
+      ++it;
+    }
+  }
 
   return ReleaseNode(p_index);
 }
