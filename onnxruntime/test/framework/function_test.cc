@@ -762,6 +762,52 @@ static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t
   return model_proto;
 }
 
+static std::shared_ptr<OnnxRuntimeOpSchemaRegistry> CreateLocalFunctionCollisionRegistry() {
+  auto registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas{
+      ONNX_NAMESPACE::OpSchema()
+          .SetName("function_0")
+          .SetDomain("local")
+          .Input(0, "X", "", "T")
+          .Output(0, "Y", "", "T")
+          .TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types(), "")};
+  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, "local", 0, 1));
+  return registry;
+}
+
+TEST(FunctionTest, RegisteredSchemaTakesPrecedenceOverCollidingRootLocalFunction) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
+  Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
+TEST(FunctionTest, RegisteredSchemaTakesPrecedenceInsideLocalFunctionBody) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
+
+  auto* wrapper = model_proto.add_functions();
+  wrapper->set_domain("local");
+  wrapper->set_name("wrapper");
+  wrapper->add_input("x");
+  wrapper->add_output("y");
+  auto* onnx_opset = wrapper->add_opset_import();
+  onnx_opset->set_domain(kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = wrapper->add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+  auto* collision_node = wrapper->add_node();
+  collision_node->set_domain("local");
+  collision_node->set_op_type("function_0");
+  collision_node->add_input("x");
+  collision_node->add_output("y");
+
+  IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
+  Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
 TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
