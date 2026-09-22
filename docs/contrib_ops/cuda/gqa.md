@@ -29,7 +29,10 @@ For CPU-specific implementation details (including the quantized KV-cache flash 
 
 ## 1. Overview
 
-GroupQueryAttention implements causal grouped-query attention with KV-cache (past/present) support.
+GroupQueryAttention implements grouped-query attention with KV-cache (past/present) support.
+The `causal` attribute must be `0` or `1` and defaults to `1`; set it to `0` for bidirectional
+attention when the selected backend supports it. Bidirectional attention requires
+`local_window_size=-1`; local windows are defined only for causal attention.
 Grouped-query attention uses fewer key/value heads than query heads: each KV head is shared by a
 group of `num_heads / kv_num_heads` query heads. The operator also supports:
 
@@ -54,9 +57,10 @@ Selected attributes:
 | `num_heads` | Number of query heads. |
 | `kv_num_heads` | Number of key/value heads. `num_heads % kv_num_heads == 0`. |
 | `scale` | Softmax scale. Defaults to `1/sqrt(head_size)`. |
+| `causal` | Apply the causal mask. Must be `0` or `1` and defaults to `1`; `0` enables bidirectional attention. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
-| `local_window_size` | Left window size for local attention. `-1` means global attention. |
-| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
+| `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
+| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0`; the CUDA kernel additionally requires the cache capacity to equal `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -163,32 +167,44 @@ When the `sliding_window_cache` attribute is set to `1`, the KV cache operates i
 to the full sequence length. This significantly reduces memory usage for long-context models that
 employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 
+The CPU documentation's **Windowed (Sliding-Window) KV Cache** section is the normative source for
+the shared layout semantics. This page documents the CUDA-supported subset and its additional
+restrictions.
+
 **Key behaviors:**
 
-- **Cache capacity:** The cache buffer size is fixed to `kv_cache_capacity` (the initial allocation
-  size), which must be at least `local_window_size`. Allocating a little more than the window is
-  worthwhile on CPU: the surplus is what lets the append point drift, so the cache is compacted once
-  every `kv_cache_capacity - local_window_size + 1` steps instead of on every step. A modest surplus
-  (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
-  over out-of-window entries than it saves in compaction.
+- **Cache capacity:** The CUDA kernel requires the cache buffer's sequence dimension to be exactly
+  `local_window_size`. It evicts the minimum number of rows on every step, which reproduces the
+  documented layout only when there is no slack above the window, so a larger capacity is rejected
+  with `INVALID_ARGUMENT` rather than silently producing a different resident range. Slack is
+  useful on CPU, where attention scans every resident entry and a drifting append point amortizes
+  compaction; on CUDA attention costs the same regardless of the capacity, so the extra rows buy
+  nothing.
 - **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
-  positions. Once the window is full, old tokens are evicted from the front.
+  positions. Because the capacity equals the window, rows `[0, L)` hold the `L = min(T, C)` most
+  recent positions in order, where `T` is `seqlens_k[b] + 1` for that batch entry; row `i` holds
+  absolute position `T - L + i`. This is the `G == 1` case of the general contract — the exact
+  formula, the chunk-invariance property that multi-token (speculative) steps rely on, and the
+  rollback rule are specified in [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache).
 - **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
   for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
-- **Multi-token staging:** For multi-token (prompt) steps that exceed window size, a temporary
-  staging buffer is used internally to handle compaction and eviction.
+- **Multi-token staging:** Because the capacity equals the window, a step of `S > 1` tokens can need
+  more entries than the cache holds (its earliest queries still read keys its last ones evict). Such
+  a step runs against an internal staging buffer with capacity `C + S` entries and only the
+  surviving tail is written back, so any `S >= 1` is accepted.
 - **Present shape:** When using windowed cache with `past_present_share_buffer`, the `present_key`
   and `present_value` shapes remain bounded by `kv_cache_capacity` in the sequence dimension,
   rather than growing with `total_sequence_length`.
-- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
-  incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
-  attention backends.
-- **CPU support:** The CPU kernel implements the same contract. Entries live at `[0, end)` and are
-  appended at `end`, so a step only moves memory when the append would run past the capacity; at
-  that point the surviving entries are compacted to the front in one go. Multi-token steps that
-  would drop entries the step itself still reads are staged instead, so results match a full-length
-  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
-  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
+- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0` and a capacity equal to
+  it. Windowed caches are incompatible with the Flash-Attention fast-decode path and instead use the
+  XQA or standard attention backends.
+- **CPU support:** The CPU kernel implements the same contract and additionally accepts a capacity
+  larger than the window. Entries live at `[0, end)` and are appended at `end`, so a step only moves
+  memory when the append would run past the capacity; at that point the surviving entries are
+  compacted to the front in one go. Multi-token steps that would drop entries the step itself still
+  reads are staged instead, so results match a full-length cache exactly. On CPU the `qk_output`
+  attribute and a shared KV layout (`key`/`value` folded into `query`) are not supported together
+  with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 
@@ -234,7 +250,7 @@ INT4 caches are not supported by XQA. Quantized configurations that are ineligib
 dequantize-then-Flash-Attention fallback when available.
 
 INT8 cache kernels are always built; FP8 (`onnxruntime_USE_FP8_KV_CACHE`, default ON) and INT4
-(`onnxruntime_USE_INT4_KV_CACHE`, default OFF) are gated by build options (see §11).
+(`onnxruntime_USE_INT4_KV_CACHE`, default ON) are gated by build options (see §11).
 
 ## 5. Attention Sink (`head_sink`) and Smooth Softmax
 
@@ -262,11 +278,11 @@ order and the first eligible backend wins:
 
 | Priority | Backend | Selected when (summary) |
 |----------|---------|-------------------------|
-| 1 | **XQA** | Single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. |
-| 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
-| 3 | **Flash Attention** | General FP16/BF16 prompt and decode, including local window, softcap, and packed QKV. |
-| 4 | **Memory Efficient Attention (MEA)** | Fallback for FP16/FP32 (and BF16 on SM80+). |
-| 5 | **Unfused** | Last-resort fallback (e.g. `head_size > 256`). Any head size, GQA, sliding window, softcap. |
+| 1 | **XQA** | Causal single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention and attention sinks on both the non-quantized and quantized (INT8/FP8) paths. Fastest decode path; supports per-tensor and per-channel quantized caches. |
+| 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal or bidirectional attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
+| 3 | **Flash Attention** | General FP16/BF16 causal or bidirectional prompt and decode, including softcap and packed QKV. Local windows are supported for causal attention. |
+| 4 | **Memory Efficient Attention (MEA)** | Non-quantized causal or bidirectional fallback for FP16/FP32 (and BF16 on SM80+). |
+| 5 | **Unfused** | Non-quantized causal or bidirectional last-resort fallback (e.g. `head_size > 256`). Any head size, GQA, and softcap; sliding windows are causal-only. |
 
 The selected backend is reported in the kernel debug info as `SdpaKernel=...` when debug info is
 enabled (see §10).
@@ -462,7 +478,7 @@ These CMake options speed up CUDA builds during development. Pass them through
 |--------|---------|--------|
 | `onnxruntime_QUICK_BUILD` | `OFF` | Builds only the `hdim128` FP16/BF16 Flash Attention kernels. Greatly reduces compile time, but **changes dispatch**: shapes with `head_size != 128` fall back to Memory Efficient Attention because Flash is no longer compiled for them. Do not use it to characterize Flash-vs-arch behavior. |
 | `onnxruntime_USE_FP8_KV_CACHE` | `ON` | Builds the FP8 (E4M3) quantized KV-cache kernels (`-DUSE_FP8_KV_CACHE=1`). |
-| `onnxruntime_USE_INT4_KV_CACHE` | `OFF` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
+| `onnxruntime_USE_INT4_KV_CACHE` | `ON` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
 
 Other ways to shorten the iteration loop:
 
@@ -500,6 +516,20 @@ is present. Both compare against a PyTorch reference (`attention_ref` with `smoo
 `TestGQAQKNorm` applies the RMSNorm-before-RoPE reference to Q and K and compares against the CUDA
 output.
 
+The feature-interaction tests in `TestFlashGQA` cover batch size greater than one with:
+
+- causal and bidirectional attention;
+- RoPE with both half-rotary and interleaved layouts;
+- per-head Q/K RMSNorm before RoPE;
+- softcap with and without attention sinks;
+- quantized KV cache with distinct K/V quantization modes and attention sinks; and
+- attention-bias shapes with batch and head broadcasting.
+
+CUDA dispatches `attention_bias` to an unfused fallback. It cannot be combined with a quantized KV
+cache, `head_sink`, or smooth softmax. Softcap is supported by the Flash, MEA, and unfused paths but
+disables XQA and cuDNN SDPA. QK-Norm is supported with non-quantized RoPE paths; quantized-cache
+QK-Norm is not eligible for XQA.
+
 ## 13. Future Work and Known Limitations
 
 The following features are missing or limited in the CUDA GQA kernel and would broaden coverage of
@@ -517,8 +547,8 @@ popular LLMs. Listed roughly by impact.
 3. **Softcap on the fastest kernels.** Logit soft-capping (**Gemma 2**) disables both XQA and cuDNN
    SDPA, forcing the Flash / MEA / unfused paths. Adding softcap support to XQA and cuDNN would
    recover decode throughput.
-4. **Attention bias / ALiBi.** `attention_bias` is rejected outright. Needed for ALiBi-style models
-   and additive-mask use cases, though less commonly used in current popular decoder-only LLMs.
+4. **Attention bias / ALiBi.** `attention_bias` is supported by the unfused CUDA fallback, but it
+  cannot currently be combined with quantized KV cache, `head_sink`, or smooth softmax.
 
 ### Medium impact
 

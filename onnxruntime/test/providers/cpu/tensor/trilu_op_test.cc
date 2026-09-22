@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
-
-#ifdef USE_WEBGPU
 #include "test/util/include/default_providers.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
@@ -28,6 +27,28 @@ TEST(TriluOpTest, two_by_two_float_lower) {
   test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
   test.AddOutput<float>("Y", {2, 2}, {4.f, 0.f, 2.f, 6.f});
   test.Run();
+}
+
+static void TestExtremeDiagonal(bool upper, int64_t k, const std::vector<float>& expected) {
+  OpTester test("Trilu", 14, kOnnxDomain);
+  test.AddAttribute<int64_t>("upper", upper ? 1 : 0);
+  test.AddInput<float>("X", {2, 2}, {4.f, 7.f, 2.f, 6.f});
+  test.AddInput<int64_t>("k", {}, {k});
+  test.AddOutput<float>("Y", {2, 2}, expected);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(TriluOpTest, ExtremeNegativeDiagonal) {
+  TestExtremeDiagonal(true, std::numeric_limits<int64_t>::min(), {4.f, 7.f, 2.f, 6.f});
+  TestExtremeDiagonal(false, std::numeric_limits<int64_t>::min(), {0.f, 0.f, 0.f, 0.f});
+}
+
+TEST(TriluOpTest, ExtremePositiveDiagonal) {
+  TestExtremeDiagonal(true, std::numeric_limits<int64_t>::max(), {0.f, 0.f, 0.f, 0.f});
+  TestExtremeDiagonal(false, std::numeric_limits<int64_t>::max(), {4.f, 7.f, 2.f, 6.f});
 }
 
 TEST(TriluOpTest, two_by_two_double_upper) {

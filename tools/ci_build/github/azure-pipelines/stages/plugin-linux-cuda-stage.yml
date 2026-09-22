@@ -96,9 +96,7 @@ stages:
         ${{ else }}:
           value: 'onnxruntime_USE_FPA_INTB_GEMM=OFF'
     steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -130,6 +128,7 @@ stages:
           -p ${{ parameters.docker_python_exe_path }}
           -v ${{ parameters.cuda_version }}
           -a "${{ parameters.cmake_cuda_archs }}"
+          -h "${{ parameters.arch }}"
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
         env:
@@ -193,9 +192,7 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 

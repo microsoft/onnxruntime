@@ -302,6 +302,13 @@ char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 #ifdef USE_WEBGPU
 
 /**
+ * create a WebGPU instance that supports the wait behavior required by WebGPU EP.
+ *
+ * @returns a WGPUInstance handle.
+ */
+WGPUInstance EMSCRIPTEN_KEEPALIVE OrtCreateWebGpuInstance();
+
+/**
  * get the GPU Device by device ID.
  *
  * This function is only available after the GPU Device is initialized in WebGpuContextFactory.

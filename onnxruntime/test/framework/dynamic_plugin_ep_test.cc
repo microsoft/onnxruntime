@@ -151,6 +151,18 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountNormalCase) {
   ASSERT_TRUE(onnxruntime::cuda::detail::TryBytesForCount(10, 4, bytes));
   EXPECT_EQ(bytes, size_t{40});
 }
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRetainsGraphCaptureHostBuffer) {
+  std::weak_ptr<int> retained_buffer;
+  {
+    onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig config;
+    auto buffer = std::make_shared<int>(42);
+    retained_buffer = buffer;
+    config.RetainBufferForGraphCapture(std::move(buffer));
+    EXPECT_FALSE(retained_buffer.expired());
+  }
+  EXPECT_TRUE(retained_buffer.expired());
+}
 #endif
 
 }  // namespace onnxruntime::test

@@ -27,8 +27,8 @@ $MAIN {
     if (row_base + kSgMatM <= M) {
         // All rows in this block are within bounds - use fast subgroupMatrixLoad.
         var mat: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(&input_a, in_offset, false, K);
-        subgroupMatrixStore(&output_a, out_offset, mat, false, kSgMatK);
+            subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(&input_a, in_offset, K);
+        subgroupMatrixStore<row_major>(&output_a, out_offset, mat, kSgMatK);
     } else if (row_base < M) {
         // Partial block: some rows are OOB. Use scalar copy for in-bounds rows only.
         for (var r: u32 = local_idx; r < kSgMatM * kSgMatK; r += workgroup_size_x) {

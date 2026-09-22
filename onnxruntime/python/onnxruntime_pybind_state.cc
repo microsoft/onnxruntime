@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <mutex>
+#include <thread>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_model_compiler.h"
@@ -26,6 +27,7 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
@@ -91,6 +93,25 @@ namespace {
 
 constexpr std::string_view kEpCudaProviderOptionPrefix{"ep.cuda."};
 
+std::unique_ptr<OrtValue> CreateSessionOrtValue(PyInferenceSession* session,
+                                                const std::vector<int64_t>& shape,
+                                                MLDataType element_type,
+                                                const OrtDevice& device) {
+  // Accessing session state enforces that initialization has completed.
+  (void)session->GetSessionHandle()->GetSessionState();
+
+  const char* allocator_name = GetDeviceAllocatorName(device);
+  OrtMemoryInfo memory_info{allocator_name, OrtDeviceAllocator, device};
+  auto allocator = session->GetSessionHandle()->GetAllocator(memory_info);
+  if (!allocator) {
+    throw std::runtime_error("No session allocator found for " + device.ToString());
+  }
+
+  auto ort_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ort_value);
+  return ort_value;
+}
+
 struct AdaptedProviderOptions {
   std::vector<std::string> keys;
   std::vector<std::string> values;
@@ -139,7 +160,122 @@ AdaptedProviderOptions AdaptProviderOptionsForRegisteredPluginEp(const std::stri
 
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
+struct PendingPythonReleases {
+  std::mutex mutex;
+  std::vector<PyObject*> objects;
+  std::vector<PyObject*> cleanup_thread_objects;
+  bool callback_scheduled = false;
+  bool cleanup_thread_running = false;
+};
+
+PendingPythonReleases& GetPendingPythonReleases() {
+  static auto* pending_releases = new PendingPythonReleases();
+  return *pending_releases;
+}
+
+int DrainPendingPythonReleases(void*) {
+  std::vector<PyObject*> objects;
+  auto& pending_releases = GetPendingPythonReleases();
+  {
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    objects.swap(pending_releases.objects);
+    pending_releases.callback_scheduled = false;
+  }
+
+  for (PyObject* object : objects) {
+    Py_DECREF(object);
+  }
+
+  return 0;
+}
+
+void DrainCleanupThreadPythonReleases() {
+  for (;;) {
+    std::vector<PyObject*> objects;
+    auto& pending_releases = GetPendingPythonReleases();
+    {
+      std::lock_guard<std::mutex> lock{pending_releases.mutex};
+      if (pending_releases.cleanup_thread_objects.empty()) {
+        pending_releases.cleanup_thread_running = false;
+        return;
+      }
+      objects.swap(pending_releases.cleanup_thread_objects);
+    }
+
+    {
+      py::gil_scoped_acquire acquire;
+      for (PyObject* object : objects) {
+        Py_DECREF(object);
+      }
+    }
+  }
+}
+
+void ReleasePythonObjectOnCleanupThread(PyObject* object) noexcept {
+  auto& pending_releases = GetPendingPythonReleases();
+  std::lock_guard<std::mutex> lock{pending_releases.mutex};
+  ORT_TRY {
+    pending_releases.cleanup_thread_objects.push_back(object);
+  }
+  ORT_CATCH(...) {
+    // Retaining the reference is safer than releasing it on the ORT worker.
+    return;
+  }
+
+  if (!pending_releases.cleanup_thread_running) {
+    pending_releases.cleanup_thread_running = true;
+    std::thread* cleanup_thread = nullptr;
+    ORT_TRY {
+      cleanup_thread = new std::thread(DrainCleanupThreadPythonReleases);
+    }
+    ORT_CATCH(...) {
+      pending_releases.cleanup_thread_running = false;
+      return;
+    }
+
+    ORT_TRY {
+      cleanup_thread->detach();
+      delete cleanup_thread;
+    }
+    ORT_CATCH(...) {
+      // The valid thread remains joinable and will drain the queue. Leak its
+      // handle rather than destroying it and terminating the process.
+    }
+  }
+}
+
+void DeferPythonRelease(PyObject* object) noexcept {
+  if (object == nullptr) {
+    return;
+  }
+
+  bool release_on_cleanup_thread = false;
+  ORT_TRY {
+    auto& pending_releases = GetPendingPythonReleases();
+    std::lock_guard<std::mutex> lock{pending_releases.mutex};
+    pending_releases.objects.push_back(object);
+    if (!pending_releases.callback_scheduled &&
+        Py_AddPendingCall(DrainPendingPythonReleases, nullptr) != 0) {
+      pending_releases.objects.pop_back();
+      release_on_cleanup_thread = true;
+    } else {
+      pending_releases.callback_scheduled = true;
+    }
+  }
+  ORT_CATCH(...) {
+    release_on_cleanup_thread = true;
+  }
+
+  if (release_on_cleanup_thread) {
+    ReleasePythonObjectOnCleanupThread(object);
+  }
+}
+
 struct AsyncResource {
+  std::vector<py::object> feed_objects;
+  py::object session;
+  py::object run_options;
+
   std::vector<OrtValue> feeds;
   std::vector<const OrtValue*> feeds_raw;
 
@@ -156,6 +292,7 @@ struct AsyncResource {
   py::object user_data;
 
   void ReserveFeeds(size_t sz) {
+    feed_objects.reserve(sz);
     feeds.reserve(sz);
     feeds_raw.reserve(sz);
     feed_names.reserve(sz);
@@ -183,33 +320,44 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
 
   auto invoke_callback = [&]() {
     std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
-    Ort::Status status(ort_status);
+    PyObject* session = async_resource->session.release().ptr();
 
-    // return on error
-    if (!status.IsOK()) {
-      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
-      return;
-    }
-
-    std::vector<py::object> rfetch;
-    rfetch.reserve(num_outputs);
-    size_t pos = 0;
-    for (size_t ith = 0; ith < num_outputs; ++ith) {
-      const auto& fet = *outputs[ith];
-      if (fet.IsAllocated()) {
-        if (fet.IsTensor()) {
-          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
-        } else if (fet.IsSparseTensor()) {
-          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-        } else {
-          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
-        }
+    try {
+      Ort::Status status(ort_status);
+      if (!status.IsOK()) {
+        async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
       } else {
-        rfetch.push_back(py::none());
+        std::vector<py::object> rfetch;
+        rfetch.reserve(num_outputs);
+        size_t pos = 0;
+        for (size_t ith = 0; ith < num_outputs; ++ith) {
+          const auto& fet = *outputs[ith];
+          if (fet.IsAllocated()) {
+            if (fet.IsTensor()) {
+              rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+            } else if (fet.IsSparseTensor()) {
+              rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+            } else {
+              rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+            }
+          } else {
+            rfetch.push_back(py::none());
+          }
+          ++pos;
+        }
+        async_resource->callback(rfetch, async_resource->user_data, "");
       }
-      ++pos;
+    } catch (py::error_already_set& ex) {
+      ex.discard_as_unraisable("onnxruntime.InferenceSession.run_async callback");
+    } catch (const std::exception& ex) {
+      PyErr_SetString(PyExc_RuntimeError, ex.what());
+      PyErr_WriteUnraisable(Py_None);
+    } catch (...) {
+      PyErr_SetString(PyExc_RuntimeError, "Unknown exception in run_async callback");
+      PyErr_WriteUnraisable(Py_None);
     }
-    async_resource->callback(rfetch, async_resource->user_data, "");
+
+    DeferPythonRelease(session);
   };
 
   if (PyGILState_Check()) {
@@ -410,6 +558,13 @@ const char* GetDeviceName(const OrtDevice& device) {
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
+}
+
+const char* GetDeviceAllocatorName(const OrtDevice& device) {
+  if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NONE) {
+    return WEBGPU_BUFFER;
+  }
+  return GetDeviceName(device);
 }
 
 py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager) {
@@ -2884,30 +3039,38 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              return result;
            })
       .def("run_async",
-           [](PyInferenceSession* sess,
+           [](py::object session,
               const std::vector<std::string>& output_names,
               const std::map<std::string, py::object>& pyfeeds,
               PyCallback callback, py::object user_data = {},
-              RunOptions* run_options = nullptr)
+              py::object run_options = py::none())
                -> void {
-             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+             auto* sess = session.cast<PyInferenceSession*>();
+             auto* run_options_ptr = run_options.is_none()
+                                         ? nullptr
+                                         : run_options.cast<RunOptions*>();
+             if (run_options_ptr != nullptr && !run_options_ptr->active_adapters.empty()) {
                LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
                    << "run_async has active adapters specified, but won't have an effect";
              }
 
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->session = std::move(session);
+             async_resource->run_options = std::move(run_options);
              async_resource->callback = callback;
              async_resource->user_data = user_data;
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
              for (const auto& feed : pyfeeds) {
                if (!feed.second.is(py::none())) {
+                 async_resource->feed_objects.push_back(feed.second);
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
                  if (!px.first.IsOK() || !px.second) {
                    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                  }
-                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first,
+                                      async_resource->feed_objects.back(), &ml_value);
                  ThrowIfPyErrOccured();
                  async_resource->feeds.push_back(ml_value);
                  async_resource->feeds_raw.push_back(&async_resource->feeds.back());
@@ -2922,7 +3085,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
                async_resource->fetches_raw.push_back({});
              }
-             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             const RunOptions* run_async_option = run_options_ptr ? run_options_ptr : &async_resource->default_run_option;
              common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
                                                                         gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
                                                                         gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
@@ -2985,6 +3148,42 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("is_webgpu_graph_capture_enabled", [](const PyInferenceSession* sess) {
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr && webgpu_ep->IsGraphCaptureEnabled(); })
+      .def("webgpu_context_id", [](const PyInferenceSession* sess) {
+        // WebGpuExecutionProvider::GetDeviceId() returns its WebGPU context id. Context 0 is the
+        // default context, which is the only one the environment-registered shared data transfer
+        // can serve; a caller-supplied instance/device gets a context id > 0.
+        // Returns -1 when the session has no WebGPU EP.
+        const auto* webgpu_ep =
+            sess->GetSessionHandle()->GetExecutionProviders().Get(kWebGpuExecutionProvider);
+        return webgpu_ep != nullptr ? webgpu_ep->GetDeviceId() : -1; })
+      .def("create_ortvalue_from_shape_and_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
+          throw std::runtime_error("Not a valid numpy type");
+        }
+
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+        if (!IsNumericNumpyType(type_num)) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, NumpyTypeToOnnxRuntimeTensorType(type_num), device); }, py::keep_alive<0, 1>())
+      .def("create_ortvalue_from_shape_and_onnx_type", [](PyInferenceSession* sess, const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) {
+        if (onnx_element_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported for numeric tensor types");
+        }
+
+        py::gil_scoped_release release;
+        return CreateSessionOrtValue(sess, shape, OnnxTypeToOnnxRuntimeTensorType(onnx_element_type), device); }, py::keep_alive<0, 1>())
+      .def("release_captured_graph", [](PyInferenceSession* sess, int graph_annotation_id) {
+        py::gil_scoped_release release;
+        OrtPybindThrowIfError(sess->GetSessionHandle()->ReleaseCapturedGraph(graph_annotation_id)); })
       .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
         const auto* inference_session = sess->GetSessionHandle();

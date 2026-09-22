@@ -127,10 +127,13 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 # encoder models. Turning this OFF drops ~14MB of embedded cubin data; attention falls back to
 # flash / memory efficient / cuDNN / unfused kernels.
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
+cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
-cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
-option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA kernels" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
+  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16/BF16 INT4/INT8 set" OFF
+  "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
+option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" ON)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
 # Raises the minimum driver to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61); always on for CUDA >= 13.0.
@@ -204,6 +207,8 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
+cmake_dependent_option(onnxruntime_ENABLE_GQA_VALUE_LAYOUT "Enable GroupQueryAttention Value-cache layout conversion and validation" ON
+  "NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_DISABLE_CONTRIB_OPS" OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
@@ -563,6 +568,22 @@ if (onnxruntime_USE_ARM_NEON_NCHWC)
 endif()
 
 if(onnxruntime_USE_SVE)
+  # ABI flags that EVERY SVE translation unit must carry.
+  #
+  # x18 is the AArch64 platform register: Windows ARM64 reserves it for the TEB,
+  # Darwin reserves it, and Linux shadow-call-stack builds use it. MLAS freezes
+  # SVE kernels into machine code that ships unchanged on every platform
+  # (aarch64/*_sve_asm.S), so an SVE TU that allocates x18 corrupts the TEB once
+  # those bytes run on Windows (observed: 0xC0000005 writing 0x250 inside ntdll).
+  # Saving/restoring x18 around the kernel is NOT a fix -- the OS may rewrite it
+  # at any context switch.
+  #
+  # Keep in sync with sve/gen_sve_asm.py, which applies the same flag when
+  # regenerating and hard-fails if x18 survives into a frozen section. The flag
+  # must also be on the non-frozen build of the same sources, or the ASM=OFF and
+  # ASM=ON paths would be built from differently-compiled code.
+  set(ORT_SVE_ABI_FLAGS "-ffixed-x18")
+
   if(LINUX AND onnxruntime_target_platform STREQUAL "aarch64")
     check_cxx_compiler_flag("-march=armv8.2-a+sve" HAS_ARM64_SVE)
     if(HAS_ARM64_SVE)
@@ -785,10 +806,10 @@ if (onnxruntime_USE_CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    # Flash and memory efficient attention are also used by the ONNX domain Attention operator.
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM_FULL OFF)
   endif()
 
   if (WIN32)
@@ -827,8 +848,13 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_USE_FPA_INTB_GEMM)
-      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
-      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      if (onnxruntime_USE_FPA_INTB_GEMM_FULL)
+        message( STATUS "Enable full FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      else()
+        message( STATUS "Enable compact non-Hopper FP16/BF16 INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1 -DUSE_COMPACT_FPA_INTB_GEMM=1)
+      endif()
     endif()
 
     if (onnxruntime_QUICK_BUILD)
@@ -1115,6 +1141,9 @@ function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PRIVATE EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
+    endif()
+    if (onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+      target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_GQA_VALUE_LAYOUT)
     endif()
 
     if (onnxruntime_DISABLE_ML_OPS)
@@ -1483,7 +1512,7 @@ if (Git_FOUND)
   if (onnxruntime_QUICK_BUILD)
     string(APPEND ORT_BUILD_INFO "quick-build=1, ")
   endif()
-  if (onnxruntime_USE_INT4_KV_CACHE)
+  if (onnxruntime_USE_CUDA AND onnxruntime_USE_INT4_KV_CACHE)
     string(APPEND ORT_BUILD_INFO "int4-kv-cache=1, ")
   endif()
   if (onnxruntime_USE_FP8_KV_CACHE)
@@ -1516,6 +1545,26 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
+  if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
+          AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+    foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)
+      set(_clusterlaunchcontrol_header
+          "${_cuda_include_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+      if(EXISTS "${_clusterlaunchcontrol_header}")
+        # CUDA 12.9 uses Windows's 32-bit long for PTX 64-bit operands. Shadow the toolkit
+        # header with the longlong2 correction shipped by newer CCCL releases.
+        set(_cuda_12_9_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cuda_12_9_fix")
+        ort_patch_cuda_12_9_clusterlaunchcontrol_header(
+          "${_clusterlaunchcontrol_header}"
+          "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+        if(EXISTS "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+          include_directories(BEFORE "${_cuda_12_9_fix_dir}")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endif()
+
   # Note: The minimum required CUDA version is greater than 11.8.
   add_definitions("-DENABLE_BF16")
   message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")
@@ -1530,12 +1579,6 @@ if (onnxruntime_USE_CUDA)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
     if(onnxruntime_USE_FP4_QMOE)
-      if(MSVC AND ("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR
-                   "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG))
-        message(FATAL_ERROR
-          "onnxruntime_USE_FP4_QMOE with SM120/SM121 is not supported on MSVC: native sm_120a "
-          "compilation fails in CUDA/CCCL tcgen05 headers. Use a non-MSVC build for native FP4 QMoE.")
-      endif()
       add_definitions("-DUSE_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()
@@ -2001,6 +2044,6 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 endif()
 
 # Include precompiled header configuration for providers
-if(TARGET onnxruntime_providers)
+if(TARGET ${onnxruntime_providers_target})
   include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()

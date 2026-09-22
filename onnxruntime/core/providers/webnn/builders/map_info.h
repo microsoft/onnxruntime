@@ -62,6 +62,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
     {"MultiHeadAttention", {"Add", "Cast", "Concat", "Div", "MatMul", "Reshape", "Softmax", "Transpose"}},
     {"RotaryEmbedding", {"Add", "Concat", "Gather", "Mul", "Reshape", "Slice", "Split"}},
     {"SimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
+    {"SkipLayerNormalization", {"Add", "LayerNormalization"}},
     {"SkipSimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
 };
 

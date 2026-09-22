@@ -2196,7 +2196,8 @@ static bool HandleSlice(HandlerArgs& args) {
     const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
     api::DataType int_dtype = starts_value_info->DType();
 
-    if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
+    if (starts_shape == std::nullopt || starts_shape->size() != 1 ||
+        (*starts_shape)[0] < 0 || static_cast<uint64_t>((*starts_shape)[0]) > rank) {
       return false;
     }
 
@@ -2785,6 +2786,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Softsign", simple_node_handler},
     {"ThresholdedRelu", simple_node_handler},
     {"Celu", simple_node_handler},
+    {"Elu", simple_node_handler},
     {"HardSwish", simple_node_handler},
 
     {"Sin", simple_node_handler},

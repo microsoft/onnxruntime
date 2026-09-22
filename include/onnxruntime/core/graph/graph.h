@@ -1201,6 +1201,26 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   bool RemoveNode(NodeIndex node_index);
 
+  using NodeReplacementCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
+  using NodeRemovalCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
+#ifdef ENABLE_TRAINING
+  using NodeCloneCallback =
+      std::function<void(const Graph&, NodeIndex, NodeIndex)>;
+#endif
+
+  void SetNodeReplacementCallback(NodeReplacementCallback callback);
+  void NotifyNodeReplacement(
+      gsl::span<const NodeIndex> source_node_indices,
+      NodeIndex destination_node_index) const;
+  void SetNodeRemovalCallback(NodeRemovalCallback callback);
+  void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
+#ifdef ENABLE_TRAINING
+  void SetNodeCloneCallback(NodeCloneCallback callback);
+  void NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const;
+#endif
+
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
@@ -1575,6 +1595,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// </summary>
   /// <returns></returns>
   Status ConvertInitializersIntoOrtValues();
+
+  /// <summary>
+  /// Validates that all in-memory external data references are backed by matching OrtValues.
+  /// </summary>
+  Status ValidateInMemoryInitializers();
 
   /**
    * @brief This function examines the specified initializers in the graph and converts them inline
@@ -2141,6 +2166,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Graph* parent_graph_;
   // the node containing the graph if parent_graph_ is not nullptr
   const Node* parent_node_;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  NodeReplacementCallback node_replacement_callback_;
+  NodeRemovalCallback node_removal_callback_;
+#ifdef ENABLE_TRAINING
+  NodeCloneCallback node_clone_callback_;
+#endif
+#endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.

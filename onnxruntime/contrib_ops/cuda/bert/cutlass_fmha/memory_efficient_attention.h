@@ -2,7 +2,27 @@
 // Licensed under the MIT License.
 #pragma once
 
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
+// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
+// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
+// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
+// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
+// NOTE: intentionally defined outside the USE_MEMORY_EFFICIENT_ATTENTION guard:
+// it has no CUTLASS dependency and is also used by the unfused attention path
+// (see MaskedBiasSentinel in core/providers/cuda/llm/attention.cc).
+constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
+
+#include <algorithm>
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -12,13 +32,6 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kEfficientAttentionMaxHeadSize = 1024;
-
-// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
-// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
-// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
-// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
-// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
-constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
 
 struct MemoryEfficientAttentionParams {
   int32_t sm = 50;
@@ -71,6 +84,22 @@ inline bool has_memory_efficient_attention(int32_t sm, bool is_half, bool is_bf1
          (qk_head_size & 7) == 0 &&
          (v_head_size & 7) == 0 &&
          qk_head_size <= kEfficientAttentionMaxHeadSize && v_head_size <= kEfficientAttentionMaxHeadSize;
+}
+
+inline bool has_memory_efficient_attention_for_head_size_bounds(
+    int32_t sm, bool is_half, bool is_bf16,
+    int qk_head_size_bound, int v_head_size_bound) {
+  const int qk_search_limit = std::min(qk_head_size_bound, kEfficientAttentionMaxHeadSize);
+  const int v_search_limit = std::min(v_head_size_bound, kEfficientAttentionMaxHeadSize);
+  for (int qk_head_size = 8; qk_head_size <= qk_search_limit; qk_head_size += 8) {
+    for (int v_head_size = 8; v_head_size <= v_search_limit; v_head_size += 8) {
+      if (has_memory_efficient_attention(sm, is_half, is_bf16, qk_head_size, v_head_size)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params);
