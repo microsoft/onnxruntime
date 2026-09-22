@@ -30,8 +30,10 @@ MLAS_THREADPOOL* GetDepthwiseThreadPool(size_t threads) {
 
 // Args: channels, spatial side, kernel size, threads, sliding (0/1).
 void NCHWC_DEPTHWISE(benchmark::State& state) {
-  if (MlasNchwcGetBlockSize() <= 1) {
-    state.SkipWithError("NCHWc is not supported on this platform.");
+  // Without the sliding window kernel both settings evaluate the assembly kernel, which would
+  // report a meaningless comparison.
+  if (!MlasNchwcDepthwiseSlidingKernelAvailable()) {
+    state.SkipWithError("The sliding window NCHWc depthwise kernel is not available on this platform.");
     return;
   }
 
