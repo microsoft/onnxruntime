@@ -4,6 +4,7 @@
 #include "core/framework/session_state.h"
 
 #include <atomic>
+#include <fstream>
 #include <mutex>
 #include <sstream>
 
@@ -1598,6 +1599,33 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   return Status::OK();
 }
 
+Status SessionState::InitializeMoeExpertState(std::shared_ptr<MoeExpertState> state, std::string graph_scope) {
+  moe_expert_state_ = std::move(state);
+  moe_graph_scope_ = std::move(graph_scope);
+  for (const auto& node : graph_.Nodes()) {
+    if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
+      continue;
+    }
+    const auto& ep = node.GetExecutionProviderType();
+    ORT_RETURN_IF_NOT(ep == kCpuExecutionProvider || ep == kCudaExecutionProvider,
+                      "MoE expert counting is not supported by ", ep);
+    const auto* shape = node.InputDefs().at(1)->Shape();
+    ORT_RETURN_IF_NOT(shape && shape->dim_size() == 2 && shape->dim(1).has_dim_value() &&
+                          shape->dim(1).dim_value() > 0,
+                      "MoE expert counting requires a static positive expert dimension for ", node.Name());
+    ORT_RETURN_IF_ERROR(moe_expert_state_->RegisterNode(
+        moe_graph_scope_, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value())));
+  }
+  for (auto& [node_index, subgraphs] : subgraph_session_states_) {
+    for (auto& [attribute, subgraph] : subgraphs) {
+      const std::string scope = MakeString(moe_graph_scope_, "/", node_index, "/",
+                                           attribute.size(), ":", attribute);
+      ORT_RETURN_IF_ERROR(subgraph->InitializeMoeExpertState(moe_expert_state_, scope));
+    }
+  }
+  return Status::OK();
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           bool remove_initializers,
@@ -1606,6 +1634,17 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
+
+  if (sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
+    ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::make_shared<MoeExpertState>(), "main"));
+    const auto state_file =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
+    if (!state_file.empty()) {
+      std::ifstream input(ToPathString(state_file));
+      ORT_RETURN_IF_NOT(input.is_open(), "Unable to open MoE expert counter state file: ", state_file);
+      ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
+    }
+  }
 
   ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
   ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));

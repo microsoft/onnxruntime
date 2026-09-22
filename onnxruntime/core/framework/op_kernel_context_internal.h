@@ -202,6 +202,18 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetUseDeterministicCompute();
   }
 
+  bool HasMoeExpertState() const override {
+    return session_state_.GetMoeExpertState() != nullptr;
+  }
+
+  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const override {
+    return session_state_.RecordMoeExpertUsage(GetNodeIndex(), expert_ids);
+  }
+
+  Status GetMoeExpertCounters(InlinedVector<double>& counters) const override {
+    return session_state_.GetMoeExpertCounters(GetNodeIndex(), counters);
+  }
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }

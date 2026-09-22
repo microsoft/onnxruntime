@@ -10,6 +10,7 @@
 #include "contrib_ops/cuda/moe/moe_quantization.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/cuda/moe/moe_profiler.h"
+#include "contrib_ops/cuda/moe/moe_expert_counter.h"
 #endif
 #include <charconv>
 #include <type_traits>
@@ -1595,6 +1596,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
+  CudaMoeExpertCounter counter(context);
   const size_t routing_element_count =
       SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
   if (instrumentation != nullptr &&
@@ -1836,6 +1838,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                workspace_size, total_scratch_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(counter.Capture(
+        expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+    ORT_RETURN_IF_ERROR(counter.Record());
     if (routing_record != nullptr) {
       ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
           expert_indices, expert_scales, 0,
@@ -2061,6 +2066,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(counter.Capture(expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
     if (routing_record != nullptr) {
       const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
       const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
@@ -2078,6 +2084,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              workspace_size, total_scratch_bytes);
   }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(counter.Record());
+#endif
   return Status::OK();
 }
 

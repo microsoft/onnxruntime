@@ -29,6 +29,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
+#include "core/framework/moe_expert_state.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
@@ -332,6 +333,16 @@ class SessionState {
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
+  const MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
+  Status RecordMoeExpertUsage(NodeIndex node_index, gsl::span<const int> expert_ids) const {
+    ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");
+    return moe_expert_state_->RecordUsage(moe_graph_scope_, node_index, expert_ids);
+  }
+  Status GetMoeExpertCounters(NodeIndex node_index, InlinedVector<double>& counters) const {
+    ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");
+    return moe_expert_state_->GetCounters(moe_graph_scope_, node_index, counters);
+  }
+
   SessionState* Parent() {
     return parent_;
   }
@@ -440,6 +451,8 @@ class SessionState {
 
   Status CreateSubgraphSessionState();
 
+  Status InitializeMoeExpertState(std::shared_ptr<MoeExpertState> state, std::string graph_scope);
+
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
 
@@ -514,6 +527,9 @@ class SessionState {
   AllocatorMap* initializer_allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
+
+  std::shared_ptr<MoeExpertState> moe_expert_state_;
+  std::string moe_graph_scope_;
 
   // initialized tensors
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index

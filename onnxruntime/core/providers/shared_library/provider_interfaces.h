@@ -1450,6 +1450,12 @@ struct ProviderHost {
       int execution_device_id,
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
+
+  virtual bool OpKernelContext__HasMoeExpertState(const OpKernelContext* p) = 0;
+  virtual Status OpKernelContext__RecordMoeExpertUsage(const OpKernelContext* p,
+                                                       gsl::span<const int> expert_ids) = 0;
+  virtual Status OpKernelContext__GetMoeExpertCounters(const OpKernelContext* p,
+                                                       InlinedVector<double>& counters) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

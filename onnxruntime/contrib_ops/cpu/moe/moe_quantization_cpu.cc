@@ -2538,6 +2538,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  if (context->HasMoeExpertState()) {
+    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(gsl::make_span(route_expert, routing_element_count)));
+  }
   if (instrumentation != nullptr) {
     RecordMoeRoutingEvent(*instrumentation, Node(),
                           gsl::make_span(route_expert, routing_element_count),

@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/moe_expert_counter.h"
 #include "contrib_ops/cuda/moe/moe_profiler.h"
 #endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -412,6 +413,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  CudaMoeExpertCounter counter(context);
+  ORT_RETURN_IF_ERROR(counter.Capture(expert_indices, expanded_rows, stream));
+  ORT_RETURN_IF_ERROR(counter.Record());
   if (routing_record != nullptr) {
     ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
         expert_indices, expert_scales, 0, expanded_rows, true, stream));
