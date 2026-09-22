@@ -3440,8 +3440,6 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExte
 
   return std::make_unique<cuda::ExternalDataLoader>(
       info_.device_id, info_.external_data_loader_reading_threads,
-      static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
-      static_cast<cuda::ExternalDataLoader::CreateStreamFn>(cudaStreamCreateWithFlags),
       info_.external_data_loader_use_gds);
 }
 

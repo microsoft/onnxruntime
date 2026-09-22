@@ -70,8 +70,6 @@ class GdsDriverHandle {
 
 class GdsLoader {
  public:
-  using CreateFn = common::Status (*)(int device_id, std::unique_ptr<GdsLoader>& loader);
-
   virtual ~GdsLoader() = default;
 
   virtual common::Status Load(int file_descriptor,

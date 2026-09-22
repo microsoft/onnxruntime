@@ -116,17 +116,10 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 
 }  // namespace
 
-ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count,
-                                       AllocatePinnedBufferFn allocate_pinned_buffer,
-                                       CreateStreamFn create_stream,
-                                       bool use_gds,
-                                       GdsLoader::CreateFn create_gds_loader)
+ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds)
     : device_id_(device_id),
       reading_thread_count_(reading_thread_count),
-      allocate_pinned_buffer_(allocate_pinned_buffer),
-      create_stream_(create_stream),
-      use_gds_(use_gds),
-      create_gds_loader_(create_gds_loader) {}
+      use_gds_(use_gds) {}
 
 ExternalDataLoader::~ExternalDataLoader() {
   reader_pool_.reset();
@@ -147,13 +140,13 @@ common::Status ExternalDataLoader::EnsureResources() const {
   }
 
   for (size_t i = 0; i < buffers_.size(); ++i) {
-    auto status = CUDA_CALL(allocate_pinned_buffer_(&buffers_[i], kExternalDataLoaderBufferSize));
+    auto status = CUDA_CALL(cudaMallocHost(&buffers_[i], kExternalDataLoaderBufferSize));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
     }
 
-    status = CUDA_CALL(create_stream_(&streams_[i], cudaStreamNonBlocking));
+    status = CUDA_CALL(cudaStreamCreateWithFlags(&streams_[i], cudaStreamNonBlocking));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
@@ -225,7 +218,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
       !tensor.IsDataType<bool>()) {
     Status gds_status = Status::OK();
     if (!gds_loader_) {
-      gds_status = create_gds_loader_(device_id_, gds_loader_);
+      gds_status = GdsLoader::Create(device_id_, gds_loader_);
     }
     if (gds_status.IsOK()) {
 #if defined(ORT_NO_RTTI)

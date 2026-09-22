@@ -1559,8 +1559,6 @@ if (onnxruntime_USE_CUDA)
     cmake_pop_check_state()
     if(onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
       set_property(SOURCE "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds.cc"
-        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds_io.cc"
-        "${ONNXRUNTIME_ROOT}/test/providers/cuda/test_cases/cuda_external_data_loader_gds_io_test.cc"
         APPEND PROPERTY COMPILE_DEFINITIONS ORT_CUDA_GDS_AVAILABLE)
     endif()
   endif()
