@@ -1301,20 +1301,26 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         onnx_dtype=None,
         block_size: int = 0,
         use_asymmetric_quant: bool = False,
+        use_geglu: bool = False,
     ):
         super().__init__(quant_bits, onnx_dtype=onnx_dtype, use_asymmetric_quant=use_asymmetric_quant)
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_token
-        self.use_swiglu = True
+        # GeGLU shares SwiGLU's fused/interleaved doubled-fc1 layout; only the gate nonlinearity
+        # differs. Select the expert type and activation flags here so the subclass never has to
+        # overwrite attributes set by this constructor.
+        self.use_geglu = use_geglu
+        self.use_swiglu = not use_geglu
         self.swiglu_fusion = 1
         self.block_size = block_size
         use_quant = self.quant_bits > 0
 
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=True)
 
-        self.experts = nn.ModuleList([SwigluMlp(config) for _ in range(self.num_experts)])
+        mlp_cls = GegluMlp if use_geglu else SwigluMlp
+        self.experts = nn.ModuleList([mlp_cls(config) for _ in range(self.num_experts)])
 
         fc1_w_list, fc2_w_list = [], []
         fc1_b_list, fc2_b_list = [], []
@@ -1395,8 +1401,8 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
 class GegluMoEBlock(SwigluMoEBlock):
     """GeGLU (Gemma-style) MoE block. Identical fused/interleaved doubled-fc1 layout as
     SwiGLU; only the gate nonlinearity differs (gelu-tanh instead of swish). Reuses the
-    SwigluMoEBlock forward/recreate machinery, swapping in GegluMlp experts and setting
-    use_geglu so the ONNX graph is emitted with activation_type='geglu'."""
+    SwigluMoEBlock forward/recreate machinery via use_geglu=True, which selects GegluMlp
+    experts and emits the ONNX graph with activation_type='geglu'."""
 
     def __init__(
         self,
@@ -1416,12 +1422,8 @@ class GegluMoEBlock(SwigluMoEBlock):
             onnx_dtype=onnx_dtype,
             block_size=block_size,
             use_asymmetric_quant=use_asymmetric_quant,
+            use_geglu=True,
         )
-        # Swap SwiGLU experts for GeGLU experts and flip the activation flags. The graph is
-        # (re)built lazily in recreate_onnx_model(), which reads self.use_geglu.
-        self.use_swiglu = False
-        self.use_geglu = True
-        self.experts = nn.ModuleList([GegluMlp(config) for _ in range(self.num_experts)])
 
 
 class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
