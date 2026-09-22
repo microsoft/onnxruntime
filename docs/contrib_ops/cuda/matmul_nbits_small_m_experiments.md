@@ -2,8 +2,9 @@
 
 This file records CUDA `MatMulNBits` 4-bit (M = 2..16) and 8-bit small-M
 profiling results. The historical 8-bit baseline covered M = 2..5; the
-current 8-bit dispatch covers M = 2..8. These measurements provide stable
-comparison points for future kernel and dispatch changes.
+general 8-bit dispatch still covers M = 2..5, with M = 6..8 enabled only
+for the exact SM121 FP16 configuration qualified below. These measurements
+provide stable comparison points for future kernel and dispatch changes.
 
 > **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
 > toolkit, and ORT build noted in the section header. Treat the numbers as a historical baseline
@@ -115,9 +116,8 @@ Speedup (before / after, >1 means the batched GEMV is faster):
   its latency is flat across M (e.g. `gate_up` ~172 us, `lm_head` ~1.9 ms even at M=2). The batched small-M
   GEMV reads the quantized weight once and scales with M, giving 2.6-5.7x at M=2 (4-bit) / 1.8-3.1x at M=2
   (8-bit).
-- 4-bit stays at or above parity through M=16. In this historical 8-bit baseline, M>=6 fell back to
-  dequant + cuBLAS. A later exact-shape measurement justified extending the 8-bit dispatch through M=8;
-  see the SM121 result below.
+- 4-bit stays at or above parity through M=16. The 8-bit path keeps the M<=5 cutoff for all devices
+  and shapes except the exact SM121 FP16 configuration qualified below.
 - M=1 decode is unchanged (same single-row GEMV in both builds).
 - No prepacking is used, so there is no extra resident weight memory and no GEMM tactic profiling at
   session init.
@@ -131,8 +131,9 @@ This measurement used FP16 activations, W8 block size 64, M=8, K=3584, and N=200
 | Dequantize + GEMM fallback | 15.257 ms |
 | Batched small-M GEMV | 5.846 ms |
 
-The batched path was **2.61x faster** for this shape. Based on this result and the existing 8-row
-kernel tile, the W8 small-M dispatch was extended through M=8. M>=9 continues to use the fallback.
+The batched path was **2.61x faster** for this shape. The W8 small-M dispatch is extended through
+M=8 only on SM121 for FP16 activations with K=3584, N=200064, and block size 64. All other devices,
+types, and shapes retain the existing M<=5 cutoff. M>=9 always uses the fallback.
 This is a shape- and device-specific result rather than a general crossover claim for every GPU.
 
 ### Next Experiments

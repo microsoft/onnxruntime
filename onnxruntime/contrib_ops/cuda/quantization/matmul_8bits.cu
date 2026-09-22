@@ -3,6 +3,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <type_traits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -25,13 +26,14 @@ bool TryMatMul8Bits(
     int n,
     int k,
     int block_size,
+    int device_sm,
     size_t shared_mem_per_block,
     cudaStream_t stream) {
   constexpr int kColsPerThreadBlock = 8;
   constexpr int kElementsPerThreadPerIteration = 8;
   constexpr int kWarpSize = onnxruntime::cuda::GPU_WARP_SIZE;
 
-  if (!IsMatMul8BitsSmallM(m) ||
+  if (!IsMatMul8BitsSmallM(m, n, k, block_size, device_sm, std::is_same_v<T, half>) ||
       n % kColsPerThreadBlock != 0 ||
       k % kElementsPerThreadPerIteration != 0) {
     return false;
@@ -51,14 +53,14 @@ bool TryMatMul8Bits(
 }
 
 template bool TryMatMul8Bits<float>(
-    float*, const float*, const uint8_t*, const float*, const uint8_t*, int, int, int, int, size_t, cudaStream_t);
+    float*, const float*, const uint8_t*, const float*, const uint8_t*, int, int, int, int, int, size_t, cudaStream_t);
 
 template bool TryMatMul8Bits<half>(
-    half*, const half*, const uint8_t*, const half*, const uint8_t*, int, int, int, int, size_t, cudaStream_t);
+    half*, const half*, const uint8_t*, const half*, const uint8_t*, int, int, int, int, int, size_t, cudaStream_t);
 
 template bool TryMatMul8Bits<nv_bfloat16>(
     nv_bfloat16*, const nv_bfloat16*, const uint8_t*, const nv_bfloat16*, const uint8_t*, int, int, int, int,
-    size_t, cudaStream_t);
+    int, size_t, cudaStream_t);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -915,7 +915,7 @@ void TestInt8SmallMBatchedTiles() {
   constexpr float abs_error = 0.1f;
   constexpr float rel_error = 0.02f;
   for (auto block_size : {16, 32, 64, 128, 256}) {
-    for (auto m : {2, 3, 4, 5, 6, 7, 8}) {
+    for (auto m : {2, 3, 4, 5}) {
       for (auto n : {256, 24}) {  // N=256 -> CtaN=2, N=24 -> CtaN=1
         for (auto has_zeropoint : {false, true}) {
           TestOptions8Bits opts{};
@@ -936,13 +936,25 @@ void TestInt8SmallMBatchedTiles() {
 TEST(MatMulNBits, Int8SmallMDispatchEligibility) {
   using onnxruntime::contrib::cuda::IsMatMul8BitsSmallM;
 
-  EXPECT_FALSE(IsMatMul8BitsSmallM(0));
-  EXPECT_TRUE(IsMatMul8BitsSmallM(1));
-  EXPECT_TRUE(IsMatMul8BitsSmallM(5));
-  EXPECT_TRUE(IsMatMul8BitsSmallM(6));
-  EXPECT_TRUE(IsMatMul8BitsSmallM(7));
-  EXPECT_TRUE(IsMatMul8BitsSmallM(8));
-  EXPECT_FALSE(IsMatMul8BitsSmallM(9));
+  constexpr int n = 200064;
+  constexpr int k = 3584;
+  constexpr int block_size = 64;
+
+  EXPECT_FALSE(IsMatMul8BitsSmallM(0, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(1, n, k, block_size, 80, false));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(5, n, k, block_size, 80, false));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(6, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(7, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(8, n, k, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(9, n, k, block_size, 121, true));
+
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 120, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 89, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 80, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 121, false));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n + 8, k, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k + 8, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, 32, 121, true));
 }
 #endif
 
