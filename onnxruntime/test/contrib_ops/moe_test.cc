@@ -2174,12 +2174,14 @@ TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
   RunQMoEMixedWidthCudaIdentityTest(2, 2);
 }
 
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWiseBFloat16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, false, true);
 }
+#endif
 
 TEST(MoETest, QMoETest_MixedWidthCudaScratchLimit) {
   if (!HasCudaEnvironment(700)) {
