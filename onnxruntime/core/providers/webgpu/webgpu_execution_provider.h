@@ -12,10 +12,6 @@
 #include <unordered_set>
 #include <vector>
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-#include "ep/adapters.h"
-#endif
-
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
