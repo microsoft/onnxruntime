@@ -25,7 +25,7 @@ struct SubgroupMatrixMatMulNBitsTiling {
   uint32_t chunk_size_k;       // required K % this == 0
 
   constexpr bool SupportsShape(uint32_t M, uint32_t N, uint32_t K) const {
-    if (M < tile_m) {
+    if (M < kMinMForTileOptimization) {
       return false;
     }
 
@@ -39,16 +39,16 @@ struct SubgroupMatrixMatMulNBitsTiling {
 constexpr SubgroupMatrixMatMulNBitsTiling GetSubgroupMatrixMatMulNBitsTiling(
     const onnxruntime::webgpu::SupportedSubgroupMatrixConfig& config, bool has_bias, uint32_t M, uint32_t N) {
   if (config.Is(8, 16, 16)) {
-    // Cap tile at 64x64 to stay within workgroup memory limits
+    // Cap tile at 64x64 to stay within workgroup memory limits.
     if (has_bias) {
       return {64, 64, 256, 1, 1, 32};
     }
-    // Optimized tile configuration: for large shape: 128x256 (512 threads).
-    if (M >= 128 && N % 256 == 0) {
+    // Optimized for M >= 512: 128x256 (512 threads).
+    if (M >= 512 && N % 256 == 0) {
       return {128, 256, 512, 1, 256, 32};
     }
-    // Default: 64x64 (256 threads).
-    return {64, 64, 256, 1, 64, 32};
+    // Default: 128x64 (512 threads).
+    return {128, 64, 512, 1, 64, 32};
   }
   if (config.Is(16, 16, 16)) {
     return {128, 128, 128, 1, 1, 32};
