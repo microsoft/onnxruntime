@@ -158,7 +158,10 @@ class ExecutionProviders {
       provider_options_str += config_pair.first + ":" + config_pair.second;
     }
 #if defined(_WIN32) && defined(USE_1DS_TELEMETRY)
-    WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_str, capture_state);
+    const Env& env = Env::Default();
+    if (env.GetTelemetryProvider().IsEnabled()) {
+      WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_str, capture_state);
+    }
 #else
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
