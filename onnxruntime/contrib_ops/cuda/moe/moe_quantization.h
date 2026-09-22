@@ -67,6 +67,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
+  int64_t fc1_expert_weight_bits_;
+  int64_t fc2_expert_weight_bits_;
+  int64_t fc3_expert_weight_bits_;
   bool is_fp16_;
   // When true, the int4/int8 fc1/fc2 weight initializers are already in a
   // CUTLASS fpA_intB layout — produced offline e.g. via
