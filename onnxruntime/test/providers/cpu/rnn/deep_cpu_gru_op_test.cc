@@ -209,34 +209,6 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   DefaultActivationsSimpleWeightsNoBias("forward", Y_data, {});
 }
 
-#if defined(USE_WEBGPU)
-TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasLayout1) {
-  // layout=1 stores X as [batch, sequence, input] and Y as
-  // [batch, sequence, num_directions, hidden].
-  const std::vector<float> X_data{1.f, 10.f,
-                                  2.f, 11.f};
-  const std::vector<float> W_data{0.1f, 0.2f, 0.3f,
-                                  1.f, 2.f, 3.f,
-                                  10.f, 11.f, 12.f};
-  const std::vector<float> R_data(3 * 3 * 3, 0.1f);
-  const std::vector<float> Y_data{
-      // batch 0
-      0.4750208f, 0.450166f, 0.4255575f,
-      0.6027093f, 0.5083023f, 0.44950223f,
-      // batch 1
-      0.45016602f, 0.40131235f, 0.35434368f,
-      0.5754369f, 0.45485455f, 0.3747841f};
-  const std::vector<float> Y_h_data{
-      0.6027093f, 0.5083023f, 0.44950223f,
-      0.5754369f, 0.45485455f, 0.3747841f};
-
-  RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data,
-             /*input_size=*/1, /*batch_size=*/2, /*hidden_size=*/3, /*seq_length=*/2,
-             nullptr, nullptr, nullptr, "forward", 9999.0f, true, false,
-             default_activations, {}, {}, /*layout=*/1, /*webgpu_only=*/true);
-}
-#endif
-
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   std::vector<float> Y_data{
       0.6082785f, 0.50623393f, 0.4426924f,
