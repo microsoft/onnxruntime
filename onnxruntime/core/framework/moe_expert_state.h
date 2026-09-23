@@ -79,16 +79,16 @@ class MoeExpertState {
     size_t begin;
     size_t count;
   };
-  struct NodeInfo {
-    std::string node_type;
-    ExpertRange experts;
-  };
   struct KernelState {
-    explicit KernelState(ExpertRange range) : experts(range) {}
+    KernelState(std::string node_type, ExpertRange range) : node_type(std::move(node_type)), experts(range) {}
+    std::string node_type;
     ExpertRange experts;
     KernelPilot pilot;
   };
-  std::map<Key, NodeInfo> nodes_;
+  // Maps graph identity to the registered kernel, for duplicate-registration checks and for
+  // resolving Load()'s graph-scope-keyed records; the counters and node_type themselves live in
+  // kernels_, keyed by kernel pointer.
+  std::map<Key, const OpKernel*> nodes_;
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;

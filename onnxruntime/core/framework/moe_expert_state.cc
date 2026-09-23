@@ -46,8 +46,8 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  nodes_.emplace(key, NodeInfo{std::string(node_type), range});
-  auto [entry, inserted] = kernels_.try_emplace(kernel, range);
+  nodes_.emplace(key, kernel);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, std::string(node_type), range);
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
   return Status::OK();
@@ -64,7 +64,7 @@ Status MoeExpertState::Load(std::istream& input) {
                     "Expected initial counter state header: moe_expert_state 1");
 
   // Validate into a flat copy so a malformed file cannot partially overwrite the state.
-  // nodes_ maps graph identity to each node's (node_type, expert range) within that flat array.
+  // nodes_ resolves graph identity to a kernel; kernels_ holds that kernel's (node_type, range).
   auto loaded_counters = counters_;
   std::set<std::tuple<std::string, size_t, size_t>> seen;
   size_t line_number = 1;
@@ -85,12 +85,13 @@ Status MoeExpertState::Load(std::istream& input) {
                       "Invalid expert counter record at line ", line_number);
     const auto node = nodes_.find({scope, static_cast<size_t>(node_index)});
     ORT_RETURN_IF(node == nodes_.end(), "Unknown MoE counter node at line ", line_number);
-    ORT_RETURN_IF_NOT(node->second.node_type == type &&
-                          static_cast<size_t>(expert_id) < node->second.experts.count,
+    const auto& kernel_state = kernels_.at(node->second);
+    ORT_RETURN_IF_NOT(kernel_state.node_type == type &&
+                          static_cast<size_t>(expert_id) < kernel_state.experts.count,
                       "MoE counter type or expert index mismatch at line ", line_number);
     ORT_RETURN_IF_NOT(seen.emplace(scope, static_cast<size_t>(node_index), static_cast<size_t>(expert_id)).second,
                       "Duplicate expert counter at line ", line_number);
-    loaded_counters[node->second.experts.begin + static_cast<size_t>(expert_id)] = value;
+    loaded_counters[kernel_state.experts.begin + static_cast<size_t>(expert_id)] = value;
   }
   ORT_RETURN_IF(input.bad() || !input.eof(), "Failed to read initial expert counter state.");
   counters_ = std::move(loaded_counters);
