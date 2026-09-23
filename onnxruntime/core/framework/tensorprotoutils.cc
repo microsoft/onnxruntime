@@ -1458,8 +1458,16 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
 
   const size_t num_elems_unsigned = gsl::narrow_cast<size_t>(num_elems_signed);
   size_t byte_size_from_shape = 0;
-  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
-                                                                  &byte_size_from_shape));
+  if (tensor_proto.data_type() == TensorProto_DataType_COMPLEX64 ||
+      tensor_proto.data_type() == TensorProto_DataType_COMPLEX128) {
+    const size_t element_size =
+        tensor_proto.data_type() == TensorProto_DataType_COMPLEX64 ? 2 * sizeof(float) : 2 * sizeof(double);
+    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArray(num_elems_unsigned, element_size, &byte_size_from_shape),
+                      "Invalid TensorProto");
+  } else {
+    ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
+                                                                    &byte_size_from_shape));
+  }
   ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
                     "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
                     " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
