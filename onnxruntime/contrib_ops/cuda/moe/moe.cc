@@ -329,6 +329,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (expert_counter_) {
+    auto* usage = context->GetMoeExpertUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
+    ORT_RETURN_IF_ERROR(expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(expert_counter_->Capture(expert_indices, expanded_rows, stream));
+  }
+#endif
+
   Tensor* output = context->Output(0, input->Shape());
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params{};
@@ -416,10 +425,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (expert_counter_) {
-    auto* usage = context->GetMoeExpertUsage();
-    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
-    expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts));
-    ORT_RETURN_IF_ERROR(expert_counter_->Capture(expert_indices, expanded_rows, stream));
+    ORT_RETURN_IF_ERROR(expert_counter_->Consume());
     ORT_RETURN_IF_ERROR(expert_counter_->Record());
   }
   if (routing_record != nullptr) {

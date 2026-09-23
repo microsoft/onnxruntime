@@ -36,7 +36,7 @@ class MoEBase {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     const auto& options = op_kernel_info.GetConfigOptions();
     if (options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
-      expert_counter_.emplace();
+      expert_counter_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
     }
     enable_moe_expert_statistics_ =
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";

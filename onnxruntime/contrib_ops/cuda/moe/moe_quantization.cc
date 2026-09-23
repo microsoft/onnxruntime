@@ -1601,7 +1601,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (expert_counter_) {
     auto* usage = context->GetMoeExpertUsage();
     ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
-    expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts));
+    ORT_RETURN_IF_ERROR(expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
   }
   const size_t routing_element_count = instrumentation != nullptr
                                            ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))
@@ -1671,6 +1671,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto fused_routing = route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE FP4 GEMV does not support fused routing.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (expert_counter_) {
+      ORT_RETURN_IF_ERROR(expert_counter_->Capture(
+          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+    }
+#endif
     ck::fusedBuildExpertMapsSortFirstToken(
         expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
         num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
@@ -1846,8 +1852,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (expert_counter_) {
-      ORT_RETURN_IF_ERROR(expert_counter_->Capture(
-          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+      ORT_RETURN_IF_ERROR(expert_counter_->Consume());
       ORT_RETURN_IF_ERROR(expert_counter_->Record());
     }
     if (routing_record != nullptr) {
@@ -2031,7 +2036,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(tile_config != nullptr,
                 "QMoE did not prepare a runner configuration for row tile size ", tile_rows, ".");
 
-    const auto fused_routing = route_tile(row_offset, tile_rows);
+    auto fused_routing = route_tile(row_offset, tile_rows);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (expert_counter_) {
+      if (fused_routing.router_logits != nullptr) {
+        fused_routing.on_routing_ready = CudaMoeExpertCounter::CaptureRouting;
+        fused_routing.routing_context = &*expert_counter_;
+      } else {
+        ORT_RETURN_IF_ERROR(expert_counter_->Capture(
+            expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+      }
+    }
+#endif
     const size_t input_element_offset =
         SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
     const size_t input_byte_offset =
@@ -2076,8 +2092,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (expert_counter_) {
-      ORT_RETURN_IF_ERROR(expert_counter_->Capture(
-          expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+      ORT_RETURN_IF_ERROR(expert_counter_->Consume());
     }
     if (routing_record != nullptr) {
       const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);

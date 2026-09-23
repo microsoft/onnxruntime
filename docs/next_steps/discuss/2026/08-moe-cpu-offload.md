@@ -244,6 +244,8 @@ Depends on PR 1.
   ```
 
 - Apply decay to every expert and add `beta` once per selected expert, even if several rows select it.
+- For CUDA, enqueue a pinned routing snapshot and completion event before expert computation, then process usage
+  on the CPU after launching the expert kernels. Wait only for the snapshot, not the entire compute stream.
 - Preserve counters across `Run()` calls, isolate sessions, and reject overlapping runs. Use ordinary counters with
   no mutex in `RecordUsage()`, and read global snapshots only between runs.
 - Keep counting opt-in and preserve model outputs and execution placement. Do not enable ranking, placement

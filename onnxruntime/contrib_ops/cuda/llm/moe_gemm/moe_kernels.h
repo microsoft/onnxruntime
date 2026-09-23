@@ -265,6 +265,9 @@ struct FusedRoutingParams {
   int* token_selected_experts{nullptr};
   float* token_final_scales{nullptr};
   bool normalize_routing_weights{false};
+  // Optional CPU-side hook: enqueue a routing snapshot after the fused prologue, before expert computation.
+  void (*on_routing_ready)(void*, const int*, size_t, cudaStream_t){nullptr};
+  void* routing_context{nullptr};
 };
 
 // Host-side, deterministic predicate for the fused routing prologue. It must be the single source

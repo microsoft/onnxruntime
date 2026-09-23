@@ -17,15 +17,16 @@ session.moe_expert_counter_beta=<finite non-negative value> # default: 1
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported with counting enabled.
 
-Each successful node invocation updates every expert counter belonging to that node:
+Each node invocation updates every expert counter belonging to that node:
 
 ```text
 c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
 ```
 
 Selecting an expert for several token rows still contributes one `beta`. Unused experts still receive the decay term.
-Counts persist across `Run()` calls. A failed run can retain updates from nodes that completed before the failure;
-updates are not transactional across an entire model invocation.
+Counts persist across `Run()` calls. A failed run can retain updates already recorded, including CUDA nodes whose
+expert computations were still in flight when their counters were updated. Updates are not transactional across an
+entire model invocation.
 
 The root `SessionState` owns a `MoeExpertState` shared with its subgraph states. Sessions never share counters.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
@@ -54,11 +55,16 @@ back to the runtime; neither `MoeExpertState` nor in-tree graph types cross the 
 `SessionState::GetMoeExpertState()->GetSnapshot()` provides an internally accessible snapshot of all registered nodes.
 There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
 
-CUDA counting copies routing IDs to the host and synchronizes the compute stream before consuming them. Tiled QMoE
-unions selected experts across all tiles before updating the counters once for the invocation.
+CUDA counting queues a routing-ID copy into pinned host memory and a copy-completion event after top-k, before
+expert computation. After submitting the expert kernels, the calling CPU thread waits only for that event and
+processes usage while the GPU can continue expert computation; it does not synchronize the entire compute stream.
+Fused QMoE routing keeps its fused prologue and queues the snapshot immediately after that prologue. Tiled QMoE
+consumes each snapshot before reusing its host buffer and unions selected experts across all tiles before updating
+the counters once for the invocation. Same-stream ordering protects tile-local device routing scratch.
+Debug synchronization, `CUDA_LAUNCH_BLOCKING`, or optional tactic profiling can still serialize GPU work.
 The CUDA collector is constructed once per kernel only when `session.enable_moe_expert_counting=1`. It reuses its
-host buffers between invocations and resets only the current invocation's selected-expert set. Buffer capacity grows
-only when needed for a larger invocation.
+host buffers and copy event between invocations and resets only the current invocation's selected-expert set.
+Buffer capacity grows only when needed for a larger invocation.
 
 Both counting and routing-logging options are cached at kernel construction. With their default values (`0`), the
 kernel skips usage/context lookups, collector construction, collection calls, and statistics-only size calculations.

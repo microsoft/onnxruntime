@@ -47,13 +47,13 @@ void AddZeroInitializer(GraphProto& graph, const char* name, int type,
   tensor->set_raw_data(std::string(size, '\0'));
 }
 
-void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph) {
+void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph, int64_t rows) {
   graph.set_name("expert_counting");
   SetValue(subgraph ? *graph.add_value_info() : *graph.add_input(), "input",
-           TensorProto_DataType_FLOAT16, {3, kWidth});
+           TensorProto_DataType_FLOAT16, {rows, kWidth});
   SetValue(subgraph ? *graph.add_value_info() : *graph.add_input(), "router",
-           TensorProto_DataType_FLOAT16, {3, kExperts});
-  SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {3, kWidth});
+           TensorProto_DataType_FLOAT16, {rows, kExperts});
+  SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, kWidth});
   const int weight_type = quantized ? TensorProto_DataType_UINT8 : TensorProto_DataType_FLOAT16;
   AddZeroInitializer(graph, "w1", weight_type, {kExperts, kWidth, quantized ? kWidth / 2 : kWidth},
                      quantized ? 1 : 2);
@@ -88,7 +88,7 @@ void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgrap
   }
 }
 
-std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false) {
+std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false, int64_t rows = 3) {
   ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
@@ -99,13 +99,13 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   opset->set_version(1);
   auto& graph = *model.mutable_graph();
   if (!subgraphs) {
-    PopulateMoeGraph(graph, quantized, cuda, false);
+    PopulateMoeGraph(graph, quantized, cuda, false, rows);
   } else {
     graph.set_name("conditional_counting");
-    SetValue(*graph.add_input(), "input", TensorProto_DataType_FLOAT16, {3, kWidth});
-    SetValue(*graph.add_input(), "router", TensorProto_DataType_FLOAT16, {3, kExperts});
+    SetValue(*graph.add_input(), "input", TensorProto_DataType_FLOAT16, {rows, kWidth});
+    SetValue(*graph.add_input(), "router", TensorProto_DataType_FLOAT16, {rows, kExperts});
     SetValue(*graph.add_input(), "condition", TensorProto_DataType_BOOL, {});
-    SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {3, kWidth});
+    SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, kWidth});
     auto* node = graph.add_node();
     node->set_op_type("If");
     node->add_input("condition");
@@ -114,22 +114,24 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
       auto* attr = node->add_attribute();
       attr->set_name(branch);
       attr->set_type(AttributeProto_AttributeType_GRAPH);
-      PopulateMoeGraph(*attr->mutable_g(), quantized, cuda, true);
+      PopulateMoeGraph(*attr->mutable_g(), quantized, cuda, true, rows);
     }
   }
   return model.SerializeAsString();
 }
 
-NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true) {
+NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_t rows = 3) {
+  ORT_ENFORCE(rows == 1 || rows == 3);
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue input, router, cond;
-  const std::vector<MLFloat16> values(3 * kWidth, MLFloat16(1.0f));
-  CreateMLValue<MLFloat16>(allocator, {3, kWidth}, values, &input);
+  const std::vector<MLFloat16> values(rows * kWidth, MLFloat16(1.0f));
+  CreateMLValue<MLFloat16>(allocator, {rows, kWidth}, values, &input);
   const std::vector<MLFloat16> routing{
       MLFloat16(9.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
       MLFloat16(8.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
       MLFloat16(0.f), MLFloat16(1.f), MLFloat16(9.f), MLFloat16(0.f)};
-  CreateMLValue<MLFloat16>(allocator, {3, kExperts}, routing, &router);
+  CreateMLValue<MLFloat16>(allocator, {rows, kExperts},
+                           gsl::make_span(routing).first(static_cast<size_t>(rows * kExperts)), &router);
   NameMLValMap feeds{{"input", input}, {"router", router}};
   if (subgraphs) {
     CreateMLValue<bool>(allocator, {}, {condition}, &cond);
@@ -139,14 +141,14 @@ NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true) {
 }
 
 Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
-                            bool subgraphs = false, bool condition = true) {
+                            bool subgraphs = false, bool condition = true, int64_t rows = 3) {
   const std::array<std::string, 1> output_names{"output"};
-  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition), output_names, &outputs);
+  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition, rows), output_names, &outputs);
 }
 
-void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true) {
+void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true, int64_t rows = 3) {
   std::vector<OrtValue> outputs;
-  ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs, subgraphs, condition));
+  ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs, subgraphs, condition, rows));
   ASSERT_EQ(outputs.size(), 1U);
   for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
     EXPECT_EQ(value.ToFloat(), 0.f);
@@ -222,7 +224,7 @@ void TestDisabledUsageAccess(bool quantized) {
   }
 }
 
-void TestCounting(bool quantized, bool cuda, bool tiled = false) {
+void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 3) {
   auto options = CountingOptions();
   if (tiled) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_row_tile_size", "1"));
@@ -238,7 +240,7 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
     }
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
   }
-  const auto model = MakeCountingModel(quantized, cuda);
+  const auto model = MakeCountingModel(quantized, cuda, false, rows);
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
   const auto* state = session.GetSessionState().GetMoeExpertState();
@@ -260,9 +262,9 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
   }
   EXPECT_EQ(expert_ids.size(), 2U * kExperts);
   for (int run = 1; run <= 2; ++run) {
-    RunCountingModel(session);
+    RunCountingModel(session, false, true, rows);
     for (const auto& [key, node] : state->GetSnapshot()) {
-      EXPECT_EQ(node.counters, (InlinedVector<double>{double(run), 0, double(run), 0}));
+      EXPECT_EQ(node.counters, (InlinedVector<double>{double(run), 0, rows == 3 ? double(run) : 0, 0}));
       auto* usage = session_state.GetMoeExpertUsage(session_state.GetKernel(key.second));
       EXPECT_TRUE(usages.contains(usage));
       InlinedVector<double> counters;
@@ -281,6 +283,7 @@ TEST(MoeExpertCountingTest, CpuQMoEDisabledDoesNotAccessUsage) { TestDisabledUsa
 TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
 TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
+TEST(MoeExpertCountingTest, CudaQMoESingleToken) { TestCounting(true, true, false, 1); }
 #endif
 
 TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
