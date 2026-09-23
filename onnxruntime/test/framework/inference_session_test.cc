@@ -1596,6 +1596,28 @@ TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   thread2.join();
 }
 
+#ifdef _WIN32
+TEST(InferenceSessionTests, LogAllSessionsDuringLoadAndInitialization) {
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+
+  auto load_and_initialize = std::async(std::launch::async, [&session]() {
+    ORT_RETURN_IF_ERROR(session.Load(MODEL_URI));
+    return session.Initialize();
+  });
+
+  size_t snapshot_count = 0;
+  while (load_and_initialize.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) {
+    InferenceSession::LogAllSessions();
+    ++snapshot_count;
+    std::this_thread::yield();
+  }
+
+  ASSERT_STATUS_OK(load_and_initialize.get());
+  EXPECT_GT(snapshot_count, 0u);
+}
+#endif
+
 TEST(InferenceSessionTests, PreAllocateOutputVector) {
   SessionOptions so;
 

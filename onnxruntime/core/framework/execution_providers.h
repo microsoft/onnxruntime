@@ -49,19 +49,7 @@ class ExecutionProviders {
           // Check if this callback is for capturing state
           if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
               ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-            std::vector<std::pair<std::string, ProviderOptions>> provider_options_snapshot;
-            {
-              std::lock_guard<std::mutex> lock(exec_providers_mutex_);
-              provider_options_snapshot.reserve(exec_provider_ids_.size());
-              for (const auto& provider_id : exec_provider_ids_) {
-                auto it = exec_provider_options_.find(provider_id);
-                if (it != exec_provider_options_.end()) {
-                  provider_options_snapshot.emplace_back(provider_id, it->second);
-                }
-              }
-            }
-
-            for (const auto& [provider_id, options] : provider_options_snapshot) {
+            for (const auto& [provider_id, options] : GetProviderOptionsSnapshot()) {
               LogProviderOptions(provider_id, options, true);
             }
           }
@@ -149,6 +137,22 @@ class ExecutionProviders {
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
   const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 
+  using ProviderOptionsSnapshot = std::vector<std::pair<std::string, ProviderOptions>>;
+
+  ProviderOptionsSnapshot GetProviderOptionsSnapshot() const {
+    std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+    ProviderOptionsSnapshot provider_options_snapshot;
+    provider_options_snapshot.reserve(exec_provider_ids_.size());
+    for (const auto& provider_id : exec_provider_ids_) {
+      auto it = exec_provider_options_.find(provider_id);
+      if (it != exec_provider_options_.end()) {
+        provider_options_snapshot.emplace_back(provider_id, it->second);
+      }
+    }
+
+    return provider_options_snapshot;
+  }
+
   bool GetCpuProviderWasImplicitlyAdded() const { return cpu_execution_provider_was_implicitly_added_; }
 
   void SetCpuProviderWasImplicitlyAdded(bool cpu_execution_provider_was_implicitly_added) {
@@ -161,7 +165,7 @@ class ExecutionProviders {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
 
   // Synchronizes provider registration with ETW capture-state snapshots.
-  std::mutex exec_providers_mutex_;
+  mutable std::mutex exec_providers_mutex_;
 
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
     const Env& env = Env::Default();
