@@ -2039,6 +2039,52 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsMismatchedValu
       "data field count (2) does not match expected count from shape (1)");
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsValuesForZeroElementTensor) {
+  SparseTensorProto sparse;
+  sparse.add_dims(0);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_element_values");
+  values->set_data_type(TensorProto_DataType_FLOAT);
+  values->add_dims(0);
+  values->add_float_data(1.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(0);
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense),
+      "data field count (1) does not match expected count from shape (0)");
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Float8E8M0) {
+  SparseTensorProto sparse;
+  sparse.add_dims(2);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("float8e8m0_values");
+  values->set_data_type(TensorProto_DataType_FLOAT8E8M0);
+  values->add_dims(1);
+  values->add_int32_data(0x7f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(1);
+  indices->add_int64_data(0);
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+  ASSERT_EQ(dense.raw_data().size(), 2u);
+  EXPECT_EQ(static_cast<uint8_t>(dense.raw_data()[0]), 0x7f);
+  EXPECT_EQ(static_cast<uint8_t>(dense.raw_data()[1]), 0);
+}
+#endif
+
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Rank1Indices32) {
   // Dense Shape: [2, 2] -> 4 elements
   // Indices: [0, 3] (linear)
@@ -2309,8 +2355,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch) {
   ONNX_NAMESPACE::TensorProto dense;
   auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
   EXPECT_FALSE(status.IsOK());
-  // The error comes from UnpackTensor usually
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data size"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count"));
 }
 
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_RawData) {
@@ -2336,7 +2381,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
   ONNX_NAMESPACE::TensorProto dense;
   auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("values data size does not match expected"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw_data size"));
 }
 
 // Tests for SparseTensorProtoToDenseTensorProto with negative indices (model-loading path)

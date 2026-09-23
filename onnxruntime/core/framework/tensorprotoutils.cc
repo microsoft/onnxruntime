@@ -1526,6 +1526,7 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
       case TensorProto_DataType_FLOAT8E4M3FNUZ:
       case TensorProto_DataType_FLOAT8E5M2:
       case TensorProto_DataType_FLOAT8E5M2FNUZ:
+      case TensorProto_DataType_FLOAT8E8M0:
 #endif
       case TensorProto_DataType_INT32:
         // BOOL, INT8, UINT8, INT16, UINT16, FLOAT16, BFLOAT16, INT32, FLOAT8* all use int32_data
@@ -2562,16 +2563,16 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(sparse_values, model_path));
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(indices, model_path));
 
+  if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING && !HasExternalData(sparse_values)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(sparse_values));
+  }
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
   }
 
   if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-    if (!HasExternalData(sparse_values)) {
-      ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(sparse_values));
-    }
-
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     const size_t element_size = ml_data->Size();
     const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
