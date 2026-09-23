@@ -20,7 +20,7 @@ Tile based inference for high resolution images is another use-case where custom
 ## CUDA
 
 CUDA in ONNX Runtime has two custom memory types.
-`"CudaPinned"` and `"Cuda"` memory where [CUDA pinned](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/) is actually CPU memory which is directly accessible by the GPU allowing for fully asynchronous up and download of memory using [`cudaMemcpyAsync`](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1g85073372f776b4c4d5f89f7124b7bf79).
+`"CudaPinned"` and `"Cuda"` memory where [CUDA pinned](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/) is actually CPU memory which is directly accessible by the GPU allowing for fully asynchronous up and download of memory using [`cudaMemcpyAsync`](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__MEMORY.html#group__cudart__memory_1ga8703e53d61b7f094ab74cfcde0ee0c63).
 Normal CPU tensors only allow for a synchronous downloads from GPU to CPU while CPU to GPU copies can always be executed asynchronous.
 
 Allocating a tensor using the `Ort::Sessions`'s allocator is very straight forward using the [C++ API](https://onnxruntime.ai/docs/api/c/struct_ort_1_1_value.html#a5d35080239ae47cdbc9e505666dc32ec) which directly maps to the C API.
