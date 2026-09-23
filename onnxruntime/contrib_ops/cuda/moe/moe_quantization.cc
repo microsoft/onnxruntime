@@ -806,12 +806,61 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (is_mixed_width) {
     ORT_RETURN_IF_NOT(is_int, "Mixed-width QMoE execution is currently supported only for quant_type='int'.");
   }
+  size_t int_dequant_fc1_bytes = 0;
+  size_t int_dequant_fc2_bytes = 0;
   if (use_int_dequant_fallback) {
     ORT_RETURN_IF_NOT(!weights_prepacked_,
                       "INT2 or mixed-width CUDA QMoE requires raw weights with weights_prepacked=0.");
-    ORT_RETURN_IF_NOT(block_size_ >= 16,
-                      "Mixed-width CUDA QMoE currently requires block-wise quantization with block_size >= 16; "
-                      "uniform INT2 has the same requirement.");
+    ORT_RETURN_IF_NOT(block_size_ >= 16 && block_size_ <= 256 &&
+                          (block_size_ & (block_size_ - 1)) == 0,
+                      "INT2 or mixed-width CUDA QMoE requires block_size to be a power of two in [16, 256], got ",
+                      block_size_, ".");
+    ORT_RETURN_IF_NOT(moe_params.hidden_size % block_size_ == 0,
+                      "INT2 or mixed-width CUDA QMoE requires hidden_size to be divisible by block_size, got hidden_size=",
+                      moe_params.hidden_size, " and block_size=", block_size_, ".");
+    ORT_RETURN_IF_NOT(moe_params.inter_size % block_size_ == 0,
+                      "INT2 or mixed-width CUDA QMoE requires inter_size to be divisible by block_size, got inter_size=",
+                      moe_params.inter_size, " and block_size=", block_size_, ".");
+
+    const int64_t fc1_n = is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size;
+    const int64_t fc1_k = moe_params.hidden_size;
+    const int64_t fc2_n = moe_params.hidden_size;
+    const int64_t fc2_k = moe_params.inter_size;
+    auto validate_fallback_input = [&](const TensorShape& weight_shape, const Tensor* scales,
+                                       const char* weight_name, const char* scales_name,
+                                       int64_t bits, int64_t n, int64_t k) -> Status {
+      const int64_t packed_k = k / (8 / bits);
+      ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 3 &&
+                            weight_shape[0] == moe_params.num_experts &&
+                            weight_shape[1] == n && weight_shape[2] == packed_k,
+                        "INT2 or mixed-width CUDA QMoE dense fallback requires canonical ", weight_name,
+                        " shape [E,N,K/pack]=[", moe_params.num_experts, ",", n, ",", packed_k,
+                        "], got ", weight_shape, ". Legacy transposed weight layouts are not supported.");
+      ORT_RETURN_IF_NOT(scales != nullptr, scales_name, " is required.");
+      const auto& scale_shape = scales->Shape();
+      const int64_t blocks_per_row = k / block_size_;
+      ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 3 &&
+                            scale_shape[0] == moe_params.num_experts &&
+                            scale_shape[1] == n && scale_shape[2] == blocks_per_row,
+                        "INT2 or mixed-width CUDA QMoE dense fallback requires block-wise ", scales_name,
+                        " shape [E,N,K/block_size]=[", moe_params.num_experts, ",", n, ",", blocks_per_row,
+                        "], got ", scale_shape, ".");
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(validate_fallback_input(fc1_shape, fc1_scales, "fc1_experts_weights", "fc1_scales",
+                                                fc1_expert_weight_bits_, fc1_n, fc1_k));
+    ORT_RETURN_IF_ERROR(validate_fallback_input(fc2_shape, fc2_scales, "fc2_experts_weights", "fc2_scales",
+                                                fc2_expert_weight_bits_, fc2_n, fc2_k));
+
+    const size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
+    int_dequant_fc1_bytes = SafeInt<size_t>(moe_params.num_experts) * fc1_n * fc1_k * element_size;
+    int_dequant_fc2_bytes = SafeInt<size_t>(moe_params.num_experts) * fc2_n * fc2_k * element_size;
+    const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
+    ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
+                      "INT2 or mixed-width CUDA QMoE dense fallback requires ", total_dequant_bytes,
+                      " bytes of dequantized weight scratch, exceeding the configured limit of ",
+                      int_dequant_max_scratch_bytes_, " bytes. Increase ",
+                      kQMoEIntDequantMaxScratchBytesConfig, " only for bounded correctness workloads.");
   }
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
@@ -1937,17 +1986,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const int fc2_n = static_cast<int>(moe_params.hidden_size);
     const int fc2_k = static_cast<int>(moe_params.inter_size);
     const int num_experts = static_cast<int>(moe_params.num_experts);
-    const size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
-    const size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
-    const size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
-    const size_t total_dequant_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
-    ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
-                      "INT2 or mixed-width CUDA QMoE dense fallback requires ", total_dequant_bytes,
-                      " bytes of dequantized weight scratch, exceeding the configured limit of ",
-                      int_dequant_max_scratch_bytes_, " bytes. Increase ",
-                      kQMoEIntDequantMaxScratchBytesConfig, " only for bounded correctness workloads.");
-    dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
-    dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
+    dequant_fc1_weights = GetScratchBuffer<void>(int_dequant_fc1_bytes, GetComputeStream(context));
+    dequant_fc2_weights = GetScratchBuffer<void>(int_dequant_fc2_bytes, GetComputeStream(context));
 
     const auto* fc1_zero_data = fc1_zeros ? static_cast<const uint8_t*>(fc1_zeros->DataRaw()) : nullptr;
     const auto* fc2_zero_data = fc2_zeros ? static_cast<const uint8_t*>(fc2_zeros->DataRaw()) : nullptr;
