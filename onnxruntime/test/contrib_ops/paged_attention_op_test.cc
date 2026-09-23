@@ -571,17 +571,23 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       }
     }
     for (int block_id = 0; block_id < num_blocks; ++block_id) {
+      // Two cache-scale steps survive both 0.01 and 0.02 INT8 scales and keep these fixtures in range.
+      const float block_component =
+          c.int8_cache ? 2.0f * cache_scale * static_cast<float>(block_id) : 0.0f;
+      const float centered_block_component =
+          c.int8_cache ? 2.0f * cache_scale * static_cast<float>(block_id - num_blocks / 2) : 0.0f;
       for (int slot = 0; slot < block_size; ++slot) {
         for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
           for (int dim = 0; dim < head_size; ++dim) {
             const int index = CacheIndex(block_id, slot, kv_head, dim,
                                          block_size, kv_num_heads, head_size);
             if (c.discriminating_attention && slot == past_seqlen) {
-              key_cache_data[index] = MLFloat16(0.0f);
-              value_cache_data[index] = MLFloat16(0.04f);
+              key_cache_data[index] = MLFloat16(centered_block_component);
+              value_cache_data[index] = MLFloat16(0.04f + block_component);
             } else {
               key_cache_data[index] = c.discriminating_attention
-                                          ? MLFloat16(0.48f * walsh_sign(slot % 8, dim))
+                                          ? MLFloat16(0.48f * walsh_sign(slot % 8, dim) +
+                                                      centered_block_component)
                                           : MLFloat16(
                                                 cache_key_step *
                                                 static_cast<float>(
@@ -589,7 +595,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
               value_cache_data[index] =
                   c.discriminating_attention
                       ? MLFloat16(0.08f + 0.04f * static_cast<float>(slot % 8) +
-                                  0.04f * static_cast<float>(dim % 2))
+                                  0.04f * static_cast<float>(dim % 2) + block_component)
                       : MLFloat16(
                             cache_value_step *
                             static_cast<float>((block_id * 5 + slot * 3 + kv_head * 7 + dim) % 17 - 8));
