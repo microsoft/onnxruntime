@@ -365,10 +365,10 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
                           (g.hv + g.hq * g.dk + g.hv * g.dv);
     const bool state_update_enabled = in.state_update_active.empty() || in.state_update_active[0] != 0;
     test.AddOutput<float>("state_update", {g.batch, width},
-                use_webgpu && state_update_enabled
-                  ? ref_state_update
-                  : std::vector<float>(static_cast<size_t>(g.batch) * width, 0.0f),
-                false, use_webgpu ? state_tol : 1e9f, use_webgpu ? state_tol : 1e9f);
+                          use_webgpu && state_update_enabled
+                              ? ref_state_update
+                              : std::vector<float>(static_cast<size_t>(g.batch) * width, 0.0f),
+                          false, use_webgpu ? state_tol : 1e9f, use_webgpu ? state_tol : 1e9f);
   } else {
     test.AddOutput<float>("state_update", {g.batch, 0}, {});
   }
