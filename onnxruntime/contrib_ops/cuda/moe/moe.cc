@@ -6,7 +6,7 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/cuda/moe/moe_expert_counter.h"
+#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
 #include "contrib_ops/cuda/moe/moe_profiler.h"
 #endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -330,9 +330,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (expert_counter_) {
-    ORT_RETURN_IF_ERROR(expert_counter_->BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
-    ORT_RETURN_IF_ERROR(expert_counter_->Capture(expert_indices, expanded_rows, stream));
+  if (kernel_usage_) {
+    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(kernel_usage_->Capture(expert_indices, expanded_rows, stream));
   }
 #endif
 
@@ -422,10 +422,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (expert_counter_) {
-    ORT_RETURN_IF_ERROR(expert_counter_->Consume());
+  if (kernel_usage_) {
+    ORT_RETURN_IF_ERROR(kernel_usage_->Consume());
     gsl::span<const int> selected_experts;
-    ORT_RETURN_IF_ERROR(expert_counter_->GetSelectedExperts(selected_experts));
+    ORT_RETURN_IF_ERROR(kernel_usage_->GetSelectedExperts(selected_experts));
     ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(selected_experts));
   }
   if (routing_record != nullptr) {

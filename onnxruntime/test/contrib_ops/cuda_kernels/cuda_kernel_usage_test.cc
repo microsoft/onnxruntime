@@ -6,7 +6,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#include "contrib_ops/cuda/moe/moe_expert_counter.h"
+#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
@@ -39,7 +39,7 @@ class StreamGate {
   bool released_{false};
 };
 
-class CudaMoeExpertCounterTest : public ::testing::Test {
+class CudaKernelUsageTest : public ::testing::Test {
  protected:
   void SetUp() override {
     int device_count = 0;
@@ -61,11 +61,11 @@ class CudaMoeExpertCounterTest : public ::testing::Test {
     }
   }
 
-  Status Capture(contrib::cuda::CudaMoeExpertCounter& counter, gsl::span<const int> ids) {
+  Status Capture(contrib::cuda::CudaKernelUsage& usage, gsl::span<const int> ids) {
     ORT_RETURN_IF(ids.size() > 8, "Test routing buffer is too small.");
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_ids_, ids.data(), ids.size_bytes(),
                                          cudaMemcpyHostToDevice, stream_));
-    return counter.Capture(device_ids_, ids.size(), stream_);
+    return usage.Capture(device_ids_, ids.size(), stream_);
   }
 
   AllocatorPtr PinnedAllocator() {
@@ -74,10 +74,10 @@ class CudaMoeExpertCounterTest : public ::testing::Test {
     return std::make_shared<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(device), CUDA_PINNED);
   }
 
-  void ExpectSelectedExperts(const contrib::cuda::CudaMoeExpertCounter& counter,
+  void ExpectSelectedExperts(const contrib::cuda::CudaKernelUsage& usage,
                              const InlinedVector<int>& expected) {
     gsl::span<const int> selected;
-    ASSERT_STATUS_OK(counter.GetSelectedExperts(selected));
+    ASSERT_STATUS_OK(usage.GetSelectedExperts(selected));
     EXPECT_EQ((InlinedVector<int>{selected.begin(), selected.end()}), expected);
   }
 
@@ -85,8 +85,8 @@ class CudaMoeExpertCounterTest : public ::testing::Test {
   int* device_ids_{nullptr};
 };
 
-TEST_F(CudaMoeExpertCounterTest, CollectsWhileLaterDeviceWorkIsPending) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, CollectsWhileLaterDeviceWorkIsPending) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   ASSERT_STATUS_OK(counter.BeginInvocation(4));
   const InlinedVector<int> ids{0, 0, 2};
   ASSERT_STATUS_OK(Capture(counter, ids));
@@ -109,8 +109,8 @@ TEST_F(CudaMoeExpertCounterTest, CollectsWhileLaterDeviceWorkIsPending) {
   EXPECT_EQ(cudaEventQuery(expert_done), cudaErrorNotReady);
 }
 
-TEST_F(CudaMoeExpertCounterTest, EnqueuesWithoutWaitingForRouting) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, EnqueuesWithoutWaitingForRouting) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   const InlinedVector<int> ids{1, 3};
   ASSERT_STATUS_OK(counter.BeginInvocation(4));
   ASSERT_STATUS_OK(Capture(counter, ids));
@@ -131,8 +131,8 @@ TEST_F(CudaMoeExpertCounterTest, EnqueuesWithoutWaitingForRouting) {
   ExpectSelectedExperts(counter, ids);
 }
 
-TEST_F(CudaMoeExpertCounterTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   ASSERT_STATUS_OK(counter.BeginInvocation(4));
   for (const InlinedVector<int>& ids : {InlinedVector<int>{0, 0, 2}, InlinedVector<int>{2, 3}}) {
     ASSERT_STATUS_OK(Capture(counter, ids));
@@ -149,8 +149,8 @@ TEST_F(CudaMoeExpertCounterTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
   }
 }
 
-TEST_F(CudaMoeExpertCounterTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   ASSERT_STATUS_OK(counter.BeginInvocation(4));
   const InlinedVector<int> previous{0, 2};
   ASSERT_STATUS_OK(Capture(counter, previous));
@@ -163,8 +163,8 @@ TEST_F(CudaMoeExpertCounterTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvoc
   ExpectSelectedExperts(counter, {1, 3});
 }
 
-TEST_F(CudaMoeExpertCounterTest, RejectsInvalidRoutingAndRecovers) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, RejectsInvalidRoutingAndRecovers) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   for (const int invalid : {-1, 4}) {
     ASSERT_STATUS_OK(counter.BeginInvocation(4));
     const InlinedVector<int> ids{0, invalid};
@@ -178,8 +178,8 @@ TEST_F(CudaMoeExpertCounterTest, RejectsInvalidRoutingAndRecovers) {
   ExpectSelectedExperts(counter, ids);
 }
 
-TEST_F(CudaMoeExpertCounterTest, RejectsUninitializedCollection) {
-  contrib::cuda::CudaMoeExpertCounter counter(PinnedAllocator());
+TEST_F(CudaKernelUsageTest, RejectsUninitializedCollection) {
+  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
   gsl::span<const int> selected;
   EXPECT_FALSE(counter.GetSelectedExperts(selected).IsOK());
   EXPECT_FALSE(counter.BeginInvocation(0).IsOK());

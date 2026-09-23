@@ -5,36 +5,33 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
+#include "core/framework/kernel_usage.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::contrib::cuda {
 
-class CudaMoeExpertCounter {
+class CudaKernelUsage {
  public:
-  explicit CudaMoeExpertCounter(AllocatorPtr pinned_allocator)
+  explicit CudaKernelUsage(AllocatorPtr pinned_allocator)
       : pinned_allocator_(std::move(pinned_allocator)) {}
 
-  ~CudaMoeExpertCounter() {
+  ~CudaKernelUsage() {
     ORT_IGNORE_RETURN_VALUE(WaitForCopy());
     if (copy_ready_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(copy_ready_)));
     }
   }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaMoeExpertCounter);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaKernelUsage);
 
   Status BeginInvocation(size_t expert_count) {
-    ORT_RETURN_IF(expert_count == 0, "MoE expert collection requires a positive expert count.");
     // A failed invocation may have returned after enqueueing a copy but before consuming it.
     ORT_RETURN_IF_ERROR(WaitForCopy());
-    used_.assign(expert_count, 0);
-    selected_experts_.clear();
-    selected_experts_.reserve(expert_count);
-    return Status::OK();
+    return usage_.BeginInvocation(expert_count);
   }
 
   Status Capture(const int* expert_ids, size_t count, cudaStream_t stream) {
-    ORT_RETURN_IF(used_.empty(), "MoE expert collection was not initialized for this invocation.");
+    ORT_RETURN_IF_NOT(usage_.IsInitialized(), "Kernel usage collection was not initialized.");
     ORT_RETURN_IF(copy_pending_, "The previous MoE routing snapshot has not been consumed.");
     cudaStreamCaptureStatus capture_status;
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
@@ -60,30 +57,19 @@ class CudaMoeExpertCounter {
   }
 
   // The fused-routing runner invokes this on the calling CPU thread, before launching expert GEMMs.
-  static void CaptureRouting(void* counter, const int* expert_ids, size_t count, cudaStream_t stream) {
-    ORT_THROW_IF_ERROR(static_cast<CudaMoeExpertCounter*>(counter)->Capture(expert_ids, count, stream));
+  static void CaptureRouting(void* usage, const int* expert_ids, size_t count, cudaStream_t stream) {
+    ORT_THROW_IF_ERROR(static_cast<CudaKernelUsage*>(usage)->Capture(expert_ids, count, stream));
   }
 
   Status Consume() {
     ORT_RETURN_IF_NOT(copy_pending_, "No MoE routing snapshot is available to consume.");
     ORT_RETURN_IF_ERROR(WaitForCopy());
-    for (size_t row = 0; row < captured_count_; ++row) {
-      const int expert = host_ids_.get()[row];
-      ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= used_.size(),
-                    "MoE counter expert index out of range: ", expert);
-      if (!used_[expert]) {
-        used_[expert] = 1;
-        selected_experts_.push_back(expert);
-      }
-    }
-    return Status::OK();
+    return usage_.Collect(gsl::make_span(host_ids_.get(), captured_count_));
   }
 
   Status GetSelectedExperts(gsl::span<const int>& expert_ids) const {
-    ORT_RETURN_IF(used_.empty(), "MoE expert collection was not initialized for this invocation.");
     ORT_RETURN_IF(copy_pending_, "The MoE routing snapshot must be consumed before reading selected experts.");
-    expert_ids = selected_experts_;
-    return Status::OK();
+    return usage_.GetSelectedExperts(expert_ids);
   }
 
  private:
@@ -102,8 +88,7 @@ class CudaMoeExpertCounter {
   }
 
   AllocatorPtr pinned_allocator_;
-  InlinedVector<uint8_t> used_;
-  InlinedVector<int> selected_experts_;
+  KernelUsage usage_;
   IAllocatorUniquePtr<int> host_ids_;
   size_t capacity_{0};
   size_t captured_count_{0};
