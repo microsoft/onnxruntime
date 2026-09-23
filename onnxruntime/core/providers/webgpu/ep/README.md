@@ -3,6 +3,8 @@
 The current folder contains the implementation of EP ABI adapter for WebGPU.
 
 The Session stream and notification bridge lives in `sync_stream.h` and `sync_stream.cc`.
+The Session allocator ABI wrapper and plugin-only stream allocation implementation live in
+`allocator.h` and `allocator.cc` in this folder.
 Shared buffer management and data-transfer implementations remain in the parent directory.
 Native builds exclude this folder.
 
@@ -41,6 +43,13 @@ during Run. This keeps CPU-produced outputs bound to GPU ordered with fallback u
 additional core stream creation. The policy depends on the allocation's stream, not `IsRunActive()`.
 Uploads, readbacks, stream synchronization, dispatch batch limits, and Run/capture boundaries can
 still submit work.
+
+Env and Session allocators reuse the shared `GpuBufferAllocator` implementation. Session getters
+borrow their owning EP; Env getters retain a context and a separate command recording, so Env
+allocation does not require a Session. The Env implementation is still created lazily by
+`Factory::CreateAllocatorImpl`, submits cached-buffer clears before returning, and uses the
+streamless `adapter::Allocator` ABI wrapper. It does not expose `OrtAllocator::AllocOnStream`,
+even though the underlying implementation supports that method in plugin builds.
 
 Multiple threads may use one Session allocator, including while that Session or other Sessions run,
 provided they operate on independent tensors. A dedicated small Session can also allocate inputs

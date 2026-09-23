@@ -2,16 +2,12 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include <mutex>
 #include <utility>
 
-#include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
-
-#if defined(ORT_USE_EP_API_ADAPTERS)
-#include "core/providers/webgpu/ep/sync_stream.h"
-#endif
 
 namespace onnxruntime {
 namespace webgpu {
@@ -60,79 +56,6 @@ void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
                                          submit_zero_initialize);
 }
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-// Stream-ordered allocation for Run input copies, intermediate/output tensors and kernel scratch.
-// BindInput can also use this path before Run. A matching Session stream orders deferred clears
-// with subsequent copies/kernels in the same recording, without submitting each allocation.
-// Null streams use Alloc's policy; streams from another Session are rejected.
-void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
-  if (stream == nullptr) {
-    return Alloc(size);
-  }
-  ORT_ENFORCE(&ep::GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
-              "WebGPU allocator and stream belong to different Sessions.");
-  return Allocate(size, false);
-}
-
-namespace {
-
-// C API wrapper around an existing Session allocator, not another buffer pool or recording.
-// Unlike the generic adapter::Allocator used by the Env path, it also forwards AllocOnStream.
-struct WebGpuSessionAllocator final : OrtAllocator {
-  explicit WebGpuSessionAllocator(AllocatorPtr impl) : OrtAllocator{}, impl_{std::move(impl)} {
-    version = ORT_API_VERSION;
-    Alloc = AllocImpl;
-    Free = [](OrtAllocator* allocator, void* buffer) noexcept {
-      // Do not retry or directly release after an exception: Free may have transferred ownership.
-      ORT_TRY {
-        static_cast<WebGpuSessionAllocator*>(allocator)->impl_->Free(buffer);
-      }
-      ORT_CATCH(const std::exception& ex) {
-        ORT_HANDLE_EXCEPTION([&]() {
-          LOGS_DEFAULT(ERROR) << "WebGPU Session allocator Free failed: " << ex.what();
-        });
-      }
-      ORT_CATCH(...) {
-        LOGS_DEFAULT(ERROR) << "WebGPU Session allocator Free failed with an unknown exception.";
-      }
-    };
-    Info = [](const OrtAllocator* allocator) noexcept -> const OrtMemoryInfo* {
-      return &static_cast<const WebGpuSessionAllocator*>(allocator)->impl_->Info();
-    };
-    if (impl_->IsStreamAware()) {
-      AllocOnStream = [](OrtAllocator* allocator, size_t size, OrtSyncStream* stream) noexcept -> void* {
-        ORT_TRY {
-          return static_cast<WebGpuSessionAllocator*>(allocator)->impl_->AllocOnStream(
-              size, reinterpret_cast<Stream*>(stream));
-        }
-        ORT_CATCH(...) { return nullptr; }
-      };
-    }
-  }
-
-  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) noexcept {
-    ORT_TRY { return static_cast<WebGpuSessionAllocator*>(allocator)->impl_->Alloc(size); }
-    ORT_CATCH(...) { return nullptr; }
-  }
-
-  AllocatorPtr impl_;
-};
-
-}  // namespace
-
-OrtAllocator* CreateWebGpuSessionAllocator(AllocatorPtr allocator) {
-  return new WebGpuSessionAllocator(std::move(allocator));
-}
-
-bool TryReleaseWebGpuSessionAllocator(OrtAllocator* allocator) {
-  if (allocator->Alloc != WebGpuSessionAllocator::AllocImpl) {
-    return false;
-  }
-  delete static_cast<WebGpuSessionAllocator*>(allocator);
-  return true;
-}
-#endif
-
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
     auto& recording = recording_getter_();
@@ -145,45 +68,6 @@ void GpuBufferAllocator::Free(void* p) {
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   auto& recording = recording_getter_();
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
-  *stats = stats_;
-}
-
-ExternalGpuBufferAllocator::ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context)
-    : IAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
-                               OrtAllocatorType::OrtDeviceAllocator,
-                               WebGpuDevice,
-                               OrtMemTypeDefault)),
-      context_{std::move(context)},
-      command_state_{std::make_unique<CommandRecordingState>()} {
-}
-
-ExternalGpuBufferAllocator::~ExternalGpuBufferAllocator() = default;
-
-void* ExternalGpuBufferAllocator::Alloc(size_t size) {
-  if (size == 0) {
-    return nullptr;
-  }
-
-  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
-  ++stats_.num_allocs;
-  constexpr wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                                      wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-  return context_->BufferManager().Create(*command_state_, size, usage,
-                                          true, true);
-}
-
-void ExternalGpuBufferAllocator::Free(void* p) {
-  if (p == nullptr) {
-    return;
-  }
-
-  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
-  context_->BufferManager().Release(*command_state_, static_cast<WGPUBuffer>(p));
-  --stats_.num_allocs;
-}
-
-void ExternalGpuBufferAllocator::GetStats(AllocatorStats* stats) {
-  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
   *stats = stats_;
 }
 

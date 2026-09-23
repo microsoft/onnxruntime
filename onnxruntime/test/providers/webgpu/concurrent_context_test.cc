@@ -530,14 +530,22 @@ TEST_F(WebGpuConcurrentContextTest, SessionAllocatorAndRunConcurrently) {
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
 }
 
-// Case G: an environment shared allocator is one object used by all sessions. It uses the context
-// BufferManager with private command state and must remain thread-safe across callers.
+// Case G: exercise the plugin Env allocator's shared implementation and getter ownership in a
+// native build. Its private command state must remain thread-safe across callers.
 TEST_F(WebGpuConcurrentContextTest, SharedAllocatorMultiThreadCreateTensor) {
   constexpr int kThreads = 4;
   constexpr int kIters = 60;
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   auto context_ref = std::shared_ptr<webgpu::WebGpuContext>(&context, [](webgpu::WebGpuContext*) {});
-  auto allocator = std::make_shared<webgpu::ExternalGpuBufferAllocator>(std::move(context_ref));
+  auto recording = std::make_shared<webgpu::CommandRecordingState>();
+  std::weak_ptr<webgpu::CommandRecordingState> recording_lifetime = recording;
+  auto allocator = std::make_shared<webgpu::GpuBufferAllocator>(
+      [context_ref = std::move(context_ref)]() -> const webgpu::BufferManager& {
+        return context_ref->BufferManager();
+      },
+      [recording = std::move(recording)]() -> webgpu::CommandRecordingState& { return *recording; },
+      false,
+      []() { return true; });
 
   ErrorSink sink;
   std::barrier start{kThreads};
@@ -558,6 +566,12 @@ TEST_F(WebGpuConcurrentContextTest, SharedAllocatorMultiThreadCreateTensor) {
   JoinAll(threads);
 
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+  EXPECT_FALSE(recording_lifetime.expired());
+  AllocatorStats stats{};
+  allocator->GetStats(&stats);
+  EXPECT_EQ(stats.num_allocs, 0);
+  allocator.reset();
+  EXPECT_TRUE(recording_lifetime.expired());
 }
 
 // Case H: OrtEnv owns one data-transfer implementation per EP factory. Concurrent CopyTensors

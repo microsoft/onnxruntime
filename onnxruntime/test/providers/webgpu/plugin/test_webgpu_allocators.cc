@@ -303,6 +303,7 @@ TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorCreatedOnPluginRegistrati
   auto allocator = Env().GetSharedAllocator(device_memory_info);
   ASSERT_NE(allocator, nullptr);
   EXPECT_TRUE(allocator.GetInfo() == device_memory_info);
+  EXPECT_EQ(static_cast<OrtAllocator*>(allocator)->AllocOnStream, nullptr);
 }
 
 TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorAllocAndFree) {
@@ -319,6 +320,68 @@ TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorAllocAndFree) {
     auto allocation = allocator.GetAllocation(256);
     ASSERT_NE(allocation.get(), nullptr);
   }
+}
+
+TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorAndTensorOutliveSession) {
+  constexpr std::array<int64_t, 1> shape{8};
+  std::array<float, 8> input_data{1.0f, -2.0f, 3.5f, 4.0f, -5.25f, 6.0f, 7.75f, -8.0f};
+  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory_info, input_data.data(), input_data.size(), shape.data(), shape.size());
+  auto shared_allocator = Env().GetSharedAllocator(EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  ASSERT_NE(shared_allocator, nullptr);
+
+  // Allocate before a Session exists and keep the tensor across Session destruction.
+  auto device_tensor = Ort::Value::CreateTensor<float>(shared_allocator, shape.data(), shape.size());
+  {
+    Ort::SessionOptions options;
+    options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+    options.AppendExecutionProvider_V2(Env(), {EpDevice()}, Ort::KeyValuePairs{});
+    Ort::Session session(Env(), ORT_TSTR("testdata/mul_1.onnx"), options);
+  }
+
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(cpu_input, device_tensor, nullptr));
+  std::array<float, 8> output_data{};
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(device_tensor, cpu_output, nullptr));
+  EXPECT_EQ(output_data, input_data);
+
+  auto new_device_tensor = Ort::Value::CreateTensor<float>(shared_allocator, shape.data(), shape.size());
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(cpu_input, new_device_tensor, nullptr));
+  output_data.fill(0.0f);
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(new_device_tensor, cpu_output, nullptr));
+  EXPECT_EQ(output_data, input_data);
+  EXPECT_EQ(static_cast<OrtAllocator*>(shared_allocator)->AllocOnStream, nullptr);
+}
+
+TEST_F(WebGpuPluginSharedAllocatorTest, SharedAllocatorSubmitsReusedBufferClearWithoutSession) {
+  constexpr std::array<int64_t, 1> shape{8};
+  std::array<float, 8> nonzero_data;
+  nonzero_data.fill(7.0f);
+  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory_info, nonzero_data.data(), nonzero_data.size(), shape.data(), shape.size());
+  auto allocator = Env().GetSharedAllocator(EpDevice().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  ASSERT_NE(allocator, nullptr);
+
+  void* dirty_buffer = nullptr;
+  {
+    auto tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+    dirty_buffer = tensor.GetTensorMutableRawData();
+    ASSERT_ORTSTATUS_OK(Env().CopyTensor(cpu_input, tensor, nullptr));
+  }
+
+  auto reused_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  ASSERT_EQ(reused_tensor.GetTensorMutableRawData(), dirty_buffer);
+  std::array<float, 8> output_data;
+  output_data.fill(-1.0f);
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+  // Env copies use a different recording: readback must not be what submits the allocator's clear.
+  ASSERT_ORTSTATUS_OK(Env().CopyTensor(reused_tensor, cpu_output, nullptr));
+  const std::array<float, 8> expected{};
+  EXPECT_EQ(output_data, expected);
 }
 
 // TODO: Re-enable when WebGPU EP supports distinct allocators for multiple OrtEpDevices. Currently every device uses

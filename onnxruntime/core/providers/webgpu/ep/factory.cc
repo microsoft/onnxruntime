@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "factory.h"
+#include "allocator.h"
 #include "ep.h"
 
 #include "core/framework/error_code_helper.h"
@@ -257,15 +258,20 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  // Env path: the wrapper lazily creates an ExternalGpuBufferAllocator with its own recording
-  // and a retained context reference. It does not borrow an EP or depend on a Session's lifetime.
+  // Env getters retain the context and an independent recording, not a Session EP.
+  // Keep the streamless ABI wrapper even though the shared implementation supports AllocOnStream.
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
-        return std::make_shared<webgpu::ExternalGpuBufferAllocator>(std::move(context));
+        auto recording = std::make_shared<CommandRecordingState>();
+        return std::make_shared<GpuBufferAllocator>(
+            [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
+            [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
+            false,
+            []() { return true; });
       });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
