@@ -25,13 +25,21 @@ static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.di
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";
 
-// Persist per-expert invocation counts across Run() calls, without changing placement.
+// Persist per-expert usage counters across Run() calls, without changing placement.
 // "0": disable (default); "1": enable. Independent of routing-statistics logging.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
     "session.enable_moe_expert_counting";
 // Optional UTF-8 initial counter-state file. Requires expert counting to be enabled.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
+// Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
+// Must be finite and in [0, 1]. The default is 1.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
+    "session.moe_expert_counter_alpha";
+// Increment applied to each expert selected during an invocation. Must be finite and non-negative.
+// The default is 1.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
+    "session.moe_expert_counter_beta";
 
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.

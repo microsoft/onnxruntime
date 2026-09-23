@@ -1,27 +1,36 @@
 # Session-global MoE expert counters
 
-Enable invocation counting with the session configuration entry:
+Enable expert usage counters with the session configuration entry:
 
 ```text
 session.enable_moe_expert_counting=1
 ```
 
 The default is `0`. Counting is independent of `session.enable_moe_expert_statistics` and does not emit routing logs,
-enable profiling, change expert placement, or swap weights. It supports the CPU and built-in CUDA `MoE` and `QMoE`
-kernels. Minimal builds, the CUDA plugin EP, and CUDA graph capture are not supported with counting enabled.
-
-Each successful node invocation increments each selected expert once, regardless of how many token rows select it:
+enable profiling, change expert placement, or swap weights. Configure the update with:
 
 ```text
-c(t+1) = c(t) + (1 if used otherwise 0)
+session.moe_expert_counter_alpha=<finite value in [0, 1]>  # default: 1
+session.moe_expert_counter_beta=<finite non-negative value> # default: 1
 ```
 
-Unused expert counters do not change. Counts persist across `Run()` calls. A failed run can retain updates from nodes
-that completed before the failure; updates are not transactional across an entire model invocation.
+It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
+capture are not supported with counting enabled.
+
+Each successful node invocation updates every expert counter belonging to that node:
+
+```text
+c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
+```
+
+Selecting an expert for several token rows still contributes one `beta`. Unused experts still receive the decay term.
+Counts persist across `Run()` calls. A failed run can retain updates from nodes that completed before the failure;
+updates are not transactional across an entire model invocation.
 
 The root `SessionState` owns a `MoeExpertState` shared with its subgraph states. Sessions never share counters.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
-be statically known when the session is initialized. Updates and snapshot reads are protected by a mutex.
+be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
+for `N` equally sized MoE nodes with `E` experts, it is `N * E`. Updates and snapshot reads are protected by a mutex.
 
 Internal kernels access their own counters through `OpKernelContext::HasMoeExpertState()`,
 `RecordMoeExpertUsage()`, and `GetMoeExpertCounters()`. The shared-provider bridge exposes the same interface to CUDA.

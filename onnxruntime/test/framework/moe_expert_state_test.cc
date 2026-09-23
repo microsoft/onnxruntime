@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
 #include <sstream>
 #include <thread>
 
@@ -15,6 +16,7 @@ TEST(MoeExpertStateTest, CountsOncePerInvocationAndSeparatesNodes) {
   ASSERT_STATUS_OK(state.RegisterNode("main", 0, "MoE", 3));
   ASSERT_STATUS_OK(state.RegisterNode("main", 1, "QMoE", 3));
   ASSERT_STATUS_OK(state.RegisterNode("main/0/4:body", 0, "MoE", 3));
+  EXPECT_EQ(state.TotalExpertCount(), 9U);
   const int selected[] = {2, 0, 2, 0};
   ASSERT_STATUS_OK(state.RecordUsage("main", 0, selected));
   ASSERT_STATUS_OK(state.RecordUsage("main", 0, selected));
@@ -27,6 +29,38 @@ TEST(MoeExpertStateTest, CountsOncePerInvocationAndSeparatesNodes) {
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters("main/0/4:body", 0, counters));
   EXPECT_EQ(counters, (InlinedVector<double>{1, 0, 1}));
+}
+
+TEST(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
+  MoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 2.0));
+  ASSERT_STATUS_OK(state.RegisterNode("main", 0, "MoE", 3));
+  std::istringstream initial(
+      "moe_expert_state 1\n"
+      "\"main\" 0 MoE 0 4\n"
+      "\"main\" 0 MoE 1 2\n"
+      "\"main\" 0 MoE 2 1\n");
+  ASSERT_STATUS_OK(state.Load(initial));
+  const int selected[] = {2, 0, 2};
+  ASSERT_STATUS_OK(state.RecordUsage("main", 0, selected));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 1, 2.5}));
+  ASSERT_STATUS_OK(state.RecordUsage("main", 0, selected));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 0.5, 3.25}));
+}
+
+TEST(MoeExpertStateTest, ValidatesCounterParameters) {
+  for (const auto& [alpha, beta] : {
+           std::pair{-0.1, 1.0},
+           std::pair{1.1, 1.0},
+           std::pair{std::numeric_limits<double>::infinity(), 1.0},
+           std::pair{1.0, -0.1},
+           std::pair{1.0, std::numeric_limits<double>::infinity()}}) {
+    MoeExpertState state;
+    EXPECT_FALSE(state.SetCounterParameters(alpha, beta).IsOK());
+  }
+  MoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode("main", 0, "MoE", 1));
+  EXPECT_FALSE(state.SetCounterParameters(0.5, 1.0).IsOK());
 }
 
 TEST(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {

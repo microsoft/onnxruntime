@@ -206,8 +206,8 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetMoeExpertState() != nullptr;
   }
 
-  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const override {
-    return session_state_.RecordMoeExpertUsage(GetNodeIndex(), expert_ids);
+  Status RecordMoeExpertUsage(gsl::span<const int> used_expert_ids) const override {
+    return session_state_.RecordMoeExpertUsage(GetNodeIndex(), used_expert_ids);
   }
 
   Status GetMoeExpertCounters(InlinedVector<double>& counters) const override {

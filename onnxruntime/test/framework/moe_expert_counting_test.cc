@@ -3,6 +3,7 @@
 
 #include <array>
 #include <fstream>
+#include <thread>
 
 #include "core/framework/session_state.h"
 #include "core/graph/onnx_protobuf.h"
@@ -150,8 +151,11 @@ SessionOptions CountingOptions() {
   return options;
 }
 
-void TestCounting(bool quantized, bool cuda) {
+void TestCounting(bool quantized, bool cuda, bool tiled = false) {
   auto options = CountingOptions();
+  if (tiled) {
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_row_tile_size", "1"));
+  }
   if (cuda) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   }
@@ -169,6 +173,7 @@ void TestCounting(bool quantized, bool cuda) {
   const auto* state = session.GetSessionState().GetMoeExpertState();
   ASSERT_NE(state, nullptr);
   ASSERT_EQ(state->GetSnapshot().size(), 2U);
+  EXPECT_EQ(state->TotalExpertCount(), 2U * kExperts);
   for (int run = 1; run <= 2; ++run) {
     RunCountingModel(session);
     for (const auto& [key, node] : state->GetSnapshot()) {
@@ -183,6 +188,7 @@ TEST(MoeExpertCountingTest, CpuQMoE) { TestCounting(true, false); }
 #if defined(USE_CUDA)
 TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
+TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
 #endif
 
 TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
@@ -211,6 +217,7 @@ TEST(MoeExpertCountingTest, SharesStateWithSubgraphs) {
   const auto* state = session.GetSessionState().GetMoeExpertState();
   ASSERT_NE(state, nullptr);
   ASSERT_EQ(state->GetSnapshot().size(), 4U);
+  EXPECT_EQ(state->TotalExpertCount(), 4U * kExperts);
   for (const auto& [node, subgraphs] : session.GetSessionState().GetSubgraphSessionStateMap()) {
     for (const auto& [attribute, subgraph] : subgraphs) {
       EXPECT_EQ(subgraph->GetMoeExpertState(), state);
@@ -220,6 +227,38 @@ TEST(MoeExpertCountingTest, SharesStateWithSubgraphs) {
   RunCountingModel(session, true, false);
   for (const auto& [key, node] : state->GetSnapshot()) {
     EXPECT_EQ(node.counters, (InlinedVector<double>{1, 0, 1, 0}));
+  }
+}
+
+TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
+  auto options = CountingOptions();
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  const auto model = MakeCountingModel();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  RunCountingModel(session);
+  RunCountingModel(session);
+  for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
+    EXPECT_EQ(node.counters, (InlinedVector<double>{3, 0, 3, 0}));
+  }
+}
+
+TEST(MoeExpertCountingTest, ConcurrentRuns) {
+  const auto model = MakeCountingModel();
+  InferenceSessionWrapper session(CountingOptions(), GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  InlinedVector<std::thread> workers;
+  for (int i = 0; i < 4; ++i) {
+    workers.emplace_back([&session]() { RunCountingModel(session); });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+  for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
+    EXPECT_EQ(node.counters, (InlinedVector<double>{4, 0, 4, 0}));
   }
 }
 
@@ -245,8 +284,32 @@ TEST(MoeExpertCountingTest, LoadsInitialStateFile) {
 TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
   for (const auto& entry : {
            std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
-           std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"}}) {
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"}}) {
     SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    const auto model = MakeCountingModel();
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    EXPECT_FALSE(session.Initialize().IsOK());
+  }
+  for (const char* path : {"", "missing_moe_expert_counter_state.txt"}) {
+    auto options = CountingOptions();
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile, path));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    const auto model = MakeCountingModel();
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    EXPECT_FALSE(session.Initialize().IsOK());
+  }
+  for (const auto& entry : {
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "-0.1"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "1.1"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "nan"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "-0.1"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "inf"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "invalid"}}) {
+    auto options = CountingOptions();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
     InferenceSessionWrapper session(options, GetEnvironment());
     const auto model = MakeCountingModel();

@@ -1453,7 +1453,7 @@ struct ProviderHost {
 
   virtual bool OpKernelContext__HasMoeExpertState(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__RecordMoeExpertUsage(const OpKernelContext* p,
-                                                       gsl::span<const int> expert_ids) = 0;
+                                                       gsl::span<const int> used_expert_ids) = 0;
   virtual Status OpKernelContext__GetMoeExpertCounters(const OpKernelContext* p,
                                                        InlinedVector<double>& counters) = 0;
 };

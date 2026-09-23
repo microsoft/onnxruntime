@@ -1363,8 +1363,8 @@ struct OpKernelContext final {
   }
 
   bool HasMoeExpertState() const { return g_host->OpKernelContext__HasMoeExpertState(this); }
-  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const {
-    return g_host->OpKernelContext__RecordMoeExpertUsage(this, expert_ids);
+  Status RecordMoeExpertUsage(gsl::span<const int> used_expert_ids) const {
+    return g_host->OpKernelContext__RecordMoeExpertUsage(this, used_expert_ids);
   }
   Status GetMoeExpertCounters(InlinedVector<double>& counters) const {
     return g_host->OpKernelContext__GetMoeExpertCounters(this, counters);

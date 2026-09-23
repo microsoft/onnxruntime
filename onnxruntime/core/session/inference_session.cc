@@ -2791,6 +2791,11 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
+    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
+                            kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
+      ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() && !enable_moe_expert_counting,
+                    key, " requires expert counting to be enabled.");
+    }
 #if defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF(enable_moe_expert_counting, "MoE expert counting is not supported in a minimal build.");
     if (enable_moe_expert_statistics) {

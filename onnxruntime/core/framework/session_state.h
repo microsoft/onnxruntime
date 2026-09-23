@@ -334,9 +334,9 @@ class SessionState {
                               bool saving_ort_format = false);
 
   const MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
-  Status RecordMoeExpertUsage(NodeIndex node_index, gsl::span<const int> expert_ids) const {
+  Status RecordMoeExpertUsage(NodeIndex node_index, gsl::span<const int> used_expert_ids) const {
     ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");
-    return moe_expert_state_->RecordUsage(moe_graph_scope_, node_index, expert_ids);
+    return moe_expert_state_->RecordUsage(moe_graph_scope_, node_index, used_expert_ids);
   }
   Status GetMoeExpertCounters(NodeIndex node_index, InlinedVector<double>& counters) const {
     ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");

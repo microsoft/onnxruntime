@@ -1621,8 +1621,8 @@ struct ProviderHostImpl : ProviderHost {
     return p->HasMoeExpertState();
   }
   Status OpKernelContext__RecordMoeExpertUsage(const OpKernelContext* p,
-                                               gsl::span<const int> expert_ids) override {
-    return p->RecordMoeExpertUsage(expert_ids);
+                                               gsl::span<const int> used_expert_ids) override {
+    return p->RecordMoeExpertUsage(used_expert_ids);
   }
   Status OpKernelContext__GetMoeExpertCounters(const OpKernelContext* p,
                                                InlinedVector<double>& counters) override {
