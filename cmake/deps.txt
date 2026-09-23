@@ -58,6 +58,7 @@ cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.7.0.zip;51d4f1ba4
 deep_gemm;https://github.com/deepseek-ai/DeepGEMM/archive/559d79fb6994a58b8a15b4b93bf13ccc16edf247.tar.gz;76a0076386991cac8e5d32c3e7e74d9bb8102115
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip;239063aee4946a9af147b473a4c3da78ba7413b4
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
+directstorage;https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DirectStorage/1.2.3;be08f099a75c54997a753f444224af96ed0ee3d9
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.27.0.zip;1e4c9a464d3437e388ab0163f3be068dba783c08
 dawn;https://github.com/google/dawn/archive/refs/tags/v20260828.013844.zip;83f269a6b0c2a5a085c96a4e360d337950740018
 dawn_agility_sdk;https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.721.3-preview;fa5f5fc8d0c8c209cfbb530be634960d20595841

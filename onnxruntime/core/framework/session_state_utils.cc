@@ -149,11 +149,16 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                            default_cpu_alloc, normalized_cpu_tensor));
         utils::MakeCpuTensorCopy(cpu_staging_tensor, normalized_cpu_tensor);
         utils::NormalizeBoolTensorIfNeeded(normalized_cpu_tensor);
-        return CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value);
+        ORT_RETURN_IF_ERROR(
+            CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value));
+      } else {
+        ORT_RETURN_IF_ERROR(CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
+                                                      std::move(tensor), ort_value));
       }
-
-      return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
-                                       std::move(tensor), ort_value);
+      if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+        LOGS_DEFAULT(INFO) << "CUDA external data loader: path=pageable bytes=" << cpu_staging_tensor.SizeInBytes();
+      }
+      return Status::OK();
     }
   } else {
     if (device == default_cpu_device) {

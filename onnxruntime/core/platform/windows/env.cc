@@ -360,10 +360,12 @@ common::Status WindowsEnv::GetFileLength(int fd, /*out*/ size_t& file_size) cons
 
 namespace {
 
-class WindowsRandomAccessFile final : public RandomAccessFile {
+class WindowsRandomAccessFile final : public RandomAccessFile, public WindowsFileHandleProvider {
  public:
   explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
+
+  void* GetFileHandle() const override { return file_handle_.get(); }
 
   Status GetLength(size_t& length) const override {
     LARGE_INTEGER file_size{};

@@ -40,6 +40,7 @@ constexpr const char* kFuseConvBias = "fuse_conv_bias";
 constexpr const char* kSdpaKernel = "sdpa_kernel";
 constexpr const char* kExternalDataLoaderReadingThreads = "external_data_loader_reading_threads";
 constexpr const char* kExternalDataLoaderUseGds = "external_data_loader_use_gds";
+constexpr const char* kExternalDataLoaderUseDirectStorage = "external_data_loader_use_directstorage";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -150,6 +151,9 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(
               cuda::provider_option_names::kExternalDataLoaderUseGds,
               info.external_data_loader_use_gds)
+          .AddAssignmentToReference(
+              cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+              info.external_data_loader_use_directstorage)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
@@ -209,6 +213,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
        MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
       {cuda::provider_option_names::kExternalDataLoaderUseGds,
        MakeStringWithClassicLocale(info.external_data_loader_use_gds)},
+      {cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+       MakeStringWithClassicLocale(info.external_data_loader_use_directstorage)},
   };
 
   return options;
@@ -238,6 +244,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
        MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
       {cuda::provider_option_names::kExternalDataLoaderUseGds,
        MakeStringWithClassicLocale(info.external_data_loader_use_gds)},
+      {cuda::provider_option_names::kExternalDataLoaderUseDirectStorage,
+       MakeStringWithClassicLocale(info.external_data_loader_use_directstorage)},
   };
 
   return options;

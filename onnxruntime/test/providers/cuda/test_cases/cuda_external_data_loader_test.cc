@@ -66,12 +66,14 @@ void CreateExternalDataFile(size_t length, PathString& path,
 }
 
 void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_count = 4,
-                bool use_gds = false, size_t prefix_size = kFilePrefixSize) {
+                bool use_gds = false, size_t prefix_size = kFilePrefixSize,
+                bool use_directstorage = false) {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
   provider_options.external_data_loader_reading_threads = reading_thread_count;
   provider_options.external_data_loader_use_gds = use_gds;
+  provider_options.external_data_loader_use_directstorage = use_directstorage;
   auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
   ASSERT_NE(execution_provider, nullptr);
   auto loader = execution_provider->GetExternalDataLoader();
@@ -262,6 +264,74 @@ TEST(CudaExternalDataLoaderTest, LoadsMultipleBuffersWithGdsEnabled) {
 TEST(CudaExternalDataLoaderTest, LoadsUnalignedDataWithGdsEnabled) {
   VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold + 1, 2, 4, true);
 }
+
+TEST(CudaExternalDataLoaderTest, LoadsWithDirectStorageOrConfiguredFallback) {
+  for (const size_t readers : {0, 1, 4}) {
+    SCOPED_TRACE(readers);
+    VerifyLoad(cuda::kGdsIoAlignment, 2, readers, false, cuda::kGdsIoAlignment, true);
+    VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold + 1, 2, readers, false, kFilePrefixSize, true);
+  }
+}
+
+TEST(CudaExternalDataLoaderTest, LoadsMultipleBuffersWithDirectStorageEnabled) {
+  VerifyLoad(2 * cuda::kExternalDataLoaderBufferSize + 1, 2, 4, false, kFilePrefixSize, true);
+}
+
+TEST(CudaExternalDataLoaderTest, RejectsInvalidDirectStorageOptionFromStructOptions) {
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.external_data_loader_use_directstorage = 2;
+  Ort::SessionOptions session_options;
+  Ort::Status status(Ort::GetApi().SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, &provider_options));
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("external_data_loader_use_directstorage"));
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("got 2"));
+  EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+}
+
+#if defined(ORT_CUDA_DIRECTSTORAGE_AVAILABLE) && !defined(ORT_NO_RTTI)
+TEST(CudaExternalDataLoaderTest, NativeDirectStorageWithoutFallback) {
+  std::unique_ptr<cuda::DirectStorageLoader> loader;
+  const auto setup_status = cuda::DirectStorageLoader::Create(0, loader);
+  if (!setup_status.IsOK()) {
+    GTEST_SKIP() << "DirectStorage/D3D12/CUDA interoperability unavailable: " << setup_status.ErrorMessage();
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+  constexpr size_t length = cuda::kExternalDataLoaderBufferSize + 17;
+  Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({length}), *allocator);
+  for (size_t load = 0; load < 2; ++load) {
+    PathString path;
+    ASSERT_NO_FATAL_FAILURE(CreateExternalDataFile(length, path, {}, load));
+    ScopedFileDeleter deleter{path};
+    std::unique_ptr<RandomAccessFile> file;
+    ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path.c_str(), file));
+    const auto* handles = dynamic_cast<const WindowsFileHandleProvider*>(file.get());
+    ASSERT_NE(handles, nullptr);
+    ASSERT_STATUS_OK(loader->Load(path, handles->GetFileHandle(), kFilePrefixSize, length, tensor));
+    std::vector<uint8_t> output(length);
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), tensor.DataRaw(), length, cudaMemcpyDeviceToHost));
+    for (size_t i = 0; i < length; ++i) {
+      ASSERT_EQ(TestValue(i, load), output[i]) << "byte=" << i << " load=" << load;
+    }
+    EXPECT_FALSE(loader->Load(path, handles->GetFileHandle(), -1, length, tensor).IsOK());
+    EXPECT_FALSE(loader->Load(path, handles->GetFileHandle(), kFilePrefixSize + 1, length, tensor).IsOK());
+    EXPECT_FALSE(loader->Load(path, nullptr, kFilePrefixSize, length, tensor).IsOK());
+
+    PathString other_path;
+    ASSERT_NO_FATAL_FAILURE(CreateExternalDataFile(length, other_path, {}, load + 1));
+    ScopedFileDeleter other_deleter{other_path};
+    const auto replaced = loader->Load(other_path, handles->GetFileHandle(), kFilePrefixSize, length, tensor);
+    EXPECT_FALSE(replaced.IsOK());
+    EXPECT_THAT(replaced.ErrorMessage(), testing::HasSubstr("file changed"));
+  }
+}
+#endif
 
 TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableLoading) {
   const std::array<uint8_t, 4> input{0, 1, 2, 255};

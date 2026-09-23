@@ -70,6 +70,7 @@ option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+cmake_dependent_option(onnxruntime_USE_CUDA_DIRECTSTORAGE "Build Microsoft DirectStorage CUDA loading support" OFF "onnxruntime_USE_CUDA;WIN32" OFF)
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
 # OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
 # use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.

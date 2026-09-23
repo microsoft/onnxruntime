@@ -145,6 +145,14 @@ class PosixFileDescriptorProvider {
   virtual int GetFileDescriptor() const = 0;
 };
 
+class WindowsFileHandleProvider {
+ public:
+  virtual ~WindowsFileHandleProvider() = default;
+
+  // The handle remains owned by the provider and is valid only for its lifetime.
+  virtual void* GetFileHandle() const = 0;
+};
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///

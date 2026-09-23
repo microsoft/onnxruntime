@@ -44,4 +44,5 @@ struct OrtCUDAProviderOptionsV2 {
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
   size_t external_data_loader_reading_threads = 4;                                                             // Number of CPU read tasks per external-data staging buffer. 0 disables pinned-buffer fallback; 1 disables parallel reads.
   int external_data_loader_use_gds = 0;                                                                        // Try GPUDirect Storage before the configured pinned/pageable host-memory fallback.
+  int external_data_loader_use_directstorage = 0;                                                              // Try Microsoft DirectStorage on Windows before the configured host-memory fallback.
 };

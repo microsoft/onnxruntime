@@ -9,6 +9,7 @@
 
 #include "core/framework/external_data_loader.h"
 #include "core/providers/cuda/cuda_external_data_loader_gds.h"
+#include "core/providers/cuda/cuda_external_data_loader_directstorage.h"
 #include "cuda_pch.h"
 
 namespace onnxruntime {
@@ -65,7 +66,8 @@ class ExternalDataLoaderThreadPool;
  */
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
-  ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds = false);
+  ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds = false,
+                     bool use_directstorage = false);
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
@@ -88,6 +90,9 @@ class ExternalDataLoader final : public IExternalDataLoader {
   const bool use_gds_;
   mutable bool gds_disabled_{false};
   mutable std::unique_ptr<GdsLoader> gds_loader_;
+  const bool use_directstorage_;
+  mutable bool directstorage_disabled_{false};
+  mutable std::unique_ptr<DirectStorageLoader> directstorage_loader_;
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 

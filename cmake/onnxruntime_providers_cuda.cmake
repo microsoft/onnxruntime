@@ -236,7 +236,16 @@
 
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
+  if(onnxruntime_USE_CUDA_DIRECTSTORAGE)
+    include(external/directstorage.cmake)
+  endif()
+
   function(config_cuda_provider_shared_module target)
+    if(onnxruntime_USE_CUDA_DIRECTSTORAGE)
+      target_compile_definitions(${target} PRIVATE ORT_CUDA_DIRECTSTORAGE_AVAILABLE)
+      target_include_directories(${target} PRIVATE "${directstorage_SOURCE_DIR}/native/include")
+      target_link_libraries(${target} PRIVATE d3d12 dxgi)
+    endif()
     if (onnxruntime_REDUCED_OPS_BUILD)
       add_op_reduction_include_dirs(${target})
     endif()

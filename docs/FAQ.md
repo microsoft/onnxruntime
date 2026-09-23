@@ -7,7 +7,7 @@ The default CUDA build supports 3 standard quantization operators: QuantizeLinea
 ## How can I reduce model loading time for large CPU or CUDA models?
 
 See [Accelerate model loading](Model_Loading_Performance.md) for parallel CPU weight prepacking and CUDA external-data
-loading through GPUDirect Storage or pinned host buffers, including the session and execution provider options that
+loading through GPUDirect Storage, Microsoft DirectStorage, or pinned host buffers, including the session and execution provider options that
 control them.
 
 ## How do I change the severity level of the default logger to something other than the default (WARNING)?
