@@ -3191,6 +3191,47 @@ static bool ValueIsOnTransposableInput(OptimizerCtx& ctx, api::NodeRef& consumer
   return false;
 }
 
+// True if DefaultCostCheck's input-cost rule would allow pushing `pushed_perm` through `consumer`, assuming `value`
+// already carries that Transpose. A same-rank dynamic other input makes Add/Concat cost 0, so the optimizer will not
+// push and a later inverse Transpose is not actually reachable. Sibling outputs of the same producer are treated as
+// already carrying the push, because rewriting that producer inserts the Transpose on every output.
+static bool ConsumerInputCostAllowsPush(OptimizerCtx& ctx, api::NodeRef& consumer, std::string_view value,
+                                        const std::vector<int64_t>& pushed_perm) {
+  const HandlerInfo* info = GetHandler(consumer, ctx.extended_handlers);
+  if (info == nullptr) {
+    return false;
+  }
+  const std::vector<size_t> indices = info->transposible_inputs_fn(ctx, consumer);
+  const auto inputs = consumer.Inputs();
+  std::unique_ptr<api::NodeRef> value_producer = ctx.graph.GetNodeProducingOutput(value);
+  int cost = 0;
+  for (size_t j : indices) {
+    if (j >= inputs.size()) {
+      continue;
+    }
+    if (inputs[j] == value) {
+      cost -= EstimateValueRank(ctx.graph, inputs[j]);
+      continue;
+    }
+    // Sibling outputs of the same producer will receive the same pushed Transpose if that producer is rewritten.
+    if (value_producer) {
+      bool sibling = false;
+      for (auto out : value_producer->Outputs()) {
+        if (out == inputs[j]) {
+          sibling = true;
+          break;
+        }
+      }
+      if (sibling) {
+        cost -= EstimateValueRank(ctx.graph, inputs[j]);
+        continue;
+      }
+    }
+    cost += EstimateTransposeValueCost(ctx.graph, inputs[j], pushed_perm, ctx.extended_handlers);
+  }
+  return cost < 0;
+}
+
 // Follows outputs through handlers that transpose their outputs to find the Transposes that a Transpose with
 // `pushed_perm` on `value` would eventually meet. Returns true only if at least one cancelling Transpose is reached
 // and none of them would merely merge.
@@ -3289,7 +3330,8 @@ static CancelWalkResult PushedTransposeCancelsImpl(OptimizerCtx& ctx, std::strin
         }
 
         const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, frame.pushed_perm);
-        if (!output_perm.has_value()) {
+        if (!output_perm.has_value() ||
+            !ConsumerInputCostAllowsPush(ctx, *consumer, frame.value, frame.pushed_perm)) {
           if (!tolerate_stranded_branches) {
             frame.acc = CancelWalkResult::kFail;
             terminal_fail = true;
@@ -3383,6 +3425,21 @@ static bool IncomingTransposeIsSolelyConsumedByNode(const api::GraphRef& graph, 
   return saw_matching_transpose;
 }
 
+// True if pushing through `node` would place a Transpose that is shared by a later Transpose and at least one other
+// consumer. Merging on the Transpose branch then still leaves the inserted Transpose for the other consumers.
+static bool OutputFansOutToTransposeAndOthers(const api::GraphRef& graph, std::string_view output) {
+  const auto consumers = graph.GetValueConsumers(output);
+  if (!consumers->comprehensive || consumers->nodes.size() <= 1) {
+    return false;
+  }
+  for (auto& consumer : consumers->nodes) {
+    if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer).has_value()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
                          const std::vector<int64_t>& perm,
                          const std::unordered_set<std::string>& outputs_leading_to_transpose,
@@ -3396,12 +3453,13 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
 
   if (cost < 0 && info.transposes_outputs) {
     // If the output will be transposed and won't ultimately cancel, factor in that cost.
-    // An inserted output Transpose is free when a downstream Transpose cancels the pushed perm. A downstream
-    // Transpose that would only merge leaves a Transpose behind, so it only pays off when the incoming Transpose
-    // disappears into this node (it feeds nothing else) and at most one output Transpose survives the push.
+    // An inserted output Transpose is free when a downstream Transpose cancels the pushed perm. A merge only pays
+    // off when the incoming Transpose disappears into this node and at most one output Transpose is kept. That kept
+    // output must not fan out: a merge partner plus a dead-end on the same value leaves both Transposes in the graph.
     bool any_output_leads_to_transpose = false;
     bool all_pushed_outputs_cancel = true;
     int kept_output_transposes = 0;
+    bool kept_merge_output_fans_out = false;
     auto outputs = node.Outputs();
     int out_cost = 0;
     const std::optional<std::vector<int64_t>> pushed_output_perm =
@@ -3427,12 +3485,16 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
 
       all_pushed_outputs_cancel = false;
       ++kept_output_transposes;
+      if (OutputFansOutToTransposeAndOthers(ctx.graph, out)) {
+        kept_merge_output_fans_out = true;
+      }
     }
 
     const bool waive_output_cost =
         any_output_leads_to_transpose &&
         (all_pushed_outputs_cancel ||
-         (kept_output_transposes <= 1 && IncomingTransposeIsSolelyConsumedByNode(ctx.graph, node, perm)));
+         (kept_output_transposes <= 1 && !kept_merge_output_fans_out &&
+          IncomingTransposeIsSolelyConsumedByNode(ctx.graph, node, perm)));
     if (!waive_output_cost) {
       cost += out_cost;
     }

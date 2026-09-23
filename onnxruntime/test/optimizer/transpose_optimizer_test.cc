@@ -2162,6 +2162,109 @@ TEST(TransposeOptimizerTests, TestSplitSharedTransposePartialCancel) {
                     /*opset_version*/ {15, 18});
 }
 
+// Shared Transpose -> Slice -> Add(dynamic same-rank) -> inverse Transpose. The inverse is not reachable: Add's other
+// input keeps input cost at 0 so DefaultCostCheck will not push Add. Walking through Add anyway would push Slice,
+// leave the new Transpose stranded, and increase the Transpose count.
+TEST(TransposeOptimizerTests, TestSliceSharedTransposeDoesNotWalkInfeasibleAdd) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* add_rhs_arg = builder.MakeInput<float>({4, 10, 4}, 0.0, 1.0);
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto* slice_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+
+    builder.AddNode("Sigmoid", {input0_arg}, {sigmoid_out});
+    auto& transpose_1 = builder.AddNode("Transpose", {sigmoid_out}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    auto& slice_1 = builder.AddNode("Slice", {transpose_1_out}, {slice_out});
+    slice_1.AddAttribute("axes", std::vector<int64_t>{0});
+    slice_1.AddAttribute("starts", std::vector<int64_t>{1});
+    slice_1.AddAttribute("ends", std::vector<int64_t>{-1});
+    builder.AddNode("Relu", {transpose_1_out}, {builder.MakeOutput()});
+    builder.AddNode("Add", {slice_out, add_rhs_arg}, {add_out});
+    auto& transpose_2 = builder.AddNode("Transpose", {add_out}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 0, 1});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+
+    int shared_transposes = 0;
+    int transposes_after_add = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      if (producer->OpType() == "Sigmoid") {
+        ++shared_transposes;
+      } else if (producer->OpType() == "Add") {
+        ++transposes_after_add;
+      }
+    }
+    EXPECT_EQ(shared_transposes, 1);
+    EXPECT_EQ(transposes_after_add, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 7);
+}
+
+// Unshared Transpose -> Relu, with Relu fanning out to a same-perm Transpose (merge) and a dead-end. The inserted
+// output Transpose stays for the dead-end, so merging does not drop a Transpose and the push must not happen.
+TEST(TransposeOptimizerTests, TestUnsharedTransposeMergeWithDeadEndFanout) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto* relu_out = builder.MakeIntermediate();
+
+    builder.AddNode("Sigmoid", {input0_arg}, {sigmoid_out});
+    auto& transpose_1 = builder.AddNode("Transpose", {sigmoid_out}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {transpose_1_out}, {relu_out});
+    auto& transpose_2 = builder.AddNode("Transpose", {relu_out}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {relu_out}, {builder.MakeOutput()});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+
+    int transposes_after_sigmoid = 0;
+    int transposes_after_relu = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      if (producer->OpType() == "Sigmoid") {
+        ++transposes_after_sigmoid;
+      } else if (producer->OpType() == "Relu") {
+        ++transposes_after_relu;
+      }
+    }
+    EXPECT_EQ(transposes_after_sigmoid, 1);
+    EXPECT_EQ(transposes_after_relu, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
 // Builds the fully quantized equivalent of BuildSharedTransposeSliceModel:
 //   op -> q -> dq_tr -> transpose_1 -> q_tr -+-> dq -> slice_1 -> q -> dq -> transpose_2
 //                                            +-> dq -> slice_2 -> q -> dq
