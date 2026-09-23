@@ -1667,9 +1667,7 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
     def test_non_causal_local_window_rejected(self):
-        config = Config(
-            1, 4, 32, 2, 1, 32, 16, True, False, False, False, 0.0, ep="WebGpuExecutionProvider"
-        )
+        config = Config(1, 4, 32, 2, 1, 32, 16, True, False, False, False, 0.0, ep="WebGpuExecutionProvider")
         config.is_causal = False
         with self.assertRaises(Exception) as ctx:
             parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
