@@ -2866,7 +2866,11 @@ static bool HandleReshapeMerge(HandlerArgs& args) {
   if (requested_shape_data == nullptr || requested_shape_data->Data().size() == 0) {
     return false;
   }
-  std::vector<int64_t> requested_shape = DataInt64(*requested_shape_data);
+  auto requested_shape_opt = DataInt64(*requested_shape_data);
+  if (!requested_shape_opt) {
+    return false;
+  }
+  const std::vector<int64_t>& requested_shape = *requested_shape_opt;
   for (int64_t d : requested_shape) {
     if (d <= 0) {
       return false;  // -1 / 0 not handled here; HandleReshapeAsTranspose owns those when applicable.
