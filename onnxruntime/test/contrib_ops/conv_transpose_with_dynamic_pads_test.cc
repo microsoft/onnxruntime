@@ -2,7 +2,11 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/graph/model.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/util/include/asserts.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -171,6 +175,24 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_NegativePads_Dml) {
       .RunWithConfig();
 }
 #endif  // USE_DML
+
+// 'Pads' is schema-optional; a node may validly supply only X and W. Shape inference must not
+// index past the end of InputDefs() when reading the omitted Pads input.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_PadsOmitted_ShapeInferenceOnly) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+  Model model("conv_transpose_with_dynamic_pads_pads_omitted", /*is_onnx_domain_only=*/false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model.MainGraph());
+  NodeArg* x = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  NodeArg* w = builder.MakeInput<float>(std::vector<int64_t>{1, 1, 3, 3});
+  NodeArg* y = builder.MakeOutput();
+  builder.AddNode("ConvTransposeWithDynamicPads", {x, w}, {y}, kMSDomain);
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
 
 }  // namespace test
 }  // namespace onnxruntime
