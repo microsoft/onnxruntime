@@ -286,9 +286,10 @@ class Environment {
                                           const std::vector<EpFactoryInternal*>& internal_factories = {});
 
   struct EpInfo {
-    // calls EpLibrary::Load
-    // for each factory gets the OrtEpDevice instances and adds to execution_devices
-    // internal_factory is set if this is an internal EP
+    // Calls EpLibrary::Load.
+    // For each factory, gets the OrtEpDevice instances and adds to `out.execution_devices`.
+    // Provide `internal_factories` if this is an internal EP.
+    // If successful, `out` is set to the created instance.
     static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                          const std::vector<EpFactoryInternal*>& internal_factories = {});
 

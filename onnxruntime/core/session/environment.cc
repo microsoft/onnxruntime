@@ -591,7 +591,6 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
       std::unique_ptr<EpInfo> ep_info;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info, internal_factories));
-      ORT_RETURN_IF_NOT(ep_info != nullptr);
 
       // Register shared allocators
       const size_t max_allocator_count = SafeInt<size_t>(ep_info->execution_devices.size()) * 2;
@@ -1023,8 +1022,8 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
   }
 
-  out.reset(new EpInfo());  // can't use make_unique with private ctor
-  EpInfo& instance = *out;
+  auto instance_unique_ptr = std::unique_ptr<EpInfo>(new EpInfo());  // can't use make_unique with private ctor
+  EpInfo& instance = *instance_unique_ptr;
   instance.library = std::move(library_in);
   instance.internal_factories = internal_factories;
 
@@ -1064,6 +1063,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
     }
   }
 
+  out = std::move(instance_unique_ptr);
   return Status::OK();
 }
 
