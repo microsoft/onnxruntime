@@ -59,7 +59,7 @@ Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor
   const OrtValue* src_ptr = &src;
   OrtValue* dst_ptr = &dst;
   OrtSyncStream* stream_ptr = reinterpret_cast<OrtSyncStream*>(stream);
-  auto* status = impl_->CopyTensors(&impl_, &src_ptr, &dst_ptr, &stream_ptr, 1);
+  auto* status = impl_->CopyTensors(impl_.get(), &src_ptr, &dst_ptr, &stream_ptr, 1);
 
   return ToStatusAndRelease(status);
 }
