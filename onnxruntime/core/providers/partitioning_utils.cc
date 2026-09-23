@@ -346,6 +346,10 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     // if output connects to a node not in this subgraph we need to add it
     // unless it was already added as an overall graph output,
     for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+      if (it->IsControlEdge()) {
+        continue;
+      }
+
       if (!Contains(node_set, &it->GetNode())) {
         const auto* output_def = output_defs[it->GetSrcArgIndex()];
         if (!Contains(graph_outputs, output_def) && subgraph_outputs.insert(output_def).second) {

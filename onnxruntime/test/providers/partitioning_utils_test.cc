@@ -474,5 +474,39 @@ TEST(PartitioningUtilsTest, TestImplicitInputsFromIfNode) {
       << "Implicit input 'X' (used in If subgraphs) must appear in MetaDef inputs";
 }
 
+TEST(PartitioningUtilsTest, MakeComputeCapabilityIgnoresControlEdgeSlots) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 15}};
+  Model model("PartitioningUtils_ControlEdgeModel", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* input = builder.MakeInput<float>({1}, -1.0f, 1.0f);
+  auto* intermediate = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  const NodeIndex source_index = builder.AddNode("Identity", {input}, {intermediate}).Index();
+  const NodeIndex destination_index = builder.AddNode("Identity", {intermediate}, {output}).Index();
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_TRUE(graph.AddControlEdge(source_index, destination_index));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  GraphViewer graph_viewer(graph);
+  const Node* source = graph.GetNode(source_index);
+  ASSERT_NE(source, nullptr);
+  const std::vector<const Node*> group{source};
+  const auto generate_metadef_name = []() { return "TestMetaDef_ControlEdge"; };
+  auto result = utils::MakeComputeCapability(
+      graph_viewer, group, generate_metadef_name, "TEST", false);
+
+  ASSERT_NE(result, nullptr);
+  ASSERT_NE(result->sub_graph, nullptr);
+  const auto* meta_def = result->sub_graph->GetMetaDef();
+  ASSERT_NE(meta_def, nullptr);
+  ASSERT_EQ(meta_def->outputs.size(), 1u);
+  EXPECT_EQ(meta_def->outputs[0], intermediate->Name());
+}
+
 }  // namespace test
 }  // namespace onnxruntime

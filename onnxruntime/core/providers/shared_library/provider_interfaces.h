@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <optional>
+#include <limits>
 #include <utility>
 #include <vector>
 #include <list>
@@ -145,6 +146,10 @@ struct Node__EdgeIterator {
   virtual const Node& GetNode() const = 0;
   virtual int GetSrcArgIndex() const = 0;
   virtual int GetDstArgIndex() const = 0;
+  bool IsControlEdge() const {
+    return GetSrcArgIndex() == std::numeric_limits<int>::max() &&
+           GetDstArgIndex() == std::numeric_limits<int>::max();
+  }
 };
 
 struct ConstGraphNodes_Iterator {

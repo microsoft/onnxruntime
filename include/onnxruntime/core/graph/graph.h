@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <climits>
 #include <filesystem>
 #include <functional>
 #include <limits>
