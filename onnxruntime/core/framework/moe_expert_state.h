@@ -5,7 +5,6 @@
 
 #include <atomic>
 #include <istream>
-#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -80,15 +79,13 @@ class MoeExpertState {
     size_t count;
   };
   struct KernelState {
-    KernelState(std::string node_type, ExpertRange range) : node_type(std::move(node_type)), experts(range) {}
+    KernelState(Key key, std::string node_type, ExpertRange range)
+        : key(std::move(key)), node_type(std::move(node_type)), experts(range) {}
+    Key key;
     std::string node_type;
     ExpertRange experts;
     KernelPilot pilot;
   };
-  // Maps graph identity to the registered kernel, so Load() can resolve its graph-scope-keyed
-  // records to the corresponding KernelState. Only needed between RegisterNode and Load()/
-  // FinalizeInitialization(); cleared once initialization is finalized.
-  std::map<Key, const OpKernel*> nodes_;
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;

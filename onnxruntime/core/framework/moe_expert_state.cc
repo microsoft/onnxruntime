@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <limits>
 #include <locale>
+#include <map>
 #include <set>
 #include <sstream>
 #include <tuple>
@@ -36,8 +37,10 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
   ORT_RETURN_IF(expert_count == 0 || expert_count > static_cast<size_t>(std::numeric_limits<int>::max()),
                 "Expert count must be positive and fit in an int.");
   const Key key{std::string(graph_scope), node_index};
-  ORT_RETURN_IF(nodes_.find(key) != nodes_.end(), "Duplicate MoE counter node: ", graph_scope, " ", node_index);
   ORT_RETURN_IF(kernels_.contains(kernel), "Duplicate MoE counter kernel: ", graph_scope, " ", node_index);
+  for (const auto& [existing_kernel, state] : kernels_) {
+    ORT_RETURN_IF(state.key == key, "Duplicate MoE counter node: ", graph_scope, " ", node_index);
+  }
   const ExpertRange range{counters_.size(), expert_count};
   const size_t total_expert_count = SafeInt<size_t>(range.begin) + expert_count;
   counters_.reserve(total_expert_count);
@@ -46,8 +49,7 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  nodes_.emplace(key, kernel);
-  auto [entry, inserted] = kernels_.try_emplace(kernel, std::string(node_type), range);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, key, std::string(node_type), range);
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
   return Status::OK();
@@ -64,7 +66,12 @@ Status MoeExpertState::Load(std::istream& input) {
                     "Expected initial counter state header: moe_expert_state 1");
 
   // Validate into a flat copy so a malformed file cannot partially overwrite the state.
-  // nodes_ resolves graph identity to a kernel; kernels_ holds that kernel's (node_type, range).
+  // Build a local graph-identity index from kernels_'s stored keys, just for resolving this
+  // file's records; MoeExpertState itself only ever looks kernels up by pointer.
+  std::map<Key, const OpKernel*> nodes;
+  for (const auto& [kernel, state] : kernels_) {
+    nodes.emplace(state.key, kernel);
+  }
   auto loaded_counters = counters_;
   std::set<std::tuple<std::string, size_t, size_t>> seen;
   size_t line_number = 1;
@@ -83,8 +90,8 @@ Status MoeExpertState::Load(std::istream& input) {
                           static_cast<uint64_t>(expert_id) <= std::numeric_limits<size_t>::max() &&
                           std::isfinite(value) && value >= 0,
                       "Invalid expert counter record at line ", line_number);
-    const auto node = nodes_.find({scope, static_cast<size_t>(node_index)});
-    ORT_RETURN_IF(node == nodes_.end(), "Unknown MoE counter node at line ", line_number);
+    const auto node = nodes.find({scope, static_cast<size_t>(node_index)});
+    ORT_RETURN_IF(node == nodes.end(), "Unknown MoE counter node at line ", line_number);
     const auto& kernel_state = kernels_.at(node->second);
     ORT_RETURN_IF_NOT(kernel_state.node_type == type &&
                           static_cast<size_t>(expert_id) < kernel_state.experts.count,
@@ -101,9 +108,6 @@ Status MoeExpertState::Load(std::istream& input) {
 Status MoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
   initialized_ = true;
-  // nodes_ only resolves graph-scope-keyed Load() records to their kernel; Load() must run
-  // before this point, so the mapping is no longer needed once initialization is finalized.
-  nodes_.clear();
   return Status::OK();
 }
 
