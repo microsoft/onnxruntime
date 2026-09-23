@@ -68,7 +68,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // ``[E, N, K / (8 / bits)]`` weight initializer; ``packed_buf`` receives a
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
   void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
-                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed, int64_t weight_bits);
   int64_t expert_weight_bits_;
   int64_t fc1_expert_weight_bits_;
   int64_t fc2_expert_weight_bits_;

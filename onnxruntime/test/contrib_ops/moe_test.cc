@@ -2240,6 +2240,19 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecode) {
       /*use_initializers=*/true);
 }
 
+TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& bits : {std::pair<int64_t, int64_t>{2, 4},
+                           std::pair<int64_t, int64_t>{4, 2}}) {
+    RunQMoEMixedWidthCudaIdentityTest(
+        bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
+        /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/64,
+        /*model_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+  }
+}
+
 TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
@@ -2259,6 +2272,19 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeBFloat16) {
       2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
       /*use_bf16=*/true, /*block_size=*/64, /*model_size=*/512, /*expect_scratch_failure=*/false,
       /*use_initializers=*/true);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  for (const auto& bits : {std::pair<int64_t, int64_t>{2, 4},
+                           std::pair<int64_t, int64_t>{4, 2}}) {
+    RunQMoEMixedWidthCudaIdentityTest(
+        bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
+        /*with_zero_points=*/false, /*use_bf16=*/true, /*block_size=*/64,
+        /*model_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+  }
 }
 #endif
 
