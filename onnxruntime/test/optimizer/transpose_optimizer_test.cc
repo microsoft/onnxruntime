@@ -2265,6 +2265,106 @@ TEST(TransposeOptimizerTests, TestUnsharedTransposeMergeWithDeadEndFanout) {
                     /*opset_version*/ 15);
 }
 
+// Unshared Transpose -> Relu -> Relu, with the second Relu fanning out to a merge Transpose and a dead-end. Immediate
+// consumers of the first Relu look covered, but walking through the second Relu finds a stranded branch, so the push
+// must not happen.
+TEST(TransposeOptimizerTests, TestUnsharedTransposeMergeThroughUnaryThenFanout) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto* relu_1_out = builder.MakeIntermediate();
+    auto* relu_2_out = builder.MakeIntermediate();
+
+    builder.AddNode("Sigmoid", {input0_arg}, {sigmoid_out});
+    auto& transpose_1 = builder.AddNode("Transpose", {sigmoid_out}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {transpose_1_out}, {relu_1_out});
+    builder.AddNode("Relu", {relu_1_out}, {relu_2_out});
+    auto& transpose_2 = builder.AddNode("Transpose", {relu_2_out}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {relu_2_out}, {builder.MakeOutput()});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+
+    int transposes_after_sigmoid = 0;
+    int transposes_after_relu = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      if (producer->OpType() == "Sigmoid") {
+        ++transposes_after_sigmoid;
+      } else if (producer->OpType() == "Relu") {
+        ++transposes_after_relu;
+      }
+    }
+    EXPECT_EQ(transposes_after_sigmoid, 1);
+    EXPECT_EQ(transposes_after_relu, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+// Unshared Transpose into Split whose two outputs each have a non-cancelling Transpose. Pushing removes the incoming
+// node and merges on both outputs, so three Transposes become two.
+TEST(TransposeOptimizerTests, TestSplitUnsharedTransposeTwoMerges) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto* split_out_0 = builder.MakeIntermediate();
+    auto* split_out_1 = builder.MakeIntermediate();
+
+    builder.AddNode("Sigmoid", {input0_arg}, {sigmoid_out});
+    auto& transpose_1 = builder.AddNode("Transpose", {sigmoid_out}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    auto& split_1 = builder.AddNode("Split", {transpose_1_out}, {split_out_0, split_out_1});
+    split_1.AddAttribute("axis", static_cast<int64_t>(1));
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+      split_1.AddAttribute("num_outputs", static_cast<int64_t>(2));
+    }
+    auto& transpose_2 = builder.AddNode("Transpose", {split_out_0}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    auto& transpose_3 = builder.AddNode("Transpose", {split_out_1}, {builder.MakeOutput()});
+    transpose_3.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "incoming Transpose should merge into both Split outputs";
+
+    int transposes_after_split = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      EXPECT_EQ(producer->OpType(), "Split");
+      ++transposes_after_split;
+    }
+    EXPECT_EQ(transposes_after_split, 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18});
+}
+
 // Builds the fully quantized equivalent of BuildSharedTransposeSliceModel:
 //   op -> q -> dq_tr -> transpose_1 -> q_tr -+-> dq -> slice_1 -> q -> dq -> transpose_2
 //                                            +-> dq -> slice_2 -> q -> dq
