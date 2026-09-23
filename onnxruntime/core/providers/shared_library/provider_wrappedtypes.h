@@ -1362,12 +1362,8 @@ struct OpKernelContext final {
     return g_host->OpKernelContext__GetRunInstrumentationContext(this);
   }
 
-  bool HasMoeExpertState() const { return g_host->OpKernelContext__HasMoeExpertState(this); }
-  Status RecordMoeExpertUsage(gsl::span<const int> used_expert_ids) const {
-    return g_host->OpKernelContext__RecordMoeExpertUsage(this, used_expert_ids);
-  }
-  Status GetMoeExpertCounters(InlinedVector<double>& counters) const {
-    return g_host->OpKernelContext__GetMoeExpertCounters(this, counters);
+  MoeExpertUsage* GetMoeExpertUsage() const {
+    return g_host->OpKernelContext__GetMoeExpertUsage(this);
   }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)

@@ -334,13 +334,8 @@ class SessionState {
                               bool saving_ort_format = false);
 
   const MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
-  Status RecordMoeExpertUsage(const OpKernel* kernel, gsl::span<const int> used_expert_ids) const {
-    ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");
-    return moe_expert_state_->RecordUsage(kernel, used_expert_ids);
-  }
-  Status GetMoeExpertCounters(const OpKernel* kernel, InlinedVector<double>& counters) const {
-    ORT_RETURN_IF_NOT(moe_expert_state_, "MoE expert counting is disabled.");
-    return moe_expert_state_->GetCounters(kernel, counters);
+  MoeExpertUsage* GetMoeExpertUsage(const OpKernel* kernel) const {
+    return moe_expert_state_ ? moe_expert_state_->GetUsage(kernel) : nullptr;
   }
 
   SessionState* Parent() {

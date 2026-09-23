@@ -44,14 +44,26 @@ there is no locking in the kernel update path. Different kernels may update thei
 one kernel must not execute twice simultaneously. Global snapshots must be read while no run is active. Registration,
 counter parameters, and file loading are frozen before execution starts.
 
-Internal kernels access their own counters through `OpKernelContext::HasMoeExpertState()`,
-`RecordMoeExpertUsage()`, and `GetMoeExpertCounters()`. The shared-provider bridge exposes the same interface to CUDA.
-`SessionState::GetMoeExpertState()->GetSnapshot()` provides an internally accessible snapshot of all registered nodes;
-this change does not add a public C or Python counter-retrieval API.
+`OpKernelContext` exposes only `GetMoeExpertUsage()`: it returns a non-owning pointer to a session-owned, kernel-specific
+`MoeExpertUsage`, or `nullptr` when counting is unavailable. The object provides `RecordUsage()` and `GetCounters()`;
+it remains valid for the session lifetime and must not be deleted by a kernel. Its interface lives in the internal
+`core/framework/moe_expert_usage.h` header.
+
+The internal C++ shared-provider bridge forwards only this getter to CUDA. Calls on the returned interface dispatch
+back to the runtime; neither `MoeExpertState` nor in-tree graph types cross the provider boundary.
+`SessionState::GetMoeExpertState()->GetSnapshot()` provides an internally accessible snapshot of all registered nodes.
+There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
 
 CUDA counting copies routing IDs to the host and synchronizes the compute stream before consuming them. Tiled QMoE
-unions selected experts across all tiles before updating the counters once for the invocation. This opt-in diagnostic
-mode adds synchronization overhead; disabled counting does not allocate counter buffers or synchronize.
+unions selected experts across all tiles before updating the counters once for the invocation.
+The CUDA collector is constructed once per kernel only when `session.enable_moe_expert_counting=1`. It reuses its
+host buffers between invocations and resets only the current invocation's selected-expert set. Buffer capacity grows
+only when needed for a larger invocation.
+
+Both counting and routing-logging options are cached at kernel construction. With their default values (`0`), the
+kernel skips usage/context lookups, collector construction, collection calls, and statistics-only size calculations.
+There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
+remain. Enabling these diagnostics adds overhead.
 
 ## Initial counter file
 

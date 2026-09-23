@@ -188,8 +188,9 @@ The root `SessionState` owns a dedicated `MoeExpertState` shared with its subgra
 - per-node expert counters;
 - the global expert budget and per-node allocation targets.
 
-Kernels access this state through a restricted interface exposed through their kernel context, not by modifying
-`SessionState` directly. Expert identity includes graph scope as well as node and expert IDs, so nodes in different
+Kernels obtain a kernel-specific `MoeExpertUsage` through the single `OpKernelContext::GetMoeExpertUsage()` accessor,
+not by modifying `SessionState` directly. This is an internal C++ interface, not a public C API.
+Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
 
 The CUDA cache manager owns device-specific resources and execution state:
@@ -233,8 +234,8 @@ Depends on PR 1.
 - Add `MoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
 - Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
 - Build the immutable kernel-pointer/expert-ID dictionary after kernel creation and before any run.
-- Expose restricted kernel-context access for reporting used experts and reading the current kernel's counters,
-  including the provider bridge needed by CUDA kernels.
+- Expose a single kernel-context getter returning `MoeExpertUsage` for reporting used experts and reading the current
+  kernel's counters. Forward only this getter through the internal C++ provider bridge; do not extend the public C API.
 - Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
 - Wire CPU and CUDA MoE/QMoE routing results into per-invocation updates:
 

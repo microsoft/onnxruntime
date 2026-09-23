@@ -4,6 +4,8 @@
 #include <array>
 #include <fstream>
 
+#include "core/framework/execution_frame.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -118,8 +120,7 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   return model.SerializeAsString();
 }
 
-Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
-                            bool subgraphs = false, bool condition = true) {
+NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true) {
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue input, router, cond;
   const std::vector<MLFloat16> values(3 * kWidth, MLFloat16(1.0f));
@@ -134,8 +135,13 @@ Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& ou
     CreateMLValue<bool>(allocator, {}, {condition}, &cond);
     feeds.emplace("condition", cond);
   }
+  return feeds;
+}
+
+Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
+                            bool subgraphs = false, bool condition = true) {
   const std::array<std::string, 1> output_names{"output"};
-  return session.Run(RunOptions{}, feeds, output_names, &outputs);
+  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition), output_names, &outputs);
 }
 
 void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true) {
@@ -153,6 +159,67 @@ SessionOptions CountingOptions() {
   options.graph_optimization_level = TransformerLevel::Default;
   options.intra_op_param.thread_pool_size = 1;
   return options;
+}
+
+class NoExpertUsageContext final : public OpKernelContextInternal {
+ public:
+  using OpKernelContextInternal::OpKernelContextInternal;
+
+  MoeExpertUsage* GetMoeExpertUsage() const override {
+    ADD_FAILURE() << "Disabled expert counting must not access MoeExpertUsage.";
+    return nullptr;
+  }
+};
+
+void TestDisabledUsageAccess(bool quantized) {
+  for (bool explicit_disable : {false, true}) {
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    options.intra_op_param.thread_pool_size = 1;
+    if (explicit_disable) {
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0"));
+    }
+    InferenceSessionWrapper session(options, GetEnvironment());
+    const auto model = MakeCountingModel(quantized);
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    const auto& state = session.GetSessionState();
+    ASSERT_EQ(state.GetMoeExpertState(), nullptr);
+    InlinedVector<int> feed_indices;
+    InlinedVector<OrtValue> feeds;
+    for (const auto& [name, value] : CountingFeeds()) {
+      int index = 0;
+      ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx(name, index));
+      feed_indices.push_back(index);
+      feeds.push_back(value);
+    }
+    int output_index = 0;
+    ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("output", output_index));
+    const std::array<int, 1> fetch_indices{output_index};
+    ExecutionFrame frame(feed_indices, feeds, fetch_indices, {}, {},
+#ifdef ORT_ENABLE_STREAM
+                         nullptr,
+#endif
+                         state);
+    const bool terminate = false;
+    size_t moe_nodes = 0;
+    for (NodeIndex index : state.GetGraphViewer().GetNodesInTopologicalOrder()) {
+      const auto* kernel = state.GetKernel(index);
+      ASSERT_NE(kernel, nullptr);
+      NoExpertUsageContext context(state, frame, *kernel, state.Logger(), terminate, nullptr);
+      ASSERT_STATUS_OK(kernel->Compute(&context));
+      if (kernel->Node().OpType() == (quantized ? "QMoE" : "MoE")) {
+        ++moe_nodes;
+      }
+    }
+    EXPECT_EQ(moe_nodes, 2U);
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(frame.GetOutputs(outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
+      EXPECT_EQ(value.ToFloat(), 0.f);
+    }
+  }
 }
 
 void TestCounting(bool quantized, bool cuda, bool tiled = false) {
@@ -180,7 +247,11 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
   EXPECT_EQ(state->TotalExpertCount(), 2U * kExperts);
   const auto& session_state = session.GetSessionState();
   InlinedHashSet<size_t> expert_ids;
+  InlinedHashSet<MoeExpertUsage*> usages;
   for (const auto& [key, node] : state->GetSnapshot()) {
+    auto* usage = session_state.GetMoeExpertUsage(session_state.GetKernel(key.second));
+    ASSERT_NE(usage, nullptr);
+    EXPECT_TRUE(usages.insert(usage).second);
     for (int expert = 0; expert < kExperts; ++expert) {
       size_t global_id = 0;
       ASSERT_STATUS_OK(state->GetExpertId(session_state.GetKernel(key.second), expert, global_id));
@@ -192,6 +263,11 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
     RunCountingModel(session);
     for (const auto& [key, node] : state->GetSnapshot()) {
       EXPECT_EQ(node.counters, (InlinedVector<double>{double(run), 0, double(run), 0}));
+      auto* usage = session_state.GetMoeExpertUsage(session_state.GetKernel(key.second));
+      EXPECT_TRUE(usages.contains(usage));
+      InlinedVector<double> counters;
+      ASSERT_STATUS_OK(usage->GetCounters(counters));
+      EXPECT_EQ(counters, node.counters);
     }
   }
 }
@@ -199,6 +275,8 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
 
 TEST(MoeExpertCountingTest, CpuMoE) { TestCounting(false, false); }
 TEST(MoeExpertCountingTest, CpuQMoE) { TestCounting(true, false); }
+TEST(MoeExpertCountingTest, CpuMoEDisabledDoesNotAccessUsage) { TestDisabledUsageAccess(false); }
+TEST(MoeExpertCountingTest, CpuQMoEDisabledDoesNotAccessUsage) { TestDisabledUsageAccess(true); }
 #if defined(USE_CUDA)
 TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
@@ -211,6 +289,7 @@ TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
   ASSERT_STATUS_OK(disabled.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(disabled.Initialize());
   EXPECT_EQ(disabled.GetSessionState().GetMoeExpertState(), nullptr);
+  EXPECT_EQ(disabled.GetSessionState().GetMoeExpertUsage(disabled.GetSessionState().GetKernel(0)), nullptr);
   RunCountingModel(disabled);
   InferenceSessionWrapper first(CountingOptions(), GetEnvironment()), second(CountingOptions(), GetEnvironment());
   for (auto* session : {&first, &second}) {

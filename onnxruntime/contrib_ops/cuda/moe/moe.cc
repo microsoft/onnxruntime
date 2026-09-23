@@ -59,8 +59,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
-  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  const auto* instrumentation = enable_moe_expert_statistics_ ? context->GetRunInstrumentationContext() : nullptr;
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  }
 #endif
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
@@ -413,9 +415,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  CudaMoeExpertCounter counter(context);
-  ORT_RETURN_IF_ERROR(counter.Capture(expert_indices, expanded_rows, stream));
-  ORT_RETURN_IF_ERROR(counter.Record());
+  if (expert_counter_) {
+    auto* usage = context->GetMoeExpertUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
+    expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts));
+    ORT_RETURN_IF_ERROR(expert_counter_->Capture(expert_indices, expanded_rows, stream));
+    ORT_RETURN_IF_ERROR(expert_counter_->Record());
+  }
   if (routing_record != nullptr) {
     ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
         expert_indices, expert_scales, 0, expanded_rows, true, stream));

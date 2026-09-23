@@ -36,7 +36,7 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
                 "Expert count must be positive and fit in an int.");
   const Key key{std::string(graph_scope), node_index};
   ORT_RETURN_IF(nodes_.find(key) != nodes_.end(), "Duplicate MoE counter node: ", graph_scope, " ", node_index);
-  ORT_RETURN_IF(kernel_experts_.contains(kernel), "Duplicate MoE counter kernel: ", graph_scope, " ", node_index);
+  ORT_RETURN_IF(kernel_usage_.contains(kernel), "Duplicate MoE counter kernel: ", graph_scope, " ", node_index);
   const ExpertRange range{counters_.size(), expert_count};
   const size_t total_expert_count = SafeInt<size_t>(range.begin) + expert_count;
   counters_.reserve(total_expert_count);
@@ -46,7 +46,7 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
     counters_.push_back({0.0, 0.0});
   }
   nodes_.emplace(key, NodeInfo{std::string(node_type), range});
-  kernel_experts_.emplace(kernel, range);
+  kernel_usage_.try_emplace(kernel, *this, kernel, range);
   return Status::OK();
 }
 
@@ -115,11 +115,13 @@ void MoeExpertState::EndRun() const {
   run_active_.clear(std::memory_order_release);
 }
 
-Status MoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<const int> used_expert_ids) {
+MoeExpertUsage* MoeExpertState::GetUsage(const OpKernel* kernel) {
+  const auto usage = kernel_usage_.find(kernel);
+  return usage != kernel_usage_.end() ? &usage->second : nullptr;
+}
+
+Status MoeExpertState::RecordUsage(const OpKernel* kernel, ExpertRange range, gsl::span<const int> used_expert_ids) {
   ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
-  const auto node = kernel_experts_.find(kernel);
-  ORT_RETURN_IF(node == kernel_experts_.end(), "Unknown MoE counter kernel.");
-  const auto& range = node->second;
   for (int expert : used_expert_ids) {
     ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= range.count,
                   "MoE counter expert index out of range: ", expert);
@@ -144,10 +146,7 @@ Status MoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<const int> 
   return Status::OK();
 }
 
-Status MoeExpertState::GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const {
-  const auto node = kernel_experts_.find(kernel);
-  ORT_RETURN_IF(node == kernel_experts_.end(), "Unknown MoE counter kernel.");
-  const auto& range = node->second;
+Status MoeExpertState::GetCounters(ExpertRange range, InlinedVector<double>& counters) const {
   counters.clear();
   counters.reserve(range.count);
   for (size_t expert = 0; expert < range.count; ++expert) {

@@ -3,6 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+class MoeExpertUsage;
 #if !defined(ORT_MINIMAL_BUILD)
 class RunInstrumentationContext;
 #endif
@@ -27,13 +28,8 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
-  virtual bool HasMoeExpertState() const { return false; }
-  virtual Status RecordMoeExpertUsage(gsl::span<const int> /*used_expert_ids*/) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MoE expert state is unavailable.");
-  }
-  virtual Status GetMoeExpertCounters(InlinedVector<double>& /*counters*/) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MoE expert state is unavailable.");
-  }
+  // Non-owning, kernel-specific access; nullptr when expert counting is unavailable.
+  virtual MoeExpertUsage* GetMoeExpertUsage() const { return nullptr; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {

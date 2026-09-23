@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/moe_profiler.h"
+#include "core/framework/moe_expert_usage.h"
 #endif
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
@@ -81,13 +82,16 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
 #if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count =
-      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
-  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
-  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-    instrumentation = nullptr;
+  const size_t routing_element_count = enable_moe_expert_counting_ || enable_moe_expert_statistics_
+                                           ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
+                                           : 0;
+  const auto* instrumentation =
+      enable_moe_expert_statistics_ ? GetMoeRunInstrumentationContext(context) : nullptr;
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
+    if (!instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+      instrumentation = nullptr;
+    }
   }
   const TimePoint instrumentation_start =
       instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
@@ -445,8 +449,10 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     memcpy(out_ptr, final_output_float, output_buffer_size * sizeof(float));
   }
 #if !defined(ORT_MINIMAL_BUILD)
-  if (context->HasMoeExpertState()) {
-    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(gsl::make_span(route_expert, routing_element_count)));
+  if (enable_moe_expert_counting_) {
+    auto* usage = context->GetMoeExpertUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
+    ORT_RETURN_IF_ERROR(usage->RecordUsage(gsl::make_span(route_expert, routing_element_count)));
   }
   if (instrumentation != nullptr) {
     RecordMoeRoutingEvent(*instrumentation, Node(),

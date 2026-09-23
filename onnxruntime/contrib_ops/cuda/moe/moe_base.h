@@ -15,6 +15,11 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include <optional>
+#include "contrib_ops/cuda/moe/moe_expert_counter.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 #include <limits>
 
 #ifdef __GNUC__
@@ -28,6 +33,14 @@ namespace cuda {
 class MoEBase {
  protected:
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    const auto& options = op_kernel_info.GetConfigOptions();
+    if (options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
+      expert_counter_.emplace();
+    }
+    enable_moe_expert_statistics_ =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+#endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
     using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
@@ -86,6 +99,11 @@ class MoEBase {
   float swiglu_limit_;  // Clamp limit for SwiGLU
   int64_t block_size_;
   int sm_;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  // Only constructed when counting is enabled; overlapping runs are rejected by the session.
+  mutable std::optional<CudaMoeExpertCounter> expert_counter_;
+  bool enable_moe_expert_statistics_{false};
+#endif
 };
 
 }  // namespace cuda

@@ -649,8 +649,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
-  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  const auto* instrumentation = enable_moe_expert_statistics_ ? context->GetRunInstrumentationContext() : nullptr;
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  }
 #endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
@@ -1596,9 +1598,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
-  CudaMoeExpertCounter counter(context);
-  const size_t routing_element_count =
-      SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  if (expert_counter_) {
+    auto* usage = context->GetMoeExpertUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
+    expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts));
+  }
+  const size_t routing_element_count = instrumentation != nullptr
+                                           ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))
+                                           : 0;
   if (instrumentation != nullptr &&
       !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
     instrumentation = nullptr;
@@ -1838,9 +1845,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                workspace_size, total_scratch_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(counter.Capture(
-        expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
-    ORT_RETURN_IF_ERROR(counter.Record());
+    if (expert_counter_) {
+      ORT_RETURN_IF_ERROR(expert_counter_->Capture(
+          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+      ORT_RETURN_IF_ERROR(expert_counter_->Record());
+    }
     if (routing_record != nullptr) {
       ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
           expert_indices, expert_scales, 0,
@@ -2066,7 +2075,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(counter.Capture(expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+    if (expert_counter_) {
+      ORT_RETURN_IF_ERROR(expert_counter_->Capture(
+          expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+    }
     if (routing_record != nullptr) {
       const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
       const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
@@ -2085,7 +2097,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  ORT_RETURN_IF_ERROR(counter.Record());
+  if (expert_counter_) {
+    ORT_RETURN_IF_ERROR(expert_counter_->Record());
+  }
 #endif
   return Status::OK();
 }

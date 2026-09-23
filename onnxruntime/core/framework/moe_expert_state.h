@@ -13,6 +13,7 @@
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/moe_expert_usage.h"
 
 namespace onnxruntime {
 
@@ -34,13 +35,33 @@ class MoeExpertState {
   Status SetCounterParameters(double alpha, double beta);
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                       std::string_view node_type, size_t expert_count);
+
+  // Loads initial counters after node registration and before FinalizeInitialization().
+  // UTF-8 text format: the first line must be exactly "moe_expert_state 1", followed by
+  // one whitespace-separated record per line:
+  //   "graph_scope" node_index node_type expert_id counter_value
+  // Example:
+  //   moe_expert_state 1
+  //   "main" 0 MoE 2 12
+  //   "main/4/11:then_branch" 0 QMoE 1 3.5
+  //
+  // graph_scope uses std::quoted escaping for quotes/backslashes; unquoted scopes without
+  // whitespace are also accepted. The root scope is "main"; subgraphs append
+  // /<parent-node-index>/<attribute-name-length>:<attribute-name> (length in bytes).
+  // node_index identifies the registered node in the resolved, optimized graph.
+  // node_type must match its registered type ("MoE" or "QMoE"). expert_id is a zero-based
+  // index local to that node, not a global expert index or kernel pointer.
+  // counter_value is parsed in the classic locale and must be finite and non-negative.
+  //
+  // Omitted experts retain their current values (zero after registration). Blank lines,
+  // comments, extra fields, duplicate expert records, unknown nodes, and invalid IDs or
+  // values are rejected. A malformed record or stream read error leaves all counters unchanged.
   Status Load(std::istream& input);
+
   Status FinalizeInitialization();
   Status BeginRun() const;
   void EndRun() const;
-  Status RecordUsage(const OpKernel* kernel, gsl::span<const int> used_expert_ids);
-  // During a Run, only the executing kernel may read its own counters.
-  Status GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const;
+  MoeExpertUsage* GetUsage(const OpKernel* kernel);
   Status GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const;
   // Call only while no Run is active.
   Snapshot GetSnapshot() const;
@@ -51,6 +72,25 @@ class MoeExpertState {
     size_t begin;
     size_t count;
   };
+  class KernelUsage final : public MoeExpertUsage {
+   public:
+    KernelUsage(MoeExpertState& state, const OpKernel* kernel, ExpertRange experts)
+        : state_(state), kernel_(kernel), experts_(experts) {}
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelUsage);
+
+    Status RecordUsage(gsl::span<const int> used_expert_ids) override {
+      return state_.RecordUsage(kernel_, experts_, used_expert_ids);
+    }
+    Status GetCounters(InlinedVector<double>& counters) const override {
+      return state_.GetCounters(experts_, counters);
+    }
+
+   private:
+    MoeExpertState& state_;
+    const OpKernel* kernel_;
+    ExpertRange experts_;
+  };
+
   struct NodeInfo {
     std::string node_type;
     ExpertRange experts;
@@ -60,8 +100,11 @@ class MoeExpertState {
     double next_value;
   };
 
+  Status RecordUsage(const OpKernel* kernel, ExpertRange experts, gsl::span<const int> used_expert_ids);
+  Status GetCounters(ExpertRange experts, InlinedVector<double>& counters) const;
+
   std::map<Key, NodeInfo> nodes_;
-  InlinedHashMap<const OpKernel*, ExpertRange> kernel_experts_;
+  NodeHashMap<const OpKernel*, KernelUsage> kernel_usage_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<Counter> counters_;
   double alpha_{1.0};

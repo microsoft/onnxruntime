@@ -58,8 +58,11 @@ class MoeExpertStateTest : public testing::Test {
 TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   MoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  auto* usage = state.GetUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 2));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[2], "main/0/4:body", 0, "MoE", 4));
+  EXPECT_EQ(state.GetUsage(kernels_[0]), usage);
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_EQ(state.TotalExpertCount(), 9U);
   size_t expert_id = 99;
@@ -73,15 +76,15 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   EXPECT_EQ(expert_id, 5U);
 
   const int selected[] = {2, 0, 2, 0};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
   const auto snapshot = state.GetSnapshot();
   EXPECT_EQ(snapshot.at({"main", 0}).counters, (InlinedVector<double>{2, 0, 2}));
   EXPECT_EQ(snapshot.at({"main", 1}).counters, (InlinedVector<double>{0, 0}));
   EXPECT_EQ(snapshot.at({"main/0/4:body", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[2], selected));
+  ASSERT_STATUS_OK(state.GetUsage(kernels_[2])->RecordUsage(selected));
   InlinedVector<double> counters;
-  ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
+  ASSERT_STATUS_OK(state.GetUsage(kernels_[2])->GetCounters(counters));
   EXPECT_EQ(counters, (InlinedVector<double>{1, 0, 1, 0}));
 }
 
@@ -96,12 +99,14 @@ TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
       "\"main\" 0 MoE 2 1\n");
   ASSERT_STATUS_OK(state.Load(initial));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* usage = state.GetUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
   const int selected[] = {2, 0, 2};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 1, 2.5}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 0.5, 3.25}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], {}));
+  ASSERT_STATUS_OK(usage->RecordUsage({}));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{2, 0.25, 1.625}));
 }
 
@@ -125,6 +130,8 @@ TEST_F(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 2, "QMoE", 3));
   std::istringstream valid("moe_expert_state 1\n\"main\" 2 QMoE 1 2.5\n");
   ASSERT_STATUS_OK(state.Load(valid));
+  auto* usage = state.GetUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
   InlinedVector<double> counters;
   for (const auto* invalid : {
            "moe_expert_state 2\n",
@@ -142,13 +149,13 @@ TEST_F(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
     SCOPED_TRACE(invalid);
     std::istringstream input(invalid);
     EXPECT_FALSE(state.Load(input).IsOK());
-    ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
+    ASSERT_STATUS_OK(usage->GetCounters(counters));
     EXPECT_EQ(counters, (InlinedVector<double>{0, 2.5, 0}));
   }
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {1, 1};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
-  ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
+  ASSERT_STATUS_OK(usage->GetCounters(counters));
   EXPECT_EQ(counters, (InlinedVector<double>{0, 3.5, 0}));
 }
 
@@ -161,7 +168,9 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "Add", 2).IsOK());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 0).IsOK());
   EXPECT_EQ(state.TotalExpertCount(), 2U);
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], {}).IsOK());
+  auto* usage = state.GetUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
+  EXPECT_FALSE(usage->RecordUsage({}).IsOK());
   EXPECT_FALSE(state.BeginRun().IsOK());
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "MoE", 2).IsOK());
@@ -170,9 +179,10 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.FinalizeInitialization().IsOK());
   const int out_of_bounds[] = {0, 2};
   const int negative[] = {0, -1};
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], out_of_bounds).IsOK());
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], negative).IsOK());
-  EXPECT_FALSE(state.RecordUsage(kernels_[1], {}).IsOK());
+  EXPECT_FALSE(usage->RecordUsage(out_of_bounds).IsOK());
+  EXPECT_FALSE(usage->RecordUsage(negative).IsOK());
+  EXPECT_EQ(state.GetUsage(kernels_[1]), nullptr);
+  EXPECT_EQ(state.GetUsage(nullptr), nullptr);
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
 }
 
@@ -181,10 +191,12 @@ TEST_F(MoeExpertStateTest, OverflowDoesNotPartiallyUpdateCounters) {
   ASSERT_STATUS_OK(state.SetCounterParameters(1, std::numeric_limits<double>::max()));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto* usage = state.GetUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
   const int first[] = {0};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], first));
+  ASSERT_STATUS_OK(usage->RecordUsage(first));
   const int both[] = {1, 0};
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], both).IsOK());
+  EXPECT_FALSE(usage->RecordUsage(both).IsOK());
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters,
             (InlinedVector<double>{std::numeric_limits<double>::max(), 0}));
 }
@@ -199,10 +211,11 @@ TEST_F(MoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
   ASSERT_STATUS_OK(other.FinalizeInitialization());
   InlinedVector<std::thread> workers;
   for (const auto* kernel : kernels_) {
-    workers.emplace_back([&state, kernel]() {
+    auto* usage = state.GetUsage(kernel);
+    workers.emplace_back([usage]() {
       const int selected[] = {1, 1};
       for (int j = 0; j < 100; ++j) {
-        ASSERT_STATUS_OK(state.RecordUsage(kernel, selected));
+        ASSERT_STATUS_OK(usage->RecordUsage(selected));
       }
     });
   }
