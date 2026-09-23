@@ -246,6 +246,7 @@ TEST(AllocatorTest, IArenaWrapper_AllocFreeReserve) {
   wrapper->Free(r);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(AllocatorTest, IArenaWrapper_CaptureRetainsScratchAcrossPluginBoundary) {
   for (bool stream_aware : {false, true}) {
     SCOPED_TRACE(stream_aware);
@@ -357,6 +358,8 @@ TEST(AllocatorTest, IArenaWrapper_CaptureTransfersOwnershipDuringReplay) {
     EXPECT_EQ(mock.free_count, 2);
   }
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(AllocatorTest, IArenaWrapper_ShrinkForwards) {
   MockArenaOrtAllocator mock;

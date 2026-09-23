@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <memory>
 #include <vector>
 
@@ -33,3 +35,4 @@ class PartitionedGraphExecution {
   std::unique_ptr<Impl> impl_;
 };
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD)

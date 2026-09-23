@@ -58,7 +58,9 @@ class Environment;
 class GraphTransformer;
 class IExecutionProvider;
 class IOBinding;
+#if !defined(ORT_MINIMAL_BUILD)
 class PartitionedGraphExecution;
+#endif
 struct Notification;
 
 void reset_saturation_count();
@@ -945,8 +947,10 @@ class InferenceSession {
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
+#if !defined(ORT_MINIMAL_BUILD)
   IExecutionProvider* partitioned_cuda_graph_ep_{nullptr};
   std::unique_ptr<PartitionedGraphExecution> partitioned_graph_execution_;
+#endif
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.

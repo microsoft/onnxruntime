@@ -1945,6 +1945,75 @@ TEST(InferenceSessionTests, PartitionedCudaGraphRequiresCaptureProvider) {
 }
 
 #if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && !defined(DISABLE_ML_OPS)
+TEST(InferenceSessionTests, PartitionedCudaGraphRejectsCpuSequenceIntermediates) {
+  Model model("partition_cpu_sequence", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}, {kMLDomain, 2}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& sequence = graph.GetOrCreateNodeArg("sequence", nullptr);
+  auto& a = graph.GetOrCreateNodeArg("A", &type);
+  auto& b = graph.GetOrCreateNodeArg("B", &type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &type);
+  TensorProto index;
+  index.set_name("index");
+  index.set_data_type(TensorProto_DataType_INT64);
+  index.add_int64_data(0);
+  graph.AddInitializedTensor(index);
+  auto& index_arg = graph.GetOrCreateNodeArg("index", nullptr);
+  graph.AddNode("cpu_construct", "SequenceConstruct", "", {&x}, {&sequence});
+  graph.AddNode("cpu_at", "SequenceAt", "", {&sequence, &index_arg}, {&a});
+  auto& encoder = graph.AddNode("gpu_encoder", "LabelEncoder", "", {&a}, {&b}, nullptr, kMLDomain);
+  encoder.AddAttribute("keys_floats", std::vector<float>{1.0f, 2.0f});
+  encoder.AddAttribute("values_floats", std::vector<float>{10.0f, 20.0f});
+  graph.AddNode("cpu_suffix", "Neg", "", {&b}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+
+  for (bool capture : {false, true}) {
+    SCOPED_TRACE(capture);
+    OrtCUDAProviderOptionsV2 cuda_options;
+    cuda_options.enable_cuda_graph = capture ? 1 : 0;
+    auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+    if (!cuda) {
+      GTEST_SKIP() << "CUDA execution provider is unavailable.";
+    }
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+    ASSERT_NE(cuda->GetOrtEp(), nullptr);
+#endif
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsEnablePartitionedCudaGraph, capture ? "1" : "0"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+    InferenceSession session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+    ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+    if (capture) {
+      const auto status = session.Initialize();
+      ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "Partitioned CUDA capture requires tensor node outputs");
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node 'cpu_construct' output 'sequence'"));
+    } else {
+      ASSERT_STATUS_OK(session.Initialize());
+      OrtValue input;
+      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, {1.0f}, &input);
+      const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
+      const std::array<OrtValue, 1> feeds{input};
+      for (float value : {1.0f, 2.0f}) {
+        input.GetMutable<Tensor>()->MutableData<float>()[0] = value;
+        std::vector<OrtValue> fetches;
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, input_names, feeds, output_names, &fetches));
+        EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -10.0f * value);
+      }
+    }
+  }
+}
+
 TEST(InferenceSessionTests, PartitionedCudaGraphSelectsWholeSessionForEligiblePlacement) {
   for (bool cpu_shape_node : {false, true}) {
     for (bool memory_pattern : {false, true}) {

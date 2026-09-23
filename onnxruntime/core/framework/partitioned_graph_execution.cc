@@ -3,6 +3,8 @@
 
 #include "core/framework/partitioned_graph_execution.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -333,3 +335,4 @@ Status PartitionedGraphExecution::Run(const RunOptions& options, int graph_id, F
 #endif
 }
 }  // namespace onnxruntime
+#endif  // !defined(ORT_MINIMAL_BUILD)

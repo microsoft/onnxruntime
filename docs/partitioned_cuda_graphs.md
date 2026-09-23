@@ -81,8 +81,9 @@ buckets.
 
 ## Prototype constraints
 
-The option requires a CUDA EP with capture enabled and an ONNX model
-without control flow. The additional constraints below apply when partitioned
+The option requires a non-minimal build, a CUDA EP with capture enabled, and an ONNX
+model without control flow. Minimal builds exclude the partition-capture machinery
+and reject enabling this option. The additional constraints below apply when partitioned
 execution is selected; eligible whole-session graphs follow the existing CUDA
 capture requirements instead.
 
@@ -95,6 +96,9 @@ capture requirements instead.
 - Sequential inference only; captured invocations must use the same host thread.
   Control flow, asynchronous host kernels, partial execution, and per-run stream
   overrides are not supported.
+- All node outputs must be tensors. Sequence, map, optional, and sparse outputs are
+  rejected at initialization, including CPU-only intermediates. Their kernels may
+  require fresh output objects, which the retained execution frame cannot provide.
 - CPU inputs consumed *directly* by CUDA kernels as host-side control data must
   retain their captured values. Select a new graph ID before changing them. A
   mismatch detected during partition replay invalidates the session because earlier

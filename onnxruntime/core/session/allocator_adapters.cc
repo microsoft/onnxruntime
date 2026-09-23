@@ -3,7 +3,9 @@
 
 #include "allocator_adapters.h"
 #include "core/common/parse_string.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/bfc_arena.h"
+#endif
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/session/abi_devices.h"
@@ -191,23 +193,29 @@ IArenaImplWrappingOrtAllocator::IArenaImplWrappingOrtAllocator(OrtAllocatorUniqu
 }
 
 void* IArenaImplWrappingOrtAllocator::Alloc(size_t size) {
+#if !defined(ORT_MINIMAL_BUILD)
   if (size != 0 && ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
     return ArenaAllocationCapture::current_->Allocate(*this, size, nullptr, false);
   }
+#endif
   return ort_allocator_->Alloc(ort_allocator_.get(), size);
 }
 
 void IArenaImplWrappingOrtAllocator::Free(void* p) {
+#if !defined(ORT_MINIMAL_BUILD)
   if (p && ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Free(*this, p)) {
     return;
   }
+#endif
   return ort_allocator_->Free(ort_allocator_.get(), p);
 }
 
 void* IArenaImplWrappingOrtAllocator::Reserve(size_t size) {
+#if !defined(ORT_MINIMAL_BUILD)
   if (size != 0 && ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
     return ArenaAllocationCapture::current_->Allocate(*this, size, nullptr, true);
   }
+#endif
   if (ort_allocator_->version >= kOrtAllocatorReserveMinVersion && ort_allocator_->Reserve) {
     return ort_allocator_->Reserve(ort_allocator_.get(), size);
   }
@@ -220,9 +228,11 @@ bool IArenaImplWrappingOrtAllocator::IsStreamAware() const {
 }
 
 void* IArenaImplWrappingOrtAllocator::AllocOnStream(size_t size, Stream* stream) {
+#if !defined(ORT_MINIMAL_BUILD)
   if (size != 0 && ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
     return ArenaAllocationCapture::current_->Allocate(*this, size, stream, false);
   }
+#endif
   if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream) {
     return ort_allocator_->AllocOnStream(ort_allocator_.get(), size, static_cast<OrtSyncStream*>(stream));
   }

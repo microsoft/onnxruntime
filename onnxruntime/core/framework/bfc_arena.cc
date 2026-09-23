@@ -276,9 +276,11 @@ void* BFCArena::Reserve(size_t size) {
   if (size == 0)
     return nullptr;
 
+#if !defined(ORT_MINIMAL_BUILD)
   if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
     return ArenaAllocationCapture::current_->Allocate(*this, size, nullptr, true);
   }
+#endif
 
   std::lock_guard<std::mutex> lock(lock_);
 
@@ -320,9 +322,11 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     return nullptr;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Handles(this)) {
     return ArenaAllocationCapture::current_->Allocate(*this, num_bytes, stream, false);
   }
+#endif
 
   // First, always allocate memory of at least kMinAllocationSize
   // bytes, and always allocate multiples of kMinAllocationSize bytes
@@ -484,9 +488,11 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
+#if !defined(ORT_MINIMAL_BUILD)
   if (ArenaAllocationCapture::current_ && ArenaAllocationCapture::current_->Free(*this, p)) {
     return;
   }
+#endif
   std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
@@ -500,6 +506,7 @@ void BFCArena::Free(void* p) {
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 thread_local ArenaAllocationCapture* ArenaAllocationCapture::current_ = nullptr;
 
 ArenaAllocationCapture::ArenaAllocationCapture(gsl::span<const AllocatorPtr> allocators)
@@ -580,6 +587,7 @@ bool ArenaAllocationCapture::Free(IAllocator& arena, void* pointer) {
   }
   return false;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status BFCArena::Shrink() {
   std::lock_guard<std::mutex> lock(lock_);

@@ -44,7 +44,9 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/partitioned_graph_execution.h"
+#endif
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
@@ -495,10 +497,12 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
+#if !defined(ORT_MINIMAL_BUILD)
   const auto partitioned_capture = session_options_.config_options.GetConfigOrDefault(
       kOrtSessionOptionsEnablePartitionedCudaGraph, "0");
   ORT_ENFORCE(partitioned_capture == "0" || partitioned_capture == "1",
               "session.enable_partitioned_cuda_graph must be 0 or 1.");
+#endif
 
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -2776,6 +2780,20 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if defined(ORT_MINIMAL_BUILD)
+    for (const char* key : {kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+                            kOrtSessionOptionsEnablePartitionedCudaGraph}) {
+      const auto value = session_options_.config_options.GetConfigOrDefault(key, "0");
+      if (value != "0" && value != "1") {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT, key,
+            " must be set to either \"0\" or \"1\". Received: \"", value, "\".");
+      }
+      if (value == "1") {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, key, "=1 is not supported in a minimal build.");
+      }
+    }
+#else
     const std::string& enable_moe_statistics =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
     if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
@@ -2784,13 +2802,6 @@ common::Status InferenceSession::Initialize() {
           " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
     }
     const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
-#if defined(ORT_MINIMAL_BUILD)
-    if (enable_moe_expert_statistics) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
-          "=1 is not supported in a minimal build.");
-    }
-#else
     if (enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
         if (execution_provider->Type() == kCudaExecutionProvider &&
@@ -3116,6 +3127,15 @@ common::Status InferenceSession::Initialize() {
               ORT_RETURN_IF(node.GetExecutionProviderType() != kCpuExecutionProvider &&
                                 node.GetExecutionProviderType() != kCudaExecutionProvider,
                             "Partitioned CUDA capture supports only CPU and CUDA nodes.");
+              for (const auto* output : node.OutputDefs()) {
+                if (!output->Exists()) {
+                  continue;
+                }
+                const auto* type = output->TypeAsProto();
+                ORT_RETURN_IF_NOT(type != nullptr && type->has_tensor_type(),
+                                  "Partitioned CUDA capture requires tensor node outputs. Node '", node.Name(),
+                                  "' output '", output->Name(), "' is not a tensor.");
+              }
             }
             partitioned_cuda_graph_ep_ = ep.get();
             is_concurrent_run_supported_ = false;
@@ -3231,11 +3251,13 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
       ORT_RETURN_IF_NOT(partitioned_cuda_graph_ep_ != nullptr ||
                             cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled(),
                         "Partitioned CUDA capture requires an ONNX model and the CUDA EP with enable_cuda_graph=1.");
     }
+#endif
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
     // PrePack, initializer upload, memory planning) and early return here.
@@ -3260,12 +3282,12 @@ common::Status InferenceSession::Initialize() {
                                              !saving_model,
                                              saving_ort_format));
 
+#if !defined(ORT_MINIMAL_BUILD)
     if (partitioned_cuda_graph_ep_ != nullptr) {
       partitioned_graph_execution_ =
           std::make_unique<PartitionedGraphExecution>(*session_state_, *partitioned_cuda_graph_ep_);
     }
 
-#if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
       if (session_state_->GetFuncMgr().NumFuncs() > 0) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -3888,9 +3910,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // TODO: only call OnRunStart for all providers in-use
       for (auto& xp : execution_providers_) {
         // call OnRunStart and add to exec_providers_to_stop if successful
+#if !defined(ORT_MINIMAL_BUILD)
         if (xp.get() == partitioned_cuda_graph_ep_ && graph_annotation_id != -1) {
           continue;
         }
+#endif
         auto start_func = [&xp, &exec_providers_to_stop, &run_options]() {
           auto status = xp->OnRunStart(run_options);
           if (status.IsOK())
@@ -3924,10 +3948,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #ifdef ORT_ENABLE_STREAM
       std::optional<DeviceStreamCollectionHolder> device_stream_collection_holder;
+#if !defined(ORT_MINIMAL_BUILD)
       // Partitioned execution validates thread affinity before acquiring its own retained streams.
       if (!partitioned_graph_execution_ || graph_annotation_id == -1) {
+#endif
         device_stream_collection_holder.emplace(session_state_.get());
+#if !defined(ORT_MINIMAL_BUILD)
       }
+#endif
       if (device_stream_collection_holder && run_options.sync_stream != nullptr) {
         if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
           // XXX: Not tested in Parallel execution mode and disabled at this time.
@@ -3940,10 +3968,13 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #endif
 
       if (retval.IsOK()) {
+#if !defined(ORT_MINIMAL_BUILD)
         if (partitioned_graph_execution_ && graph_annotation_id != -1) {
           retval = partitioned_graph_execution_->Run(run_options, graph_annotation_id, feeds_fetches_manager,
                                                      feeds, *p_fetches, run_logger);
-        } else {
+        } else
+#endif
+        {
           retval = utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                        session_options_.execution_mode,
                                        run_options,
@@ -4505,8 +4536,10 @@ common::Status InferenceSession::ReleaseCapturedGraph(int graph_annotation_id) {
   if (!is_concurrent_run_supported_) {
     lock.emplace(session_mutex_);
   }
+#if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF(partitioned_graph_execution_ != nullptr,
                 "Releasing individual partitioned CUDA graphs is not supported by this prototype. Recreate the session.");
+#endif
   return cached_execution_provider_for_graph_replay_.ReleaseCapturedGraph(graph_annotation_id);
 }
 

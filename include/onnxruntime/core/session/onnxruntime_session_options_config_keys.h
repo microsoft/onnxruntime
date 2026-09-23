@@ -437,7 +437,8 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";
 
 /// Experimental sequential CPU/CUDA partition capture. "1" enables it; "0" (default) disables it.
-/// Requires the built-in or plugin CUDA EP with enable_cuda_graph=1. Uses the existing whole-session replay path when
+/// Requires a non-minimal build and the built-in or plugin CUDA EP with enable_cuda_graph=1.
+/// Uses the existing whole-session replay path when
 /// placement satisfies its capture policy (including eligible CPU shape nodes and empty graphs), preserving
 /// its memory-pattern settings and capture behavior. Otherwise, CPU nodes and device copies execute on every run
 /// and contiguous CUDA compute partitions are captured separately. Placement uses the existing partitioning settings.
@@ -445,7 +446,7 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// CPU control inputs consumed directly by CUDA kernels must remain constant for that graph id.
 /// Runs must use the capture thread and device-bound I/O. gpu_graph_id=-1 uses ordinary eager execution.
 /// Memory patterns are disabled only in partitioned mode. Control flow is not supported;
-/// partitioned mode also excludes shared environment/external allocators and parallel execution.
+/// partitioned mode also excludes non-tensor node outputs, shared environment/external allocators, and parallel execution.
 /// See docs/partitioned_cuda_graphs.md for prototype limitations.
 static const char* const kOrtSessionOptionsEnablePartitionedCudaGraph = "session.enable_partitioned_cuda_graph";
 

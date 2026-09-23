@@ -44,6 +44,7 @@ namespace onnxruntime {
 #endif
 
 class StreamAwareBFCArena;
+#if !defined(ORT_MINIMAL_BUILD)
 class BFCArena;
 
 // Retains a partition's temporary allocations and reproduces their addresses during capture.
@@ -82,6 +83,7 @@ class ArenaAllocationCapture {
   bool replay_{false};
   bool recorded_{false};
 };
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's

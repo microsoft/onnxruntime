@@ -63,6 +63,7 @@ TEST(BFCArenaTest, NoDups) {
   CheckStats(&a, 1023, 0, 654336, 1024);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(BFCArenaTest, CaptureRetainsAndReplaysScratch) {
   auto arena = std::make_shared<BFCArena>(std::make_unique<CPUAllocator>(), 1 << 20);
   const std::array<AllocatorPtr, 1> allocators{arena};
@@ -157,6 +158,8 @@ TEST(BFCArenaTest, CaptureTransfersOwnershipDuringReplay) {
     EXPECT_EQ(stats.bytes_in_use, 0);
   }
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(BFCArenaTest, AllocationsAndDeallocations) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
