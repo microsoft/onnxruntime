@@ -1266,6 +1266,15 @@ if (onnxruntime_USE_WEBGPU)
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
       )
     endif()
+    if (onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_directstorage_runtime}"
+            "${_directstorage_core_runtime}"
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
   endif()
   if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
