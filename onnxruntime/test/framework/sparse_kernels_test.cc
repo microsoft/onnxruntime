@@ -2016,6 +2016,29 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Rank1Indices64) {
   TestSparseToDenseConversion<float, int64_t>(dense_shape, values, indices, indices_shape, true, expected);
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsMismatchedValuesCardinality) {
+  SparseTensorProto sparse;
+  sparse.add_dims(1);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("mismatched_values");
+  values->set_data_type(TensorProto_DataType_INT64);
+  values->add_dims(1);
+  values->add_int64_data(1);
+  values->add_int64_data(2);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(1);
+  indices->add_int64_data(0);
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense),
+      "data field count (2) does not match expected count from shape (1)");
+}
+
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Rank1Indices32) {
   // Dense Shape: [2, 2] -> 4 elements
   // Indices: [0, 3] (linear)

@@ -2568,6 +2568,10 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   }
 
   if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+    if (!HasExternalData(sparse_values)) {
+      ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(sparse_values));
+    }
+
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     const size_t element_size = ml_data->Size();
     const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
