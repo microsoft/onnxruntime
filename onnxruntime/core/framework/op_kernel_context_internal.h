@@ -203,8 +203,10 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  MoeExpertUsage* GetMoeExpertUsage() const override {
-    return session_state_.GetMoeExpertUsage(GetKernel());
+  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const override {
+    auto* state = session_state_.GetMoeExpertState();
+    ORT_RETURN_IF_NOT(state, "MoE expert counting is enabled but its state is unavailable.");
+    return state->RecordUsage(GetKernel(), expert_ids);
   }
 #endif
 

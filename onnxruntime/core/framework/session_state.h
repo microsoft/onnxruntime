@@ -334,10 +334,7 @@ class SessionState {
                               bool saving_ort_format = false);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
-  MoeExpertUsage* GetMoeExpertUsage(const OpKernel* kernel) const {
-    return moe_expert_state_ ? moe_expert_state_->GetUsage(kernel) : nullptr;
-  }
+  MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
 #endif
 
   SessionState* Parent() {

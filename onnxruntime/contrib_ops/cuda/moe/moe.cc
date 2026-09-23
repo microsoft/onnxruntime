@@ -331,9 +331,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (expert_counter_) {
-    auto* usage = context->GetMoeExpertUsage();
-    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
-    ORT_RETURN_IF_ERROR(expert_counter_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(expert_counter_->BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
     ORT_RETURN_IF_ERROR(expert_counter_->Capture(expert_indices, expanded_rows, stream));
   }
 #endif
@@ -426,7 +424,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   if (expert_counter_) {
     ORT_RETURN_IF_ERROR(expert_counter_->Consume());
-    ORT_RETURN_IF_ERROR(expert_counter_->Record());
+    gsl::span<const int> selected_experts;
+    ORT_RETURN_IF_ERROR(expert_counter_->GetSelectedExperts(selected_experts));
+    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(selected_experts));
   }
   if (routing_record != nullptr) {
     ORT_RETURN_IF_ERROR(routing_record->CaptureTile(

@@ -46,7 +46,6 @@ class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 class RunInstrumentationContext;
-class MoeExpertUsage;
 
 struct ModelSavingOptions;
 
@@ -1452,7 +1451,8 @@ struct ProviderHost {
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
 
-  virtual MoeExpertUsage* OpKernelContext__GetMoeExpertUsage(const OpKernelContext* p) = 0;
+  virtual Status OpKernelContext__RecordMoeExpertUsage(
+      const OpKernelContext* p, gsl::span<const int> expert_ids) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

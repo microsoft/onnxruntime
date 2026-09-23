@@ -6,7 +6,6 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/moe_profiler.h"
-#include "core/framework/moe_expert_usage.h"
 #endif
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
@@ -450,9 +449,7 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   }
 #if !defined(ORT_MINIMAL_BUILD)
   if (enable_moe_expert_counting_) {
-    auto* usage = context->GetMoeExpertUsage();
-    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its usage state is unavailable.");
-    ORT_RETURN_IF_ERROR(usage->RecordUsage(gsl::make_span(route_expert, routing_element_count)));
+    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(gsl::make_span(route_expert, routing_element_count)));
   }
   if (instrumentation != nullptr) {
     RecordMoeRoutingEvent(*instrumentation, Node(),

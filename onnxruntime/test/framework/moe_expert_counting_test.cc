@@ -164,17 +164,17 @@ SessionOptions CountingOptions() {
   return options;
 }
 
-class NoExpertUsageContext final : public OpKernelContextInternal {
+class NoExpertRecordingContext final : public OpKernelContextInternal {
  public:
   using OpKernelContextInternal::OpKernelContextInternal;
 
-  MoeExpertUsage* GetMoeExpertUsage() const override {
-    ADD_FAILURE() << "Disabled expert counting must not access MoeExpertUsage.";
-    return nullptr;
+  Status RecordMoeExpertUsage(gsl::span<const int>) const override {
+    ADD_FAILURE() << "Disabled expert counting must not record usage.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected expert counting.");
   }
 };
 
-void TestDisabledUsageAccess(bool quantized) {
+void TestDisabledRecording(bool quantized) {
   for (bool explicit_disable : {false, true}) {
     SessionOptions options;
     options.graph_optimization_level = TransformerLevel::Default;
@@ -209,7 +209,9 @@ void TestDisabledUsageAccess(bool quantized) {
     for (NodeIndex index : state.GetGraphViewer().GetNodesInTopologicalOrder()) {
       const auto* kernel = state.GetKernel(index);
       ASSERT_NE(kernel, nullptr);
-      NoExpertUsageContext context(state, frame, *kernel, state.Logger(), terminate, nullptr);
+      NoExpertRecordingContext context(state, frame, *kernel, state.Logger(), terminate, nullptr);
+      EXPECT_FALSE(context.OpKernelContextInternal::RecordMoeExpertUsage({}).IsOK());
+      EXPECT_FALSE(context.OpKernelContext::RecordMoeExpertUsage({}).IsOK());
       ASSERT_STATUS_OK(kernel->Compute(&context));
       if (kernel->Node().OpType() == (quantized ? "QMoE" : "MoE")) {
         ++moe_nodes;
@@ -253,11 +255,7 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
   EXPECT_EQ(state->TotalExpertCount(), 2U * kExperts);
   const auto& session_state = session.GetSessionState();
   InlinedHashSet<size_t> expert_ids;
-  InlinedHashSet<MoeExpertUsage*> usages;
   for (const auto& [key, node] : state->GetSnapshot()) {
-    auto* usage = session_state.GetMoeExpertUsage(session_state.GetKernel(key.second));
-    ASSERT_NE(usage, nullptr);
-    EXPECT_TRUE(usages.insert(usage).second);
     for (int expert = 0; expert < kExperts; ++expert) {
       size_t global_id = 0;
       ASSERT_STATUS_OK(state->GetExpertId(session_state.GetKernel(key.second), expert, global_id));
@@ -274,10 +272,8 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
       EXPECT_DOUBLE_EQ(node.counters[1], 0);
       EXPECT_DOUBLE_EQ(node.counters[2], rows == 3 ? expected : 0);
       EXPECT_DOUBLE_EQ(node.counters[3], 0);
-      auto* usage = session_state.GetMoeExpertUsage(session_state.GetKernel(key.second));
-      EXPECT_TRUE(usages.contains(usage));
       InlinedVector<double> counters;
-      ASSERT_STATUS_OK(usage->GetCounters(counters));
+      ASSERT_STATUS_OK(state->GetCounters(session_state.GetKernel(key.second), counters));
       EXPECT_EQ(counters, node.counters);
     }
   }
@@ -286,8 +282,8 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
 
 TEST(MoeExpertCountingTest, CpuMoE) { TestCounting(false, false); }
 TEST(MoeExpertCountingTest, CpuQMoE) { TestCounting(true, false); }
-TEST(MoeExpertCountingTest, CpuMoEDisabledDoesNotAccessUsage) { TestDisabledUsageAccess(false); }
-TEST(MoeExpertCountingTest, CpuQMoEDisabledDoesNotAccessUsage) { TestDisabledUsageAccess(true); }
+TEST(MoeExpertCountingTest, CpuMoEDisabledDoesNotRecordUsage) { TestDisabledRecording(false); }
+TEST(MoeExpertCountingTest, CpuQMoEDisabledDoesNotRecordUsage) { TestDisabledRecording(true); }
 #if defined(USE_CUDA)
 TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
@@ -301,7 +297,6 @@ TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
   ASSERT_STATUS_OK(disabled.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(disabled.Initialize());
   EXPECT_EQ(disabled.GetSessionState().GetMoeExpertState(), nullptr);
-  EXPECT_EQ(disabled.GetSessionState().GetMoeExpertUsage(disabled.GetSessionState().GetKernel(0)), nullptr);
   RunCountingModel(disabled);
   InferenceSessionWrapper first(CountingOptions(), GetEnvironment()), second(CountingOptions(), GetEnvironment());
   for (auto* session : {&first, &second}) {

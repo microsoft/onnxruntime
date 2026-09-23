@@ -5,7 +5,6 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/framework/moe_expert_usage.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -24,10 +23,10 @@ class CudaMoeExpertCounter {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaMoeExpertCounter);
 
-  Status BeginInvocation(MoeExpertUsage& usage, size_t expert_count) {
+  Status BeginInvocation(size_t expert_count) {
+    ORT_RETURN_IF(expert_count == 0, "MoE expert collection requires a positive expert count.");
     // A failed invocation may have returned after enqueueing a copy but before consuming it.
     ORT_RETURN_IF_ERROR(WaitForCopy());
-    usage_ = &usage;
     used_.assign(expert_count, 0);
     selected_experts_.clear();
     selected_experts_.reserve(expert_count);
@@ -35,7 +34,7 @@ class CudaMoeExpertCounter {
   }
 
   Status Capture(const int* expert_ids, size_t count, cudaStream_t stream) {
-    ORT_RETURN_IF_NOT(usage_, "MoE expert collection was not initialized for this invocation.");
+    ORT_RETURN_IF(used_.empty(), "MoE expert collection was not initialized for this invocation.");
     ORT_RETURN_IF(copy_pending_, "The previous MoE routing snapshot has not been consumed.");
     cudaStreamCaptureStatus capture_status;
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
@@ -80,10 +79,11 @@ class CudaMoeExpertCounter {
     return Status::OK();
   }
 
-  Status Record() const {
-    ORT_RETURN_IF_NOT(usage_, "MoE expert collection was not initialized for this invocation.");
-    ORT_RETURN_IF(copy_pending_, "The MoE routing snapshot must be consumed before recording usage.");
-    return usage_->RecordUsage(selected_experts_);
+  Status GetSelectedExperts(gsl::span<const int>& expert_ids) const {
+    ORT_RETURN_IF(used_.empty(), "MoE expert collection was not initialized for this invocation.");
+    ORT_RETURN_IF(copy_pending_, "The MoE routing snapshot must be consumed before reading selected experts.");
+    expert_ids = selected_experts_;
+    return Status::OK();
   }
 
  private:
@@ -102,7 +102,6 @@ class CudaMoeExpertCounter {
   }
 
   AllocatorPtr pinned_allocator_;
-  MoeExpertUsage* usage_{nullptr};
   InlinedVector<uint8_t> used_;
   InlinedVector<int> selected_experts_;
   IAllocatorUniquePtr<int> host_ids_;
