@@ -21,6 +21,7 @@ __global__ void _GatherNDGradKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, num_slices * slice_size);
   const int64_t slice_offset = slice_offsets[i / slice_size];
   if (slice_offset < 0) {
+    // Match the forward zero-fill contract by contributing no gradient for an invalid slice.
     return;
   }
 

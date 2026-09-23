@@ -408,7 +408,7 @@ TEST(GatherNDOpTest, GatherND_invalid_index_cuda_zero_filled) {
   }
 
   OpTester test("GatherND", 12, kOnnxDomain);
-  test.AddInput<float>("data", {4, 4, 4}, std::vector<float>(64, 0.0f));
+  test.AddInput<float>("data", {4, 4, 4}, ValueRange(64, 1.0f));
   test.AddInput<int64_t>("indices", {1, 2}, {1048576LL, 0LL});
   test.AddOutput<float>("output", {1, 4}, std::vector<float>(4, 0.0f));
 

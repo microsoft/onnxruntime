@@ -30,6 +30,7 @@ __global__ void _ComputeSliceOffsetsKernel(
     int64_t index = static_cast<int64_t>(slice_indices[dim_idx]);
     const size_t input_dim_idx = batch_dims + dim_idx;
     if (index < -input_dims[input_dim_idx] || index >= input_dims[input_dim_idx]) {
+      // Keep invalid GPU indices device-side so callers can handle them without synchronizing.
       input_slice_offsets_data[slice_idx] = -1;
       return;
     }
@@ -51,6 +52,7 @@ __global__ void _GatherNDKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, num_slices * slice_size);
   const int64_t slice_offset = slice_offsets[i / slice_size];
   if (slice_offset < 0) {
+    // This is the capture-safe contract for invalid GPU-resident indices.
     output_data[i] = static_cast<T>(0.0f);
     return;
   }

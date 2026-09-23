@@ -118,9 +118,9 @@ Status GatherNDBase::PrepareCompute(
 
   TArray<int64_t> input_dims(input_shape.GetDims());
 
-  // GPU-resident indices are validated without a host readback so the success path does not
-  // synchronize the compute stream. Invalid slices receive a -1 offset and are zero-filled
-  // by GatherNDImpl. CPU-resident indices retain the standard INVALID_ARGUMENT behavior above.
+  // GPU-resident validation deliberately stays asynchronous: returning a data-dependent error
+  // here would require synchronizing the compute stream and would be incompatible with graph
+  // capture. Invalid slices receive a -1 offset and are zero-filled by GatherNDImpl.
   ComputeSliceOffsetsImpl(
       cuda_stream,
       batch_dims,

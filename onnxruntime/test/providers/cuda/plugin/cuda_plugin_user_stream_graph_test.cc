@@ -257,7 +257,7 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
 
-TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphSafelyHandlesInvalidIndices) {
+TEST_F(CudaPluginUserStreamGraphTest, GatherNDCudaGraphZeroFillsInvalidIndicesAcrossReplay) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   const std::unordered_map<std::string, std::string> provider_options{{"enable_cuda_graph", "1"}};
