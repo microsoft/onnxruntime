@@ -2859,6 +2859,28 @@ template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONN
                                                                        size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+template <typename ComponentType, typename RepeatedField>
+Status UnpackComplexInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                    const RepeatedField& typed_data,
+                                    std::vector<uint8_t>& unpacked_tensor) {
+  if (initializer.has_raw_data()) {
+    const size_t tensor_byte_size = initializer.raw_data().size();
+    const size_t component_count = tensor_byte_size / sizeof(ComponentType);
+    unpacked_tensor.resize(tensor_byte_size);
+    return UnpackTensorWithRawDataImpl(initializer.raw_data().data(), tensor_byte_size, component_count,
+                                       sizeof(ComponentType), unpacked_tensor.data());
+  }
+
+  unpacked_tensor.resize(SafeInt<size_t>(typed_data.size()) * sizeof(ComponentType));
+  auto* output = unpacked_tensor.data();
+  for (const ComponentType component : typed_data) {
+    memcpy(output, &component, sizeof(component));
+    output += sizeof(component);
+  }
+
+  return Status::OK();
+}
+
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                                   \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {                                          \
     SafeInt<size_t> tensor_byte_size;                                                                                \
@@ -2876,6 +2898,12 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
                                             initializer.has_raw_data() ? initializer.raw_data().size() : 0,          \
                                             reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.data()), element_count); \
     break;                                                                                                           \
+  }
+
+#define CASE_UNPACK_COMPLEX(TYPE, COMPONENT_TYPE, DATA)                                  \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {              \
+    return UnpackComplexInitializerData<COMPONENT_TYPE>(initializer, initializer.DATA(), \
+                                                        unpacked_tensor);                \
   }
 
 // Sub-byte types (2-bit and 4-bit) are stored in a packed format.
@@ -2911,6 +2939,8 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   switch (initializer.data_type()) {
     CASE_UNPACK(FLOAT, float, float_data_size);
     CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK_COMPLEX(COMPLEX64, float, float_data);
+    CASE_UNPACK_COMPLEX(COMPLEX128, double, double_data);
     CASE_UNPACK(BOOL, bool, int32_data_size);
     CASE_UNPACK(INT8, int8_t, int32_data_size);
     CASE_UNPACK(INT16, int16_t, int32_data_size);
@@ -2943,6 +2973,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type: ", initializer.data_type());
 }
+#undef CASE_UNPACK_COMPLEX
 #undef CASE_UNPACK
 
 Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer, std::vector<uint8_t>& unpacked_tensor) {

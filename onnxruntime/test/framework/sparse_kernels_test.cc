@@ -2103,7 +2103,9 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Complex64) {
   TensorProto dense;
   std::filesystem::path model_path;
   ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
-  EXPECT_EQ(dense.raw_data().size(), 4 * sizeof(float));
+  const std::array<float, 4> expected{1.0f, 2.0f, 0.0f, 0.0f};
+  ASSERT_EQ(dense.raw_data().size(), expected.size() * sizeof(float));
+  EXPECT_EQ(0, memcmp(dense.raw_data().data(), expected.data(), dense.raw_data().size()));
 }
 
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Complex128) {
@@ -2125,7 +2127,9 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Complex128) {
   TensorProto dense;
   std::filesystem::path model_path;
   ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
-  EXPECT_EQ(dense.raw_data().size(), 4 * sizeof(double));
+  const std::array<double, 4> expected{1.0, 2.0, 0.0, 0.0};
+  ASSERT_EQ(dense.raw_data().size(), expected.size() * sizeof(double));
+  EXPECT_EQ(0, memcmp(dense.raw_data().data(), expected.data(), dense.raw_data().size()));
 }
 
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Rank1Indices32) {
