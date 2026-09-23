@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <optional>
 #include <sstream>
 
 #include "core/graph/onnx_protobuf.h"
@@ -19,6 +20,7 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/capturing_sink.h"
@@ -222,14 +224,37 @@ static ONNX_NAMESPACE::ModelProto CreateRecursiveFunctionExpansionModel(size_t b
   return model;
 }
 
-static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
-                                               std::vector<std::string>& log_messages,
-                                               bool claim_first_function_call = false) {
+struct FunctionExpansionTestOptions {
+  bool claim_first_function_call = false;
+  bool disable_aot_inlining = false;
+  std::optional<size_t> node_limit;
+  std::optional<size_t> byte_limit;
+};
+
+static Status InitializeFunctionExpansionModel(
+    ONNX_NAMESPACE::ModelProto model,
+    std::vector<std::string>& log_messages,
+    const FunctionExpansionTestOptions& options = {}) {
   std::string serialized_model;
   ORT_RETURN_IF_NOT(model.SerializeToString(&serialized_model),
                     "Failed to serialize function expansion model.");
 
   SessionOptions session_options;
+  if (options.disable_aot_inlining) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "1"));
+  }
+  if (options.node_limit.has_value()) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsFunctionExpansionNodeLimit,
+        std::to_string(*options.node_limit).c_str()));
+  }
+  if (options.byte_limit.has_value()) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsFunctionExpansionByteLimit,
+        std::to_string(*options.byte_limit).c_str()));
+  }
+
   auto capturing_sink = std::make_unique<CapturingSink>();
   auto* capturing_sink_ptr = capturing_sink.get();
   auto logging_manager = std::make_unique<logging::LoggingManager>(
@@ -239,7 +264,7 @@ static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
   ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), environment));
 
   InferenceSession session{session_options, *environment};
-  if (claim_first_function_call) {
+  if (options.claim_first_function_call) {
     class FirstFunctionCallExecutionProvider final
         : public internal_testing_ep::InternalTestingExecutionProvider {
      public:
@@ -281,9 +306,10 @@ static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
 TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
   auto model = CreateRecursiveFunctionExpansionModel(20, 14);
   std::vector<std::string> log_messages;
-  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages, {.node_limit = 500});
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
 }
@@ -291,9 +317,11 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
 TEST(FunctionTest, AotInliningLimitsUnclaimedCallsSharingClaimedFunction) {
   auto model = CreateRecursiveFunctionExpansionModel(20, 15);
   std::vector<std::string> log_messages;
-  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages, true);
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = true, .node_limit = 500});
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
 }
 
@@ -312,11 +340,29 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
   payload_tensor->set_raw_data(std::string(256 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
-  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages, {.byte_limit = 1024 * 1024});
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("fallback inlining"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("protobuf expansion limit")));
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("node expansion limit"))));
+}
+
+TEST(FunctionTest, FallbackInliningEnforcesExpansionLimitWhenAotIsDisabled) {
+  auto model = CreateRecursiveFunctionExpansionModel(20, 14);
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.disable_aot_inlining = true, .node_limit = 500});
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
+}
+
+TEST(FunctionTest, DefaultExpansionLimitPreservesOrdinaryLargeFunctions) {
+  auto model = CreateFunctionExpansionModel(200, 24);
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
 TEST(FunctionTest, AotInliningIgnoresFunctionMetadataForProtoBytes) {

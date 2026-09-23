@@ -1625,6 +1625,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
                                                                   execution_providers_,
                                                                   kernel_registry_manager_,
+                                                                  session_options_.config_options,
                                                                   *session_logger_));
   }
 
