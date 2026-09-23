@@ -64,6 +64,12 @@ class MoeExpertStateTest : public testing::Test {
     ORT_RETURN_IF_ERROR(pilot->Moe().Collect(ids));
     return state.RecordUsage(kernel);
   }
+
+  static InlinedVector<double> Counters(const MoeExpertState& state, const OpKernel* kernel) {
+    InlinedVector<double> counters;
+    ORT_THROW_IF_ERROR(state.GetCounters(kernel, counters));
+    return counters;
+  }
 };
 
 TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
@@ -90,14 +96,18 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   const int selected[] = {2, 0, 2, 0};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  const auto snapshot = state.GetSnapshot();
-  const auto& first = snapshot.at({"main", 0}).counters;
+  InlinedVector<double> first;
+  ASSERT_STATUS_OK(state.GetCounters(kernels_[0], first));
   ASSERT_EQ(first.size(), 3U);
   EXPECT_DOUBLE_EQ(first[0], 0.19);
   EXPECT_DOUBLE_EQ(first[1], 0);
   EXPECT_DOUBLE_EQ(first[2], 0.19);
-  EXPECT_EQ(snapshot.at({"main", 1}).counters, (InlinedVector<double>{0, 0}));
-  EXPECT_EQ(snapshot.at({"main/0/4:body", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
+  InlinedVector<double> second;
+  ASSERT_STATUS_OK(state.GetCounters(kernels_[1], second));
+  EXPECT_EQ(second, (InlinedVector<double>{0, 0}));
+  InlinedVector<double> third;
+  ASSERT_STATUS_OK(state.GetCounters(kernels_[2], third));
+  EXPECT_EQ(third, (InlinedVector<double>{0, 0, 0, 0}));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], selected));
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
@@ -133,11 +143,11 @@ TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {2, 0, 2};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{2.25, 1, 0.75}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{2.25, 1, 0.75}));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{1.375, 0.5, 0.625}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{1.375, 0.5, 0.625}));
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], {}));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.6875, 0.25, 0.3125}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0.6875, 0.25, 0.3125}));
 }
 
 TEST_F(MoeExpertStateTest, ValidatesCounterParameters) {
@@ -234,10 +244,10 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.GetCounters(kernels_[1], counters).IsOK());
   EXPECT_FALSE(state.GetCounters(nullptr, counters).IsOK());
   EXPECT_EQ(counters, (InlinedVector<double>{7}));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 0}));
   const int selected[] = {1};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0.1}));
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 0.1}));
 }
 
 TEST_F(MoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
@@ -290,12 +300,13 @@ TEST_F(MoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
   for (auto& worker : workers) {
     worker.join();
   }
-  for (const auto& [key, node] : state.GetSnapshot()) {
-    ASSERT_EQ(node.counters.size(), 2U);
-    EXPECT_DOUBLE_EQ(node.counters[0], 0);
-    EXPECT_NEAR(node.counters[1], 1.0 - std::pow(0.9, 100), 1e-14);
+  for (const auto* kernel : kernels_) {
+    const auto counters = Counters(state, kernel);
+    ASSERT_EQ(counters.size(), 2U);
+    EXPECT_DOUBLE_EQ(counters[0], 0);
+    EXPECT_NEAR(counters[1], 1.0 - std::pow(0.9, 100), 1e-14);
   }
-  EXPECT_EQ(other.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
+  EXPECT_EQ(Counters(other, kernels_[0]), (InlinedVector<double>{0, 0}));
 }
 
 TEST_F(MoeExpertStateTest, RejectsOverlappingRunsButAllowsIndependentSessions) {

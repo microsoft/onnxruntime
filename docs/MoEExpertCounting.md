@@ -58,9 +58,13 @@ usage. An invocation that does not access its collector does not replay a previo
 The internal C++ shared-provider bridge forwards only the getter from CUDA to the runtime.
 `KernelPilot` has the same provider-independent definition on both sides; neither `MoeExpertState` nor in-tree graph
 types cross the provider boundary.
-`MoeExpertState::GetCounters(kernel, counters)` reads one kernel's counters.
-`SessionState::GetMoeExpertState()->GetSnapshot()` provides an internally accessible snapshot of all registered nodes.
-There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
+`MoeExpertState::GetCounters(kernel, counters)` reads one kernel's counters, and
+`MoeExpertState::GetExpertStats()` returns a flat `(kernel, local expert id, popularity)` list across all
+registered kernels, for internal callers that only need live counter values rather than graph identity.
+`SessionState::GetKernelPilot(kernel)` returns a kernel's `KernelPilot` directly, without exposing the
+MoE-specific `MoeExpertState` type to that call path; `SessionState::GetMoeExpertState()` remains available for
+run lifecycle hooks, initialization, and inspection. There is no public C API, `OrtApi` entry, or Python
+counter-retrieval API.
 
 `KernelPilot` in `core/framework/kernel_pilot.h` is a generic, provider-independent per-kernel piloting object;
 it carries no kernel-specific logic itself. Its nested `MoeExpertSelection` class collects and deduplicates local

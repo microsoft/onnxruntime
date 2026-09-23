@@ -63,8 +63,9 @@ Status MoeExpertState::Load(std::istream& input) {
   ORT_RETURN_IF_NOT(line == "moe_expert_state 1",
                     "Expected initial counter state header: moe_expert_state 1");
 
-  // Validate into a copy so a malformed file cannot partially overwrite the state.
-  auto loaded = GetSnapshot();
+  // Validate into a flat copy so a malformed file cannot partially overwrite the state.
+  // nodes_ maps graph identity to each node's (node_type, expert range) within that flat array.
+  auto loaded_counters = counters_;
   std::set<std::tuple<std::string, size_t, size_t>> seen;
   size_t line_number = 1;
   while (std::getline(input, line)) {
@@ -82,22 +83,17 @@ Status MoeExpertState::Load(std::istream& input) {
                           static_cast<uint64_t>(expert_id) <= std::numeric_limits<size_t>::max() &&
                           std::isfinite(value) && value >= 0,
                       "Invalid expert counter record at line ", line_number);
-    const auto node = loaded.find({scope, static_cast<size_t>(node_index)});
-    ORT_RETURN_IF(node == loaded.end(), "Unknown MoE counter node at line ", line_number);
+    const auto node = nodes_.find({scope, static_cast<size_t>(node_index)});
+    ORT_RETURN_IF(node == nodes_.end(), "Unknown MoE counter node at line ", line_number);
     ORT_RETURN_IF_NOT(node->second.node_type == type &&
-                          static_cast<size_t>(expert_id) < node->second.counters.size(),
+                          static_cast<size_t>(expert_id) < node->second.experts.count,
                       "MoE counter type or expert index mismatch at line ", line_number);
     ORT_RETURN_IF_NOT(seen.emplace(scope, static_cast<size_t>(node_index), static_cast<size_t>(expert_id)).second,
                       "Duplicate expert counter at line ", line_number);
-    node->second.counters[static_cast<size_t>(expert_id)] = value;
+    loaded_counters[node->second.experts.begin + static_cast<size_t>(expert_id)] = value;
   }
   ORT_RETURN_IF(input.bad() || !input.eof(), "Failed to read initial expert counter state.");
-  for (const auto& [key, node] : nodes_) {
-    const auto& values = loaded.at(key).counters;
-    for (size_t expert = 0; expert < node.experts.count; ++expert) {
-      counters_[node.experts.begin + expert] = values[expert];
-    }
-  }
+  counters_ = std::move(loaded_counters);
   return Status::OK();
 }
 
@@ -170,19 +166,6 @@ InlinedVector<MoeExpertState::ExpertStat> MoeExpertState::GetExpertStats() const
     }
   }
   return stats;
-}
-
-MoeExpertState::Snapshot MoeExpertState::GetSnapshot() const {
-  Snapshot snapshot;
-  for (const auto& [key, node] : nodes_) {
-    NodeCounters copy{node.node_type, {}};
-    copy.counters.reserve(node.experts.count);
-    for (size_t expert = 0; expert < node.experts.count; ++expert) {
-      copy.counters.push_back(counters_[node.experts.begin + expert]);
-    }
-    snapshot.emplace(key, std::move(copy));
-  }
-  return snapshot;
 }
 
 }  // namespace onnxruntime

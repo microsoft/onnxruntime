@@ -165,6 +165,25 @@ SessionOptions CountingOptions() {
   return options;
 }
 
+// Groups the flat ExpertStat list by kernel, ordered by expert_id, for tests that don't
+// care about graph identity and just want each registered node's counters.
+std::map<const OpKernel*, InlinedVector<double>> CountersByKernel(const MoeExpertState& state) {
+  std::map<const OpKernel*, std::map<size_t, double>> by_kernel;
+  for (const auto& stat : state.GetExpertStats()) {
+    by_kernel[stat.kernel][stat.expert_id] = stat.popularity;
+  }
+  std::map<const OpKernel*, InlinedVector<double>> counters;
+  for (const auto& [kernel, experts] : by_kernel) {
+    InlinedVector<double> values;
+    values.reserve(experts.size());
+    for (const auto& [expert_id, popularity] : experts) {
+      values.push_back(popularity);
+    }
+    counters.emplace(kernel, std::move(values));
+  }
+  return counters;
+}
+
 class NoKernelPilotContext final : public OpKernelContextInternal {
  public:
   using OpKernelContextInternal::OpKernelContextInternal;
@@ -276,30 +295,29 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
   ASSERT_STATUS_OK(session.Initialize());
   const auto* state = session.GetSessionState().GetMoeExpertState();
   ASSERT_NE(state, nullptr);
-  ASSERT_EQ(state->GetSnapshot().size(), 2U);
   EXPECT_EQ(state->TotalExpertCount(), 2U * kExperts);
   const auto& session_state = session.GetSessionState();
+  const std::array<size_t, 2> node_indices{0, 1};
   InlinedHashSet<size_t> expert_ids;
-  for (const auto& [key, node] : state->GetSnapshot()) {
+  for (size_t node_index : node_indices) {
     for (int expert = 0; expert < kExperts; ++expert) {
       size_t global_id = 0;
-      ASSERT_STATUS_OK(state->GetExpertId(session_state.GetKernel(key.second), expert, global_id));
+      ASSERT_STATUS_OK(state->GetExpertId(session_state.GetKernel(node_index), expert, global_id));
       EXPECT_TRUE(expert_ids.insert(global_id).second);
     }
   }
   EXPECT_EQ(expert_ids.size(), 2U * kExperts);
   for (int run = 1; run <= 2; ++run) {
     RunCountingModel(session, false, true, rows);
-    for (const auto& [key, node] : state->GetSnapshot()) {
+    for (size_t node_index : node_indices) {
       const double expected = run == 1 ? 0.1 : 0.19;
-      ASSERT_EQ(node.counters.size(), 4U);
-      EXPECT_DOUBLE_EQ(node.counters[0], expected);
-      EXPECT_DOUBLE_EQ(node.counters[1], 0);
-      EXPECT_DOUBLE_EQ(node.counters[2], rows == 3 ? expected : 0);
-      EXPECT_DOUBLE_EQ(node.counters[3], 0);
       InlinedVector<double> counters;
-      ASSERT_STATUS_OK(state->GetCounters(session_state.GetKernel(key.second), counters));
-      EXPECT_EQ(counters, node.counters);
+      ASSERT_STATUS_OK(state->GetCounters(session_state.GetKernel(node_index), counters));
+      ASSERT_EQ(counters.size(), 4U);
+      EXPECT_DOUBLE_EQ(counters[0], expected);
+      EXPECT_DOUBLE_EQ(counters[1], 0);
+      EXPECT_DOUBLE_EQ(counters[2], rows == 3 ? expected : 0);
+      EXPECT_DOUBLE_EQ(counters[3], 0);
     }
   }
 }
@@ -336,13 +354,17 @@ TEST(MoeExpertCountingTest, ContextExposesSessionOwnedCollector) {
   ASSERT_STATUS_OK(usage.BeginInvocation(kExperts));
   const int selected[] = {0, 2, 0};
   ASSERT_STATUS_OK(usage.Collect(selected));
-  EXPECT_EQ(state->GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
+  InlinedVector<double> counters;
+  ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
+  EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0, 0}));
   ASSERT_STATUS_OK(context.RecordKernelUsage());
-  EXPECT_EQ(state->GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
+  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
 
   OpKernelContextInternal unused_context(session_state, frame, *kernel, session_state.Logger(), terminate, nullptr);
   ASSERT_STATUS_OK(unused_context.RecordKernelUsage());
-  EXPECT_EQ(state->GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
+  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
 }
 
 TEST(MoeExpertCountingTest, FailedKernelDoesNotCommitCollectedUsage) {
@@ -368,13 +390,13 @@ TEST(MoeExpertCountingTest, FailedKernelDoesNotCommitCollectedUsage) {
   const auto status = ExecuteCountingModel(session, outputs);
   ASSERT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("Intentional failure after collecting usage."), std::string::npos);
-  for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0, 0, 0, 0}));
+  for (const auto& [kernel, counters] : CountersByKernel(*session.GetSessionState().GetMoeExpertState())) {
+    EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0, 0}));
   }
   fail = false;
   RunCountingModel(session);
-  for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0, 0, 0.1, 0}));
+  for (const auto& [kernel, counters] : CountersByKernel(*session.GetSessionState().GetMoeExpertState())) {
+    EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0.1, 0}));
   }
 }
 
@@ -398,8 +420,8 @@ TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
     ASSERT_STATUS_OK(session->Initialize());
   }
   RunCountingModel(first);
-  for (const auto& [key, node] : second.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0, 0, 0, 0}));
+  for (const auto& [kernel, counters] : CountersByKernel(*second.GetSessionState().GetMoeExpertState())) {
+    EXPECT_EQ(counters, (InlinedVector<double>{0, 0, 0, 0}));
   }
 }
 
@@ -410,7 +432,6 @@ TEST(MoeExpertCountingTest, SharesStateWithSubgraphs) {
   ASSERT_STATUS_OK(session.Initialize());
   const auto* state = session.GetSessionState().GetMoeExpertState();
   ASSERT_NE(state, nullptr);
-  ASSERT_EQ(state->GetSnapshot().size(), 4U);
   EXPECT_EQ(state->TotalExpertCount(), 4U * kExperts);
   for (const auto& [node, subgraphs] : session.GetSessionState().GetSubgraphSessionStateMap()) {
     for (const auto& [attribute, subgraph] : subgraphs) {
@@ -419,8 +440,10 @@ TEST(MoeExpertCountingTest, SharesStateWithSubgraphs) {
   }
   RunCountingModel(session, true, true);
   RunCountingModel(session, true, false);
-  for (const auto& [key, node] : state->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  const auto counters_by_kernel = CountersByKernel(*state);
+  ASSERT_EQ(counters_by_kernel.size(), 4U);
+  for (const auto& [kernel, counters] : counters_by_kernel) {
+    EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
   }
 }
 
@@ -438,8 +461,8 @@ TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
     ASSERT_STATUS_OK(session.Initialize());
     RunCountingModel(session);
     RunCountingModel(session);
-    for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
-      EXPECT_EQ(node.counters, (InlinedVector<double>{expected, 0, expected, 0}));
+    for (const auto& [kernel, counters] : CountersByKernel(*session.GetSessionState().GetMoeExpertState())) {
+      EXPECT_EQ(counters, (InlinedVector<double>{expected, 0, expected, 0}));
     }
   }
 }
@@ -460,8 +483,8 @@ TEST(MoeExpertCountingTest, RejectsOverlappingRuns) {
     EXPECT_TRUE(outputs.empty());
   }
   RunCountingModel(session);
-  for (const auto& [key, node] : state->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+  for (const auto& [kernel, counters] : CountersByKernel(*state)) {
+    EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
   }
 }
 
@@ -491,8 +514,10 @@ TEST(MoeExpertCountingTest, LoadsInitialStateFile) {
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
   RunCountingModel(session);
-  EXPECT_EQ(session.GetSessionState().GetMoeExpertState()->GetSnapshot().at({"main", 0}).counters,
-            (InlinedVector<double>{3.25, 0, 0.1, 0}));
+  InlinedVector<double> counters;
+  ASSERT_STATUS_OK(session.GetSessionState().GetMoeExpertState()->GetCounters(
+      session.GetSessionState().GetKernel(0), counters));
+  EXPECT_EQ(counters, (InlinedVector<double>{3.25, 0, 0.1, 0}));
 }
 
 TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {

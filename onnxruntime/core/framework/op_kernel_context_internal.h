@@ -204,8 +204,7 @@ class OpKernelContextInternal : public OpKernelContext {
 
 #if !defined(ORT_MINIMAL_BUILD)
   KernelPilot* GetKernelPilot() const override {
-    auto* state = session_state_.GetMoeExpertState();
-    kernel_pilot_ = state ? state->GetKernelPilot(GetKernel()) : nullptr;
+    kernel_pilot_ = session_state_.GetKernelPilot(GetKernel());
     return kernel_pilot_;
   }
 

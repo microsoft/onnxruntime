@@ -335,6 +335,11 @@ class SessionState {
 
 #if !defined(ORT_MINIMAL_BUILD)
   MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
+  // Generic accessor used by kernel contexts to obtain their per-kernel piloting object.
+  // Callers do not need to know which kernel family (if any) currently owns pilots.
+  KernelPilot* GetKernelPilot(const OpKernel* kernel) const {
+    return moe_expert_state_ ? moe_expert_state_->GetKernelPilot(kernel) : nullptr;
+  }
 #endif
 
   SessionState* Parent() {

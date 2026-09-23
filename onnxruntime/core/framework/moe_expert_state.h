@@ -25,13 +25,6 @@ class MoeExpertState {
   MoeExpertState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MoeExpertState);
 
-  struct NodeCounters {
-    std::string node_type;
-    InlinedVector<double> counters;
-  };
-  using Key = std::pair<std::string, size_t>;
-  using Snapshot = std::map<Key, NodeCounters>;
-
   Status SetCounterParameters(double alpha, double beta);
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                       std::string_view node_type, size_t expert_count);
@@ -67,8 +60,6 @@ class MoeExpertState {
   // During a Run, only this kernel may read its counters.
   Status GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const;
   Status GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const;
-  // Call only while no Run is active.
-  Snapshot GetSnapshot() const;
 
   // One entry per registered (kernel, local expert index). expert_id is local to that kernel,
   // matching RegisterNode/GetExpertId, not a global counter index. Order is unspecified.
@@ -83,6 +74,7 @@ class MoeExpertState {
   size_t TotalExpertCount() const noexcept { return counters_.size(); }
 
  private:
+  using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
     size_t begin;
     size_t count;
