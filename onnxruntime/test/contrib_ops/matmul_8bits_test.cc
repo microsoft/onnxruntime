@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
+#include <algorithm>
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -967,9 +968,19 @@ TEST(MatMulNBits, Fp16_Int8_Sm121QualifiedM6To8) {
   constexpr int64_t block_size = 64;
   constexpr int64_t blocks_per_k = k / block_size;
   const auto one = MLFloat16(1.0f);
-  const auto expected_value = MLFloat16(static_cast<float>(k));
 
   for (const int64_t m : {6, 7, 8}) {
+    std::vector<MLFloat16> activations(static_cast<size_t>(m * k));
+    std::vector<MLFloat16> expected(static_cast<size_t>(m * n));
+    for (int64_t row = 0; row < m; ++row) {
+      const auto activation_value = MLFloat16(static_cast<float>(row + 1));
+      const auto expected_value = MLFloat16(static_cast<float>((row + 1) * k));
+      std::fill_n(activations.begin() + static_cast<size_t>(row * k),
+                  static_cast<size_t>(k), activation_value);
+      std::fill_n(expected.begin() + static_cast<size_t>(row * n),
+                  static_cast<size_t>(n), expected_value);
+    }
+
     OpTester test("MatMulNBits", 1, kMSDomain);
     test.AddAttribute<int64_t>("K", k);
     test.AddAttribute<int64_t>("N", n);
@@ -977,7 +988,7 @@ TEST(MatMulNBits, Fp16_Int8_Sm121QualifiedM6To8) {
     test.AddAttribute<int64_t>("bits", QBits);
     test.AddAttribute<int64_t>("accuracy_level", 0);
 
-    test.AddInput<MLFloat16>("A", {m, k}, std::vector<MLFloat16>(m * k, one), false);
+    test.AddInput<MLFloat16>("A", {m, k}, activations, false);
     test.AddInput<uint8_t>("B", {n, blocks_per_k, block_size},
                            std::vector<uint8_t>(static_cast<size_t>(n * k), 129), true);
     test.AddInput<MLFloat16>("scales", {n, blocks_per_k},
@@ -985,8 +996,7 @@ TEST(MatMulNBits, Fp16_Int8_Sm121QualifiedM6To8) {
     test.AddOptionalInputEdge<uint8_t>();
     test.AddOptionalInputEdge<int32_t>();
     test.AddOptionalInputEdge<MLFloat16>();
-    test.AddOutput<MLFloat16>("Y", {m, n},
-                              std::vector<MLFloat16>(m * n, expected_value));
+    test.AddOutput<MLFloat16>("Y", {m, n}, expected);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
