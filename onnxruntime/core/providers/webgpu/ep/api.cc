@@ -12,10 +12,8 @@
 #include "core/providers/webgpu/ep/factory.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
-// When this EP is statically linked into the host binary instead of being built as a separate plugin library, the
-// entry points below are given a `WebGpu_` prefix. ORT core declares the prefixed names in
-// onnxruntime/core/session/plugin_ep/ep_static_plugins.cc, which spells them out literally, so the prefix is hardcoded
-// on both sides rather than configured by the build.
+// When this EP is statically linked into the host binary instead of being built as a separate shared library, the
+// entry points below are given a `WebGpu_` prefix.
 //
 // The shared library build must leave the entry points unprefixed, because they are resolved by exact name.
 #if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
