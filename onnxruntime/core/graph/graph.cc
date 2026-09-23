@@ -2753,7 +2753,9 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   const TensorProto* getInputData(size_t index) const override {
-    if (index >= node_.InputDefs().size()) {
+    // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
+    // so callers can pass an index the node doesn't actually have.
+    if (index >= getNumInputs()) {
       return nullptr;
     }
 
