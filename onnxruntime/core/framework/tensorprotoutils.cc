@@ -2591,8 +2591,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     return status;
   }
 
-  auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
-  const size_t element_size = ml_data->Size();
+  size_t element_size = GetElementSizeOfTensor(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type));
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64 ||
+      type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128) {
+    element_size *= 2;
+  }
   const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
   ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
                     "Sparse tensor: ", name, " dense data size of ", dense_data_size,
