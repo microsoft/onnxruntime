@@ -3,7 +3,6 @@
 
 #include <array>
 #include <fstream>
-#include <thread>
 
 #include "core/framework/session_state.h"
 #include "core/graph/onnx_protobuf.h"
@@ -119,7 +118,8 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   return model.SerializeAsString();
 }
 
-void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true) {
+Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
+                            bool subgraphs = false, bool condition = true) {
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue input, router, cond;
   const std::vector<MLFloat16> values(3 * kWidth, MLFloat16(1.0f));
@@ -134,9 +134,13 @@ void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool co
     CreateMLValue<bool>(allocator, {}, {condition}, &cond);
     feeds.emplace("condition", cond);
   }
-  std::vector<OrtValue> outputs;
   const std::array<std::string, 1> output_names{"output"};
-  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+  return session.Run(RunOptions{}, feeds, output_names, &outputs);
+}
+
+void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true) {
+  std::vector<OrtValue> outputs;
+  ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs, subgraphs, condition));
   ASSERT_EQ(outputs.size(), 1U);
   for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
     EXPECT_EQ(value.ToFloat(), 0.f);
@@ -174,6 +178,16 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false) {
   ASSERT_NE(state, nullptr);
   ASSERT_EQ(state->GetSnapshot().size(), 2U);
   EXPECT_EQ(state->TotalExpertCount(), 2U * kExperts);
+  const auto& session_state = session.GetSessionState();
+  InlinedHashSet<size_t> expert_ids;
+  for (const auto& [key, node] : state->GetSnapshot()) {
+    for (int expert = 0; expert < kExperts; ++expert) {
+      size_t global_id = 0;
+      ASSERT_STATUS_OK(state->GetExpertId(session_state.GetKernel(key.second), expert, global_id));
+      EXPECT_TRUE(expert_ids.insert(global_id).second);
+    }
+  }
+  EXPECT_EQ(expert_ids.size(), 2U * kExperts);
   for (int run = 1; run <= 2; ++run) {
     RunCountingModel(session);
     for (const auto& [key, node] : state->GetSnapshot()) {
@@ -245,21 +259,36 @@ TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
   }
 }
 
-TEST(MoeExpertCountingTest, ConcurrentRuns) {
+TEST(MoeExpertCountingTest, RejectsOverlappingRuns) {
   const auto model = MakeCountingModel();
   InferenceSessionWrapper session(CountingOptions(), GetEnvironment());
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
-  InlinedVector<std::thread> workers;
-  for (int i = 0; i < 4; ++i) {
-    workers.emplace_back([&session]() { RunCountingModel(session); });
+  const auto* state = session.GetSessionState().GetMoeExpertState();
+  {
+    ASSERT_STATUS_OK(state->BeginRun());
+    auto end_run = gsl::finally([state]() { state->EndRun(); });
+    std::vector<OrtValue> outputs;
+    const auto status = ExecuteCountingModel(session, outputs);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find("simultaneous Run"), std::string::npos);
+    EXPECT_TRUE(outputs.empty());
   }
-  for (auto& worker : workers) {
-    worker.join();
+  RunCountingModel(session);
+  for (const auto& [key, node] : state->GetSnapshot()) {
+    EXPECT_EQ(node.counters, (InlinedVector<double>{1, 0, 1, 0}));
   }
-  for (const auto& [key, node] : session.GetSessionState().GetMoeExpertState()->GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{4, 0, 4, 0}));
-  }
+}
+
+TEST(MoeExpertCountingTest, FailedRunReleasesCounterAccess) {
+  InferenceSessionWrapper session(CountingOptions(), GetEnvironment());
+  const auto model = MakeCountingModel();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  std::vector<OrtValue> outputs;
+  const std::array<std::string, 1> output_names{"output"};
+  EXPECT_FALSE(session.Run(RunOptions{}, NameMLValMap{}, output_names, &outputs).IsOK());
+  RunCountingModel(session);
 }
 
 TEST(MoeExpertCountingTest, LoadsInitialStateFile) {

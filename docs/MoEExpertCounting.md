@@ -30,7 +30,19 @@ updates are not transactional across an entire model invocation.
 The root `SessionState` owns a `MoeExpertState` shared with its subgraph states. Sessions never share counters.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
-for `N` equally sized MoE nodes with `E` experts, it is `N * E`. Updates and snapshot reads are protected by a mutex.
+for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
+
+After kernel creation, initialization builds an immutable dictionary
+`(OpKernel pointer, local expert ID) -> global expert index`, plus the contiguous expert range for each kernel.
+Counters are ordinary `double` values in a session-wide array. `RecordUsage()` uses the kernel pointer and this
+dictionary directly, without a mutex, atomic counters, graph-name lookup, or per-invocation allocation.
+The next-value scratch storage is also allocated at initialization. Repeated routing IDs overwrite the same next value
+rather than incrementing it repeatedly.
+
+Counting requires non-overlapping `Run()` calls on a session. An entry guard rejects overlapping calls explicitly;
+there is no locking in the kernel update path. Different kernels may update their disjoint ranges concurrently, but
+one kernel must not execute twice simultaneously. Global snapshots must be read while no run is active. Registration,
+counter parameters, and file loading are frozen before execution starts.
 
 Internal kernels access their own counters through `OpKernelContext::HasMoeExpertState()`,
 `RecordMoeExpertUsage()`, and `GetMoeExpertCounters()`. The shared-provider bridge exposes the same interface to CUDA.

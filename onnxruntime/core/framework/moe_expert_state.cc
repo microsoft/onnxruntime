@@ -20,30 +20,38 @@ Status MoeExpertState::SetCounterParameters(double alpha, double beta) {
                     "MoE expert counter alpha must be finite and in [0, 1].");
   ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0,
                     "MoE expert counter beta must be finite and non-negative.");
-  std::lock_guard<std::mutex> lock(mutex_);
-  ORT_RETURN_IF_NOT(nodes_.empty(), "MoE expert counter parameters cannot change after node registration.");
+  ORT_RETURN_IF(initialized_ || !nodes_.empty(),
+                "MoE expert counter parameters cannot change after node registration.");
   alpha_ = alpha;
   beta_ = beta;
   return Status::OK();
 }
 
-Status MoeExpertState::RegisterNode(std::string_view graph_scope, size_t node_index,
+Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
                                     std::string_view node_type, size_t expert_count) {
+  ORT_RETURN_IF(initialized_, "MoE expert registration is closed.");
+  ORT_RETURN_IF_NOT(kernel, "MoE expert registration requires a kernel.");
   ORT_RETURN_IF_NOT(node_type == "MoE" || node_type == "QMoE", "Unsupported expert counter node type: ", node_type);
-  ORT_RETURN_IF(expert_count == 0, "Expert count must be positive.");
-  std::lock_guard<std::mutex> lock(mutex_);
-  const size_t updated_total_expert_count = SafeInt<size_t>(total_expert_count_) + expert_count;
-  const bool inserted = nodes_.emplace(
-                                  Key{std::string(graph_scope), node_index},
-                                  NodeCounters{std::string(node_type), InlinedVector<double>(expert_count, 0.0)})
-                            .second;
-  ORT_RETURN_IF_NOT(inserted, "Duplicate MoE counter node: ", graph_scope, " ", node_index);
-  total_expert_count_ = updated_total_expert_count;
+  ORT_RETURN_IF(expert_count == 0 || expert_count > static_cast<size_t>(std::numeric_limits<int>::max()),
+                "Expert count must be positive and fit in an int.");
+  const Key key{std::string(graph_scope), node_index};
+  ORT_RETURN_IF(nodes_.find(key) != nodes_.end(), "Duplicate MoE counter node: ", graph_scope, " ", node_index);
+  ORT_RETURN_IF(kernel_experts_.contains(kernel), "Duplicate MoE counter kernel: ", graph_scope, " ", node_index);
+  const ExpertRange range{counters_.size(), expert_count};
+  const size_t total_expert_count = SafeInt<size_t>(range.begin) + expert_count;
+  counters_.reserve(total_expert_count);
+  expert_ids_.reserve(total_expert_count);
+  for (size_t expert = 0; expert < expert_count; ++expert) {
+    expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
+    counters_.push_back({0.0, 0.0});
+  }
+  nodes_.emplace(key, NodeInfo{std::string(node_type), range});
+  kernel_experts_.emplace(kernel, range);
   return Status::OK();
 }
 
 Status MoeExpertState::Load(std::istream& input) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  ORT_RETURN_IF(initialized_, "MoE expert initial state cannot change after initialization.");
   std::string line;
   ORT_RETURN_IF_NOT(std::getline(input, line), "Missing initial expert counter state header.");
   if (!line.empty() && line.back() == '\r') {
@@ -53,7 +61,7 @@ Status MoeExpertState::Load(std::istream& input) {
                     "Expected initial counter state header: moe_expert_state 1");
 
   // Validate into a copy so a malformed file cannot partially overwrite the state.
-  auto loaded = nodes_;
+  auto loaded = GetSnapshot();
   std::set<std::tuple<std::string, size_t, size_t>> seen;
   size_t line_number = 1;
   while (std::getline(input, line)) {
@@ -81,52 +89,91 @@ Status MoeExpertState::Load(std::istream& input) {
     node->second.counters[static_cast<size_t>(expert_id)] = value;
   }
   ORT_RETURN_IF(input.bad() || !input.eof(), "Failed to read initial expert counter state.");
-  nodes_ = std::move(loaded);
+  for (const auto& [key, node] : nodes_) {
+    const auto& values = loaded.at(key).counters;
+    for (size_t expert = 0; expert < node.experts.count; ++expert) {
+      counters_[node.experts.begin + expert].value = values[expert];
+    }
+  }
   return Status::OK();
 }
 
-Status MoeExpertState::RecordUsage(std::string_view graph_scope, size_t node_index,
-                                   gsl::span<const int> used_expert_ids) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto node = nodes_.find({std::string(graph_scope), node_index});
-  ORT_RETURN_IF(node == nodes_.end(), "Unknown MoE counter node: ", graph_scope, " ", node_index);
-  auto& counters = node->second.counters;
-  InlinedHashSet<int> used;
+Status MoeExpertState::FinalizeInitialization() {
+  ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
+  initialized_ = true;
+  return Status::OK();
+}
+
+Status MoeExpertState::BeginRun() const {
+  ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
+  ORT_RETURN_IF(run_active_.test_and_set(std::memory_order_acquire),
+                "MoE expert counting does not support simultaneous Run calls on the same session.");
+  return Status::OK();
+}
+
+void MoeExpertState::EndRun() const {
+  run_active_.clear(std::memory_order_release);
+}
+
+Status MoeExpertState::RecordUsage(const OpKernel* kernel, gsl::span<const int> used_expert_ids) {
+  ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
+  const auto node = kernel_experts_.find(kernel);
+  ORT_RETURN_IF(node == kernel_experts_.end(), "Unknown MoE counter kernel.");
+  const auto& range = node->second;
   for (int expert : used_expert_ids) {
-    ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= counters.size(),
+    ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= range.count,
                   "MoE counter expert index out of range: ", expert);
-    used.insert(expert);
   }
 
-  InlinedVector<double> updated;
-  updated.reserve(counters.size());
-  for (size_t expert = 0; expert < counters.size(); ++expert) {
-    const double value = alpha_ * counters[expert] +
-                         (used.contains(static_cast<int>(expert)) ? beta_ : 0.0);
-    ORT_RETURN_IF_NOT(std::isfinite(value), "MoE expert counter cannot be updated: ", expert);
-    updated.push_back(value);
+  auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
+  for (auto& counter : counters) {
+    counter.next_value = alpha_ * counter.value;
   }
-  counters = std::move(updated);
+  for (int expert : used_expert_ids) {
+    auto& counter = counters_[expert_ids_.at({kernel, expert})];
+    // Assignment, not accumulation: repeated routing IDs contribute beta only once.
+    counter.next_value = alpha_ * counter.value + beta_;
+  }
+  for (size_t expert = 0; expert < counters.size(); ++expert) {
+    ORT_RETURN_IF_NOT(std::isfinite(counters[expert].next_value),
+                      "MoE expert counter cannot be updated: ", expert);
+  }
+  for (auto& counter : counters) {
+    counter.value = counter.next_value;
+  }
   return Status::OK();
 }
 
-Status MoeExpertState::GetCounters(std::string_view graph_scope, size_t node_index,
-                                   InlinedVector<double>& counters) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto node = nodes_.find({std::string(graph_scope), node_index});
-  ORT_RETURN_IF(node == nodes_.end(), "Unknown MoE counter node: ", graph_scope, " ", node_index);
-  counters = node->second.counters;
+Status MoeExpertState::GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const {
+  const auto node = kernel_experts_.find(kernel);
+  ORT_RETURN_IF(node == kernel_experts_.end(), "Unknown MoE counter kernel.");
+  const auto& range = node->second;
+  counters.clear();
+  counters.reserve(range.count);
+  for (size_t expert = 0; expert < range.count; ++expert) {
+    counters.push_back(counters_[range.begin + expert].value);
+  }
+  return Status::OK();
+}
+
+Status MoeExpertState::GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const {
+  const auto expert = expert_ids_.find({kernel, expert_id});
+  ORT_RETURN_IF(expert == expert_ids_.end(), "Unknown MoE kernel/expert pair: ", expert_id);
+  global_expert_id = expert->second;
   return Status::OK();
 }
 
 MoeExpertState::Snapshot MoeExpertState::GetSnapshot() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return nodes_;
-}
-
-size_t MoeExpertState::TotalExpertCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return total_expert_count_;
+  Snapshot snapshot;
+  for (const auto& [key, node] : nodes_) {
+    NodeCounters copy{node.node_type, {}};
+    copy.counters.reserve(node.experts.count);
+    for (size_t expert = 0; expert < node.experts.count; ++expert) {
+      copy.counters.push_back(counters_[node.experts.begin + expert].value);
+    }
+    snapshot.emplace(key, std::move(copy));
+  }
+  return snapshot;
 }
 
 }  // namespace onnxruntime

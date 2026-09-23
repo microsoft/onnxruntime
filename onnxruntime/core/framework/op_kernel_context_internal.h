@@ -207,11 +207,11 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
   Status RecordMoeExpertUsage(gsl::span<const int> used_expert_ids) const override {
-    return session_state_.RecordMoeExpertUsage(GetNodeIndex(), used_expert_ids);
+    return session_state_.RecordMoeExpertUsage(GetKernel(), used_expert_ids);
   }
 
   Status GetMoeExpertCounters(InlinedVector<double>& counters) const override {
-    return session_state_.GetMoeExpertCounters(GetNodeIndex(), counters);
+    return session_state_.GetMoeExpertCounters(GetKernel(), counters);
   }
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {

@@ -198,9 +198,12 @@ The CUDA cache manager owns device-specific resources and execution state:
 - pending exchanges and redistribution transfers;
 - CUDA completion events.
 
-Counter updates and snapshots are synchronized for concurrent `Run()` calls. Concurrent requests may share immutable
-CPU weights. Placement updates are serialized per session. Each invocation captures a stable mapping snapshot, and a
-slot cannot be overwritten until all work using its previous contents has completed.
+Initialization builds an immutable dictionary from `(OpKernel pointer, local expert ID)` to a global expert index.
+Counters are ordinary values; their update path does not acquire a mutex. Counting and adaptive placement require
+non-overlapping `Run()` calls on a session, enforced at run entry. Distinct kernels may update disjoint expert ranges,
+but a kernel cannot execute twice simultaneously. Global snapshots are read between runs.
+Each invocation captures a stable placement mapping, and a slot cannot be overwritten until all work using its
+previous contents has completed.
 
 Errors are explicit. Invalid configuration, invalid initial state, allocation failures, copy failures, and event
 failures fail session initialization or execution rather than silently disabling offload or retaining stale placement.
@@ -223,27 +226,29 @@ Provide independently tested cache and policy components without activating offl
 - Manage CUDA slots, streams, events, and atomic mapping publication.
 - Add unit tests for configuration, initial state, ranking, counter updates, exchanges, and redistribution.
 
-### PR 2: session-global expert state and simple counting
+### PR 2: session-global expert state and counters
 
 Depends on PR 1.
 
 - Add `MoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
 - Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
-- Expose restricted kernel-context access for reporting used experts and reading consistent counter snapshots,
+- Build the immutable kernel-pointer/expert-ID dictionary after kernel creation and before any run.
+- Expose restricted kernel-context access for reporting used experts and reading the current kernel's counters,
   including the provider bridge needed by CUDA kernels.
 - Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
-- Wire CPU and CUDA MoE/QMoE routing results into simple per-invocation counting:
+- Wire CPU and CUDA MoE/QMoE routing results into per-invocation updates:
 
   ```text
-  c(t+1) = c(t) + (1 if used otherwise 0)
+  c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
   ```
 
-- Increment each used expert once per invocation, even if several rows select it; leave unused counters unchanged.
-- Preserve counters across `Run()` calls, isolate sessions, and synchronize concurrent updates.
-- Keep counting opt-in and preserve model outputs and execution placement. Do not enable decay, ranking, placement
+- Apply decay to every expert and add `beta` once per selected expert, even if several rows select it.
+- Preserve counters across `Run()` calls, isolate sessions, and reject overlapping runs. Use ordinary counters with
+  no mutex in `RecordUsage()`, and read global snapshots only between runs.
+- Keep counting opt-in and preserve model outputs and execution placement. Do not enable ranking, placement
   strategy, offload, swaps, or redistribution in this PR.
 - Test zero and file initialization, used/unused experts, repeated selection within one invocation, persistence across
-  runs, session isolation, subgraph identity, concurrent updates, and CPU/CUDA counting agreement.
+  runs, session isolation, subgraph identity, disjoint kernel updates, rejected overlapping runs, and CPU/CUDA agreement.
 
 ### PR 3: adaptive placement and MoE/QMoE offload
 
@@ -298,7 +303,7 @@ the following strategy.
 - Verify the exponential update for used and unused experts, the strict epsilon threshold, asynchronous exchange
   timing, and required completion before the next invocation.
 - Verify global budget preservation and redistribution toward complete CUDA-resident nodes after inference.
-- Cover concurrent invocations, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
+- Cover rejected overlapping runs, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
 
 ### PR 4: end-to-end evaluation
 
@@ -327,7 +332,7 @@ Tests cover:
 - atomic mapping publication;
 - global budget preservation during redistribution;
 - maximizing complete CUDA-resident nodes before retained counter mass;
-- concurrent invocation snapshots and serialized placement updates;
+- immutable per-invocation snapshots and rejection of overlapping runs;
 - unchanged behavior when offloading is disabled;
 - numerical agreement for CPU-only, CUDA-only, and mixed expert execution;
 - bounded CPU and CUDA memory for partial and full offload targets.

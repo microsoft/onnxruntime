@@ -213,6 +213,7 @@ class OpKernelContext {
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
+  const OpKernel* GetKernel() const noexcept { return kernel_; }
 
   virtual const OrtValue* GetInputMLValue(int index) const;
   virtual const OrtValue* GetImplicitInputMLValue(int index) const;

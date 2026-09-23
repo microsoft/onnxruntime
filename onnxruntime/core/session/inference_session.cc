@@ -3577,6 +3577,13 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     FeedsFetchesManager& feeds_fetches_manager,
                                     const OrtValueCachePtr& cache,
                                     int32_t partial_graph_index) {
+  const auto* moe_state = is_inited_ ? session_state_->GetMoeExpertState() : nullptr;
+  if (moe_state) {
+    ORT_RETURN_IF_ERROR(moe_state->BeginRun());
+  }
+  auto end_moe_run = gsl::finally([moe_state]() {
+    if (moe_state) moe_state->EndRun();
+  });
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3701,6 +3708,13 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,
                                  int graph_capture_depth) {
+  const auto* moe_state = is_inited_ ? session_state_->GetMoeExpertState() : nullptr;
+  if (moe_state) {
+    ORT_RETURN_IF_ERROR(moe_state->BeginRun());
+  }
+  auto end_moe_run = gsl::finally([moe_state]() {
+    if (moe_state) moe_state->EndRun();
+  });
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
