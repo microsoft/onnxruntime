@@ -1097,10 +1097,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool packed_int_fc2_shape_supported = onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
       sm_, packed_int_expanded, moe_params.hidden_size, moe_params.inter_size,
       static_cast<int>(fc2_expert_weight_bits_), static_cast<int>(block_size_));
+  const bool packed_int_routing_supported =
+      moe_params.num_rows <= 256 && moe_params.num_experts <= 256 &&
+      (k_ == 1 || k_ == 2 || k_ == 4 || k_ == 6 || k_ == 8);
   if (enable_int2_gemv_ && !has_any_zero_point && is_fused_swiglu && swiglu_fusion == 1 &&
       (block_size_ == 64 || block_size_ == 128) && packed_fc1_weights_ != nullptr &&
       packed_fc2_weights_ != nullptr) {
-    use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported;
+    use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported &&
+                          packed_int_routing_supported;
   }
   if (enable_kernel_debug_info_ && enable_int2_gemv_ && !use_packed_int_gemv) {
     LOGS_DEFAULT(WARNING) << "QMoE packed INT GEMV gate: fp16=" << is_fp16_
@@ -1113,7 +1117,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           << " fc1_packed=" << (packed_fc1_weights_ != nullptr)
                           << " fc2_packed=" << (packed_fc2_weights_ != nullptr)
                           << " fc1_shape=" << packed_int_fc1_shape_supported
-                          << " fc2_shape=" << packed_int_fc2_shape_supported;
+                          << " fc2_shape=" << packed_int_fc2_shape_supported
+                          << " routing=" << packed_int_routing_supported;
   }
 
   const qmoe::RowTilePlan row_tile_plan =
@@ -1776,9 +1781,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto fused_routing = route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE packed INT GEMV requires materialized routing outputs.");
-    ck::fusedBuildExpertMapsSortFirstToken(
+    const bool expert_maps_built = ck::fusedBuildExpertMapsSortFirstToken(
         expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
         num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
+    ORT_ENFORCE(expert_maps_built,
+                "QMoE packed INT GEMV failed to build fused expert maps for a supported routing configuration.");
 
     ck::ActivationParams act_params(activation_type_);
     act_params.alpha = activation_alpha_;

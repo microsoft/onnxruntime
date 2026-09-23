@@ -2240,6 +2240,16 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecode) {
       /*use_initializers=*/true);
 }
 
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeBlock128) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/128, /*model_size=*/512, /*expect_scratch_failure=*/false,
+      /*use_initializers=*/true);
+}
+
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
