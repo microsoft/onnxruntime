@@ -85,9 +85,9 @@ class MoeExpertState {
     ExpertRange experts;
     KernelPilot pilot;
   };
-  // Maps graph identity to the registered kernel, for duplicate-registration checks and for
-  // resolving Load()'s graph-scope-keyed records; the counters and node_type themselves live in
-  // kernels_, keyed by kernel pointer.
+  // Maps graph identity to the registered kernel, so Load() can resolve its graph-scope-keyed
+  // records to the corresponding KernelState. Only needed between RegisterNode and Load()/
+  // FinalizeInitialization(); cleared once initialization is finalized.
   std::map<Key, const OpKernel*> nodes_;
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;

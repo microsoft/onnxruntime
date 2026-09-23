@@ -21,7 +21,7 @@ Status MoeExpertState::SetCounterParameters(double alpha, double beta) {
   ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0,
                     "MoE expert counter beta must be finite and non-negative.");
   ORT_RETURN_IF_NOT(alpha + beta <= 1.0, "MoE expert counter alpha + beta must be at most 1.");
-  ORT_RETURN_IF(initialized_ || !nodes_.empty(),
+  ORT_RETURN_IF(initialized_ || !kernels_.empty(),
                 "MoE expert counter parameters cannot change after node registration.");
   alpha_ = alpha;
   beta_ = beta;
@@ -101,6 +101,9 @@ Status MoeExpertState::Load(std::istream& input) {
 Status MoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
   initialized_ = true;
+  // nodes_ only resolves graph-scope-keyed Load() records to their kernel; Load() must run
+  // before this point, so the mapping is no longer needed once initialization is finalized.
+  nodes_.clear();
   return Status::OK();
 }
 
