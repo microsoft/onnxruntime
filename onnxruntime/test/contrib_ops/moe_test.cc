@@ -2175,6 +2175,10 @@ TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
   RunQMoEMixedWidthCudaIdentityTest(2, 4);
   RunQMoEMixedWidthCudaIdentityTest(4, 2);
   RunQMoEMixedWidthCudaIdentityTest(2, 2);
+  RunQMoEMixedWidthCudaIdentityTest(2, 8);
+  RunQMoEMixedWidthCudaIdentityTest(8, 2);
+  RunQMoEMixedWidthCudaIdentityTest(4, 8);
+  RunQMoEMixedWidthCudaIdentityTest(8, 4);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
