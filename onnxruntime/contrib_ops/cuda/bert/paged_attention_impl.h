@@ -29,9 +29,25 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 
 // Exposed so paged_attention.cc can populate cumulative_seqlens_kv on both the FA and MEA
 // dispatch paths (producer hoisted out of FlashAttention/UnfusedAttention in impl.cu).
-Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
-                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
+Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
+                                               size_t& workspace_bytes,
+                                               cudaStream_t stream);
 
+Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
+                                     int32_t* sanitized_past_seqlens,
+                                     int32_t* cumulative_seqlens_kv,
+                                     const int32_t* cumulative_seqlens_q,
+                                     const int32_t* past_seqlens,
+                                     void* workspace,
+                                     size_t workspace_bytes,
+                                     int batch_size,
+                                     int max_num_blocks_per_seq,
+                                     int block_size,
+                                     int token_count,
+                                     cudaStream_t stream);
+
+Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
+                                size_t element_count, int num_blocks, cudaStream_t stream);
 // Produces per-batch KV lengths seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] -
 // cumulative_seqlens_q[i]) for the cuDNN paged SDPA backend's padding-mask input. Deriving the
 // query count from cumulative_seqlens_q keeps the kernel correct if a caller ever routes a

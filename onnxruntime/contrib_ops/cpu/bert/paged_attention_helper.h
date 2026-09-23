@@ -247,6 +247,10 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table dimension 0 should be batch_size, got ",
                            block_table_dims[0]);
+  } else if (block_table_dims[1] <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table dimension 1 must be positive, got ",
+                           block_table_dims[1]);
   }
   max_num_blocks_per_seq = static_cast<int>(block_table_dims[1]);
   return Status::OK();
@@ -383,6 +387,93 @@ inline Status CheckKVCacheDataType(const KVCacheDataType cache_dtype, const KVCa
                          "'", attr_name, "' is '", KVCacheDataTypeToString(cache_dtype),
                          "', but the cache tensor's element type is '", KVCacheDataTypeToString(storage_dtype),
                          "'. Leave the attribute at '' to use the tensor's element type.");
+}
+
+inline Status CheckSequenceLengthValues(const int32_t* cumulative_seqlens_q,
+                                        const int32_t* cumulative_seqlens_kv,
+                                        int batch_size,
+                                        int max_num_blocks_per_seq,
+                                        int block_size,
+                                        int token_count) {
+  if (batch_size <= 0 || max_num_blocks_per_seq <= 0 || block_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention validation requires positive "
+                           "batch_size/max_num_blocks_per_seq/block_size.");
+  }
+
+  if (cumulative_seqlens_q[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_seqlens_q must start with 0, got ",
+                           cumulative_seqlens_q[0]);
+  }
+
+  if (cumulative_seqlens_q[batch_size] != token_count) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_seqlens_q must end with token_count (", token_count,
+                           "), got ", cumulative_seqlens_q[batch_size]);
+  }
+
+  if (cumulative_seqlens_kv[0] != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "cumulative_seqlens_kv must start with 0, got ",
+                           cumulative_seqlens_kv[0]);
+  }
+
+  const int64_t max_cache_sequence_length = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+  for (int b = 0; b < batch_size; ++b) {
+    const int32_t q_start = cumulative_seqlens_q[b];
+    const int32_t q_end = cumulative_seqlens_q[b + 1];
+
+    if (q_start < 0 || q_end < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_seqlens_q values must be non-negative. Invalid value at index ",
+                             (q_start < 0 ? b : b + 1), ": ", (q_start < 0 ? q_start : q_end));
+    }
+
+    if (q_end < q_start) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_seqlens_q must be non-decreasing.");
+    }
+
+    const int32_t q_len = q_end - q_start;
+    const int32_t kv_start = cumulative_seqlens_kv[b];
+    const int32_t kv_end = cumulative_seqlens_kv[b + 1];
+    if (kv_start < 0 || kv_end < kv_start) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "cumulative_seqlens_kv must be non-negative and non-decreasing.");
+    }
+
+    const int64_t past_length = static_cast<int64_t>(kv_end) - kv_start - q_len;
+    if (past_length < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "past_seqlens values must be non-negative. Invalid value: ",
+                             past_length);
+    }
+
+    if (q_len == 0) {
+      if (past_length > max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "past_seqlens exceeds max_num_blocks_per_seq * block_size for zero-token sequence. Invalid value: ",
+            past_length);
+      }
+    } else {
+      if (past_length >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "past_seqlens must be less than max_num_blocks_per_seq * block_size when q_len > 0. Invalid value: ",
+            past_length);
+      }
+
+      const int64_t last_position = past_length + q_len - 1;
+      if (last_position >= max_cache_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "past_seqlens + query_length exceeds block_table capacity for a sequence.");
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 template <typename T = Tensor>

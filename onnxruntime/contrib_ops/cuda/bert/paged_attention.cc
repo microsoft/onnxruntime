@@ -6,6 +6,7 @@
 #include <limits>
 #include <tuple>
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
@@ -166,6 +167,7 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
 template <typename T, typename TCACHE>
 Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) const {
   auto ort_stream = GetOrtStream(context);
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
 
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -295,6 +297,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return Status::OK();
   }
 
+  const SafeInt<size_t> safe_batch_size(parameters.batch_size);
+  const size_t block_table_element_count =
+      safe_batch_size * SafeInt<size_t>(parameters.max_num_blocks_per_seq);
+  if (block_table_element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "block_table element count exceeds the CUDA kernel indexing limit.");
+  }
+  auto sanitized_block_table = GetScratchBuffer<int>(block_table_element_count, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
+      reinterpret_cast<const int*>(block_table->Data<int>()),
+      sanitized_block_table.get(), block_table_element_count, parameters.num_blocks, cuda_stream));
+
   // Kernel backend selection. The choice depends only on static shapes and on the optional
   // 'attention_metadata' bounds, never on a device-to-host readback, so it is identical on every
   // replay of a captured CUDA Graph (docs/contrib_ops/cuda/paged_attention.md section 4.7).
@@ -366,9 +380,25 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       parameters.token_count <= device_prop.maxGridSize[1] &&
       GetPagedDecodeSharedMemoryBytes(parameters.head_size) <= static_cast<size_t>(device_prop.sharedMemPerBlock);
 
-  size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
+  const size_t cumulative_sequence_length_count = safe_batch_size + 1;
+  const size_t sanitized_sequence_length_count = SafeInt<size_t>(2) * safe_batch_size + 1;
+  if (sanitized_sequence_length_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence length element count exceeds the CUDA kernel indexing limit.");
+  }
+  const size_t cumulative_seqlens_kv_bytes =
+      SafeInt<size_t>(sizeof(int)) * cumulative_sequence_length_count;
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
+  auto sanitized_sequence_lengths =
+      GetScratchBuffer<int>(sanitized_sequence_length_count, GetComputeStream(context));
+  int* sanitized_cumulative_seqlens_q = sanitized_sequence_lengths.get();
+  int* sanitized_past_seqlens = sanitized_cumulative_seqlens_q + cumulative_sequence_length_count;
+  size_t sequence_sanitizer_workspace_bytes = 0;
+  ORT_RETURN_IF_ERROR(GetSanitizeSequenceLengthsWorkspaceSize(
+      parameters.batch_size, sequence_sanitizer_workspace_bytes, cuda_stream));
+  auto sequence_sanitizer_workspace =
+      GetScratchBuffer<void>(sequence_sanitizer_workspace_bytes, GetComputeStream(context));
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
@@ -381,14 +411,22 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, GetComputeStream(context));
 
-  // Populate cumulative_seqlens_kv for all backends. Every kernel that needs a per-sequence KV
-  // length reads it from here on device; the host only ever uses upper bounds.
-  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
-  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
+  // Canonicalize untrusted sequence metadata and populate cumulative_seqlens_kv for every backend.
+  // This stays entirely on the compute stream, so CUDA Graph replay sees current values without a
+  // host synchronization.
+  ORT_RETURN_IF_ERROR(LaunchSanitizeSequenceLengths(
+      sanitized_cumulative_seqlens_q,
+      sanitized_past_seqlens,
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
       reinterpret_cast<const int*>(past_seqlens->Data<int>()),
-      parameters.batch_size, cuda_stream));
+      sequence_sanitizer_workspace.get(),
+      sequence_sanitizer_workspace_bytes,
+      parameters.batch_size,
+      parameters.max_num_blocks_per_seq,
+      parameters.block_size,
+      parameters.token_count,
+      cuda_stream));
 
   int total_kv_tokens = 0;
   int max_query_len = 0;
@@ -622,13 +660,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   //      a large over-allocation for a short prefill. Read the exact value back instead.
   //   2. XQA needs the one-token-per-sequence proof described above.
   //
-  // Neither case can occur on a capturable step: a captured step is decode-shaped on a paged cache
-  // (so no gather runs), and a producer that captures must supply 'attention_metadata' anyway --
-  // its bounds are the only replay-safe source of per-step information. The synchronization is
-  // therefore gone for every configuration CUDA Graphs can reach, including an unquantized cache.
+  // During graph capture, static capacity bounds replace an otherwise-required readback. Optional
+  // attention_metadata can tighten those bounds, but correctness and capture never require it.
   const bool needs_readback = !has_metadata_bounds && (needs_dense_kv || xqa_candidate);
+  const bool perform_readback =
+      needs_readback && !onnxruntime::llm::common::isCapturing(cuda_stream);
 
-  if (!needs_readback) {
+  if (!perform_readback) {
     max_query_len = max_query_len_bound;
     max_kv_len = max_kv_len_bound;
     // Upper bound: no sequence holds more than max_kv_len_bound cached tokens. Read only by the
@@ -642,11 +680,20 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
-                                         reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
+                                         sanitized_cumulative_seqlens_q,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+
+    ORT_RETURN_IF_ERROR(paged_attention_helper::CheckSequenceLengthValues(
+        cum_q_pinned.get(),
+        cum_kv_pinned.get(),
+        parameters.batch_size,
+        parameters.max_num_blocks_per_seq,
+        parameters.block_size,
+        parameters.token_count));
+
     for (int i = 0; i < parameters.batch_size; ++i) {
       const int q_len_i = cum_q_pinned.get()[i + 1] - cum_q_pinned.get()[i];
       if (q_len_i > max_query_len) {
@@ -940,10 +987,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                          : reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
   data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
-  data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
-  data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
+  data.cumulative_seqlens_q = sanitized_cumulative_seqlens_q;
+  data.past_seqlens = sanitized_past_seqlens;
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
+  data.block_table = sanitized_block_table.get();
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());

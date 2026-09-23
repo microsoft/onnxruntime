@@ -83,9 +83,12 @@ struct IoBindingCase {
   bool discriminating_attention = false;
   std::vector<std::vector<int32_t>> replay_past_seqlens;
   std::vector<int32_t> cumulative_seqlens_q;
+  std::vector<int32_t> past_seqlens;
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
+  bool allow_malformed_sequence_metadata = false;
+  bool skip_reference_check = false;
 };
 
 // Softmax with causal masking: masked positions get -inf → 0 after exp.
@@ -318,14 +321,18 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_TRUE(!c.replay_past_seqlens.empty() || max_num_blocks_per_seq > past_seqlen / block_size);
   ASSERT_LE(batch_size * max_num_blocks_per_seq, num_blocks);
   ASSERT_EQ(num_heads % kv_num_heads, 0);
+  ASSERT_TRUE(c.past_seqlens.empty() || c.past_seqlens.size() == static_cast<size_t>(batch_size));
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
   ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
-              (c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1) &&
-               c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
-  for (int32_t block_id : c.block_table) {
-    ASSERT_GE(block_id, 0);
-    ASSERT_LT(block_id, num_blocks);
+              c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1));
+  if (!c.allow_malformed_sequence_metadata) {
+    ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
+                (c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
+    for (int32_t block_id : c.block_table) {
+      ASSERT_GE(block_id, 0);
+      ASSERT_LT(block_id, num_blocks);
+    }
   }
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
@@ -668,8 +675,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   auto cumulative_sequence_length_value =
       make_gpu(cumulative_sequence_length_data, TensorShape({batch_size + 1}));
   std::vector<int32_t> past_seqlens_data =
-      c.replay_past_seqlens.empty() ? std::vector<int32_t>(batch_size, past_seqlen)
-                                    : c.replay_past_seqlens.front();
+      !c.past_seqlens.empty()         ? c.past_seqlens
+      : c.replay_past_seqlens.empty() ? std::vector<int32_t>(batch_size, past_seqlen)
+                                      : c.replay_past_seqlens.front();
   auto past_seqlens_value = make_gpu(past_seqlens_data, TensorShape({batch_size}));
   auto block_table_value =
       make_gpu(block_table_data, TensorShape({batch_size, max_num_blocks_per_seq}));
@@ -756,6 +764,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       return;
     }
     ASSERT_STATUS_OK(run_status);
+    if (c.skip_reference_check) {
+      continue;
+    }
 
     Tensor cpu_output(c.bf16_query ? DataTypeImpl::GetType<BFloat16>() : DataTypeImpl::GetType<MLFloat16>(),
                       TensorShape({token_count, hidden_size}), cpu_alloc);
@@ -1606,6 +1617,50 @@ TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
+}
+
+TEST(PagedAttention, CudaGraphWithoutAttentionMetadata) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.enable_cuda_graph = true;
+  c.replay_past_seqlens = {{4}, {5}};
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithoutReadback) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.cumulative_seqlens_q = {0, 0};
+  c.past_seqlens = {-4};
+  c.block_table = {-2};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+}
+
+TEST(PagedAttention, CudaMalformedSequenceMetadataIsSanitizedWithMetadata) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.cumulative_seqlens_q = {0, 0};
+  c.past_seqlens = {-4};
+  c.block_table = {-2};
+  c.attention_metadata = {1, 1};
+  c.allow_malformed_sequence_metadata = true;
+  c.skip_reference_check = true;
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 
 TEST(PagedAttention, Cuda_FlashSplitKvInt8Cache) {
