@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ORT_USE_NCCL)
-
 #include <limits>
 
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -570,5 +568,3 @@ void RegisterCollectiveOps() {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif  // defined(ORT_USE_NCCL)
