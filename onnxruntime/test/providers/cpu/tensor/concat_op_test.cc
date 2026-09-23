@@ -461,37 +461,67 @@ TEST(ConcatOpTest, Concat4D_2) {
 }
 
 #ifdef USE_CUDA
-static void RunCudaRaggedInputCountTest(int input_count) {
+// Concatenates inputs of shape {outer, axis_size, inner} along axis 1, where input i has axis_size
+// base_axis_size * (i % 2 + 1).
+template <typename T = float>
+static void RunCudaRaggedConcatTest(int input_count, int64_t outer, int64_t inner, int64_t base_axis_size) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   if (cuda_provider == nullptr) {
     GTEST_SKIP() << "CUDA execution provider is not available.";
   }
 
   OpTester test("Concat");
-  test.AddAttribute("axis", int64_t{0});
+  test.AddAttribute("axis", int64_t{1});
 
-  std::vector<float> expected;
+  std::vector<std::vector<T>> inputs(static_cast<size_t>(input_count));
+  std::vector<int64_t> row_sizes(static_cast<size_t>(input_count));
+  int64_t output_axis_size = 0;
   for (int input_index = 0; input_index < input_count; ++input_index) {
-    const int64_t input_size = input_index % 2 + 1;
-    std::vector<float> input_values(static_cast<size_t>(input_size));
-    for (int64_t element_index = 0; element_index < input_size; ++element_index) {
-      input_values[static_cast<size_t>(element_index)] = static_cast<float>(input_index * 2 + element_index);
+    const int64_t axis_size = base_axis_size * (input_index % 2 + 1);
+    row_sizes[input_index] = axis_size * inner;
+    output_axis_size += axis_size;
+    std::vector<T>& input_values = inputs[input_index];
+    input_values.resize(static_cast<size_t>(outer * row_sizes[input_index]));
+    for (size_t element_index = 0; element_index < input_values.size(); ++element_index) {
+      input_values[element_index] = static_cast<T>((input_index * 1000 + static_cast<int>(element_index)) % 32749);
     }
-
-    test.AddInput<float>(MakeString("input_", input_index).c_str(), {input_size}, input_values);
-    expected.insert(expected.end(), input_values.begin(), input_values.end());
+    test.AddInput<T>(MakeString("input_", input_index).c_str(), {outer, axis_size, inner}, input_values);
   }
 
-  test.AddOutput<float>("concat_result", {static_cast<int64_t>(expected.size())}, expected);
+  std::vector<T> expected;
+  expected.reserve(static_cast<size_t>(outer * output_axis_size * inner));
+  for (int64_t outer_index = 0; outer_index < outer; ++outer_index) {
+    for (int input_index = 0; input_index < input_count; ++input_index) {
+      const auto row_begin = inputs[input_index].begin() + outer_index * row_sizes[input_index];
+      expected.insert(expected.end(), row_begin, row_begin + row_sizes[input_index]);
+    }
+  }
+
+  test.AddOutput<T>("concat_result", {outer, output_axis_size, inner}, expected);
   test.ConfigEp(std::move(cuda_provider)).RunWithConfig();
 }
 
 TEST(ConcatOpTest, CudaRagged32InputsUsesByValueMetadata) {
-  RunCudaRaggedInputCountTest(32);
+  RunCudaRaggedConcatTest(32, 1, 1, 1);
 }
 
 TEST(ConcatOpTest, CudaRagged33InputsUsesGpuMetadataFallback) {
-  RunCudaRaggedInputCountTest(33);
+  RunCudaRaggedConcatTest(33, 1, 1, 1);
+}
+
+// Every per-input row has at least 256 elements (32 for 2-byte types), which selects the input-major kernel.
+TEST(ConcatOpTest, CudaRaggedLongRowsUsesInputMajorKernel) {
+  RunCudaRaggedConcatTest(3, 3, 128, 2);
+  RunCudaRaggedConcatTest(32, 2, 256, 1);
+  RunCudaRaggedConcatTest<int16_t>(7, 3, 16, 2);
+}
+
+// Short rows with more than four inputs select the binary search in the output-major kernel.
+TEST(ConcatOpTest, CudaRaggedShortRowsUsesOutputMajorSearch) {
+  RunCudaRaggedConcatTest(5, 3, 4, 1);
+  RunCudaRaggedConcatTest(17, 2, 3, 2);
+  RunCudaRaggedConcatTest(6, 2, 64, 1);
+  RunCudaRaggedConcatTest<int16_t>(9, 2, 15, 2);
 }
 #endif
 

@@ -11,8 +11,10 @@
 namespace onnxruntime {
 namespace cuda {
 namespace {
+// Most inputs whose metadata is passed by value. More inputs need pinned host staging, which is not CUDA Graph
+// capturable.
 constexpr int kMaxInlinePointerCount = 32;
-}
+}  // namespace
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
@@ -91,6 +93,11 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                       concat_sizes_range, p.output_tensor->MutableDataRaw(), input_ptr_array,
                       static_cast<size_t>(p.output_num_elements));
   }
+
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
+  ORT_RETURN_IF(capture_status != cudaStreamCaptureStatusNone, "CUDA Concat supports at most ",
+                kMaxInlinePointerCount, " inputs during CUDA Graph capture, but got ", input_count, " inputs.");
 
   CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
