@@ -43,10 +43,8 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-VS2022-webgpu-A10' # This pool enables interactive mode which is required for chromium to acquire the GPU driver
 - name: WebCpuPoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
