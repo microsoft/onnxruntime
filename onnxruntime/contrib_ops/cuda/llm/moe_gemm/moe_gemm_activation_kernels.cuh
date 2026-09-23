@@ -123,7 +123,9 @@ void doGatedActivation(ActivationOutputType* output, const GemmOutputType* gemm_
       case ActivationType::SwigluBias:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SiLu>;
       case ActivationType::Geglu:
-        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU>;
+        // Gemma4 GeGLU uses the tanh-approximation GELU (gelu_pytorch_tanh), so gate the GLU with
+        // GELU_taylor (tanh) rather than the erf-exact GELU to match HuggingFace numerics.
+        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU_taylor>;
       case ActivationType::Silu:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SiLu>;
       case ActivationType::Gelu:

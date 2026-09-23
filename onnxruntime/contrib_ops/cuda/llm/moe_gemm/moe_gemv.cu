@@ -899,6 +899,7 @@ static constexpr int kThreads = 128;
 static constexpr int kTileSizeK = 64;
 static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
 static constexpr int kInt8Interleave = 128 * 8 / (kTileSizeK * 8);  // = 2
+static constexpr int kInt2Interleave = 128 * 8 / (kTileSizeK * 2);  // = 8
 
 // The fused-finalize FC2 GEMV moves the top_k loop inside the block, so at kCtaN it would launch
 // top_k times fewer blocks than the unfused kernel and lose memory-level parallelism. A narrower
@@ -931,7 +932,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
   if (sm < 80) {
     return false;
   }
-  if (weight_bits != 4 && weight_bits != 8) {
+  if (weight_bits != 4 && weight_bits != 8 && weight_bits != 2) {
     return false;
   }
   // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 32, 64, or 128.
@@ -953,7 +954,7 @@ bool is_moe_gemv_shape_supported(int sm, int64_t expanded_num_rows, int64_t n, i
     return false;
   }
   // n must tile evenly; k must tile evenly into StepK along interleaved-K.
-  const int interleave = weight_bits == 4 ? kInt4Interleave : kInt8Interleave;
+  const int interleave = weight_bits == 4 ? kInt4Interleave : (weight_bits == 2 ? kInt2Interleave : kInt8Interleave);
   if (n % (cta_n * interleave) != 0) {
     return false;
   }
@@ -1016,6 +1017,13 @@ struct DetailsForTAndWeight<half, cutlass::uint4b_t> {
 };
 
 template <>
+struct DetailsForTAndWeight<half, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = half;
+  static constexpr int kWeightBits = 2;
+};
+
+template <>
 struct DetailsForTAndWeight<half, uint8_t> {
   using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int8DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
   using TypeA = half;
@@ -1028,6 +1036,13 @@ struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint4b_t> {
   using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
   using TypeA = __nv_bfloat16;
   static constexpr int kWeightBits = 4;
+};
+
+template <>
+struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint2b_t> {
+  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int2DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = __nv_bfloat16;
+  static constexpr int kWeightBits = 2;
 };
 
 template <>
@@ -1183,6 +1198,15 @@ template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::ui
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
+template void launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int*, const int*, const float*,
+    int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+    const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
+    int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t);
 
 template void launch_moe_gemv_int4_per_channel<half>(const half*, const uint8_t*, const half*, const half*, half*,
                                                      const int64_t*, const int*, int, int64_t, int64_t, int64_t,
@@ -1210,6 +1234,16 @@ template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cu
     const int*, int64_t, float*, cudaStream_t);
 template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    const int*, int64_t, float*, cudaStream_t);
+template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
+    const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+    const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     const int*, int64_t, float*, cudaStream_t);
 
