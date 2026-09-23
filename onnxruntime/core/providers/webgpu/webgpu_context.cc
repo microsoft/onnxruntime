@@ -216,6 +216,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
+    if (max_storage_buffer_binding_size_ != 0) {
+      device_limits_.maxStorageBufferBindingSize =
+          std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
+    }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -675,17 +679,26 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
+  const size_t total_buffer_count =
+      std::count_if(inputs_segments.begin(), inputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      std::count_if(outputs_segments.begin(), outputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
   std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(total_buffer_count);
   bind_buffers_segments.reserve(total_buffer_count);
   for (size_t i = 0; i < inputs.size(); i++) {
+    if (inputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
     bind_buffers_segments.push_back(inputs_segments[i]);
   }
   for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
     bind_buffers_segments.push_back(outputs_segments[i]);
   }
@@ -821,8 +834,8 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
   required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
 
-  if (max_storage_buffer_binding_size_ == 0) {
-    // If not set by the user, use the adapter limit.
+  if (max_storage_buffer_binding_size_ < kWebGpuGuaranteedMaxStorageBufferBindingSize) {
+    // Lower values are applied as a logical segmentation limit after device creation.
     required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
   } else {
     required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;
@@ -1258,7 +1271,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode,
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size));
+                                                                    config.max_storage_buffer_binding_size,
+                                                                    config.test_only_max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

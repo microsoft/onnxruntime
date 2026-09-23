@@ -884,10 +884,6 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   auto* ep_factory = &ep_factory_;
 
   for (const auto* memory_info : allocator_mem_infos_) {
-    if (!ort_ep_->CreateAllocator && !ep_factory_.CreateAllocator) {
-      ORT_THROW("The OrtEpDevice requires the EP library to implement an allocator, but none were found.");
-    }
-
     AllocatorPtr alloc_ptr;
     ORT_THROW_IF_ERROR(ep_allocator_utils::CreateAndWrapEpAllocator(ort_ep_.get(), *ep_factory, *memory_info,
                                                                     allocator_options, alloc_ptr));

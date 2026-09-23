@@ -39,7 +39,8 @@ $MAIN {
   let seq = kv_slice % copy_seq_length;
 
 #if use_seqlen_k
-  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
+  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
+  let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -48,7 +49,9 @@ $MAIN {
 
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
-    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let raw_global_total_seq_length = total_sequence_length_input[0];
+    let global_total_seq_length =
+        min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_seq_length);
     let num_total_sequence_length_tiles =
         (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
     populate_indirect_dispatch_buffer(

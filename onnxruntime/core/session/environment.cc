@@ -574,6 +574,9 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
   const Env& env = Env::Default();
+#if defined(ORT_USE_TELEMETRY)
+  const TimePoint tp = std::chrono::high_resolution_clock::now();
+#endif
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
 
   auto status = Status::OK();
@@ -710,7 +713,11 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
-  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+#if defined(ORT_USE_TELEMETRY)
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, TimeDiffMicroSeconds(tp));
+#else
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
+#endif
   return status;
 }
 
