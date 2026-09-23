@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <gsl/gsl>
 
@@ -27,25 +28,27 @@ class KernelPilot {
 
     Status BeginInvocation(size_t expert_count) {
       ORT_RETURN_IF(expert_count == 0, "MoE expert selection requires a positive expert count.");
-      used_.assign(expert_count, 0);
+      expert_count_ = expert_count;
       // Unlike clear(), erasing preserves InlinedVector's allocated storage.
       selected_experts_.erase(selected_experts_.begin(), selected_experts_.end());
       selected_experts_.reserve(expert_count);
       return Status::OK();
     }
 
-    bool IsInitialized() const noexcept { return !used_.empty(); }
-    size_t ExpertCount() const noexcept { return used_.size(); }
+    bool IsInitialized() const noexcept { return expert_count_ != 0; }
+    size_t ExpertCount() const noexcept { return expert_count_; }
 
+    // expert_count is small (the number of experts configured for this MoE node), so a linear
+    // scan of the already-selected list is cheaper than maintaining a separate expert_count-sized
+    // membership mask.
     Status Collect(gsl::span<const int> expert_ids) {
       ORT_RETURN_IF_NOT(IsInitialized(), "MoE expert selection was not initialized.");
       for (int expert : expert_ids) {
-        ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= used_.size(),
+        ORT_RETURN_IF(expert < 0 || static_cast<size_t>(expert) >= expert_count_,
                       "MoE expert index out of range: ", expert);
       }
       for (int expert : expert_ids) {
-        if (!used_[expert]) {
-          used_[expert] = 1;
+        if (std::find(selected_experts_.begin(), selected_experts_.end(), expert) == selected_experts_.end()) {
           selected_experts_.push_back(expert);
         }
       }
@@ -59,7 +62,7 @@ class KernelPilot {
     }
 
    private:
-    InlinedVector<uint8_t> used_;
+    size_t expert_count_{0};
     InlinedVector<int> selected_experts_;
   };
 
