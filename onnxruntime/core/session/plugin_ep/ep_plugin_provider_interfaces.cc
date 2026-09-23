@@ -862,7 +862,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
 
   if (ep_factory_.CreateDataTransfer != nullptr) {
     OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
-    plugin_ep::OrtDataTransferImplPtr owned_impl{data_transfer_impl};
+    plugin_ep::OrtDataTransferImplUniquePtr owned_impl{data_transfer_impl};
     if (status != nullptr) {
       ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
     }

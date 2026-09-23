@@ -1978,7 +1978,7 @@ TEST(PluginDataTransferTest, OwnsAndReleasesImplementation) {
   size_t release_count = 0;
   {
     plugin_ep::DataTransfer data_transfer{
-        plugin_ep::OrtDataTransferImplPtr{new TestDataTransferImpl{release_count}}};
+        plugin_ep::OrtDataTransferImplUniquePtr{new TestDataTransferImpl{release_count}}};
   }
 
   EXPECT_EQ(release_count, 1u);
@@ -2001,19 +2001,19 @@ TEST(PluginDataTransferTest, RejectsImplementationWithMissingRequiredFunction) {
   {
     auto impl = make_data_transfer_impl();
     impl.Release = nullptr;
-    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplUniquePtr{&impl}}, OnnxRuntimeException);
   }
 
   {
     auto impl = make_data_transfer_impl();
     impl.CanCopy = nullptr;
-    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplUniquePtr{&impl}}, OnnxRuntimeException);
   }
 
   {
     auto impl = make_data_transfer_impl();
     impl.CopyTensors = nullptr;
-    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplUniquePtr{&impl}}, OnnxRuntimeException);
   }
 }
 #endif

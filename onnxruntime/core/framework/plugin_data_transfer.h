@@ -22,7 +22,7 @@ struct OrtDataTransferImplDeleter {
   }
 };
 
-using OrtDataTransferImplPtr = std::unique_ptr<OrtDataTransferImpl, OrtDataTransferImplDeleter>;
+using OrtDataTransferImplUniquePtr = std::unique_ptr<OrtDataTransferImpl, OrtDataTransferImplDeleter>;
 
 /// <summary>
 /// Class to implement IDataTransfer for plugin execution providers.
@@ -30,7 +30,7 @@ using OrtDataTransferImplPtr = std::unique_ptr<OrtDataTransferImpl, OrtDataTrans
 /// </summary>
 class DataTransfer : public IDataTransfer {
  public:
-  explicit DataTransfer(OrtDataTransferImplPtr impl)
+  explicit DataTransfer(OrtDataTransferImplUniquePtr impl)
       : impl_{std::move(impl)} {
     ORT_ENFORCE(impl_ != nullptr, "OrtDataTransferImpl must not be null.");
     ORT_ENFORCE(impl_->Release != nullptr, "OrtDataTransferImpl must provide a Release function.");
@@ -58,7 +58,7 @@ class DataTransfer : public IDataTransfer {
  private:
   Status CopyTensorImpl(const Tensor& src, Tensor& dst, onnxruntime::Stream* stream = nullptr) const;
 
-  OrtDataTransferImplPtr impl_;
+  OrtDataTransferImplUniquePtr impl_;
 };
 }  // namespace plugin_ep
 }  // namespace onnxruntime

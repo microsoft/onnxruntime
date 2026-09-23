@@ -547,7 +547,7 @@ Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
                                     std::unique_ptr<plugin_ep::DataTransfer>& data_transfer) {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
   OrtStatus* ort_status = ep_factory.CreateDataTransfer(&ep_factory, &data_transfer_impl);
-  plugin_ep::OrtDataTransferImplPtr owned_impl{data_transfer_impl};
+  plugin_ep::OrtDataTransferImplUniquePtr owned_impl{data_transfer_impl};
 
   if (ort_status != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,

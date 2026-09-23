@@ -26,10 +26,8 @@ struct OrtEpFactoryDeleter {
 
 using OrtEpFactoryUniquePtr = std::unique_ptr<OrtEpFactory, OrtEpFactoryDeleter>;
 
-/// <summary>
-/// Calls the CreateEpFactories entry point and appends the factories it produces to `factories`.
-/// `factories` is left unmodified and all returned factories are released if creation or validation fails.
-/// </summary>
+// Calls the CreateEpFactories entry point and appends the factories it produces to `factories`.
+// `factories` is left unmodified and all returned factories are released if creation or validation fails.
 Status CreateFactories(CreateEpApiFactoriesFn create_fn, ReleaseEpApiFactoryFn release_fn,
                        const std::string& registration_name,
                        std::vector<OrtEpFactoryUniquePtr>& factories);
