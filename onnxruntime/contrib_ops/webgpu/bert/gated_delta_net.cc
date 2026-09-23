@@ -348,7 +348,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                 "capture_count must be [batch]");
   const bool capture_state_updates = state_update != nullptr && state_update_capacity_ > 0 &&
                                      (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
-if (state_update != nullptr && state_update->Shape().Size() > 0 && !capture_state_updates) {
+  if (state_update != nullptr && state_update->Shape().Size() > 0 && !capture_state_updates) {
     GatedDeltaNetClearProgram clear_program;
     clear_program.AddOutput({state_update, ProgramTensorMetadataDependency::Type})
         .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(state_update->Shape().Size()) + WORKGROUP_SIZE - 1) /
