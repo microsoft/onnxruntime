@@ -432,6 +432,9 @@ struct CustomGraph {
     };
 
     auto in_edge = q_node.InputEdgesBegin();
+    while (in_edge != q_node.InputEdgesEnd() && in_edge->IsControlEdge()) {
+      ++in_edge;
+    }
     ORT_ENFORCE(in_edge != q_node.InputEdgesEnd(), "Q node must have an input edge");
     const int prev_output_index = in_edge->GetSrcArgIndex();
 
@@ -443,6 +446,10 @@ struct CustomGraph {
       auto& dq_node_ref = *dq_ptr->node_ptr;
 
       for (auto edge_it = dq_node_ref.InputEdgesBegin(); edge_it != dq_node_ref.InputEdgesEnd(); ++edge_it) {
+        if (edge_it->IsControlEdge()) {
+          continue;
+        }
+
         if (edge_it->GetNode().Index() == q_node.Index()) {
           remove_edge(edge_it->GetNode(), dq_node_ref, edge_it->GetSrcArgIndex(), edge_it->GetDstArgIndex());
           break;
@@ -451,6 +458,10 @@ struct CustomGraph {
 
       std::vector<std::tuple<NodeIndex, int, int>> output_edges;  // (dst_node_index, src_arg, dst_arg)
       for (auto out_edge_it = dq_node_ref.OutputEdgesBegin(); out_edge_it != dq_node_ref.OutputEdgesEnd(); ++out_edge_it) {
+        if (out_edge_it->IsControlEdge()) {
+          continue;
+        }
+
         output_edges.emplace_back(out_edge_it->GetNode().Index(),
                                   out_edge_it->GetSrcArgIndex(),
                                   out_edge_it->GetDstArgIndex());

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <climits>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -122,6 +123,10 @@ class Node {
     /** Gets the destination arg index.
     @returns the destination arg index of <*this> edge.*/
     int GetDstArgIndex() const { return dst_arg_index_; }
+
+    bool IsControlEdge() const noexcept {
+      return src_arg_index_ == INT_MAX && dst_arg_index_ == INT_MAX;
+    }
 
    private:
     const Node* node_;
@@ -520,7 +525,7 @@ class Node {
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
                            const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
-  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, Graph& graph);
 
   /**
   @class Definitions
@@ -597,6 +602,8 @@ class Node {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
+
+  static void AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void Init(std::string_view name,
@@ -1900,6 +1907,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Initialize all the graph inputs, initializers and outputs
   common::Status InitInputsInitializersOutputs();
 
+  bool HasOrtFormatControlEdge(NodeIndex node_index) const;
+  void RegisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
+  void UnregisterOrtFormatControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index);
+  void RestoreOrtFormatControlEdges();
+
   // Initialize overridable initializers container
   void ComputeOverridableInitializers();
 
@@ -2112,6 +2124,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool graph_resolve_needed_ = false;
 
   bool graph_proto_sync_needed_ = false;
+
+  std::set<std::pair<NodeIndex, NodeIndex>> ort_format_control_edges_;
+  InlinedHashMap<NodeIndex, size_t> ort_format_control_edge_node_counts_;
 
   // The topological order of node index used to do node and op match verification temporarily.
   std::vector<NodeIndex> nodes_in_topological_order_;

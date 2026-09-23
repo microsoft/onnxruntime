@@ -751,6 +751,10 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        if (it->IsControlEdge()) {
+          continue;
+        }
+
         const auto& node_idx = it->GetNode().Index();
         const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         if (node_set.find(node_idx) != node_set.end()) {
