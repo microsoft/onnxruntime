@@ -25,7 +25,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
   test.Run();
 }
 
-TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedAtRuntime) {
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedBySchema) {
   OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
   test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
   test.AddInput<float>("X", {1, 1, 1}, {1.0f});
@@ -33,10 +33,8 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedAtRuntime) {
   test.AddOptionalInputEdge<int64_t>();
   test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Dynamic pads tensor is required.",
-           {}, nullptr, &execution_providers);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "input 2 is marked single but has an empty string in the graph");
 }
 
 // Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.

@@ -1081,14 +1081,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd></dd>
 </dl>
 
-#### Inputs (2 - 4)
+#### Inputs (3 - 4)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
 <dd></dd>
 <dt><tt>W</tt> : T</dt>
 <dd></dd>
-<dt><tt>Pads</tt> (optional) : tensor(int64)</dt>
+<dt><tt>Pads</tt> : tensor(int64)</dt>
 <dd></dd>
 <dt><tt>B</tt> (optional) : T</dt>
 <dd></dd>
@@ -7758,5 +7758,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-

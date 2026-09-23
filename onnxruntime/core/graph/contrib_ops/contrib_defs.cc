@@ -1857,9 +1857,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
-                                // Pads is required by the kernels, but v1 published it as optional.
-                                // Keep the schema compatible and reject a missing tensor at runtime.
-                                .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
+                                .Input(2, "Pads", "", "tensor(int64)")
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(
                                     0,
