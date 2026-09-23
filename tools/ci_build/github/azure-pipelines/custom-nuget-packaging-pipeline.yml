@@ -109,7 +109,7 @@ extends:
         parameters:
           PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
           PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-          ort_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
           DoCompliance: false
           DoEsrp: true
           stage_name_suffix: CPU_arm64
