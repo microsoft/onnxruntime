@@ -202,9 +202,11 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetUseDeterministicCompute();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   MoeExpertUsage* GetMoeExpertUsage() const override {
     return session_state_.GetMoeExpertUsage(GetKernel());
   }
+#endif
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);

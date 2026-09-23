@@ -3,8 +3,8 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
-class MoeExpertUsage;
 #if !defined(ORT_MINIMAL_BUILD)
+class MoeExpertUsage;
 class RunInstrumentationContext;
 #endif
 class Stream;
@@ -224,10 +224,12 @@ class OpKernelContext {
 
   virtual int GetOrtValueIndexForOutput(int output_index) const;
 
+#if !defined(ORT_MINIMAL_BUILD)
  public:
   // Keep new virtuals after existing declarations to preserve their vtable slots.
   // Non-owning, kernel-specific access; nullptr when expert counting is unavailable.
   virtual MoeExpertUsage* GetMoeExpertUsage() const { return nullptr; }
+#endif
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);

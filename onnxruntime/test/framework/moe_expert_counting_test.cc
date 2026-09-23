@@ -238,6 +238,9 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     if (!provider) {
       GTEST_SKIP() << "CUDA execution provider is unavailable.";
     }
+    if (provider->GetOrtEp() != nullptr) {
+      GTEST_SKIP() << "MoE expert counting is not supported by the CUDA plugin execution provider.";
+    }
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
   }
   const auto model = MakeCountingModel(quantized, cuda, false, rows);

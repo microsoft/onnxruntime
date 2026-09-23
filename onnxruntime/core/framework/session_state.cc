@@ -4,12 +4,15 @@
 #include "core/framework/session_state.h"
 
 #include <atomic>
-#include <fstream>
 #include <mutex>
 #include <sstream>
 
-#include "core/common/logging/logging.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include <fstream>
 #include "core/common/parse_string.h"
+#endif
+
+#include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
@@ -1600,6 +1603,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::InitializeMoeExpertState(std::shared_ptr<MoeExpertState> state, std::string graph_scope) {
   moe_expert_state_ = std::move(state);
   for (const auto& node : graph_.Nodes()) {
@@ -1625,6 +1629,7 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<MoeExpertState> st
   }
   return Status::OK();
 }
+#endif
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
@@ -1657,11 +1662,13 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 #endif
   }
 
-  ORT_RETURN_IF_ERROR(FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
-                                               remove_initializers,
-                                               GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
-                                               constant_initializers_use_count, max_shape_inference_result));
+  Status status = FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
+                                           remove_initializers,
+                                           GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
+                                           constant_initializers_use_count, max_shape_inference_result);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(status);
   if (sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
     double alpha = 0.0;
     double beta = 0.0;
@@ -1685,7 +1692,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
   }
-  return Status::OK();
+#endif
+  return status;
 }
 
 bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {

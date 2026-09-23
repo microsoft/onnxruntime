@@ -2770,6 +2770,20 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+#if defined(ORT_MINIMAL_BUILD)
+    for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
+      const std::string_view option = key;
+      if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
+            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
+           value != "0") ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
+      }
+    }
+#else
     const std::string& enable_moe_statistics =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
     if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
@@ -2796,14 +2810,6 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() && !enable_moe_expert_counting,
                     key, " requires expert counting to be enabled.");
     }
-#if defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF(enable_moe_expert_counting, "MoE expert counting is not supported in a minimal build.");
-    if (enable_moe_expert_statistics) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
-          "=1 is not supported in a minimal build.");
-    }
-#else
     if (enable_moe_expert_counting) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
@@ -3577,6 +3583,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     FeedsFetchesManager& feeds_fetches_manager,
                                     const OrtValueCachePtr& cache,
                                     int32_t partial_graph_index) {
+#if !defined(ORT_MINIMAL_BUILD)
   const auto* moe_state = is_inited_ ? session_state_->GetMoeExpertState() : nullptr;
   if (moe_state) {
     ORT_RETURN_IF_ERROR(moe_state->BeginRun());
@@ -3584,6 +3591,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
   auto end_moe_run = gsl::finally([moe_state]() {
     if (moe_state) moe_state->EndRun();
   });
+#endif
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3708,6 +3716,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,
                                  int graph_capture_depth) {
+#if !defined(ORT_MINIMAL_BUILD)
   const auto* moe_state = is_inited_ ? session_state_->GetMoeExpertState() : nullptr;
   if (moe_state) {
     ORT_RETURN_IF_ERROR(moe_state->BeginRun());
@@ -3715,6 +3724,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   auto end_moe_run = gsl::finally([moe_state]() {
     if (moe_state) moe_state->EndRun();
   });
+#endif
   // Ignore run-level profiling request if session-level profiling is already enabled.
   std::optional<profiling::Profiler> run_profiler;
   if (run_options.enable_profiling && session_profiler_.IsEnabled()) {

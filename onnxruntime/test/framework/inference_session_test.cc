@@ -1057,6 +1057,21 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
 }
 
+TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+}
+
 TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
   auto capturing_sink = std::make_unique<CapturingSink>();
   auto* capturing_sink_ptr = capturing_sink.get();

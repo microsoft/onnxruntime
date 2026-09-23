@@ -16,6 +16,8 @@ session.moe_expert_counter_beta=<finite non-negative value> # default: 1
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported with counting enabled.
+Minimal builds omit the counter state and its initialization/run bookkeeping, and reject counter configuration
+except for explicitly disabling counting.
 
 Each node invocation updates every expert counter belonging to that node:
 
