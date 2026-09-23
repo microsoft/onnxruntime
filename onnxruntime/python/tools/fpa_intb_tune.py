@@ -9,38 +9,38 @@ writes the results to a persistent tactic cache file that ONNX Runtime can reuse
 later runs (see docs/contrib_ops/cuda/gemm_profiler_cache.md).
 
 How it works:
-  * It sets the tuning environment variables and creates a CUDA execution-provider
-    session for the model. Kernel construction profiles the configured M buckets and
-    writes them to ``<output-prefix>.matmulnbits_fpa_intb.tsv``.
+  * It creates a CUDA execution-provider session for the model with the fpA_intB path and the
+    cache prefix enabled through session config entries. Kernel construction profiles the
+    configured M buckets and writes them to ``<output-prefix>.matmulnbits_fpa_intb.tsv``.
   * It then (best-effort) runs dummy inferences at each requested M value so that any
-    additional buckets are profiled lazily and merged into the same cache file.
+    additional buckets are profiled lazily. Those are written to the same cache file when the
+    session (and its CUDA execution provider) is released.
 
 The generated cache is hardware/build specific: it is only reused on the same GPU
-model + SM + CUDA runtime + ORT version/commit/build config.
+model + SM + CUDA runtime + ORT version.
 
 Example:
     python -m onnxruntime.tools.fpa_intb_tune \
         --model model.onnx \
         --output-prefix /path/to/cache/mymodel \
-        --enable-gemv \
         --m-values 1,8,16,32,64,128,256,512,1024,2048
 """
 
 from __future__ import annotations
 
 import argparse
+import gc
 import os
 import sys
 
-import ml_dtypes
 import numpy as np
 
 import onnxruntime as ort
 
-# fpA_intB gemm option bits, mirrored from contrib_ops/cuda/quantization/matmul_nbits.h.
-_FPA_INTB_OPTION_ALL = 0x01  # enables both GEMM and the CUDA GEMV fast path
-_FPA_INTB_OPTION_INT4 = 0x04
-_FPA_INTB_OPTION_INT8 = 0x08
+try:
+    import ml_dtypes
+except ImportError:
+    ml_dtypes = None
 
 _CACHE_TABLE_SUFFIX = ".matmulnbits_fpa_intb.tsv"
 
@@ -58,28 +58,19 @@ def _parse_m_values(text: str) -> list[int]:
     return sorted(set(values))
 
 
-def _set_tuning_env(output_prefix: str, enable_gemv: bool, m_values: list[int]) -> None:
-    """Configures the environment so the CUDA EP writes tuned tactics to disk.
-
-    Must be called before the InferenceSession is created.
-    """
-    os.environ["ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX"] = output_prefix
-
-    if enable_gemv:
-        option = _FPA_INTB_OPTION_ALL
-    else:
-        # Enable both int4 and int8 GEMM without the CUDA GEMV fast path.
-        option = _FPA_INTB_OPTION_INT4 | _FPA_INTB_OPTION_INT8
-    os.environ["ORT_FPA_INTB_GEMM"] = str(option)
-
+def _make_session_options(output_prefix: str, m_values: list[int]) -> ort.SessionOptions:
+    """Enables the fpA_intB path, its M-bucket sweep, and the persistent cache for one session."""
+    sess_options = ort.SessionOptions()
+    sess_options.add_session_config_entry("ep.cuda.gemm_tactic_cache_prefix", output_prefix)
+    sess_options.add_session_config_entry("ep.cuda.fpa_intb_gemm", "1")
     if m_values:
-        os.environ["ORT_FPA_INTB_PROFILE_M"] = ",".join(str(m) for m in m_values)
+        sess_options.add_session_config_entry("ep.cuda.fpa_intb_profile_m", ",".join(str(m) for m in m_values))
+    return sess_options
 
 
 def _numpy_dtype_for(ort_type: str):
     mapping = {
         "tensor(float16)": np.float16,
-        "tensor(bfloat16)": ml_dtypes.bfloat16,
         "tensor(float)": np.float32,
         "tensor(double)": np.float64,
         "tensor(int64)": np.int64,
@@ -89,6 +80,8 @@ def _numpy_dtype_for(ort_type: str):
         "tensor(uint8)": np.uint8,
         "tensor(bool)": np.bool_,
     }
+    if ml_dtypes is not None:
+        mapping["tensor(bfloat16)"] = ml_dtypes.bfloat16
     return mapping.get(ort_type, np.float32)
 
 
@@ -109,11 +102,7 @@ def _make_dummy_inputs(session, m: int) -> dict:
                 replaced = True
         if not shape:
             shape = [1]
-        dtype = _numpy_dtype_for(inp.type)
-        if np.issubdtype(dtype, np.floating):
-            feeds[inp.name] = np.zeros(shape, dtype=dtype)
-        else:
-            feeds[inp.name] = np.zeros(shape, dtype=dtype)
+        feeds[inp.name] = np.zeros(shape, dtype=_numpy_dtype_for(inp.type))
     return feeds
 
 
@@ -170,9 +159,7 @@ def _summarize_cache(cache_path: str) -> None:
     print(f"  tuned (shape, M) : {rows}")
 
 
-def tune(model: str, output_prefix: str, enable_gemv: bool, m_values: list[int], run_inference: bool) -> str:
-    _set_tuning_env(output_prefix, enable_gemv, m_values)
-
+def tune(model: str, output_prefix: str, m_values: list[int], run_inference: bool) -> str:
     available = ort.get_available_providers()
     if "CUDAExecutionProvider" not in available:
         raise RuntimeError(
@@ -180,7 +167,7 @@ def tune(model: str, output_prefix: str, enable_gemv: bool, m_values: list[int],
         )
 
     print(f"Creating CUDA session for {model} (this profiles the M buckets)...")
-    sess_options = ort.SessionOptions()
+    sess_options = _make_session_options(output_prefix, m_values)
     session = ort.InferenceSession(model, sess_options, providers=["CUDAExecutionProvider"])
 
     if run_inference:
@@ -191,6 +178,10 @@ def tune(model: str, output_prefix: str, enable_gemv: bool, m_values: list[int],
                 print(f"  ran dummy inference for M={m}")
             except Exception as exc:
                 print(f"  skipped dummy inference for M={m}: {exc}")
+
+    # Lazily profiled buckets reach disk only when the CUDA execution provider is torn down.
+    del session
+    gc.collect()
 
     cache_path = output_prefix + _CACHE_TABLE_SUFFIX
     _summarize_cache(cache_path)
@@ -209,14 +200,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Cache file prefix. Writes '<output-prefix>.matmulnbits_fpa_intb.tsv'.",
     )
     parser.add_argument(
-        "--enable-gemv",
-        action="store_true",
-        help="Enable the CUDA GEMV fast path when tuning (matches ORT_FPA_INTB_GEMM=1).",
-    )
-    parser.add_argument(
         "--m-values",
         default="1,2,4,8,16,32,64,128,256,512,1024,2048",
-        help="Comma-separated M buckets to profile (sets ORT_FPA_INTB_PROFILE_M).",
+        help="Comma-separated M buckets to profile (sets ep.cuda.fpa_intb_profile_m).",
     )
     parser.add_argument(
         "--no-inference",
@@ -246,7 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     tune(
         model=args.model,
         output_prefix=output_prefix,
-        enable_gemv=args.enable_gemv,
         m_values=m_values,
         run_inference=not args.no_inference,
     )
