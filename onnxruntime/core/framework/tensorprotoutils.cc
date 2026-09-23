@@ -1489,6 +1489,14 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
         expected_count = num_elems_signed;
         actual_count = tensor_proto.double_data_size();
         break;
+      case TensorProto_DataType_COMPLEX64:
+        expected_count = SafeInt<int64_t>(num_elems_signed) * 2;
+        actual_count = tensor_proto.float_data_size();
+        break;
+      case TensorProto_DataType_COMPLEX128:
+        expected_count = SafeInt<int64_t>(num_elems_signed) * 2;
+        actual_count = tensor_proto.double_data_size();
+        break;
       case TensorProto_DataType_INT64:
         expected_count = num_elems_signed;
         actual_count = tensor_proto.int64_data_size();
@@ -2499,6 +2507,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   }
 
   auto type = sparse_values.data_type();
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " FLOAT8E8M0 values are unsupported because the type has no zero representation.");
+  }
+
   dense.set_data_type(type);
   *dense.mutable_name() = name;
   SafeInt<int64_t> dense_elements = 1;

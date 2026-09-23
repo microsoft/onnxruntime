@@ -2061,7 +2061,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsValuesForZeroE
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Float8E8M0) {
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsFloat8E8M0) {
   SparseTensorProto sparse;
   sparse.add_dims(2);
 
@@ -2078,12 +2078,55 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Float8E8M0) {
 
   TensorProto dense;
   std::filesystem::path model_path;
-  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
-  ASSERT_EQ(dense.raw_data().size(), 2u);
-  EXPECT_EQ(static_cast<uint8_t>(dense.raw_data()[0]), 0x7f);
-  EXPECT_EQ(static_cast<uint8_t>(dense.raw_data()[1]), 0);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense),
+      "FLOAT8E8M0 values are unsupported because the type has no zero representation");
 }
 #endif
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Complex64) {
+  SparseTensorProto sparse;
+  sparse.add_dims(2);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("complex64_values");
+  values->set_data_type(TensorProto_DataType_COMPLEX64);
+  values->add_dims(1);
+  values->add_float_data(1.0f);
+  values->add_float_data(2.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(1);
+  indices->add_int64_data(0);
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+  EXPECT_EQ(dense.raw_data().size(), 4 * sizeof(float));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Complex128) {
+  SparseTensorProto sparse;
+  sparse.add_dims(2);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("complex128_values");
+  values->set_data_type(TensorProto_DataType_COMPLEX128);
+  values->add_dims(1);
+  values->add_double_data(1.0);
+  values->add_double_data(2.0);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(1);
+  indices->add_int64_data(0);
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+  EXPECT_EQ(dense.raw_data().size(), 4 * sizeof(double));
+}
 
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_Rank1Indices32) {
   // Dense Shape: [2, 2] -> 4 elements
