@@ -298,7 +298,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 
   const SafeInt<size_t> safe_batch_size(parameters.batch_size);
-  const size_t batch_size = safe_batch_size;
   const size_t block_table_element_count =
       safe_batch_size * SafeInt<size_t>(parameters.max_num_blocks_per_seq);
   if (block_table_element_count > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
