@@ -61,8 +61,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // the pair performs the combine. No-op unless the fused FP4 GEMV path is enabled.
   void TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc);
   void TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc);
-  // Prepacks int4/int8 expert weights into the CUTLASS fpA_intB layout so the
-  // QMoE runner can consume them directly. Mirrors what MatMulNBits.PrePack
+  // Prepacks int2/int4/int8 expert weights into the CUTLASS fpA_intB layout. INT4/INT8 are
+  // consumed by the QMoE runner; INT2 is consumed by the decode GEMV while the raw initializer
+  // remains live for dense prefill fallback. Mirrors what MatMulNBits.PrePack
   // does, looped over the E expert dimension. ``tensor`` is the 3-D
   // ``[E, N, K / (8 / bits)]`` weight initializer; ``packed_buf`` receives a
   // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
@@ -108,6 +109,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
   bool enable_kernel_debug_info_ = false;
+  bool enable_int2_gemv_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
 

@@ -2043,7 +2043,9 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               bool use_bf16 = false,
                                               int64_t block_size = 32,
                                               int64_t hidden_size = 64,
-                                              int64_t inter_size = 64) {
+                                              int64_t inter_size = 64,
+                                              bool expect_scratch_failure = true,
+                                              bool use_initializers = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
 
@@ -2114,12 +2116,14 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, ToBFloat16(input));
     tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, ToBFloat16({1.0f}));
     tester.AddInput<uint8_t>("fc1_experts_weights",
-                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
-    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToBFloat16(fc1_scales));
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights, use_initializers);
+    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                              ToBFloat16(fc1_scales), use_initializers);
     tester.AddOptionalInputEdge<BFloat16>();
     tester.AddInput<uint8_t>("fc2_experts_weights",
-                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
-    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToBFloat16(fc2_scales));
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights, use_initializers);
+    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                              ToBFloat16(fc2_scales), use_initializers);
     tester.AddOptionalInputEdge<BFloat16>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<BFloat16>();
@@ -2128,12 +2132,14 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
     tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
     tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16({1.0f}));
     tester.AddInput<uint8_t>("fc1_experts_weights",
-                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
-    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToFloat16(fc1_scales));
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights, use_initializers);
+    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size},
+                               ToFloat16(fc1_scales), use_initializers);
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddInput<uint8_t>("fc2_experts_weights",
-                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
-    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToFloat16(fc2_scales));
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights, use_initializers);
+    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
+                               ToFloat16(fc2_scales), use_initializers);
     tester.AddOptionalInputEdge<MLFloat16>();
     tester.AddOptionalInputEdge<uint8_t>();
     tester.AddOptionalInputEdge<MLFloat16>();
@@ -2164,8 +2170,10 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
         "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
   }
   tester.Run(session_options,
-             max_scratch_bytes > 0 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-             max_scratch_bytes > 0 ? "exceeding the configured limit" : "", {}, nullptr, &execution_providers);
+             max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
+                                                             : OpTester::ExpectResult::kExpectSuccess,
+             max_scratch_bytes > 0 && expect_scratch_failure ? "exceeding the configured limit" : "",
+             {}, nullptr, &execution_providers);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
@@ -2221,6 +2229,38 @@ TEST(MoETest, QMoETest_MixedWidthCudaFusedSwiGLU) {
   }
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true);
 }
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/64, /*model_size=*/512, /*expect_scratch_failure=*/false,
+      /*use_initializers=*/true);
+}
+
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/0, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/32, /*model_size=*/64, /*expect_scratch_failure=*/false,
+      /*use_initializers=*/true);
+}
+
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+TEST(MoETest, QMoETest_Int2CudaPackedDecodeBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      /*use_bf16=*/true, /*block_size=*/64, /*model_size=*/512, /*expect_scratch_failure=*/false,
+      /*use_initializers=*/true);
+}
+#endif
 
 TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
   if (!HasCudaEnvironment(700)) {
