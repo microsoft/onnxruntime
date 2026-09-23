@@ -497,17 +497,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                             is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
                             (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));
   // Speculative verification steps (2..8 new tokens per sequence) run on a compiled paged XQA
-  // specialization (H256, plus FP16-query/INT8-cache H128) with a packed lower-triangular mask
-  // built by PagedXqaSpecDecCausalMaskKernel. The gate is the
+  // specialization (H256, plus causal FP16-query/INT8-cache H128) with a packed mask built by
+  // PagedXqaSpecDecMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
   // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
   // attention sinks stay eligible: the kernel's rows are flattened (query token, query head) pairs,
   // so it derives the window from each row's own query position and the sink from its own head.
   const bool xqa_spec_dec_candidate =
-      decode_eligible && parameters.is_causal && has_metadata_bounds && per_channel_k_on_xqa &&
+      decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
       ((parameters.head_size == 256) ||
-       (parameters.head_size == 128 && kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
+       (parameters.head_size == 128 && parameters.is_causal &&
+        kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
       group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =

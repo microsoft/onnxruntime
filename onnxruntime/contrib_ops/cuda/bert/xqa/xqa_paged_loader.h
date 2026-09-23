@@ -59,9 +59,12 @@ Status LaunchXQAPagedKernel(
     void* workspace,
     size_t workspace_size);
 
-// Multi-token speculative-verification launcher. The DFlash2 target geometry supports group size
-// 6 with query lengths 2..8. H256 supports the existing native and quantized cache variants; H128
-// additionally supports FP16 query/output with an INT8 paged KV cache.
+// Multi-token speculative-verification launcher for group size 6 and query lengths 2..8. H256
+// supports the existing native and quantized cache variants; its INT4 variant requires FP16
+// query/output and PER_CHANNEL K/V scales. The caller folds the K scale into the query and applies
+// the V scale to the output. H128 supports FP16 query/output with an INT8 paged KV cache and is
+// currently dispatched only with a causal mask. The launcher consumes the caller-provided mask and
+// does not validate causality itself.
 Status LaunchXQAPagedSpecDecKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -89,6 +92,8 @@ Status LaunchXQAPagedSpecDecKernel(
     void* workspace,
     size_t workspace_size);
 
+// Workspace bytes required by LaunchXQAPagedSpecDecKernel. Returns 0 when the selected CUDA image
+// has no compatible kernel or head_size is unsupported. Callers must skip XQA when this returns 0.
 size_t GetXQAPagedSpecDecWorkspaceSize(
     const cudaDeviceProp& device_prop,
     int batch_size,
@@ -98,6 +103,9 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
     int max_query_len,
     XqaQuantType kv_quant_type);
 
+// Dynamic shared memory required by LaunchXQAPagedSpecDecKernel. Returns 0 when the selected CUDA
+// image has no compatible kernel or head_size is unsupported. Callers must skip XQA when this
+// returns 0.
 size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(int head_size, XqaQuantType kv_quant_type);
 
 // Workspace bytes required by LaunchXQAPagedKernel (semaphores + multi-block scratch). The paged
