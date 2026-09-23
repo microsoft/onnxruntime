@@ -6,7 +6,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
+#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
@@ -39,7 +39,7 @@ class StreamGate {
   bool released_{false};
 };
 
-class CudaKernelUsageTest : public ::testing::Test {
+class CudaRoutingSnapshotTest : public ::testing::Test {
  protected:
   void SetUp() override {
     int device_count = 0;
@@ -61,11 +61,11 @@ class CudaKernelUsageTest : public ::testing::Test {
     }
   }
 
-  Status Capture(contrib::cuda::CudaKernelUsage& usage, gsl::span<const int> ids) {
+  Status Capture(contrib::cuda::CudaRoutingSnapshot& snapshot, gsl::span<const int> ids) {
     ORT_RETURN_IF(ids.size() > 8, "Test routing buffer is too small.");
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_ids_, ids.data(), ids.size_bytes(),
                                          cudaMemcpyHostToDevice, stream_));
-    return usage.Capture(device_ids_, ids.size(), stream_);
+    return snapshot.Capture(device_ids_, ids.size(), stream_);
   }
 
   AllocatorPtr PinnedAllocator() {
@@ -85,12 +85,12 @@ class CudaKernelUsageTest : public ::testing::Test {
   int* device_ids_{nullptr};
 };
 
-TEST_F(CudaKernelUsageTest, CollectsWhileLaterDeviceWorkIsPending) {
+TEST_F(CudaRoutingSnapshotTest, CollectsWhileLaterDeviceWorkIsPending) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> ids{0, 0, 2};
-  ASSERT_STATUS_OK(Capture(counter, ids));
+  ASSERT_STATUS_OK(Capture(snapshot, ids));
 
   StreamGate gate;
   auto release_gate = gsl::finally([&]() {
@@ -104,92 +104,92 @@ TEST_F(CudaKernelUsageTest, CollectsWhileLaterDeviceWorkIsPending) {
   ASSERT_EQ(cudaMemsetAsync(device_ids_, 0, ids.size() * sizeof(int), stream_), cudaSuccess);
   ASSERT_EQ(cudaEventRecord(expert_done, stream_), cudaSuccess);
 
-  ASSERT_STATUS_OK(counter.Consume());
+  ASSERT_STATUS_OK(snapshot.Consume());
   ExpectSelectedExperts(usage, {0, 2});
   EXPECT_FALSE(gate.timed_out);
   EXPECT_EQ(cudaEventQuery(expert_done), cudaErrorNotReady);
 }
 
-TEST_F(CudaKernelUsageTest, EnqueuesWithoutWaitingForRouting) {
+TEST_F(CudaRoutingSnapshotTest, EnqueuesWithoutWaitingForRouting) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   const InlinedVector<int> ids{1, 3};
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
-  ASSERT_STATUS_OK(Capture(counter, ids));
-  ASSERT_STATUS_OK(counter.Consume());
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
+  ASSERT_STATUS_OK(Capture(snapshot, ids));
+  ASSERT_STATUS_OK(snapshot.Consume());
 
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   StreamGate gate;
   auto release_gate = gsl::finally([&]() {
     gate.Release();
     EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
   });
   ASSERT_EQ(cudaLaunchHostFunc(stream_, StreamGate::Wait, &gate), cudaSuccess);
-  ASSERT_STATUS_OK(counter.Capture(device_ids_, ids.size(), stream_));
+  ASSERT_STATUS_OK(snapshot.Capture(device_ids_, ids.size(), stream_));
   EXPECT_FALSE(gate.timed_out);
   EXPECT_EQ(cudaStreamQuery(stream_), cudaErrorNotReady);
   gate.Release();
-  ASSERT_STATUS_OK(counter.Consume());
+  ASSERT_STATUS_OK(snapshot.Consume());
   ExpectSelectedExperts(usage, ids);
 }
 
-TEST_F(CudaKernelUsageTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
+TEST_F(CudaRoutingSnapshotTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   for (const InlinedVector<int>& ids : {InlinedVector<int>{0, 0, 2}, InlinedVector<int>{2, 3}}) {
-    ASSERT_STATUS_OK(Capture(counter, ids));
+    ASSERT_STATUS_OK(Capture(snapshot, ids));
     ASSERT_EQ(cudaMemsetAsync(device_ids_, 0, ids.size() * sizeof(int), stream_), cudaSuccess);
-    ASSERT_STATUS_OK(counter.Consume());
+    ASSERT_STATUS_OK(snapshot.Consume());
   }
   ExpectSelectedExperts(usage, {0, 2, 3});
 
   for (const InlinedVector<int>& ids : {InlinedVector<int>{1, 1, 1, 1, 1}, InlinedVector<int>{1}}) {
-    ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
-    ASSERT_STATUS_OK(Capture(counter, ids));
-    ASSERT_STATUS_OK(counter.Consume());
+    ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
+    ASSERT_STATUS_OK(Capture(snapshot, ids));
+    ASSERT_STATUS_OK(snapshot.Consume());
     ExpectSelectedExperts(usage, {1});
   }
 }
 
-TEST_F(CudaKernelUsageTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
+TEST_F(CudaRoutingSnapshotTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> previous{0, 2};
-  ASSERT_STATUS_OK(Capture(counter, previous));
-  EXPECT_FALSE(counter.Capture(device_ids_, previous.size(), stream_).IsOK());
+  ASSERT_STATUS_OK(Capture(snapshot, previous));
+  EXPECT_FALSE(snapshot.Capture(device_ids_, previous.size(), stream_).IsOK());
   ExpectSelectedExperts(usage, {});
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> current{1, 3, 1};
-  ASSERT_STATUS_OK(Capture(counter, current));
-  ASSERT_STATUS_OK(counter.Consume());
+  ASSERT_STATUS_OK(Capture(snapshot, current));
+  ASSERT_STATUS_OK(snapshot.Consume());
   ExpectSelectedExperts(usage, {1, 3});
 }
 
-TEST_F(CudaKernelUsageTest, RejectsInvalidRoutingAndRecovers) {
+TEST_F(CudaRoutingSnapshotTest, RejectsInvalidRoutingAndRecovers) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   for (const int invalid : {-1, 4}) {
-    ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+    ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
     const InlinedVector<int> ids{0, invalid};
-    ASSERT_STATUS_OK(Capture(counter, ids));
-    EXPECT_FALSE(counter.Consume().IsOK());
+    ASSERT_STATUS_OK(Capture(snapshot, ids));
+    EXPECT_FALSE(snapshot.Consume().IsOK());
     ExpectSelectedExperts(usage, {});
   }
-  ASSERT_STATUS_OK(counter.BeginInvocation(usage, 4));
+  ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> ids{2};
-  ASSERT_STATUS_OK(Capture(counter, ids));
-  ASSERT_STATUS_OK(counter.Consume());
+  ASSERT_STATUS_OK(Capture(snapshot, ids));
+  ASSERT_STATUS_OK(snapshot.Consume());
   ExpectSelectedExperts(usage, ids);
 }
 
-TEST_F(CudaKernelUsageTest, RejectsUninitializedCollection) {
+TEST_F(CudaRoutingSnapshotTest, RejectsUninitializedCollection) {
   KernelUsage usage;
-  contrib::cuda::CudaKernelUsage counter(PinnedAllocator());
-  EXPECT_FALSE(counter.BeginInvocation(usage, 0).IsOK());
-  EXPECT_FALSE(counter.Capture(device_ids_, 1, stream_).IsOK());
-  EXPECT_FALSE(counter.Consume().IsOK());
+  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+  EXPECT_FALSE(snapshot.BeginInvocation(usage, 0).IsOK());
+  EXPECT_FALSE(snapshot.Capture(device_ids_, 1, stream_).IsOK());
+  EXPECT_FALSE(snapshot.Consume().IsOK());
 }
 
 }  // namespace

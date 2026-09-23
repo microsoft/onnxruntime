@@ -10,19 +10,19 @@
 
 namespace onnxruntime::contrib::cuda {
 
-class CudaKernelUsage {
+class CudaRoutingSnapshot {
  public:
-  explicit CudaKernelUsage(AllocatorPtr pinned_allocator)
+  explicit CudaRoutingSnapshot(AllocatorPtr pinned_allocator)
       : pinned_allocator_(std::move(pinned_allocator)) {}
 
-  ~CudaKernelUsage() {
+  ~CudaRoutingSnapshot() {
     ORT_IGNORE_RETURN_VALUE(WaitForCopy());
     if (copy_ready_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaEventDestroy(copy_ready_)));
     }
   }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaKernelUsage);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaRoutingSnapshot);
 
   Status BeginInvocation(KernelUsage& usage, size_t expert_count) {
     // A failed invocation may have returned after enqueueing a copy but before consuming it.
@@ -59,8 +59,8 @@ class CudaKernelUsage {
   }
 
   // The fused-routing runner invokes this on the calling CPU thread, before launching expert GEMMs.
-  static void CaptureRouting(void* usage, const int* expert_ids, size_t count, cudaStream_t stream) {
-    ORT_THROW_IF_ERROR(static_cast<CudaKernelUsage*>(usage)->Capture(expert_ids, count, stream));
+  static void CaptureRouting(void* snapshot, const int* expert_ids, size_t count, cudaStream_t stream) {
+    ORT_THROW_IF_ERROR(static_cast<CudaRoutingSnapshot*>(snapshot)->Capture(expert_ids, count, stream));
   }
 
   Status Consume() {

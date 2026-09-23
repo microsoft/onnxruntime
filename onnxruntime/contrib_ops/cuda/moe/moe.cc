@@ -6,7 +6,7 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
+#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
 #include "contrib_ops/cuda/moe/moe_profiler.h"
 #endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
@@ -330,11 +330,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (kernel_usage_) {
+  if (routing_snapshot_) {
     auto* usage = context->GetKernelUsage();
     ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
-    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
-    ORT_RETURN_IF_ERROR(kernel_usage_->Capture(expert_indices, expanded_rows, stream));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, expanded_rows, stream));
   }
 #endif
 
@@ -424,8 +424,8 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (kernel_usage_) {
-    ORT_RETURN_IF_ERROR(kernel_usage_->Consume());
+  if (routing_snapshot_) {
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
   }
   if (routing_record != nullptr) {
     ORT_RETURN_IF_ERROR(routing_record->CaptureTile(

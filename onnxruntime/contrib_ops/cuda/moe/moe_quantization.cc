@@ -10,7 +10,7 @@
 #include "contrib_ops/cuda/moe/moe_quantization.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/cuda/moe/moe_profiler.h"
-#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
+#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
 #endif
 #include <charconv>
 #include <type_traits>
@@ -1598,10 +1598,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
-  if (kernel_usage_) {
+  if (routing_snapshot_) {
     auto* usage = context->GetKernelUsage();
     ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
-    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
   }
   const size_t routing_element_count = instrumentation != nullptr
                                            ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))
@@ -1672,8 +1672,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE FP4 GEMV does not support fused routing.");
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (kernel_usage_) {
-      ORT_RETURN_IF_ERROR(kernel_usage_->Capture(
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
           expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
     }
 #endif
@@ -1851,8 +1851,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                workspace_size, total_scratch_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (kernel_usage_) {
-      ORT_RETURN_IF_ERROR(kernel_usage_->Consume());
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
     }
     if (routing_record != nullptr) {
       ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
@@ -2037,12 +2037,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     auto fused_routing = route_tile(row_offset, tile_rows);
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (kernel_usage_) {
+    if (routing_snapshot_) {
       if (fused_routing.router_logits != nullptr) {
-        fused_routing.on_routing_ready = CudaKernelUsage::CaptureRouting;
-        fused_routing.routing_context = &*kernel_usage_;
+        fused_routing.on_routing_ready = CudaRoutingSnapshot::CaptureRouting;
+        fused_routing.routing_context = &*routing_snapshot_;
       } else {
-        ORT_RETURN_IF_ERROR(kernel_usage_->Capture(
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
             expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
       }
     }
@@ -2090,8 +2090,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (kernel_usage_) {
-      ORT_RETURN_IF_ERROR(kernel_usage_->Consume());
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
     }
     if (routing_record != nullptr) {
       const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);

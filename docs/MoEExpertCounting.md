@@ -64,7 +64,7 @@ There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
 
 `KernelUsage` in `core/framework/kernel_usage.h` collects and deduplicates local expert IDs for one invocation.
 It is a concrete, provider-independent collector shared by CPU and CUDA, with reusable selection storage and no
-counter-update logic. CPU kernels feed it their host routing IDs directly. The CUDA adapter, `CudaKernelUsage`,
+counter-update logic. CPU kernels feed it their host routing IDs directly. The CUDA adapter, `CudaRoutingSnapshot`,
 owns only the device-transfer resources and feeds completed host snapshots into the collector obtained from the context.
 `MoeExpertState` remains the sole owner of the global counters and their update logic.
 

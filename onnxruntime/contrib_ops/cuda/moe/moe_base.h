@@ -17,7 +17,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include <optional>
-#include "contrib_ops/cuda/moe/cuda_kernel_usage.h"
+#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 #include <limits>
@@ -36,7 +36,7 @@ class MoEBase {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     const auto& options = op_kernel_info.GetConfigOptions();
     if (options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
-      kernel_usage_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
+      routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
     }
     enable_moe_expert_statistics_ =
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
@@ -101,7 +101,7 @@ class MoEBase {
   int sm_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   // Only constructed when counting is enabled; overlapping runs are rejected by the session.
-  mutable std::optional<CudaKernelUsage> kernel_usage_;
+  mutable std::optional<CudaRoutingSnapshot> routing_snapshot_;
   bool enable_moe_expert_statistics_{false};
 #endif
 };
