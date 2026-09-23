@@ -200,8 +200,17 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
       fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
-      expert_weight_bits_ == 4 ? 2 : 1,
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       activation_type_ == MoEActivationType::SwiGLU, block_size_));
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Mixed-width QMoE execution is not yet implemented on WebGPU.");
+  }
 
   const auto& input_shape = hidden_state->Shape();
 

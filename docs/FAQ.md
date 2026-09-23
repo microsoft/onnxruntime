@@ -4,10 +4,11 @@ Here are some commonly raised questions from users of ONNX Runtime and brought u
 ## Do the GPU builds support quantized models?
 The default CUDA build supports 3 standard quantization operators: QuantizeLinear, DequantizeLinear, and MatMulInteger. The TensorRT EP has limited support for INT8 quantized ops. In general, support of quantized models through ORT is continuing to expand on a model-driven basis. For performance improvements, quantization is not always required, and we suggest trying alternative strategies to [performance tune](https://onnxruntime.ai/docs/performance/tune-performance/) before determining that quantization is necessary.
 
-## Can CUDA load model weights with GPUDirect Storage?
+## How can I reduce model loading time for large CPU or CUDA models?
 
-Yes. See [CUDA external-data loading with GPUDirect Storage](CUDA_GPU_Direct_Storage.md) for prerequisites,
-configuration, and the pinned-buffer fallback.
+See [Accelerate model loading](Model_Loading_Performance.md) for parallel CPU weight prepacking and CUDA external-data
+loading through GPUDirect Storage or pinned host buffers, including the session and execution provider options that
+control them.
 
 ## How do I change the severity level of the default logger to something other than the default (WARNING)?
 Setting the severity level to VERBOSE is most useful when debugging errors.

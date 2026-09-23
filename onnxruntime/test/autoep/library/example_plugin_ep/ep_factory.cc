@@ -249,6 +249,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   std::string ep_context_embed_mode;
   std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
+  std::string use_default_cpu_allocator;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
@@ -257,12 +258,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                  ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
+                                                 "0", use_default_cpu_allocator));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
+  config.use_default_cpu_allocator = use_default_cpu_allocator == "1";
 
   // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
   // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
