@@ -16,10 +16,11 @@
 namespace onnxruntime {
 
 Status MoeExpertState::SetCounterParameters(double alpha, double beta) {
-  ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0 && alpha <= 1.0,
-                    "MoE expert counter alpha must be finite and in [0, 1].");
+  ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0,
+                    "MoE expert counter alpha must be finite and non-negative.");
   ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0,
                     "MoE expert counter beta must be finite and non-negative.");
+  ORT_RETURN_IF_NOT(alpha + beta <= 1.0, "MoE expert counter alpha + beta must be at most 1.");
   ORT_RETURN_IF(initialized_ || !nodes_.empty(),
                 "MoE expert counter parameters cannot change after node registration.");
   alpha_ = alpha;
@@ -40,10 +41,12 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
   const ExpertRange range{counters_.size(), expert_count};
   const size_t total_expert_count = SafeInt<size_t>(range.begin) + expert_count;
   counters_.reserve(total_expert_count);
+  used_experts_.reserve(total_expert_count);
   expert_ids_.reserve(total_expert_count);
   for (size_t expert = 0; expert < expert_count; ++expert) {
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
-    counters_.push_back({0.0, 0.0});
+    counters_.push_back(0.0);
+    used_experts_.push_back(0);
   }
   nodes_.emplace(key, NodeInfo{std::string(node_type), range});
   kernel_usage_.try_emplace(kernel, *this, kernel, range);
@@ -92,7 +95,7 @@ Status MoeExpertState::Load(std::istream& input) {
   for (const auto& [key, node] : nodes_) {
     const auto& values = loaded.at(key).counters;
     for (size_t expert = 0; expert < node.experts.count; ++expert) {
-      counters_[node.experts.begin + expert].value = values[expert];
+      counters_[node.experts.begin + expert] = values[expert];
     }
   }
   return Status::OK();
@@ -127,21 +130,14 @@ Status MoeExpertState::RecordUsage(const OpKernel* kernel, ExpertRange range, gs
                   "MoE counter expert index out of range: ", expert);
   }
 
-  auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
-  for (auto& counter : counters) {
-    counter.next_value = alpha_ * counter.value;
-  }
   for (int expert : used_expert_ids) {
-    auto& counter = counters_[expert_ids_.at({kernel, expert})];
-    // Assignment, not accumulation: repeated routing IDs contribute beta only once.
-    counter.next_value = alpha_ * counter.value + beta_;
+    used_experts_[expert_ids_.at({kernel, expert})] = 1;
   }
+  auto counters = gsl::make_span(counters_).subspan(range.begin, range.count);
+  auto used = gsl::make_span(used_experts_).subspan(range.begin, range.count);
   for (size_t expert = 0; expert < counters.size(); ++expert) {
-    ORT_RETURN_IF_NOT(std::isfinite(counters[expert].next_value),
-                      "MoE expert counter cannot be updated: ", expert);
-  }
-  for (auto& counter : counters) {
-    counter.value = counter.next_value;
+    counters[expert] = alpha_ * counters[expert] + beta_ * used[expert];
+    used[expert] = 0;
   }
   return Status::OK();
 }
@@ -150,7 +146,7 @@ Status MoeExpertState::GetCounters(ExpertRange range, InlinedVector<double>& cou
   counters.clear();
   counters.reserve(range.count);
   for (size_t expert = 0; expert < range.count; ++expert) {
-    counters.push_back(counters_[range.begin + expert].value);
+    counters.push_back(counters_[range.begin + expert]);
   }
   return Status::OK();
 }
@@ -168,7 +164,7 @@ MoeExpertState::Snapshot MoeExpertState::GetSnapshot() const {
     NodeCounters copy{node.node_type, {}};
     copy.counters.reserve(node.experts.count);
     for (size_t expert = 0; expert < node.experts.count; ++expert) {
-      copy.counters.push_back(counters_[node.experts.begin + expert].value);
+      copy.counters.push_back(counters_[node.experts.begin + expert]);
     }
     snapshot.emplace(key, std::move(copy));
   }

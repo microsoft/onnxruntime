@@ -1673,9 +1673,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     double alpha = 0.0;
     double beta = 0.0;
     const auto alpha_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "1");
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
     const auto beta_value =
-        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "1");
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <istream>
 #include <map>
 #include <string>
@@ -95,20 +96,16 @@ class MoeExpertState {
     std::string node_type;
     ExpertRange experts;
   };
-  struct Counter {
-    double value;
-    double next_value;
-  };
-
   Status RecordUsage(const OpKernel* kernel, ExpertRange experts, gsl::span<const int> used_expert_ids);
   Status GetCounters(ExpertRange experts, InlinedVector<double>& counters) const;
 
   std::map<Key, NodeInfo> nodes_;
   NodeHashMap<const OpKernel*, KernelUsage> kernel_usage_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
-  InlinedVector<Counter> counters_;
-  double alpha_{1.0};
-  double beta_{1.0};
+  InlinedVector<double> counters_;
+  InlinedVector<uint8_t> used_experts_;
+  double alpha_{0.9};
+  double beta_{0.1};
   bool initialized_{false};
   // Reject overlapping runs once per Run, not once per kernel or expert.
   mutable std::atomic_flag run_active_ = ATOMIC_FLAG_INIT;

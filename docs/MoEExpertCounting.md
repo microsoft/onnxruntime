@@ -10,9 +10,11 @@ The default is `0`. Counting is independent of `session.enable_moe_expert_statis
 enable profiling, change expert placement, or swap weights. Configure the update with:
 
 ```text
-session.moe_expert_counter_alpha=<finite value in [0, 1]>  # default: 1
-session.moe_expert_counter_beta=<finite non-negative value> # default: 1
+session.moe_expert_counter_alpha=<finite non-negative value> # default: 0.9
+session.moe_expert_counter_beta=<finite non-negative value>  # default: 0.1
 ```
+
+The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either coefficient.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported with counting enabled.
@@ -39,8 +41,9 @@ After kernel creation, initialization builds an immutable dictionary
 `(OpKernel pointer, local expert ID) -> global expert index`, plus the contiguous expert range for each kernel.
 Counters are ordinary `double` values in a session-wide array. `RecordUsage()` uses the kernel pointer and this
 dictionary directly, without a mutex, atomic counters, graph-name lookup, or per-invocation allocation.
-The next-value scratch storage is also allocated at initialization. Repeated routing IDs overwrite the same next value
-rather than incrementing it repeatedly.
+A byte-per-expert selection mask is allocated at initialization to count repeated routing IDs only once.
+Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
+and `1`, so no next-value buffer or overflow-validation pass is needed.
 
 Counting requires non-overlapping `Run()` calls on a session. An entry guard rejects overlapping calls explicitly;
 there is no locking in the kernel update path. Different kernels may update their disjoint ranges concurrently, but

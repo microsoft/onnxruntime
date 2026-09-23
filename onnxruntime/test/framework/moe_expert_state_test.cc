@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 #include <thread>
@@ -79,18 +82,22 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   ASSERT_STATUS_OK(usage->RecordUsage(selected));
   ASSERT_STATUS_OK(usage->RecordUsage(selected));
   const auto snapshot = state.GetSnapshot();
-  EXPECT_EQ(snapshot.at({"main", 0}).counters, (InlinedVector<double>{2, 0, 2}));
+  const auto& first = snapshot.at({"main", 0}).counters;
+  ASSERT_EQ(first.size(), 3U);
+  EXPECT_DOUBLE_EQ(first[0], 0.19);
+  EXPECT_DOUBLE_EQ(first[1], 0);
+  EXPECT_DOUBLE_EQ(first[2], 0.19);
   EXPECT_EQ(snapshot.at({"main", 1}).counters, (InlinedVector<double>{0, 0}));
   EXPECT_EQ(snapshot.at({"main/0/4:body", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
   ASSERT_STATUS_OK(state.GetUsage(kernels_[2])->RecordUsage(selected));
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetUsage(kernels_[2])->GetCounters(counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{1, 0, 1, 0}));
+  EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
 }
 
 TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   MoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 2.0));
+  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.25));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
   std::istringstream initial(
       "moe_expert_state 1\n"
@@ -103,26 +110,39 @@ TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   ASSERT_NE(usage, nullptr);
   const int selected[] = {2, 0, 2};
   ASSERT_STATUS_OK(usage->RecordUsage(selected));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 1, 2.5}));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{2.25, 1, 0.75}));
   ASSERT_STATUS_OK(usage->RecordUsage(selected));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{4, 0.5, 3.25}));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{1.375, 0.5, 0.625}));
   ASSERT_STATUS_OK(usage->RecordUsage({}));
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{2, 0.25, 1.625}));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.6875, 0.25, 0.3125}));
 }
 
 TEST_F(MoeExpertStateTest, ValidatesCounterParameters) {
   for (const auto& [alpha, beta] : {
            std::pair{-0.1, 1.0},
            std::pair{1.1, 1.0},
+           std::pair{0.0, 1.1},
+           std::pair{0.9, 0.2},
+           std::pair{1.0, std::numeric_limits<double>::epsilon()},
            std::pair{std::numeric_limits<double>::infinity(), 1.0},
+           std::pair{std::numeric_limits<double>::quiet_NaN(), 0.0},
            std::pair{1.0, -0.1},
-           std::pair{1.0, std::numeric_limits<double>::infinity()}}) {
+           std::pair{1.0, std::numeric_limits<double>::infinity()},
+           std::pair{0.0, std::numeric_limits<double>::quiet_NaN()}}) {
+    SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta));
     MoeExpertState state;
     EXPECT_FALSE(state.SetCounterParameters(alpha, beta).IsOK());
   }
+  for (const auto& [alpha, beta] : {
+           std::pair{0.0, 0.0}, std::pair{1.0, 0.0}, std::pair{0.0, 1.0},
+           std::pair{0.9, 0.1}, std::pair{0.5, 0.5}, std::pair{0.5, 0.25}}) {
+    SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta));
+    MoeExpertState state;
+    EXPECT_STATUS_OK(state.SetCounterParameters(alpha, beta));
+  }
   MoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 1));
-  EXPECT_FALSE(state.SetCounterParameters(0.5, 1.0).IsOK());
+  EXPECT_FALSE(state.SetCounterParameters(0.5, 0.25).IsOK());
 }
 
 TEST_F(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
@@ -156,7 +176,10 @@ TEST_F(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
   const int selected[] = {1, 1};
   ASSERT_STATUS_OK(usage->RecordUsage(selected));
   ASSERT_STATUS_OK(usage->GetCounters(counters));
-  EXPECT_EQ(counters, (InlinedVector<double>{0, 3.5, 0}));
+  ASSERT_EQ(counters.size(), 3U);
+  EXPECT_DOUBLE_EQ(counters[0], 0);
+  EXPECT_DOUBLE_EQ(counters[1], 2.35);
+  EXPECT_DOUBLE_EQ(counters[2], 0);
 }
 
 TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
@@ -184,21 +207,41 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_EQ(state.GetUsage(kernels_[1]), nullptr);
   EXPECT_EQ(state.GetUsage(nullptr), nullptr);
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
+  const int selected[] = {1};
+  ASSERT_STATUS_OK(usage->RecordUsage(selected));
+  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0.1}));
 }
 
-TEST_F(MoeExpertStateTest, OverflowDoesNotPartiallyUpdateCounters) {
-  MoeExpertState state;
-  ASSERT_STATUS_OK(state.SetCounterParameters(1, std::numeric_limits<double>::max()));
-  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
-  ASSERT_STATUS_OK(state.FinalizeInitialization());
-  auto* usage = state.GetUsage(kernels_[0]);
-  ASSERT_NE(usage, nullptr);
-  const int first[] = {0};
-  ASSERT_STATUS_OK(usage->RecordUsage(first));
-  const int both[] = {1, 0};
-  EXPECT_FALSE(usage->RecordUsage(both).IsOK());
-  EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters,
-            (InlinedVector<double>{std::numeric_limits<double>::max(), 0}));
+TEST_F(MoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
+  for (const auto& [alpha, beta] : {
+           std::pair{0.0, 0.0}, std::pair{1.0, 0.0}, std::pair{0.0, 1.0},
+           std::pair{0.9, 0.1}, std::pair{0.5, 0.25}}) {
+    for (const double initial_value : {0.0, std::numeric_limits<double>::max()}) {
+      SCOPED_TRACE(MakeString("alpha=", alpha, ", beta=", beta, ", initial=", initial_value));
+      MoeExpertState state;
+      ASSERT_STATUS_OK(state.SetCounterParameters(alpha, beta));
+      ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
+      std::stringstream initial;
+      initial << std::setprecision(std::numeric_limits<double>::max_digits10)
+              << "moe_expert_state 1\n\"main\" 0 MoE 0 " << initial_value
+              << "\n\"main\" 0 MoE 1 " << initial_value << "\n";
+      ASSERT_STATUS_OK(state.Load(initial));
+      ASSERT_STATUS_OK(state.FinalizeInitialization());
+      auto* usage = state.GetUsage(kernels_[0]);
+      ASSERT_NE(usage, nullptr);
+      const int selected[] = {0, 0};
+      for (int invocation = 0; invocation < 1024; ++invocation) {
+        ASSERT_STATUS_OK(usage->RecordUsage(selected));
+        InlinedVector<double> counters;
+        ASSERT_STATUS_OK(usage->GetCounters(counters));
+        for (double counter : counters) {
+          EXPECT_TRUE(std::isfinite(counter));
+          EXPECT_GE(counter, 0);
+          EXPECT_LE(counter, std::max(initial_value, 1.0));
+        }
+      }
+    }
+  }
 }
 
 TEST_F(MoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
@@ -223,7 +266,9 @@ TEST_F(MoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
     worker.join();
   }
   for (const auto& [key, node] : state.GetSnapshot()) {
-    EXPECT_EQ(node.counters, (InlinedVector<double>{0, 100}));
+    ASSERT_EQ(node.counters.size(), 2U);
+    EXPECT_DOUBLE_EQ(node.counters[0], 0);
+    EXPECT_NEAR(node.counters[1], 1.0 - std::pow(0.9, 100), 1e-14);
   }
   EXPECT_EQ(other.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
 }

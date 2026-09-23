@@ -34,11 +34,11 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
 // Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
-// Must be finite and in [0, 1]. The default is 1.
+// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.9.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
     "session.moe_expert_counter_alpha";
-// Increment applied to each expert selected during an invocation. Must be finite and non-negative.
-// The default is 1.
+// Increment applied to each expert selected during an invocation.
+// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.1.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
     "session.moe_expert_counter_beta";
 

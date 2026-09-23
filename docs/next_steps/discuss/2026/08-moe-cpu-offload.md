@@ -29,8 +29,8 @@ The four numerical policy parameters are exposed as session configuration entrie
 | Session option | Parameter | Meaning and valid range |
 |---|---|---|
 | `session.moe_cpu_offload_experts` | Offload target | Global integer expert count (`>= 1`) or proportion (`0 < value < 1`). |
-| `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and in `[0, 1]`. |
-| `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`. |
+| `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
+| `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
 | `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
@@ -65,8 +65,9 @@ count_{t+1}(e) = alpha * count_t(e) + beta * (1 if expert e was used, otherwise 
 The used term is binary for one invocation. Selecting the same expert for several rows still contributes `1`, not the
 number of routed rows.
 
-The policy exposes `alpha`, `beta`, and `epsilon` as validated non-negative parameters. `alpha` must be at most `1`.
-Their default values are defined with the runtime configuration and covered by option-parsing tests.
+The policy exposes `alpha`, `beta`, and `epsilon` as validated non-negative parameters. The counter coefficients must
+satisfy `alpha + beta <= 1`; zero is allowed for either coefficient. Counters are updated in place and remain bounded
+by the larger of their initial value and `1`. Their defaults and constraints are covered by option-parsing tests.
 
 Expert identity is `(graph_scope, node_index, node_type, expert_id)`. Ranking is by descending counter. Ties are resolved
 by `expert_id`, then graph scope and node index, so placement is deterministic.
