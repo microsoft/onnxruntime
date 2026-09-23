@@ -292,9 +292,10 @@ Implementation details:
   `CUDAExecutionProviderInfo::FromProviderOptions(...)`.
 - Emit it from `CUDAExecutionProviderInfo::ToProviderOptions(...)`.
 - Include it in `std::hash<CUDAExecutionProviderInfo>` because it changes the EP behavior.
-- Do **not** add a field to `OrtCUDAProviderOptionsV2` for Phase 1. That struct is public C
-  ABI surface; string-key provider options are sufficient and can be set through existing
-  provider-options APIs.
+- Phase 1 keeps this policy in `CUDAExecutionProviderInfo`. `OrtCUDAProviderOptionsV2` is opaque in the
+  public C API: callers obtain it through `CreateCUDAProviderOptions` and configure it through string keys.
+  Its definition in `core/providers/cuda/cuda_provider_options.h` is internal and may be extended for new
+  options. This differs from the publicly defined `OrtCUDAProviderOptions`, whose layout must remain stable.
 - Add an EP helper such as `CUDAExecutionProvider::IsCudnnEnabled()` or
   `CudaKernel::IsCudnnEnabled()` so kernels can distinguish:
   - cuDNN disabled by user (`enable_cudnn=0`), and

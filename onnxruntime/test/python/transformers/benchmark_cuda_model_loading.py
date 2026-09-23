@@ -196,7 +196,6 @@ def summarize_samples(samples, expected_bytes):
 def generate_model(directory, weight_count, dimension, seed):
     import numpy as np  # noqa: PLC0415
     import onnx  # noqa: PLC0415
-    from onnx import TensorProto, helper  # noqa: PLC0415
 
     if dimension % 32:
         raise ValueError("--weight-dim must be divisible by 32 for 4-KiB-aligned lengths")
@@ -215,22 +214,22 @@ def generate_model(directory, weight_count, dimension, seed):
             weight = rng.integers(-8, 9, size=(dimension, dimension), dtype=np.int32).astype("<f4") / 16
             offset = weights_file.tell()
             weights_file.write(weight.tobytes())
-            tensor = TensorProto(name=name, data_type=TensorProto.FLOAT, dims=[dimension, dimension])
-            tensor.data_location = TensorProto.EXTERNAL
+            tensor = onnx.TensorProto(name=name, data_type=onnx.TensorProto.FLOAT, dims=[dimension, dimension])
+            tensor.data_location = onnx.TensorProto.EXTERNAL
             for key, value in {"location": "weights.bin", "offset": offset, "length": weight.nbytes}.items():
                 tensor.external_data.add(key=key, value=str(value))
             initializers.append(tensor)
-            nodes.append(helper.make_node("MatMul", ["input", name], [output]))
-            outputs.append(helper.make_tensor_value_info(output, TensorProto.FLOAT, [1, dimension]))
+            nodes.append(onnx.helper.make_node("MatMul", ["input", name], [output]))
+            outputs.append(onnx.helper.make_tensor_value_info(output, onnx.TensorProto.FLOAT, [1, dimension]))
             expected[output] = weight.sum(axis=0, dtype=np.float64).astype(np.float32).reshape(1, dimension)
-    graph = helper.make_graph(
+    graph = onnx.helper.make_graph(
         nodes,
         "cuda_external_weight_loading",
-        [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, dimension])],
+        [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, dimension])],
         outputs,
         initializers,
     )
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)], ir_version=9)
+    model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9)
     onnx.save_model(model, paths[0])
     np.savez(paths[2], input=np.ones((1, dimension), dtype=np.float32))
     np.savez(paths[3], **expected)

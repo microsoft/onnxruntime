@@ -96,7 +96,9 @@ enabling GDS in those builds logs a warning and uses the configured host-memory 
 
 The built-in CUDA execution provider also supports Microsoft's DirectStorage API through D3D12/CUDA
 interoperability. Build with `--cmake_extra_defines onnxruntime_USE_CUDA_DIRECTSTORAGE=ON` in addition to the
-usual CUDA build options. This opt-in build downloads the pinned DirectStorage SDK headers; it does not
+usual CUDA build options. This option is not supported with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`;
+CMake rejects that combination rather than silently compiling an unavailable backend.
+This opt-in build downloads the pinned DirectStorage SDK headers; it does not
 introduce a link-time dependency on `dstorage.dll`. Deploy the SDK's matching x64 `dstorage.dll` and
 `dstoragecore.dll` beside the application executable, following Microsoft's
 [DirectStorage deployment guidance](https://github.com/microsoft/DirectStorage/blob/main/Docs/DeveloperGuidance.md#sdk-path).

@@ -17,7 +17,6 @@ from pathlib import Path
 import benchmark_cuda_model_loading as benchmark
 import numpy as np
 import onnx
-from onnx import numpy_helper
 
 
 class TestBenchmarkHelpers(unittest.TestCase):
@@ -235,7 +234,7 @@ class TestGeneratedFixture(unittest.TestCase):
         onnx.checker.check_model(model)
         with np.load(inputs_path, allow_pickle=False) as inputs, np.load(expected_path, allow_pickle=False) as expected:
             actual = {
-                f"output_{index}": inputs["input"] @ numpy_helper.to_array(tensor)
+                f"output_{index}": inputs["input"] @ onnx.numpy_helper.to_array(tensor)
                 for index, tensor in enumerate(model.graph.initializer)
             }
             benchmark.verify_outputs(actual, dict(expected), 0, 0)
