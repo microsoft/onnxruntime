@@ -8,6 +8,9 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/moe_profiler.h"
+#endif
 #include <charconv>
 #include <type_traits>
 #include "core/common/float8.h"
@@ -273,6 +276,15 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+  fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
+  fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
+  fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
+              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
@@ -626,12 +638,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool is_fp8 = (quant_type_ == "fp8");
   const bool is_wfp4afp8 = (quant_type_ == "wfp4afp8");
   const bool is_int = (quant_type_ == "int");
+  const bool is_mixed_width = fc1_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc2_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc3_expert_weight_bits_ != expert_weight_bits_;
   // Modes that consume FP4 weight block scales (inputs 3/6) and per-expert global weight scales.
   const bool uses_fp4_weight_scales = is_fp4_family || is_wfp4afp8;
   // Modes that consume per-expert FP-format global weight scales (inputs 15/16).
   const bool uses_global_weight_scales = is_fp4_family || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const auto* instrumentation = context->GetRunInstrumentationContext();
+  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -658,7 +677,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // them. If PrePack never ran (e.g. ``session.disable_prepacking`` is set), the prepack
   // buffers stay null and falling through to the raw initializer pointers would feed
   // non-CUTLASS bytes to the runner, producing silently wrong output. Fail loudly instead.
-  if (is_int && !weights_prepacked_ &&
+  if (is_int && !is_mixed_width && !weights_prepacked_ &&
       (packed_fc1_weights_ == nullptr || packed_fc2_weights_ == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "QMoE weights_prepacked=0 requires PrePack to run, but the int weight "
@@ -739,7 +758,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
-  int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
   bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
@@ -750,7 +768,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       fc1_experts_bias_optional, fc1_scales, fc1_zeros,
       &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
-      pack_size, is_fused_swiglu, block_size_));
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
+      is_fused_swiglu, block_size_));
+  ORT_RETURN_IF(is_mixed_width,
+                "Mixed-width QMoE execution is not yet implemented on CUDA.");
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
                     " and num_experts=", moe_params.num_experts);
@@ -1570,6 +1593,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  CudaMoeRoutingRecord* routing_record = nullptr;
+  const size_t routing_element_count =
+      SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
+                  "MoE expert statistics is not supported during CUDA graph capture.");
+    auto host_expert_ids = AllocateBufferOnCPUPinned<int>(routing_element_count);
+    auto host_router_weights = AllocateBufferOnCPUPinned<float>(routing_element_count);
+    ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
+                      "Failed to allocate pinned host memory for CUDA QMoE routing statistics.");
+
+    const TimePoint instrumentation_start = instrumentation->StartProfiling();
+    auto record = std::make_unique<CudaMoeRoutingRecord>(
+        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
+        std::move(host_expert_ids), std::move(host_router_weights),
+        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
+    ORT_RETURN_IF_ERROR(record->Start(stream));
+    routing_record = record.get();
+    instrumentation->AddDeferredRecord(std::move(record));
+  }
+#endif
+
   // The FP4 DeepGEMM path, when eligible, outranks the GEMV for the same shapes.
   if (!use_fp4_deep_gemm && use_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1785,6 +1835,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                expanded, expanded,
                                workspace_size, total_scratch_bytes);
     }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, 0,
+          SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), true, stream));
+    }
+#endif
     return Status::OK();
   }
 
@@ -2002,6 +2059,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         activation_params,
         fused_routing,
         stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
+      const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, destination_offset, tile_element_count,
+          tile_index + 1 == row_tile_plan.TileCount(), stream));
+    }
+#endif
   }
 
   if (enable_kernel_debug_info_) {
@@ -2018,6 +2085,12 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return Status::OK();
+  }
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
 

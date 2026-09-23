@@ -1,3 +1,9 @@
+//
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+//
+// SPDX-License-Identifier: MIT
+//
+
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
@@ -341,6 +347,7 @@ Return Value:
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
@@ -368,12 +375,14 @@ Return Value:
         this->ActivationRoutine = MlasActivationRvv;
         this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
         this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelRvv;
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
         this->RopeDispatch = &MlasRopeDispatchRvv;
         this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
         this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
@@ -793,16 +802,15 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()){
+    const auto& cpuid_info = MLAS_CPUIDINFO::GetCPUIDInfo();
+    const bool has_sme = cpuid_info.HasArm_SME() || cpuid_info.HasArm_SME2();
+    if (has_sme) {
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
-        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
-        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
-        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
         this->MlasHalfConvPrepareOverride = ArmKleidiAI::MlasHalfConvPrepare;
         this->MlasHalfConvOverride = ArmKleidiAI::MlasHalfConv;
         this->MlasHalfConvPackWeightsAndBiasSizeOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBiasSize;
@@ -826,6 +834,11 @@ Return Value:
     this->MlasQNBitGemmPackQuantBDataOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBData;
     this->MlasQNBitGemmBatchWorkspaceSizeOverride = ArmKleidiAI::MlasQNBitGemmBatchWorkspaceSize;
     this->MlasQNBitGemmBatchOverride = ArmKleidiAI::MlasQNBitGemmBatch;
+    if (has_sme || cpuid_info.HasArmSVE2p1()) {
+        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
+        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
+        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
+    }
 #endif
 
 #if defined(MLAS_USE_SVE)

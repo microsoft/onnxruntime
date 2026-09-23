@@ -139,6 +139,26 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+TEST(ConvTransposeTest, ConvTranspose_2x2_Stride2_GroupBiasBatch) {
+  const ConvTransposeOpAttributes attrs{
+      {2, 2}, {}, {}, {0, 0, 0, 0}, {2, 2}, {1, 1}, 2, "NOTSET"};
+  const std::vector<float> input = {1, 2, 3, -1, -2, -3, 4, 5, 6, -4, -5, -6};
+  const std::vector<float> weights = {1, 2, 3, 4, -1, -2, -3, -4,
+                                      5, 6, 7, 8, -5, -6, -7, -8};
+  const std::vector<float> bias = {1, 2, 3, 4};
+  const std::vector<float> expected = {
+      2, 3, 3, 5, 4, 7, 4, 5, 7, 9, 10, 13,
+      1, 0, 0, -2, -1, -4, -1, -2, -4, -6, -7, -10,
+      -2, -3, -7, -9, -12, -15, -4, -5, -11, -13, -18, -21,
+      9, 10, 14, 16, 19, 22, 11, 12, 18, 20, 25, 28,
+      5, 9, 6, 11, 7, 13, 13, 17, 16, 21, 19, 25,
+      -2, -6, -3, -8, -4, -10, -10, -14, -13, -18, -16, -22,
+      -17, -21, -22, -27, -27, -33, -25, -29, -32, -37, -39, -45,
+      24, 28, 29, 34, 34, 40, 32, 36, 39, 44, 46, 52};
+  TestConvTransposeOp(attrs, {input, weights, bias},
+                      {{2, 2, 1, 3}, {2, 2, 2, 2}, {4}}, expected, {2, 4, 2, 6});
+}
+
 TYPED_TEST(ConvTransposeTest, ConvTranspose_2D_outputpadding_strides2) {
   ConvTransposeOpAttributes attrs = {
       std::vector<int64_t>{3, 3},        // kernel_shape

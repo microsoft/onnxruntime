@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/moe_profiler.h"
+#endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
@@ -630,6 +633,12 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return Status::OK();
+  }
+
   // If scales are prepacked, they are constant initializers.
   if (input_idx == 3) {
     return Status::OK();
@@ -921,6 +930,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
+  fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
+  fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
+  fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
+              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
   ORT_ENFORCE(block_size_ >= 0);
 
@@ -1208,9 +1226,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
-      8 / expert_weight_bits_,
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
+
+  if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Mixed-width QMoE execution is not yet implemented on CPU.");
+  }
 
   if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
@@ -1238,6 +1265,18 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t hidden_size = moe_params.hidden_size;
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
+#if !defined(ORT_MINIMAL_BUILD)
+  const size_t routing_element_count =
+      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
+  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  const TimePoint instrumentation_start =
+      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+#endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
                     "QMoE attribute 'k' must be <= num_experts; got k=", k_,
@@ -2497,6 +2536,15 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   } else {
     accumulate(output->template MutableData<T>());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (instrumentation != nullptr) {
+    RecordMoeRoutingEvent(*instrumentation, Node(),
+                          gsl::make_span(route_expert, routing_element_count),
+                          gsl::make_span(route_scale, routing_element_count),
+                          num_tokens, k_, instrumentation_start);
+  }
+#endif
 
   return Status::OK();
 }

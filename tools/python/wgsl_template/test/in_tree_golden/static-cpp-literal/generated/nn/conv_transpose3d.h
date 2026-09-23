@@ -23,15 +23,15 @@ Status ApplyTemplate<"nn/conv_transpose3d.wgsl.template">(ShaderHelper& shader_h
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
-//   3 | 
+//   3 |
 //   4 | #param has_bias
 //   5 | #param is_channels_last
 //   6 | #param is_prepacked
 //   7 | #param components
-//   8 | 
+//   8 |
 //   9 | #use guardAgainstOutOfBoundsWorkgroupSizes getElementAt
 //  10 | #use .rank .offsetToIndices .indicesGet .getByIndices .getByOffset .setByOffset
-//  11 | 
+//  11 |
 //  12 | #if components == 4
 if (__param_components == 4) {
 //  13 | alias Accumulator = vec4<f32>;
@@ -46,7 +46,7 @@ ss << "alias Accumulator = vec2<f32>;\n";
 ss << "alias Accumulator = f32;\n";
 //  18 | #endif
 }
-//  19 | 
+//  19 |
 //  20 | $MAIN {
 MainFunctionStart();
 ss << "\n";
@@ -138,7 +138,7 @@ ss << __var_output->IndicesGet("output_indices", "spatial_dim + 2u");
 ss << ")) + vec3<i32>(uniforms.pads);\n";
 //  48 |   var value = Accumulator(0);
 ss << "  var value = Accumulator(0);\n";
-//  49 | 
+//  49 |
 ss << "\n";
 //  50 |   // Gather input positions using signed integer coordinates so padding and stride
 //  51 |   // alignment remain exact even for float16 tensors with large spatial dimensions.
@@ -297,7 +297,7 @@ ss << ";\n";
 // 115 | }
 MainFunctionEnd();
 ss << "\n";
-// 116 | 
+// 116 |
 
 
   return Status::OK();
