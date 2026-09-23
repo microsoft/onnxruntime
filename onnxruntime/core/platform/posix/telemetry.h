@@ -24,6 +24,16 @@ class EventProperties;
 
 namespace onnxruntime {
 
+#ifdef _WIN32
+namespace telemetry_internal {
+::Microsoft::Applications::Events::EventProperties BuildExecutionProviderEvent(const LUID& adapter_luid);
+::Microsoft::Applications::Events::EventProperties BuildDriverInfoEvent(
+    std::string_view device_class,
+    std::wstring_view driver_names,
+    std::wstring_view driver_versions);
+}  // namespace telemetry_internal
+#endif
+
 /**
  * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
  *
@@ -104,6 +114,12 @@ class PosixTelemetry : public Telemetry {
   void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
                           const std::vector<std::string>& requested_execution_provider_ids,
                           const std::vector<std::string>& available_execution_provider_ids) const override;
+
+#ifdef _WIN32
+  void LogProviderOptions(const std::string& provider_id,
+                          const std::string& provider_options_string,
+                          bool capture_state) const override;
+#endif
 
   void LogModelLoadStart(uint32_t session_id) const override;
   void LogModelLoadEnd(uint32_t session_id, const common::Status& status,

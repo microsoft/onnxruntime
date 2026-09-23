@@ -49,6 +49,17 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    if(onnxruntime_USE_1DS_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
+        )
+    endif()
 
 else()
     list(APPEND onnxruntime_common_src_patterns
@@ -57,8 +68,8 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
-    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
-    if (onnxruntime_USE_TELEMETRY)
+    # 1DS telemetry sources for non-Windows platforms.
+    if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
@@ -162,6 +173,9 @@ if(WIN32)
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
     endif()
   endif()
+  if(onnxruntime_USE_1DS_TELEMETRY)
+    target_link_libraries(onnxruntime_common PRIVATE iphlpapi)
+  endif()
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -172,7 +186,8 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  if(WIN32)
+  if(WIN32 AND NOT onnxruntime_USE_1DS_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_WINDOWS_TELEMETRY)
     set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
         "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
     if(EXISTS "${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
@@ -181,7 +196,7 @@ if (onnxruntime_USE_TELEMETRY)
         PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
     endif()
   else()
-    target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_1DS_TELEMETRY)
     # Optional tenant-token override written into a generated header in the build tree (kept off the
     # compiler command line, so the token never appears in compile_commands.json or build logs). It may be
     # supplied either as -DONNXRUNTIME_TELEMETRY_TENANT_TOKEN=... or via an
@@ -268,20 +283,24 @@ if(CPUINFO_SUPPORTED)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
 endif()
 
-# Link telemetry library (1DS SDK) for non-Windows platforms
-if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+# Link the default 1DS telemetry backend.
+if(onnxruntime_USE_1DS_TELEMETRY)
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
     # The vcpkg package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    if(NOT WIN32)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
+    endif()
   elseif(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
+    if(NOT WIN32)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
       # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
       # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.

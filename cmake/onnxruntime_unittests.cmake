@@ -464,6 +464,10 @@ if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
+  if(onnxruntime_USE_1DS_TELEMETRY)
+    list(APPEND onnxruntime_test_framework_src_patterns
+      "${TEST_SRC_DIR}/platform/windows_telemetry/*.cc" )
+  endif()
 endif()
 
 if(LINUX)
@@ -1256,6 +1260,13 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_USE_1DS_TELEMETRY)
+  if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
+    onnxruntime_add_include_to_target(onnxruntime_test_all MSTelemetry::mat)
+  elseif(TARGET mat)
+    onnxruntime_add_include_to_target(onnxruntime_test_all mat)
+  endif()
+endif()
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 

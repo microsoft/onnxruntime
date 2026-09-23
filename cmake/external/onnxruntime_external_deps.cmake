@@ -8,8 +8,10 @@ include(external/helper_functions.cmake)
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
   # Lines start with "#" are comments, so skip them.
-  # cpp_client_telemetry is only needed for telemetry on non-Windows platforms, so skip if telemetry is not enabled or it's Windows platform.
-  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR (onnxruntime_USE_TELEMETRY AND NOT WIN32)))
+  # cpp_client_telemetry is needed only when the 1DS backend is selected.
+  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND
+     ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR
+      onnxruntime_USE_1DS_TELEMETRY))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -997,8 +999,8 @@ if(onnxruntime_USE_SNPE)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
-# 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
-if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+# 1DS SDK (cpp_client_telemetry) is the default cross-platform telemetry backend.
+if(onnxruntime_USE_1DS_TELEMETRY)
   if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
@@ -1073,6 +1075,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(WIN32 AND TARGET mat)
+      # CMake's Visual Studio generator otherwise forwards mat's BUILD_INTERFACE system include
+      # expression verbatim to MASM. ORT adds dependency includes to C/C++ targets separately.
+      set_property(TARGET mat PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
+    endif()
     target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
     if(ANDROID)
       target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
@@ -1144,12 +1151,14 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       # ORT enables -ffast-math globally, which conflicts with
       # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
       # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
-      target_compile_options(mat PRIVATE
-        -fno-finite-math-only
-        -Wno-unused-const-variable
-        $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
-        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
-      )
+      if(NOT MSVC)
+        target_compile_options(mat PRIVATE
+          -fno-finite-math-only
+          -Wno-unused-const-variable
+          $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+          $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+        )
+      endif()
       # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
       # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
       if(APPLE)

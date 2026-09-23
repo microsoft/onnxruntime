@@ -30,10 +30,49 @@ class BuildArgsTest(unittest.TestCase):
             with self.subTest(platform_name=platform_name):
                 args = self._parse(platform_name=platform_name)
                 self.assertTrue(args.use_telemetry)
+                self.assertFalse(args.use_windows_telemetry)
 
     def test_no_telemetry_disables_supported_target(self):
         args = self._parse("--no_telemetry", platform_name="linux")
         self.assertFalse(args.use_telemetry)
+
+    def test_windows_telemetry_backend_is_explicit(self):
+        args = self._parse("--use_windows_telemetry", platform_name="windows")
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_windows_backend(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="windows")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertTrue(args.use_windows_telemetry)
+
+    def test_legacy_use_telemetry_retains_1ds_elsewhere(self):
+        with self.assertWarnsRegex(FutureWarning, "--use_telemetry is deprecated"):
+            args = self._parse("--use_telemetry", platform_name="linux")
+
+        self.assertTrue(args.use_telemetry)
+        self.assertFalse(args.use_windows_telemetry)
+
+    def test_windows_telemetry_backend_is_rejected_elsewhere(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", platform_name="linux")
+
+    def test_windows_telemetry_backend_is_rejected_for_unsupported_targets(self):
+        for arguments in (
+            ("--android",),
+            ("--build_wasm",),
+            ("--minimal_build", "--disable_exceptions"),
+        ):
+            with self.subTest(arguments=arguments), self.assertRaises(SystemExit):
+                self._parse("--use_windows_telemetry", *arguments, platform_name="windows")
+
+    def test_telemetry_backend_and_opt_out_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--use_windows_telemetry", "--no_telemetry", platform_name="windows")
+        with self.assertRaises(SystemExit):
+            self._parse("--use_telemetry", "--no_telemetry", platform_name="windows")
 
     def test_unsupported_targets_disable_telemetry(self):
         cases = (

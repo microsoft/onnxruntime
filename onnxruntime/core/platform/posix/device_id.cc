@@ -34,8 +34,6 @@ namespace onnxruntime {
 
 namespace {
 
-// ORT and OGA share this file and use the same flock-first protocol so corruption repair is
-// serialized even when both libraries are loaded in one process.
 constexpr char kDeviceIdLockFileName[] = "deviceid.lock";
 
 enum class DeviceIdReadResult {
@@ -414,7 +412,7 @@ void DeviceId::InitializeInternal() {
         return;
       }
 
-      // Another ORT or OGA process may have repaired the shared file while this process waited.
+      // Another process may have repaired the shared file while this process waited.
       const DeviceIdFileRead repaired = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
       if (repaired.result == DeviceIdReadResult::Read && IsValidGUID(repaired.content)) {
         device_id_ = repaired.content;

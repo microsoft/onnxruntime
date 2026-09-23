@@ -1,6 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <Windows.h>
+#include <winternl.h>
+#endif
+
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
 #include "core/platform/posix/telemetry_context.h"
@@ -16,16 +26,17 @@
 #include <mach-o/dyld.h>
 #endif
 
+#ifndef _WIN32
 #include <unistd.h>
+#include <sys/resource.h>
+#endif
+
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
 #if defined(__ANDROID__)
 #include "http/HttpClient_Android.hpp"
 #endif
-
-#include <unistd.h>
-#include <sys/resource.h>
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -125,8 +136,13 @@ std::string DecodeBase64(const std::string& encoded) {
 std::string GetToken() {
   static constexpr char kXorKey[] = "OnnxRuntime";
   constexpr size_t klen = sizeof(kXorKey) - 1;
+#ifdef _WIN32
+  std::string decoded = DecodeBase64(
+      "fllXSmJHWBYMX1cqWldIYU0KTA0IVnpWD0lkRloSWwhILF5WGmBDDUdEC1csC0NMZhZYWVEPBH9DWEhlR15MCl1UfgwPVWVDX0U=");
+#else
   std::string decoded = DecodeBase64(
       "eg8KQWRGDBBdD1YuWl9JahRaTFhZVX4NDUhgRF9MXlhIegxYHGpFXxJEXVd/V0NMa0FXWVEOA3hDCxw3RFhCUF8Edl0NVWRMWEM=");
+#endif
   for (size_t i = 0; i < decoded.size(); ++i) {
     decoded[i] = static_cast<char>(decoded[i] ^ kXorKey[i % klen]);
   }
@@ -180,6 +196,11 @@ class EventBuilder {
     if (!value.empty()) {
       props_.SetProperty(key, value);
     }
+    return *this;
+  }
+
+  EventBuilder& AddStringAllowEmpty(const char* key, const std::string& value) {
+    props_.SetProperty(key, value);
     return *this;
   }
 
@@ -387,7 +408,26 @@ bool PrepareProcessEvent(EventBuilder& event) {
   return true;
 }
 
+#ifdef _WIN32
+bool PrepareProcessEvent(EventProperties& event) {
+  if (!telemetry_internal::ShouldSampleSession(
+          GetAppSessionGuid(), 0,
+          telemetry_internal::kProcessEventSampleRatePercent)) {
+    return false;
+  }
+
+  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  return true;
+}
+#endif
+
 int32_t GetProcessorCount() {
+#ifdef _WIN32
+  const DWORD count = ::GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+  return count > static_cast<DWORD>(std::numeric_limits<int32_t>::max())
+             ? std::numeric_limits<int32_t>::max()
+             : static_cast<int32_t>(count);
+#else
   auto n = sysconf(_SC_NPROCESSORS_ONLN);
   if (n <= 0) {
     return 0;
@@ -396,12 +436,39 @@ int32_t GetProcessorCount() {
     return std::numeric_limits<int32_t>::max();
   }
   return static_cast<int32_t>(n);
+#endif
 }
 
 std::string GetFileName(std::string_view path) {
-  const size_t separator = path.find_last_of('/');
+  const size_t separator = path.find_last_of("/\\");
   return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
 }
+
+#ifdef _WIN32
+std::string GetWindowsPlatformDeviceId() {
+  ULONG buffer_size = 0;
+  if (::GetAdaptersInfo(nullptr, &buffer_size) != ERROR_BUFFER_OVERFLOW || buffer_size == 0) {
+    return {};
+  }
+
+  std::vector<unsigned char> buffer(buffer_size);
+  auto* adapter_info = reinterpret_cast<IP_ADAPTER_INFO*>(buffer.data());
+  if (::GetAdaptersInfo(adapter_info, &buffer_size) != ERROR_SUCCESS ||
+      adapter_info->AdapterName[0] == '\0') {
+    return {};
+  }
+
+  std::string device_id(adapter_info->AdapterName);
+  std::transform(device_id.begin(), device_id.end(), device_id.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return device_id;
+}
+
+std::string GetHashedWindowsPlatformDeviceId() {
+  const std::string device_id = GetWindowsPlatformDeviceId();
+  return device_id.empty() ? std::string{} : "w:" + HashDeviceId(device_id);
+}
+#endif
 
 }  // namespace
 
@@ -494,6 +561,10 @@ void PosixTelemetry::Initialize() {
   config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
+#ifdef _WIN32
+  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
+  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
+#endif
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
@@ -511,7 +582,12 @@ void PosixTelemetry::Initialize() {
   {
     std::string cache_dir = DeviceId::EnsureStorageDirectory();
     if (!cache_dir.empty()) {
-      std::string cache_path = cache_dir + "/onnxruntime.db";
+      std::string cache_path = cache_dir;
+#ifdef _WIN32
+      cache_path += "\\onnxruntime.db";
+#else
+      cache_path += "/onnxruntime.db";
+#endif
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
   }
@@ -618,7 +694,9 @@ void PosixTelemetry::Shutdown() {
 }
 
 std::string PosixTelemetry::GetPlatformInfo() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  return "Windows";
+#elif defined(__APPLE__)
 #if TARGET_OS_IOS
   return "iOS";
 #elif TARGET_OS_MAC
@@ -641,7 +719,25 @@ std::string PosixTelemetry::GetPlatformInfo() const {
 
 // Get detailed OS version string (e.g., "macOS 15.2", "Ubuntu 22.04 LTS")
 std::string PosixTelemetry::GetOsDescription() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  using RtlGetVersionFn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+  const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+  const auto rtl_get_version =
+      ntdll == nullptr ? nullptr
+                       : reinterpret_cast<RtlGetVersionFn>(::GetProcAddress(ntdll, "RtlGetVersion"));
+  if (rtl_get_version != nullptr) {
+    RTL_OSVERSIONINFOW version_info{};
+    version_info.dwOSVersionInfoSize = sizeof(version_info);
+    if (rtl_get_version(&version_info) == 0) {
+      std::array<char, 64> description{};
+      std::snprintf(description.data(), description.size(), "Windows %lu.%lu (Build %lu)",
+                    version_info.dwMajorVersion, version_info.dwMinorVersion,
+                    version_info.dwBuildNumber);
+      return description.data();
+    }
+  }
+  return "Windows";
+#elif defined(__APPLE__)
   char version[64] = {};
   size_t len = sizeof(version);
   if (sysctlbyname("kern.osproductversion", version, &len, nullptr, 0) == 0) {
@@ -697,7 +793,27 @@ std::string PosixTelemetry::GetOsDescription() const {
 
 // Get the CPU brand string (e.g. "Intel(R) Core(TM) i7-10700K"). Empty when unavailable.
 std::string PosixTelemetry::GetCpuModel() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  HKEY key{};
+  if (::RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      0, KEY_READ, &key) != ERROR_SUCCESS) {
+    return {};
+  }
+
+  char cpu_model[256]{};
+  DWORD value_type = REG_SZ;
+  DWORD size = sizeof(cpu_model);
+  const LSTATUS status = ::RegQueryValueExA(
+      key, "ProcessorNameString", nullptr, &value_type,
+      reinterpret_cast<LPBYTE>(cpu_model), &size);
+  ::RegCloseKey(key);
+  if (status != ERROR_SUCCESS || value_type != REG_SZ || size == 0) {
+    return {};
+  }
+  cpu_model[sizeof(cpu_model) - 1] = '\0';
+  return cpu_model;
+#elif defined(__APPLE__)
   // macOS/iOS expose the CPU brand string via sysctl.
   char buf[256] = {0};
   size_t size = sizeof(buf);
@@ -804,7 +920,33 @@ telemetry_detail::HostEnvironmentInfo PosixTelemetry::GetHostEnvironmentInfo() {
 }
 
 std::string PosixTelemetry::GetProcessName() {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  std::vector<wchar_t> path(MAX_PATH);
+  for (;;) {
+    const DWORD length = ::GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0) {
+      return {};
+    }
+    if (length < path.size()) {
+      std::string process_name = GetFileName(ToUTF8String(std::wstring_view(path.data(), length)));
+      constexpr std::string_view executable_extension = ".exe";
+      if (process_name.size() > executable_extension.size() &&
+          std::equal(executable_extension.begin(), executable_extension.end(),
+                     process_name.end() - executable_extension.size(),
+                     [](char lhs, char rhs) {
+                       return std::tolower(static_cast<unsigned char>(lhs)) ==
+                              std::tolower(static_cast<unsigned char>(rhs));
+                     })) {
+        process_name.resize(process_name.size() - executable_extension.size());
+      }
+      return process_name;
+    }
+    if (path.size() >= 32768) {
+      return {};
+    }
+    path.resize(std::min<size_t>(path.size() * 2, 32768));
+  }
+#elif defined(__APPLE__)
   uint32_t path_size = 1024;
   std::vector<char> path(path_size);
   if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
@@ -828,13 +970,13 @@ std::string PosixTelemetry::GetProcessName() {
 
 // Get the CPU architecture the binary was compiled for
 std::string PosixTelemetry::GetArchitecture() {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC))
   return "x86_64";
-#elif defined(__i386__)
+#elif defined(__i386__) || defined(_M_IX86)
   return "x86";
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
   return "arm64";
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(_M_ARM)
   return "arm";
 #elif defined(__riscv)
   return "riscv";
@@ -847,7 +989,14 @@ std::string PosixTelemetry::GetArchitecture() {
 
 // Get total physical memory in MB
 int64_t PosixTelemetry::GetTotalMemoryMB() {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  MEMORYSTATUSEX memory_status{};
+  memory_status.dwLength = sizeof(memory_status);
+  if (::GlobalMemoryStatusEx(&memory_status) != 0) {
+    return static_cast<int64_t>(memory_status.ullTotalPhys / (1024 * 1024));
+  }
+  return 0;
+#elif defined(__APPLE__)
   int64_t mem = 0;
   size_t len = sizeof(mem);
   if (sysctlbyname("hw.memsize", &mem, &len, nullptr, 0) == 0) {
@@ -918,10 +1067,6 @@ void PosixTelemetry::LogProcessInfo() const {
 #endif
 
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
-    if (!PrepareProcessEvent(builder)) {
-      return;
-    }
-
     const auto host_environment = GetHostEnvironmentInfo();
     builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
@@ -941,6 +1086,9 @@ void PosixTelemetry::LogProcessInfo() const {
         .AddString("hostEnvironment", host_environment.environment_class)
         .AddString("environmentDetectionConfidence", host_environment.detection_confidence)
         .AddString("deviceIdScope", host_environment.device_id_scope)
+#ifdef _WIN32
+        .AddString("windowsPlatformDeviceId", GetHashedWindowsPlatformDeviceId())
+#endif
         .AddInt32("processorCount", GetProcessorCount())
         .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
@@ -1159,8 +1307,20 @@ void PosixTelemetry::LogRuntimePerf(
 
 void PosixTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   RunTelemetryOperation("LogExecutionProviderEvent", [&]() {
-    // Not applicable for non-Windows platforms (LUID is Windows-specific)
+#ifdef _WIN32
+    if (!IsEnabled() || adapterLuid == nullptr) {
+      return;
+    }
+
+    auto event = telemetry_internal::BuildExecutionProviderEvent(*adapterLuid);
+    if (!PrepareProcessEvent(event)) {
+      return;
+    }
+
+    LogEventAsync(std::move(event));
+#else
     (void)adapterLuid;
+#endif
   });
 }
 
@@ -1169,12 +1329,49 @@ void PosixTelemetry::LogDriverInfoEvent(
     const std::wstring_view& driver_names,
     const std::wstring_view& driver_versions) const {
   RunTelemetryOperation("LogDriverInfoEvent", [&]() {
-    // Not applicable for non-Windows platforms
+#ifdef _WIN32
+    if (!IsEnabled()) {
+      return;
+    }
+
+    auto event = telemetry_internal::BuildDriverInfoEvent(device_class, driver_names, driver_versions);
+    if (!PrepareProcessEvent(event)) {
+      return;
+    }
+
+    LogEventAsync(std::move(event));
+#else
     (void)device_class;
     (void)driver_names;
     (void)driver_versions;
+#endif
   });
 }
+
+#ifdef _WIN32
+namespace telemetry_internal {
+
+EventProperties BuildExecutionProviderEvent(const LUID& adapter_luid) {
+  return EventBuilder("ExecutionProviderEvent", EventPriority::NORMAL)
+      .AddUInt32("adapterLuidLowPart", adapter_luid.LowPart)
+      .AddUInt32("adapterLuidHighPart", static_cast<uint32_t>(adapter_luid.HighPart))
+      .Build();
+}
+
+EventProperties BuildDriverInfoEvent(
+    std::string_view device_class,
+    std::wstring_view driver_names,
+    std::wstring_view driver_versions) {
+  return EventBuilder("DriverInfo", EventPriority::NORMAL)
+      .AddUInt32("schemaVersion", 0)
+      .AddStringAllowEmpty("deviceClass", std::string(device_class))
+      .AddStringAllowEmpty("driverNames", ToUTF8String(driver_names))
+      .AddStringAllowEmpty("driverVersions", ToUTF8String(driver_versions))
+      .Build();
+}
+
+}  // namespace telemetry_internal
+#endif
 
 void PosixTelemetry::LogAutoEpSelection(
     uint32_t session_id, const std::string& selection_policy,
@@ -1198,6 +1395,18 @@ void PosixTelemetry::LogAutoEpSelection(
     LogEventAsync(std::move(event));
   });
 }
+
+#ifdef _WIN32
+void PosixTelemetry::LogProviderOptions(const std::string& provider_id,
+                                        const std::string& provider_options_string,
+                                        bool capture_state) const {
+  // Provider options can contain paths, credentials, or custom EP data. Keep them on the
+  // local Windows TraceLogging channel rather than uploading them through 1DS.
+  (void)provider_id;
+  (void)provider_options_string;
+  (void)capture_state;
+}
+#endif
 
 void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;
