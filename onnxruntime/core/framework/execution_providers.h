@@ -24,6 +24,9 @@ namespace onnxruntime {
 
 /**
 Class for managing lookup of the execution providers in a session.
+
+Add() must not run concurrently with accessors or iteration, except for
+GetProviderOptionsSnapshot(), which is explicitly synchronized for ETW capture-state callbacks.
 */
 class ExecutionProviders {
  public:
@@ -74,18 +77,27 @@ class ExecutionProviders {
       return status;
     }
 
-    ProviderOptions providerOptions;
-    {
-      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
-
-      // make sure there are no issues before we change any internal data structures
+    const auto check_provider_not_registered = [&]() -> common::Status {
       if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
         auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
         LOGS_DEFAULT(ERROR) << status.ErrorMessage();
         return status;
       }
 
-      providerOptions = p_exec_provider->GetProviderOptions();
+      return Status::OK();
+    };
+
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      ORT_RETURN_IF_ERROR(check_provider_not_registered());
+    }
+
+    ProviderOptions providerOptions = p_exec_provider->GetProviderOptions();
+
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      // make sure there are no issues before we change any internal data structures
+      ORT_RETURN_IF_ERROR(check_provider_not_registered());
 
       // index that provider will have after insertion
       auto new_provider_idx = exec_providers_.size();

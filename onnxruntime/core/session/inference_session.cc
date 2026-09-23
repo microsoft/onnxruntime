@@ -4997,7 +4997,11 @@ void InferenceSession::LogAllSessions() {
       continue;
     }
 
-    std::lock_guard<std::mutex> session_lock(session->session_mutex_);
+    std::unique_lock<std::mutex> session_lock(session->session_mutex_, std::try_to_lock);
+    if (!session_lock.owns_lock()) {
+      continue;
+    }
+
     auto model = session->model_;
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
