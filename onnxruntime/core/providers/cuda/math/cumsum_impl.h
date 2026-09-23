@@ -20,5 +20,16 @@ void CumSumImpl(
     bool exclusive,
     bool reverse);
 
+Status CumSumInt64Impl(
+    cudaStream_t stream,
+    const int64_t* input_data,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
+    int64_t* output_data,
+    int64_t output_size,
+    bool exclusive,
+    bool reverse,
+    int multiprocessor_count);
+
 }  // namespace cuda
 }  // namespace onnxruntime

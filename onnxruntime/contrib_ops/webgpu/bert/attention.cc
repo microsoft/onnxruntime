@@ -118,8 +118,9 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 
 void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
   if (has_seqlen_k) {
-    ss << "total_sequence_length = u32(seqlen_k[batch_idx]) + 1;\n";
-    ss << "var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);\n";
+    ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
+    ss << "total_sequence_length = min(raw_total_sequence_length, min(uniforms.present_sequence_length, total_sequence_length));\n";
+    ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
   }
@@ -335,7 +336,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str()
-                            << "let seq_causal_length = " << (has_seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
+                            << "let seq_causal_length = " << (has_seqlen_k_ ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
   if (has_sliding_window) {
@@ -432,7 +433,9 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink, int local_window_size) {
+                             int32_t kv_sequence_length, int32_t present_sequence_length, const Tensor* seqlen_k,
+                             bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink,
+                             int local_window_size) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -455,6 +458,8 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(num_heads)},
                             {static_cast<uint32_t>(past_sequence_length)},
+                            {static_cast<uint32_t>(kv_sequence_length)},
+                            {static_cast<uint32_t>(present_sequence_length)},
                             {static_cast<uint32_t>(sequence_length)},
                             {static_cast<uint32_t>(total_sequence_length_comp)},
                             {static_cast<uint32_t>(elementsPerThread)},
@@ -622,7 +627,12 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   }
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink, local_window_size));
+                                            parameters.batch_size_, parameters.num_heads_,
+                                            parameters.past_sequence_length_, parameters.sequence_length_,
+                                            total_sequence_length, parameters.kv_sequence_length_,
+                                            parameters.seqlen_present_kv_cache_, seqlen_k,
+                                            parameters.is_first_prompt_, parameters.use_smooth_softmax_,
+                                            head_sink, local_window_size));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
@@ -642,11 +652,14 @@ ONNX_OPERATOR_KERNEL_EX(
 Attention::Attention(const OpKernelInfo& info)
     : WebGpuKernel(info),
       onnxruntime::contrib::AttentionBase(info, false) {
+  const Tensor* weights = nullptr;
+  weights_are_constant_ = info.TryGetConstantInput(1, &weights);
 }
 
 Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                   const Tensor* input, const Tensor* weights, const Tensor* bias,
-                  Tensor* q, Tensor* k, Tensor* v) {
+                  Tensor* q, Tensor* k, Tensor* v,
+                  MatMulOptImplCache& matmul_compute_cache, bool weights_are_constant) {
   // Use MatMul to compute packed QKV output: input * weights + bias
   // Then use SplitPackedQKV to split into Q, K, V in BSD format
   // Returns Q, K, V in BSD format
@@ -660,7 +673,9 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
 
   // Call MatMul: packed_qkv = input * weights + bias
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv));
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(
+      &context, Activation(), matmul_inputs, &packed_qkv, /*is_channels_last=*/true,
+      matmul_compute_cache, weights_are_constant));
 
   // Output Q, K, V in BSD format
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v, parameters.hidden_size_);
@@ -726,7 +741,9 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   Tensor V_bsd = context.CreateGPUTensor(input->DataType(), TensorShape(v_bsd_shape));
 
   // Compute Q, K, V from input, weights, and bias (returns BSD format)
-  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q_bsd, &K_bsd, &V_bsd));
+  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias,
+                                 &Q_bsd, &K_bsd, &V_bsd,
+                                 matmul_compute_cache_, weights_are_constant_));
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention

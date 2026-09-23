@@ -190,6 +190,121 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint8_t, N> {
   }
 };
 
+// UINT2 -> half / bf16, the 2-bit analogue of the uint4b_t converters below.
+//
+// Source: one uint32 holds 16 codes, code i in bits [2i, 2i+2). The INT2 prepacker
+// (add_bias_and_interleave_int2s_inplace_kernel) writes logical element 2j to slot j and
+// logical element 2j+1 to slot j+8, i.e. the [e0,e2,..,e14,e1,e3,..,e15] pair-interleave that
+// generalizes the 4-bit [e0,e2,e4,e6,e1,e3,e5,e7] order. A mask that keeps bit-field j of both
+// 16-bit halves therefore decodes logical elements (2j, 2j+1) into one 16x2 register, and the
+// whole result comes out in logical order with no permutation.
+//
+// `magic | (code << 2s)` is exactly `base + code * 2^(2s)` (every intermediate is representable),
+// so one fma by 2^(-2s) with offset -(base * 2^(-2s) + 2) yields `code - 2`, the symmetric 2-bit
+// zero point.
+template <typename T, int N>
+struct Int2NumericArrayConverter;
+
+// half has 10 mantissa bits, so the four masks 0x3/0xc/0x30/0xc0 all stay inside the mantissa
+// and the 16 codes cost a single shift plus eight lop3 + eight fma.
+template <int N>
+struct Int2NumericArrayConverter<half_t, N> {
+  static_assert(N % 16 == 0, "INT2 conversion requires complete 16-element packed words");
+  using result_type = Array<half_t, N>;
+  using source_type = Array<uint2b_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+    auto const* input = reinterpret_cast<uint32_t const*>(&source);
+    auto* h = reinterpret_cast<uint32_t*>(&result);
+
+    static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;  // (a & b) | c
+    static constexpr uint32_t MAGIC = 0x64006400;             // half2{1024, 1024}
+    // (scale, -offset) per mask: value = base + code * 2^(2s) -> code - 2.
+    static constexpr uint32_t MASK[4] = {0x00030003, 0x000C000C, 0x00300030, 0x00C000C0};
+    static constexpr uint32_t SCALE[4] = {0x3C003C00, 0x34003400, 0x2C002C00, 0x24002400};
+    static constexpr uint32_t NEG_OFF[4] = {0xE402E402, 0xDC08DC08, 0xD420D420, 0xCC80CC80};
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / 16; ++i) {
+      // Byte 0 carries slots 0-3 and byte 2 slots 8-11, so masking i2s gives the (j, j+8) pairs
+      // for j < 4; one shift by 8 moves to slots 4-7 / 12-15.
+      uint32_t const i2s[2] = {input[i], input[i] >> 8};
+      CUTLASS_PRAGMA_UNROLL
+      for (int half = 0; half < 2; ++half) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int s = 0; s < 4; ++s) {
+          uint32_t& v = h[i * 8 + half * 4 + s];
+          asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                       : "=r"(v)
+                       : "r"(i2s[half]), "r"(MASK[s]), "n"(MAGIC), "n"(immLut));
+          asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n"
+                       : "=r"(v)
+                       : "r"(v), "r"(SCALE[s]), "r"(NEG_OFF[s]));
+        }
+      }
+    }
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& source) { return convert(source); }
+};
+
+// bf16 only has 7 mantissa bits, so a 2-bit field can only be parked at the bottom; like the
+// uint4b_t bf16 converter this shifts once per output instead of reusing wider masks.
+template <int N>
+struct Int2NumericArrayConverter<bfloat16_t, N> {
+  static_assert(N % 16 == 0, "INT2 conversion requires complete 16-element packed words");
+  using result_type = Array<bfloat16_t, N>;
+  using source_type = Array<uint2b_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+    auto const* input = reinterpret_cast<uint32_t const*>(&source);
+    auto* h = reinterpret_cast<uint32_t*>(&result);
+
+    static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;
+    static constexpr uint32_t MASK = 0x00030003;
+    static constexpr uint32_t MAGIC = 0x43004300;      // bf16x2{128, 128}
+    static constexpr uint32_t BF16_ONE = 0x3F803F80;   // 1.0
+    static constexpr uint32_t BF16_BIAS = 0xC302C302;  // -(128 + 2)
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / 16; ++i) {
+      uint32_t i2s = input[i];
+      CUTLASS_PRAGMA_UNROLL
+      for (int j = 0; j < 8; ++j) {
+        uint32_t& v = h[i * 8 + j];
+        asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                     : "=r"(v)
+                     : "r"(i2s), "n"(MASK), "n"(MAGIC), "n"(immLut));
+        asm("fma.rn.bf16x2 %0, %1, %2, %3;\n" : "=r"(v) : "r"(v), "r"(BF16_ONE), "r"(BF16_BIAS));
+        i2s >>= 2;
+      }
+    }
+#else
+    arch::device_breakpoint();
+    result.clear();
+#endif
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& source) { return convert(source); }
+};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint2b_t, N>
+    : Int2NumericArrayConverter<half_t, N> {};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint2b_t, N>
+    : Int2NumericArrayConverter<bfloat16_t, N> {};
+
 template <>
 struct FastInterleavedAndBiasedNumericArrayConverter<half_t, uint4b_t, 8> {
   using result_type = Array<half_t, 8>;

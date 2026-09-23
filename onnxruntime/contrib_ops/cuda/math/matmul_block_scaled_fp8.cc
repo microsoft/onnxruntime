@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
 
+#include <algorithm>
 #include <type_traits>
 
 #include "core/common/safeint.h"
@@ -20,6 +21,12 @@ bool FusedFp8ActivationQdqDisabled() {
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FUSED_FP8_ACT_QDQ", false);
   return disabled;
 }
+
+size_t DequantScratchLimitBytes() {
+  const int64_t limit = ParseEnvironmentVariableWithDefault<int64_t>("ORT_FP8_DEQUANT_SCRATCH_MIB", 256);
+  ORT_ENFORCE(limit > 0, "ORT_FP8_DEQUANT_SCRATCH_MIB must be positive.");
+  return SafeInt<size_t>(limit) * 1024 * 1024;
+}
 }  // namespace
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -36,7 +43,10 @@ ONNX_OPERATOR_KERNEL_EX(
 #endif
 
 MatMulBlockQuantizedFp8Weight::MatMulBlockQuantizedFp8Weight(const OpKernelInfo& info)
-    : CudaKernel(info), block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)) {
+    : CudaKernel(info),
+      block_size_(info.GetAttrOrDefault<int64_t>("block_size", 128)),
+      max_dequant_scratch_bytes_(DequantScratchLimitBytes()),
+      enable_deep_gemm_(ParseEnvironmentVariableWithDefault<bool>("ORT_FP8_MATMUL_DEEPGEMM", false)) {
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive.");
 }
 
@@ -93,15 +103,68 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   const int n_i = SafeInt<int>(helper.N());
   const int k_i = SafeInt<int>(helper.K());
 
+  if (k_i == 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(context)));
+    if (bias != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(
+          Y->MutableDataRaw(),
+          bias->DataRaw(),
+          m_i,
+          n_i,
+          std::is_same<T, BFloat16>::value,
+          Stream(context)));
+    }
+    return Status::OK();
+  }
+
   // Optional W8A8 activation path: statically quantize A to FP8 E4M3 and dequantize back so the
   // GEMM sees the same activation rounding as native W8A8 execution. When a_scale is absent the
   // activation is kept at full FP16/BF16 precision (weight-only W8A16).
   //
   // The decode GEMV absorbs this round trip in-register, so the standalone kernel (and its [M, K]
   // scratch buffer) is only materialized for the cuBLAS path below.
-  constexpr int kGemvMaxM = 8;
-  const bool use_gemv = m_i > 0 && m_i <= kGemvMaxM && (k_i % 16 == 0) && (block_size_ % 16 == 0);
+  const bool use_gemv = m_i > 0 &&
+                        m_i <= MatMulBlockScaledFp8GemvMaxM(k_i, SafeInt<int>(block_size_), GetDeviceProp()) &&
+                        (k_i % 16 == 0) && (block_size_ % 16 == 0);
   const bool fuse_act_qdq = use_gemv && !FusedFp8ActivationQdqDisabled();
+
+#if defined(USE_DEEP_GEMM)
+  // Native FP8 changes intermediate rounding, so it is opt-in and requires the model's
+  // activation scale. Keep the tuned small-M path and unsupported layouts on the fallback.
+  if (enable_deep_gemm_ && !use_gemv && a_scale != nullptr && block_size_ == 128 &&
+      GetDeviceProp().major == 9 && GetDeviceProp().minor == 0 &&
+      k_i % 128 == 0 && n_i % 64 == 0 && n_i >= 2048 &&
+      SafeInt<size_t>(n_i) * k_i >= 8 * 1024 * 1024 &&
+      m_i <= 128) {
+    const size_t rows_per_tile = max_dequant_scratch_bytes_ / (SafeInt<size_t>(m_i) * sizeof(float));
+    const int tile_n = static_cast<int>(std::min<size_t>(n_i, rows_per_tile / 64 * 64));
+    if (tile_n > 0) {
+      LOGS_DEFAULT(VERBOSE) << "MatMulBlockQuantizedFp8Weight: using SM90 DeepGEMM";
+      const int aligned_m = (m_i + 3) / 4 * 4;
+      auto* stream = GetComputeStream(context);
+      auto a_quant = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * k_i, stream);
+      auto a_scales = GetScratchBuffer<float>(SafeInt<size_t>(aligned_m) * (k_i / 128), stream);
+      auto packed_b_scales = GetScratchBuffer<float>(SafeInt<size_t>(tile_n) * (k_i / 128), stream);
+      auto accum = GetScratchBuffer<float>(SafeInt<size_t>(m_i) * tile_n, stream);
+      ORT_RETURN_IF_ERROR(LaunchPrepareMatMulFp8DeepGemm(
+          a_quant.get(), a_scales.get(), a->DataRaw(), a_scale->Data<float>(),
+          m_i, k_i, aligned_m, std::is_same<T, BFloat16>::value, Stream(context)));
+      for (int64_t offset = 0; offset < n_i; offset += tile_n) {
+        const int rows = static_cast<int>(std::min<int64_t>(tile_n, n_i - offset));
+        const size_t weight_offset = SafeInt<size_t>(offset) * k_i;
+        const size_t scale_offset = SafeInt<size_t>(offset) * (k_i / 128);
+        ORT_RETURN_IF_ERROR(LaunchMatMulFp8DeepGemm(
+            Y->MutableData<T>() + offset, a_quant.get(), a_scales.get(),
+            static_cast<const uint8_t*>(b->DataRaw()) + weight_offset,
+            b_scale->Data<float>() + scale_offset,
+            bias != nullptr ? bias->Data<T>() + offset : nullptr,
+            packed_b_scales.get(), accum.get(), m_i, rows, k_i, aligned_m, n_i,
+            std::is_same<T, BFloat16>::value, GetDeviceProp().multiProcessorCount, Stream(context)));
+      }
+      return Status::OK();
+    }
+  }
+#endif
 
   const void* a_ptr = a->DataRaw();
   IAllocatorUniquePtr<CudaT> a_dequant;
@@ -139,39 +202,52 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
         Stream(context));
   }
 
-  // Dequantize the FP8 weight into a scratch [N, K] buffer of the activation type, then GEMM.
-  IAllocatorUniquePtr<CudaT> b_dequant = GetScratchBuffer<CudaT>(SafeInt<size_t>(n) * SafeInt<size_t>(k),
-                                                                 GetComputeStream(context));
-  ORT_RETURN_IF_ERROR(LaunchDequantizeBlockScaledFp8(
-      b_dequant.get(),
-      b->DataRaw(),
-      b_scale->Data<float>(),
-      SafeInt<int>(n),
-      SafeInt<int>(k),
-      SafeInt<int>(block_size_),
-      std::is_same<T, BFloat16>::value,
-      Stream(context)));
+  // Dequantize the FP8 weight into a scratch buffer of the activation type, then GEMM. The scratch
+  // is tiled over N because a full [N, K] buffer is 2.37 GiB for a 248320 x 5120 LM head.
+  const int64_t rows_per_scratch =
+      static_cast<int64_t>(max_dequant_scratch_bytes_ / (static_cast<size_t>(k) * sizeof(CudaT)));
+  const int64_t tile_rows = std::clamp<int64_t>(rows_per_scratch, 1, n);
+
+  IAllocatorUniquePtr<CudaT> b_dequant =
+      GetScratchBuffer<CudaT>(SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k), GetComputeStream(context));
 
   const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
   const CudaT zero = ToCudaType<T>::FromFloat(0.f);
+  const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
+  const float* b_scale_data = b_scale->Data<float>();
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      GetCublasHandle(context),
-      CUBLAS_OP_T,  // transB: dequantized weight is [N, K] row-major == K-major [K, N]
-      CUBLAS_OP_N,  // transA
-      n_i,
-      m_i,
-      k_i,
-      &alpha,
-      b_dequant.get(),
-      helper.Ldb(transb),
-      reinterpret_cast<const CudaT*>(a_ptr),
-      helper.Lda(transa),
-      &zero,
-      reinterpret_cast<CudaT*>(Y->MutableDataRaw()),
-      helper.Ldc(),
-      GetDeviceProp(),
-      UseTF32()));
+  for (int64_t n_offset = 0; n_offset < n; n_offset += tile_rows) {
+    const int rows = SafeInt<int>(std::min<int64_t>(tile_rows, n - n_offset));
+    const size_t row_offset = static_cast<size_t>(n_offset);
+    ORT_RETURN_IF_ERROR(LaunchDequantizeBlockScaledFp8(
+        b_dequant.get(),
+        b_data + row_offset * static_cast<size_t>(k),
+        b_scale_data + row_offset * static_cast<size_t>(k_blocks),
+        rows,
+        SafeInt<int>(k),
+        SafeInt<int>(block_size_),
+        std::is_same<T, BFloat16>::value,
+        Stream(context)));
+
+    // The row-major [M, N] output is column-major [N, M] to cuBLAS, so an N tile is a row offset.
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        GetCublasHandle(context),
+        CUBLAS_OP_T,  // transB: dequantized weight is [N, K] row-major == K-major [K, N]
+        CUBLAS_OP_N,  // transA
+        rows,
+        m_i,
+        k_i,
+        &alpha,
+        b_dequant.get(),
+        helper.Ldb(transb),
+        reinterpret_cast<const CudaT*>(a_ptr),
+        helper.Lda(transa),
+        &zero,
+        reinterpret_cast<CudaT*>(Y->MutableDataRaw()) + n_offset,
+        helper.Ldc(),
+        GetDeviceProp(),
+        UseTF32()));
+  }
 
   if (bias != nullptr) {
     ORT_RETURN_IF_ERROR(LaunchAddBiasBlockScaledFp8(

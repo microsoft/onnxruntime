@@ -1114,6 +1114,16 @@ Status Node::UpdateInputArgCount() {
   // Verify size of node arg count is same as input number in
   // operator definition.
   if (op.inputs().size() != definitions_.input_arg_count.size()) {
+    // A node cannot feed actual inputs to an operator/function whose schema
+    // declares no formal input parameters.
+    if (op.inputs().empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This is an invalid model. Node (", name_,
+                             ") has ", total_arg_count,
+                             " input(s) but its operator schema (", op.Name(),
+                             ") declares no inputs.");
+    }
+
     // Adjust input arg count array with op definition
     // The adjustment will work as below,
     // In total, there're <total_arg_count> inputs, which
@@ -1127,21 +1137,16 @@ Status Node::UpdateInputArgCount() {
     size_t m = 0;
     auto arg_count_left = total_arg_count;
 
-    if (!op.inputs().empty()) {
-      for (; m < op.inputs().size() - 1; ++m) {
-        if (arg_count_left > 0) {
-          input_arg_count.push_back(1);
-          arg_count_left--;
-        } else {
-          input_arg_count.push_back(0);
-        }
+    for (; m < op.inputs().size() - 1; ++m) {
+      if (arg_count_left > 0) {
+        input_arg_count.push_back(1);
+        arg_count_left--;
+      } else {
+        input_arg_count.push_back(0);
       }
     }
 
     // Set the arg count for the last input formal parameter.
-    // NOTE: in the case that there's no .input(...) defined
-    // in op schema, all input args will be fed as one input
-    // of the operator.
     input_arg_count.push_back(arg_count_left);
 
     graph_->SetGraphResolveNeeded();
@@ -2748,6 +2753,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   const TensorProto* getInputData(size_t index) const override {
+    // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
+    // so callers can pass an index the node doesn't actually have.
+    if (index >= getNumInputs()) {
+      return nullptr;
+    }
+
     auto def = node_.InputDefs()[index];
     if (!def)
       return nullptr;
@@ -2756,6 +2767,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // Checks for outer scope initializers if this is a subgraph and the name isn't found locally.
     const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
     if (initializer != nullptr) {
+      if (!utils::HasExternalData(*initializer)) {
+        ORT_THROW_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(*initializer));
+      }
+
       // Check if this is in-memory external data (data stored in OrtValue)
       // ONNX shape inference cannot handle external data, so we need to materialize it
       if (utils::HasExternalDataInMemory(*initializer)) {
@@ -2978,6 +2993,10 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
     if (initializer) {
+      if (!utils::HasExternalData(*initializer)) {
+        ORT_RETURN_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(*initializer));
+      }
+
       // Get shape from TensorProto as well as element counts.
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
       auto tensor_shape = utils::GetTensorShapeFromTensorProto(*initializer);
@@ -4980,6 +4999,64 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+
+void Graph::SetNodeReplacementCallback(NodeReplacementCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_replacement_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeReplacement(
+    gsl::span<const NodeIndex> source_node_indices,
+    NodeIndex destination_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_replacement_callback_) {
+    root_graph->node_replacement_callback_(*this, source_node_indices, destination_node_index);
+  }
+}
+
+void Graph::SetNodeRemovalCallback(NodeRemovalCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_removal_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_removal_callback_) {
+    root_graph->node_removal_callback_(*this, node_indices);
+  }
+}
+
+#ifdef ENABLE_TRAINING
+void Graph::SetNodeCloneCallback(NodeCloneCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_clone_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_clone_callback_) {
+    root_graph->node_clone_callback_(*this, source_node_index, cloned_node_index);
+  }
+}
+#endif
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -5500,10 +5577,10 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
+  graph_proto.clear_node();
+  graph_proto.clear_input();
+  graph_proto.clear_output();
+  graph_proto.clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 
@@ -6055,6 +6132,8 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 
     RemoveNode(node_index);
   }
+
+  NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -203,6 +203,78 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
             kOpenVINOExecutionProvider, kWebGpuExecutionProvider, kDmlExecutionProvider});
 }
 
+// Pooling never mixes channels, so an NHWC implementation may carry several channels per thread
+// through the same window arithmetic when the channel count divides evenly. These cover a channel
+// count that is a multiple of four and one that is only a multiple of two, for both pool kinds -
+// AveragePool separately because its divisor has to be applied per channel as well.
+TEST(PoolTest, MaxPool_ChannelCountFourAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f});
+  test.Run();
+}
+
+TEST(PoolTest, MaxPool_ChannelCountTwoAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f, 20.0f, 24.0f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountFourAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountTwoAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f, 18.5f, 22.5f});
+  test.Run();
+}
+
 TEST(PoolTest, MaxPool_8_With_Index) {
   MaxPool_8_WithIndexTest(false);                      // row major
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
@@ -1845,6 +1917,69 @@ TEST(PoolTest, GlobalAveragePool_Large_256) {
   test.AddOutput<float>("Y", expected_dims, expected_vals,
                         /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+}
+
+// The WebGPU EP runs a pool as a workgroup-cooperative reduction when the serial path would not
+// fill the device and the kernel window is large. Global pooling only reaches that path with a
+// single output element per channel, which leaves two things unexercised: an output index taken
+// from workgroup_idx, and a divisor that has to be reduced across the workgroup.
+static void RunWebGpuLargeKernelPoolTest(const char* op_type, int opset, bool is_max_pool) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  // A 12x12 window with pad 2 over a 24x24 input: kernel_size 144, output_size 578.
+  constexpr int64_t kChannels = 2, kSpatial = 24, kKernel = 12, kPad = 2;
+  constexpr int64_t kOutSpatial = kSpatial + 2 * kPad - kKernel + 1;
+
+  std::vector<float> x_vals(kChannels * kSpatial * kSpatial);
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    x_vals[i] = static_cast<float>(i) * 0.01f;
+  }
+
+  std::vector<float> expected_vals(kChannels * kOutSpatial * kOutSpatial);
+  for (int64_t c = 0; c < kChannels; ++c) {
+    for (int64_t oh = 0; oh < kOutSpatial; ++oh) {
+      for (int64_t ow = 0; ow < kOutSpatial; ++ow) {
+        float acc = is_max_pool ? std::numeric_limits<float>::lowest() : 0.0f;
+        int64_t count = 0;
+        for (int64_t kh = 0; kh < kKernel; ++kh) {
+          for (int64_t kw = 0; kw < kKernel; ++kw) {
+            const int64_t ih = oh + kh - kPad;
+            const int64_t iw = ow + kw - kPad;
+            if (ih < 0 || ih >= kSpatial || iw < 0 || iw >= kSpatial) {
+              continue;
+            }
+            const float v = x_vals[static_cast<size_t>((c * kSpatial + ih) * kSpatial + iw)];
+            acc = is_max_pool ? (v > acc ? v : acc) : acc + v;
+            ++count;
+          }
+        }
+        expected_vals[static_cast<size_t>((c * kOutSpatial + oh) * kOutSpatial + ow)] =
+            is_max_pool ? acc : acc / static_cast<float>(count);
+      }
+    }
+  }
+
+  OpTester test(op_type, opset);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{kKernel, kKernel});
+  test.AddAttribute("pads", std::vector<int64_t>{kPad, kPad, kPad, kPad});
+  test.AddInput<float>("X", {1, kChannels, kSpatial, kSpatial}, x_vals);
+  test.AddOutput<float>("Y", {1, kChannels, kOutSpatial, kOutSpatial}, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(PoolTest, AveragePool_LargeKernelMultiElementOutput_WebGpu) {
+  RunWebGpuLargeKernelPoolTest("AveragePool", 11, /*is_max_pool=*/false);
+}
+
+TEST(PoolTest, MaxPool_LargeKernelMultiElementOutput_WebGpu) {
+  RunWebGpuLargeKernelPoolTest("MaxPool", 12, /*is_max_pool=*/true);
 }
 
 TEST(PoolTest, LpPool) {

@@ -1,0 +1,18 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Derive exact per-request lengths without downloading device metadata.
+// seqlen_k uses FlashAttention's last-valid-index convention.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let q_len = cumulative_sequence_length.getByOffset(global_idx + 1u) -
+              cumulative_sequence_length.getByOffset(global_idx);
+  let total_kv_len = past_seqlens.getByOffset(global_idx) + q_len;
+  seqlen_k.setByOffset(global_idx, total_kv_len - 1);
+  seqlens_q.setByOffset(global_idx, q_len);
+}

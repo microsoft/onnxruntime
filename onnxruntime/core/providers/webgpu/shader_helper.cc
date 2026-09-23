@@ -41,9 +41,11 @@ Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
 
   // validate workgroup size
-  auto workgroup_size_x = program_.WorkgroupSizeX();
-  auto workgroup_size_y = program_.WorkgroupSizeY();
-  auto workgroup_size_z = program_.WorkgroupSizeZ();
+  // normalize 0 (meaning "use default") the same way GenerateSourceCode() does, so validation
+  // below reflects the effective workgroup size that will actually be used in the shader.
+  auto workgroup_size_x = program_.WorkgroupSizeX() == 0 ? uint32_t(WORKGROUP_SIZE) : program_.WorkgroupSizeX();
+  auto workgroup_size_y = program_.WorkgroupSizeY() == 0 ? uint32_t(1) : program_.WorkgroupSizeY();
+  auto workgroup_size_z = program_.WorkgroupSizeZ() == 0 ? uint32_t(1) : program_.WorkgroupSizeZ();
 
   ORT_RETURN_IF_NOT(workgroup_size_x <= limits_.maxComputeWorkgroupSizeX &&
                         workgroup_size_y <= limits_.maxComputeWorkgroupSizeY &&
@@ -56,12 +58,29 @@ Status ShaderHelper::Init() {
   ORT_RETURN_IF_NOT(workgroup_size_x * workgroup_size_y * workgroup_size_z <= limits_.maxComputeInvocationsPerWorkgroup,
                     "Workgroup size exceeds the maximum allowed invocations ", limits_.maxComputeInvocationsPerWorkgroup);
 
+  // validate the requested subgroup size (subgroup-size-control), if any
+  if (auto subgroup_size = program_.SubgroupSize(); subgroup_size != 0) {
+    const auto& adapter_info = webgpu_context_.AdapterInfo();
+    ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+                      "Program ", program_.Name(), " requires subgroup-size-control but the device does not support it.");
+    ORT_RETURN_IF_NOT((subgroup_size & (subgroup_size - 1)) == 0,
+                      "Requested subgroup size ", subgroup_size, " is not a power of two.");
+    ORT_RETURN_IF_NOT(subgroup_size >= adapter_info.subgroupMinSize && subgroup_size <= adapter_info.subgroupMaxSize,
+                      "Requested subgroup size ", subgroup_size, " is outside the adapter's supported range [",
+                      adapter_info.subgroupMinSize, ", ", adapter_info.subgroupMaxSize, "]");
+    ORT_RETURN_IF_NOT(workgroup_size_x % subgroup_size == 0,
+                      "Workgroup size x (", workgroup_size_x, ") must be a multiple of the requested subgroup size (", subgroup_size, ")");
+  }
+
   // init body string stream
-  bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
 
   // append header for main function so it is ready for user to append main function body
-  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
+  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)";
+  if (program_.SubgroupSize() != 0) {
+    body_ss_ << " @subgroup_size(subgroup_size)";
+  }
+  body_ss_ << "\n"
               "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
@@ -83,10 +102,6 @@ Status ShaderHelper::Init() {
                 "  let num_workgroups_y = indirect_buffer[1];\n"
                 "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
                 "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
-  } else if (is_1d_dispatch) {
-    body_ss_ << ") {\n";
-    body_ss_ << "  let global_idx = global_id.x;\n"
-                "  let workgroup_idx = workgroup_id.x;\n";
   } else {
     body_ss_ << ",\n"
                 "        @builtin(num_workgroups) num_workgroups : vec3<u32>) {\n";
@@ -104,7 +119,20 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
 
   const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
                                                                        : program_.Inputs()[input_index].tensor->Shape();
-  return AddVariableImpl(true, name, usage, dims, inputs_segments_[input_index]);
+  const size_t owner_index = program_.InputBufferOwner(input_index);
+  const bool owns_storage_binding = owner_index == input_index;
+  std::string_view storage_name{name};
+  if (!owns_storage_binding) {
+    storage_name = input_vars_[owner_index]->name_;
+  }
+  return AddVariableImpl(true,
+                         name,
+                         usage,
+                         dims,
+                         inputs_segments_[owner_index],
+                         storage_name,
+                         program_.Inputs()[input_index].buffer_offset_in_elements,
+                         owns_storage_binding);
 }
 
 const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, ShaderUsage usage) {
@@ -114,7 +142,20 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
 
   const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
                                                                          : program_.Outputs()[output_index].tensor->Shape();
-  return AddVariableImpl(false, name, usage, dims, outputs_segments_[output_index]);
+  const size_t owner_index = program_.OutputBufferOwner(output_index);
+  const bool owns_storage_binding = owner_index == output_index;
+  std::string_view storage_name{name};
+  if (!owns_storage_binding) {
+    storage_name = output_vars_[owner_index]->name_;
+  }
+  return AddVariableImpl(false,
+                         name,
+                         usage,
+                         dims,
+                         outputs_segments_[owner_index],
+                         storage_name,
+                         program_.Outputs()[output_index].buffer_offset_in_elements,
+                         owns_storage_binding);
 }
 
 const ShaderIndicesHelper& ShaderHelper::AddIndices(const std::string& name, ShaderUsage usage) {
@@ -217,7 +258,15 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
 Status ValidateVariableShape(const TensorShape& origin_shape,
                              bool use_override_shape,
                              const TensorShape& override_shape,
-                             int num_components) {
+                             int num_components,
+                             bool is_buffer_view,
+                             uint32_t buffer_offset_in_elements) {
+  if (is_buffer_view) {
+    const uint64_t backing_element_count = (origin_shape.Size() + num_components - 1) / num_components;
+    ORT_RETURN_IF_NOT(static_cast<uint64_t>(buffer_offset_in_elements) + override_shape.Size() <= backing_element_count,
+                      "Packed buffer view exceeds the backing tensor.");
+    return Status::OK();
+  }
   if (use_override_shape) {
     // if override shape specified, assert override_size == ceil( origin_size / 4 )
     ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
@@ -263,7 +312,9 @@ Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVar
   ORT_RETURN_IF_ERROR(ValidateVariableShape(input.tensor->Shape(),
                                             input.use_override_shape,
                                             input.use_override_shape ? input.override_shape : input.tensor->Shape(),
-                                            var.num_components_));
+                                            var.num_components_,
+                                            input.is_buffer_view,
+                                            input.buffer_offset_in_elements));
   ORT_RETURN_IF_ERROR(ValidateVariableDependency(input.dependency, var.usage_, true));
 
   return Status::OK();
@@ -273,7 +324,9 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
   ORT_RETURN_IF_ERROR(ValidateVariableShape(output.tensor->Shape(),
                                             output.use_override_shape,
                                             output.use_override_shape ? output.override_shape : output.tensor->Shape(),
-                                            var.num_components_));
+                                            var.num_components_,
+                                            output.is_buffer_view,
+                                            output.buffer_offset_in_elements));
   ORT_RETURN_IF_ERROR(ValidateVariableDependency(output.dependency, var.usage_, false));
 
   return Status::OK();
@@ -285,9 +338,14 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
                                                     const std::string& name,
                                                     ShaderUsage usage,
                                                     const TensorShape& dims,
-                                                    uint32_t segments) {
+                                                    uint32_t segments,
+                                                    std::string_view storage_name,
+                                                    uint32_t storage_offset_in_elements,
+                                                    bool owns_storage_binding) {
   // Add the segments for the new variable we're about to create
-  numbers_storage_buffers_ += segments;
+  if (owns_storage_binding) {
+    numbers_storage_buffers_ += segments;
+  }
   ORT_ENFORCE(numbers_storage_buffers_ <= limits_.maxStorageBuffersPerShaderStage,
               "Too many storage buffers in shader. Current: ", numbers_storage_buffers_,
               ", Max is ", limits_.maxStorageBuffersPerShaderStage);
@@ -309,7 +367,15 @@ ShaderVariableHelper& ShaderHelper::AddVariableImpl(bool is_input,
     }
   }
 
-  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name, type, usage, dims, segments, limits_.maxStorageBufferBindingSize));
+  const auto& var = vars.emplace_back(std::make_unique<ShaderVariableHelper>(name,
+                                                                             storage_name,
+                                                                             type,
+                                                                             usage,
+                                                                             dims,
+                                                                             segments,
+                                                                             storage_offset_in_elements,
+                                                                             owns_storage_binding,
+                                                                             limits_.maxStorageBufferBindingSize));
   return *var;
 }
 
@@ -404,7 +470,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     ss << "enable subgroups;\n";
   }
-#if !defined(__wasm__)
+  if (program_.SubgroupSize() != 0) {
+    ss << "enable subgroup_size_control;\n";
+  }
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
 
@@ -412,7 +480,6 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     // Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to turn off this restriction
     ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
-#endif
 
   //
   // Section constants
@@ -421,6 +488,10 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
      << ";\nconst workgroup_size_y: u32 = " << (program_.WorkgroupSizeY() == 0 ? uint32_t(1) : program_.WorkgroupSizeY())
      << ";\nconst workgroup_size_z: u32 = " << (program_.WorkgroupSizeZ() == 0 ? uint32_t(1) : program_.WorkgroupSizeZ())
      << ";\n";
+
+  if (auto subgroup_size = program_.SubgroupSize(); subgroup_size != 0) {
+    ss << "const subgroup_size: u32 = " << subgroup_size << ";\n";
+  }
 
   for (const auto& constant : program_metadata_.constants) {
     ss << "const " << constant.name << ": " << constant.type << " = ";
@@ -450,6 +521,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   // inputs
   for (size_t i = 0; i < input_vars_.size(); ++i) {
     const auto& input = input_vars_[i];
+    if (!input->owns_storage_binding_) {
+      continue;
+    }
     uint32_t segments = input->segments_;
     for (uint32_t seg = 0; seg < segments; ++seg) {
       ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read> ";
@@ -464,6 +538,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   // outputs
   for (size_t i = 0; i < output_vars_.size(); ++i) {
     const auto& output = output_vars_[i];
+    if (!output->owns_storage_binding_) {
+      continue;
+    }
     bool is_atomic = program_.Outputs()[i].is_atomic;
     uint32_t segments = output->segments_;
     for (uint32_t seg = 0; seg < segments; ++seg) {

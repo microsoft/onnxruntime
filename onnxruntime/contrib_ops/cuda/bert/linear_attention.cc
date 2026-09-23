@@ -29,6 +29,7 @@ using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCuda
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info) {
