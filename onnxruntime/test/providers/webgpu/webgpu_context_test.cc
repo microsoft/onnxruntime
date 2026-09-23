@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,6 +45,45 @@ ConfigOptions KvCacheQuantizationOptions(const char* value) {
   ConfigOptions options;
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kKvCacheQuantizationBits, value));
   return options;
+}
+
+template <typename TestBody>
+void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false) {
+#if GTEST_HAS_DEATH_TEST
+  // Context 0 can outlive an individual test. Re-exec instead of forking its
+  // initialized Dawn device or clearing state that another EP still owns.
+  const auto previous_style = GTEST_FLAG_GET(death_test_style);
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+
+  // Exercise isolation even when running only this test, and ensure the child
+  // does not disturb a live provider in the parent process.
+  std::unique_ptr<IExecutionProvider> existing_provider;
+  WGPUDevice existing_device = nullptr;
+  if (!testing::internal::InDeathTestChild()) {
+    ConfigOptions options;
+    if (compile_only_parent) {
+      // Keep the compile-only test runnable on hosts without a GPU. An existing
+      // device context, if any, will still be retained by this provider.
+      ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    }
+    existing_provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    ASSERT_NE(existing_provider, nullptr);
+    existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
+  }
+
+  EXPECT_EXIT(
+      {
+        test_body();
+        std::_Exit(testing::Test::HasFailure() || testing::Test::IsSkipped() ? EXIT_FAILURE : EXIT_SUCCESS);
+      },
+      testing::ExitedWithCode(EXIT_SUCCESS), "");
+
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  GTEST_FLAG_SET(death_test_style, previous_style);
+#else
+  ORT_UNUSED_PARAMETER(compile_only_parent);
+  test_body();
+#endif
 }
 
 bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_view toggle_name) {
@@ -246,14 +287,16 @@ TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  auto enabled_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
-  ASSERT_NE(enabled_ep, nullptr);
-  EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
-  enabled_ep.reset();
+  RunWithFreshDefaultContext([]() {
+    auto enabled_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
+    ASSERT_NE(enabled_ep, nullptr);
+    EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    enabled_ep.reset();
 
-  auto disabled_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
-  ASSERT_NE(disabled_ep, nullptr);
-  EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    auto disabled_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
+    ASSERT_NE(disabled_ep, nullptr);
+    EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+  });
 #endif
 }
 
@@ -261,14 +304,16 @@ TEST(WebGpuContextTest, EnableRobustnessUsesBuildDefault) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  ConfigOptions options;
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    ASSERT_NE(ep, nullptr);
 #ifdef NDEBUG
-  EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
 #else
-  EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
 #endif
+  });
 #endif
 }
 
@@ -290,35 +335,40 @@ TEST(WebGpuContextTest, KvCacheQuantizationRejectsInvalidValue) {
 }
 
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
-  auto options = RobustnessOptions("0");
-  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  RunWithFreshDefaultContext([]() {
+    auto options = RobustnessOptions("0");
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
 
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
-  ASSERT_NE(ep, nullptr);
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+    ASSERT_NE(ep, nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+  },
+                             /*compile_only_parent=*/true);
 }
 
 TEST(WebGpuContextTest, EnableRobustnessIsIndependentFromValidationMode) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  auto robust_options = RobustnessOptions("1");
-  ORT_THROW_IF_ERROR(robust_options.AddConfigEntry(kValidationMode, kValidationMode_Disabled));
-  auto robust_ep = WebGpuProviderFactoryCreator::Create(robust_options)->CreateProvider();
-  ASSERT_NE(robust_ep, nullptr);
-  const auto& robust_context = webgpu::WebGpuContextFactory::GetContext(0);
-  EXPECT_FALSE(DisableRobustnessToggleIsEnabled(robust_context));
-  EXPECT_TRUE(DeviceToggleIsEnabled(robust_context, "skip_validation"));
-  robust_ep.reset();
+  RunWithFreshDefaultContext([]() {
+    auto robust_options = RobustnessOptions("1");
+    ORT_THROW_IF_ERROR(robust_options.AddConfigEntry(kValidationMode, kValidationMode_Disabled));
+    auto robust_ep = WebGpuProviderFactoryCreator::Create(robust_options)->CreateProvider();
+    ASSERT_NE(robust_ep, nullptr);
+    const auto& robust_context = webgpu::WebGpuContextFactory::GetContext(0);
+    EXPECT_FALSE(DisableRobustnessToggleIsEnabled(robust_context));
+    EXPECT_TRUE(DeviceToggleIsEnabled(robust_context, "skip_validation"));
+    robust_ep.reset();
 
-  auto non_robust_options = RobustnessOptions("0");
-  ORT_THROW_IF_ERROR(non_robust_options.AddConfigEntry(kValidationMode, kValidationMode_full));
-  auto non_robust_ep = WebGpuProviderFactoryCreator::Create(non_robust_options)->CreateProvider();
-  ASSERT_NE(non_robust_ep, nullptr);
-  const auto& non_robust_context = webgpu::WebGpuContextFactory::GetContext(0);
-  EXPECT_TRUE(DisableRobustnessToggleIsEnabled(non_robust_context));
-  EXPECT_FALSE(DeviceToggleIsEnabled(non_robust_context, "skip_validation"));
+    auto non_robust_options = RobustnessOptions("0");
+    ORT_THROW_IF_ERROR(non_robust_options.AddConfigEntry(kValidationMode, kValidationMode_full));
+    auto non_robust_ep = WebGpuProviderFactoryCreator::Create(non_robust_options)->CreateProvider();
+    ASSERT_NE(non_robust_ep, nullptr);
+    const auto& non_robust_context = webgpu::WebGpuContextFactory::GetContext(0);
+    EXPECT_TRUE(DisableRobustnessToggleIsEnabled(non_robust_context));
+    EXPECT_FALSE(DeviceToggleIsEnabled(non_robust_context, "skip_validation"));
+  });
 #endif
 }
 
@@ -326,17 +376,19 @@ TEST(WebGpuContextTest, ConflictingExplicitValueWarnsAndKeepsFirstValue) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  auto first_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
-  ASSERT_NE(first_ep, nullptr);
+  RunWithFreshDefaultContext([]() {
+    auto first_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
+    ASSERT_NE(first_ep, nullptr);
 
-  testing::internal::CaptureStderr();
-  auto second_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
-  const std::string warning = testing::internal::GetCapturedStderr();
+    testing::internal::CaptureStderr();
+    auto second_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
+    const std::string warning = testing::internal::GetCapturedStderr();
 
-  ASSERT_NE(second_ep, nullptr);
-  EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
-  EXPECT_NE(warning.find("already initialized"), std::string::npos);
-  EXPECT_NE(warning.find("will be ignored"), std::string::npos);
+    ASSERT_NE(second_ep, nullptr);
+    EXPECT_FALSE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    EXPECT_NE(warning.find("already initialized"), std::string::npos);
+    EXPECT_NE(warning.find("will be ignored"), std::string::npos);
+  });
 #endif
 }
 
@@ -344,18 +396,20 @@ TEST(WebGpuContextTest, OmittedAndMatchingValuesDoNotWarn) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  auto first_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
-  ASSERT_NE(first_ep, nullptr);
+  RunWithFreshDefaultContext([]() {
+    auto first_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
+    ASSERT_NE(first_ep, nullptr);
 
-  ConfigOptions omitted_options;
-  testing::internal::CaptureStderr();
-  auto omitted_ep = WebGpuProviderFactoryCreator::Create(omitted_options)->CreateProvider();
-  auto matching_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
-  const std::string warning = testing::internal::GetCapturedStderr();
+    ConfigOptions omitted_options;
+    testing::internal::CaptureStderr();
+    auto omitted_ep = WebGpuProviderFactoryCreator::Create(omitted_options)->CreateProvider();
+    auto matching_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("1"))->CreateProvider();
+    const std::string warning = testing::internal::GetCapturedStderr();
 
-  ASSERT_NE(omitted_ep, nullptr);
-  ASSERT_NE(matching_ep, nullptr);
-  EXPECT_EQ(warning.find("enableRobustness"), std::string::npos);
+    ASSERT_NE(omitted_ep, nullptr);
+    ASSERT_NE(matching_ep, nullptr);
+    EXPECT_EQ(warning.find("enableRobustness"), std::string::npos);
+  });
 #endif
 }
 
@@ -363,28 +417,30 @@ TEST(WebGpuContextTest, ExternalDeviceValueWarnsAndIsIgnored) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
 #else
-  auto owned_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
-  ASSERT_NE(owned_ep, nullptr);
-  const auto& owned_context = webgpu::WebGpuContextFactory::GetContext(0);
+  RunWithFreshDefaultContext([]() {
+    auto owned_ep = WebGpuProviderFactoryCreator::Create(RobustnessOptions("0"))->CreateProvider();
+    ASSERT_NE(owned_ep, nullptr);
+    const auto& owned_context = webgpu::WebGpuContextFactory::GetContext(0);
 
-  ConfigOptions external_options;
-  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
-  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
-      kWebGpuInstance,
-      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Instance().Get())).c_str()));
-  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
-      kWebGpuDevice,
-      std::to_string(reinterpret_cast<uintptr_t>(owned_context.Device().Get())).c_str()));
-  ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kEnableRobustness, "1"));
+    ConfigOptions external_options;
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuInstance,
+        std::to_string(reinterpret_cast<uintptr_t>(owned_context.Instance().Get())).c_str()));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuDevice,
+        std::to_string(reinterpret_cast<uintptr_t>(owned_context.Device().Get())).c_str()));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kEnableRobustness, "1"));
 
-  testing::internal::CaptureStderr();
-  auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
-  const std::string warning = testing::internal::GetCapturedStderr();
+    testing::internal::CaptureStderr();
+    auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+    const std::string warning = testing::internal::GetCapturedStderr();
 
-  ASSERT_NE(external_ep, nullptr);
-  EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(1)));
-  EXPECT_NE(warning.find("externally supplied WebGPU device"), std::string::npos);
-  EXPECT_NE(warning.find("will be ignored"), std::string::npos);
+    ASSERT_NE(external_ep, nullptr);
+    EXPECT_TRUE(DisableRobustnessToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(1)));
+    EXPECT_NE(warning.find("externally supplied WebGPU device"), std::string::npos);
+    EXPECT_NE(warning.find("will be ignored"), std::string::npos);
+  });
 #endif
 }
 
