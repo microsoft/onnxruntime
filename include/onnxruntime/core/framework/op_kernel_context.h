@@ -28,9 +28,6 @@ class OpKernelContext {
 
   virtual ~OpKernelContext() = default;
 
-  // Non-owning, kernel-specific access; nullptr when expert counting is unavailable.
-  virtual MoeExpertUsage* GetMoeExpertUsage() const { return nullptr; }
-
 #if !defined(ORT_MINIMAL_BUILD)
   const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {
     return run_instrumentation_context_;
@@ -226,6 +223,11 @@ class OpKernelContext {
   virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
   virtual int GetOrtValueIndexForOutput(int output_index) const;
+
+ public:
+  // Keep new virtuals after existing declarations to preserve their vtable slots.
+  // Non-owning, kernel-specific access; nullptr when expert counting is unavailable.
+  virtual MoeExpertUsage* GetMoeExpertUsage() const { return nullptr; }
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
