@@ -319,6 +319,16 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("node expansion limit"))));
 }
 
+TEST(FunctionTest, AotInliningIgnoresFunctionMetadataForProtoBytes) {
+  auto model = CreateFunctionExpansionModel(1, 11);
+  model.mutable_functions(0)->set_doc_string(std::string(1024 * 1024, 'x'));
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
+}
+
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
 // ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
 // function references"), which runs before ORT's equivalent check ("must not be recursive").

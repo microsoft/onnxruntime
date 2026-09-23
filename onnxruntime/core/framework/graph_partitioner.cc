@@ -1347,7 +1347,15 @@ static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& 
   std::string accounting_prefix = "_inlfunc_" + node.OpType();
   accounting_prefix.append(32, '_');
   function_utils::Specialize(function_proto, node, accounting_prefix);
-  cost = {CountNodesIncludingSubgraphs(function_proto), function_proto.ByteSizeLong()};
+  SafeInt<size_t> node_count = function_proto.node_size();
+  SafeInt<size_t> proto_bytes = 0;
+  for (const auto& function_node : function_proto.node()) {
+    proto_bytes += function_node.ByteSizeLong();
+    for (const auto& attribute : function_node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+    }
+  }
+  cost = {node_count, proto_bytes};
   return Status::OK();
 }
 
