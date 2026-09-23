@@ -133,7 +133,13 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+          $outputDir = "${{ github.workspace }}\RelWithDebInfo"
+          $depsDir = "$outputDir\_deps"
+          if (Test-Path -LiteralPath $depsDir) {
+            Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
+          }
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
