@@ -1081,14 +1081,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd></dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (2 - 4)
 
 <dl>
 <dt><tt>X</tt> : T</dt>
 <dd></dd>
 <dt><tt>W</tt> : T</dt>
 <dd></dd>
-<dt><tt>Pads</tt> : tensor(int64)</dt>
+<dt><tt>Pads</tt> (optional) : tensor(int64)</dt>
 <dd></dd>
 <dt><tt>B</tt> (optional) : T</dt>
 <dd></dd>
