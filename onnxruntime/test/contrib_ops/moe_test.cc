@@ -2236,8 +2236,8 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecode) {
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
-      /*use_bf16=*/false, /*block_size=*/64, /*model_size=*/512, /*expect_scratch_failure=*/false,
-      /*use_initializers=*/true);
+      /*use_bf16=*/false, /*block_size=*/64, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
 }
 
 TEST(MoETest, QMoETest_Int2CudaPackedDecodeBlock128) {
@@ -2246,8 +2246,8 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeBlock128) {
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
-      /*use_bf16=*/false, /*block_size=*/128, /*model_size=*/512, /*expect_scratch_failure=*/false,
-      /*use_initializers=*/true);
+      /*use_bf16=*/false, /*block_size=*/128, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
@@ -2258,8 +2258,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
                            std::pair<int64_t, int64_t>{4, 2}}) {
     RunQMoEMixedWidthCudaIdentityTest(
         bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
-        /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/64,
-        /*model_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+        /*with_zero_points=*/false, /*use_bf16=*/false, /*block_size=*/64, /*hidden_size=*/512,
+        /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
   }
 }
 
@@ -2269,8 +2269,8 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 2, /*max_scratch_bytes=*/0, /*fused_swiglu=*/true, /*with_zero_points=*/false,
-      /*use_bf16=*/false, /*block_size=*/32, /*model_size=*/64, /*expect_scratch_failure=*/false,
-      /*use_initializers=*/true);
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/64,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
 }
 
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
@@ -2280,8 +2280,8 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeBFloat16) {
   }
   RunQMoEMixedWidthCudaIdentityTest(
       2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
-      /*use_bf16=*/true, /*block_size=*/64, /*model_size=*/512, /*expect_scratch_failure=*/false,
-      /*use_initializers=*/true);
+      /*use_bf16=*/true, /*block_size=*/64, /*hidden_size=*/512, /*inter_size=*/512,
+      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBFloat16) {
@@ -2292,8 +2292,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedDecodeBFloat16) {
                            std::pair<int64_t, int64_t>{4, 2}}) {
     RunQMoEMixedWidthCudaIdentityTest(
         bits.first, bits.second, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true,
-        /*with_zero_points=*/false, /*use_bf16=*/true, /*block_size=*/64,
-        /*model_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+        /*with_zero_points=*/false, /*use_bf16=*/true, /*block_size=*/64, /*hidden_size=*/512,
+        /*inter_size=*/512, /*expect_scratch_failure=*/false, /*use_initializers=*/true);
   }
 }
 #endif

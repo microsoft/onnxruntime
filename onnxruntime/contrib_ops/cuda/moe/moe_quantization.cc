@@ -863,12 +863,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     int_dequant_fc1_bytes = SafeInt<size_t>(moe_params.num_experts) * fc1_n * fc1_k * element_size;
     int_dequant_fc2_bytes = SafeInt<size_t>(moe_params.num_experts) * fc2_n * fc2_k * element_size;
-    const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
-    ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
-                      "INT2 or mixed-width CUDA QMoE dense fallback requires ", total_dequant_bytes,
-                      " bytes of dequantized weight scratch, exceeding the configured limit of ",
-                      int_dequant_max_scratch_bytes_, " bytes. Increase ",
-                      kQMoEIntDequantMaxScratchBytesConfig, " only for bounded correctness workloads.");
   }
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
@@ -1119,6 +1113,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           << " fc1_shape=" << packed_int_fc1_shape_supported
                           << " fc2_shape=" << packed_int_fc2_shape_supported
                           << " routing=" << packed_int_routing_supported;
+  }
+  if (use_int_dequant_fallback && !use_packed_int_gemv) {
+    const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
+    ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
+                      "INT2 or mixed-width CUDA QMoE dense fallback requires ", total_dequant_bytes,
+                      " bytes of dequantized weight scratch, exceeding the configured limit of ",
+                      int_dequant_max_scratch_bytes_, " bytes. Increase ",
+                      kQMoEIntDequantMaxScratchBytesConfig, " only for bounded correctness workloads.");
   }
 
   const qmoe::RowTilePlan row_tile_plan =
@@ -1575,7 +1577,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   };
 
-  if (!use_int_dequant_fallback) {
+  if (!use_int_dequant_fallback || use_packed_int_gemv) {
     prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
                      transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp,
                      fc1_expert_weight_bits_);
