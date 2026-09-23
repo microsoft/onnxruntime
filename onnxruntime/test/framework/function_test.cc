@@ -307,7 +307,11 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
   auto model = CreateRecursiveFunctionExpansionModel(20, 14);
   std::vector<std::string> log_messages;
   const auto status = InitializeFunctionExpansionModel(
-      std::move(model), log_messages, {.node_limit = 500});
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = 500,
+       .byte_limit = std::nullopt});
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
@@ -319,7 +323,10 @@ TEST(FunctionTest, AotInliningLimitsUnclaimedCallsSharingClaimedFunction) {
   std::vector<std::string> log_messages;
   const auto status = InitializeFunctionExpansionModel(
       std::move(model), log_messages,
-      {.claim_first_function_call = true, .node_limit = 500});
+      {.claim_first_function_call = true,
+       .disable_aot_inlining = false,
+       .node_limit = 500,
+       .byte_limit = std::nullopt});
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
@@ -341,7 +348,11 @@ TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
 
   std::vector<std::string> log_messages;
   const auto status = InitializeFunctionExpansionModel(
-      std::move(model), log_messages, {.byte_limit = 1024 * 1024});
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 1024 * 1024});
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
   EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("protobuf expansion limit")));
@@ -353,7 +364,10 @@ TEST(FunctionTest, FallbackInliningEnforcesExpansionLimitWhenAotIsDisabled) {
   std::vector<std::string> log_messages;
   const auto status = InitializeFunctionExpansionModel(
       std::move(model), log_messages,
-      {.disable_aot_inlining = true, .node_limit = 500});
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = true,
+       .node_limit = 500,
+       .byte_limit = std::nullopt});
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("node expansion limit"));
 }
