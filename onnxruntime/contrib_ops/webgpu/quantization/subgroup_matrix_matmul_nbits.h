@@ -59,7 +59,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect = nullptr);
 
-bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
+bool CanApplySubgroupMatrixMatMulNBits(const onnxruntime::webgpu::ComputeContextBase& context,
                                        uint64_t accuracy_level,
                                        uint32_t block_size,
                                        uint32_t batch_count,

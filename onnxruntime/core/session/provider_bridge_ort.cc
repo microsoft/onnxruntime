@@ -1658,6 +1658,10 @@ struct ProviderHostImpl : ProviderHost {
         std::move(expert_ids_json), std::move(router_weights_json),
         num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
   }
+  Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
+                                                   size_t requested_bytes, void** workspace) override {
+    return p->GetPreallocatedWorkspace(slot_id, requested_bytes, workspace);
+  }
 
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
@@ -1925,6 +1929,12 @@ struct ProviderHostImpl : ProviderHost {
   const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) override { return p->Data<Float8E8M0>(); }
   bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept override { return p->IsDataType<Float8E8M0>(); }
 #endif
+
+  Status OpKernelContext__GetPreallocatedWorkspaceRegion(
+      OpKernelContext* p, int slot_id, size_t requested_bytes,
+      WorkspaceBufferRegion& workspace) override {
+    return p->GetPreallocatedWorkspaceRegion(slot_id, requested_bytes, workspace);
+  }
 } g_provider_host;
 
 #if defined(_MSC_VER) && !defined(__clang__)

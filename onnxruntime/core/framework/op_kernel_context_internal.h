@@ -5,6 +5,9 @@
 
 #include <functional>
 #if !defined(ORT_MINIMAL_BUILD)
+#include <algorithm>
+#include <atomic>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -12,8 +15,11 @@
 
 #include "core/common/json_utils.h"
 #include "core/framework/run_instrumentation.h"
+#include "core/platform/env_var_utils.h"
 #endif
+#include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -175,6 +181,9 @@ class OpKernelContextInternal : public OpKernelContext {
                         ),
 #endif
         session_state_(session_state),
+#if !defined(ORT_MINIMAL_BUILD)
+        execution_frame_(frame),
+#endif
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -197,6 +206,100 @@ class OpKernelContextInternal : public OpKernelContext {
     }
 #endif
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  ~OpKernelContextInternal() override {
+    for (const auto* workspace_plan : active_workspace_plans_) {
+      execution_frame_.ReleasePlannedWorkspace(workspace_plan->pattern_id, workspace_plan->location);
+    }
+  }
+
+  Status GetPreallocatedWorkspaceRegion(int slot_id, size_t requested_bytes,
+                                        WorkspaceBufferRegion& workspace) override {
+    workspace = {};
+    static const bool trace_workspace_lookup =
+        ParseEnvironmentVariableWithDefault<int>(
+            "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE", 0) != 0;
+    static std::atomic<bool> logged_no_execution_plan{false};
+    static std::atomic<bool> logged_no_node_plan{false};
+    static std::atomic<bool> logged_no_matching_slot{false};
+    static std::atomic<bool> logged_frame_null{false};
+    static std::atomic<bool> logged_success{false};
+
+    const auto* execution_plan = session_state_.GetExecutionPlan();
+    if (execution_plan == nullptr) {
+      if (trace_workspace_lookup &&
+          !logged_no_execution_plan.exchange(true, std::memory_order_relaxed)) {
+        std::cerr << "[workspace_plan_lookup] state=no_execution_plan"
+                  << " node=" << GetNodeIndex()
+                  << " slot=" << slot_id
+                  << " requested_bytes=" << requested_bytes
+                  << std::endl;
+      }
+      return Status::OK();
+    }
+
+    const auto node_it = execution_plan->workspace_allocation_plan.find(GetNodeIndex());
+    if (node_it == execution_plan->workspace_allocation_plan.end()) {
+      if (trace_workspace_lookup &&
+          !logged_no_node_plan.exchange(true, std::memory_order_relaxed)) {
+        std::cerr << "[workspace_plan_lookup] state=no_node_plan"
+                  << " node=" << GetNodeIndex()
+                  << " slot=" << slot_id
+                  << " requested_bytes=" << requested_bytes
+                  << std::endl;
+      }
+      return Status::OK();
+    }
+
+    for (const auto& workspace_plan : node_it->second) {
+      if (workspace_plan.slot_id != slot_id || requested_bytes > workspace_plan.size_bytes) {
+        continue;
+      }
+
+      ORT_RETURN_IF(std::find(active_workspace_plans_.begin(), active_workspace_plans_.end(), &workspace_plan) !=
+                        active_workspace_plans_.end(),
+                    "Workspace slot ", slot_id, " was requested more than once by node ", GetNodeIndex());
+      ORT_RETURN_IF_ERROR(execution_frame_.GetPlannedWorkspace(
+          workspace_plan.pattern_id, workspace_plan.location,
+          workspace_plan.allocation_bytes, workspace_plan.alignment_bytes, workspace));
+      if (trace_workspace_lookup) {
+        auto& logged = workspace.buffer == nullptr ? logged_frame_null : logged_success;
+        if (!logged.exchange(true, std::memory_order_relaxed)) {
+          std::cerr << "[workspace_plan_lookup] state="
+                    << (workspace.buffer == nullptr ? "frame_returned_null" : "success")
+                    << " node=" << GetNodeIndex()
+                    << " slot=" << slot_id
+                    << " requested_bytes=" << requested_bytes
+                    << " planned_bytes=" << workspace_plan.size_bytes
+                    << " allocation_bytes=" << workspace_plan.allocation_bytes
+                    << " pattern_id=" << workspace_plan.pattern_id
+                    << std::endl;
+        }
+      }
+      active_workspace_plans_.push_back(&workspace_plan);
+      if (workspace.buffer != nullptr && workspace.size_bytes < requested_bytes) {
+        LOGS(Logger(), WARNING)
+            << "Planned workspace slot " << slot_id << " for node " << GetNodeIndex()
+            << " has " << workspace.size_bytes << " usable bytes but " << requested_bytes
+            << " bytes were requested. Falling back to dynamic allocation.";
+        workspace = {};
+      }
+      return Status::OK();
+    }
+
+    if (trace_workspace_lookup &&
+        !logged_no_matching_slot.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_plan_lookup] state=no_matching_slot"
+                << " node=" << GetNodeIndex()
+                << " slot=" << slot_id
+                << " requested_bytes=" << requested_bytes
+                << " declared_slots=" << node_it->second.size()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+#endif
 
   bool GetUseDeterministicCompute() const override {
     return session_state_.GetUseDeterministicCompute();
@@ -293,9 +396,15 @@ class OpKernelContextInternal : public OpKernelContext {
 #endif
 
   const SessionState& session_state_;
+#if !defined(ORT_MINIMAL_BUILD)
+  IExecutionFrame& execution_frame_;
+#endif
   const bool& terminate_flag_;
   profiling::Profiler* run_profiler_;
   std::vector<const OrtValue*> implicit_input_values_;
+#if !defined(ORT_MINIMAL_BUILD)
+  InlinedVector<const SequentialExecutionPlan::WorkspaceAllocationPlan*> active_workspace_plans_;
+#endif
 };
 
 }  // namespace onnxruntime

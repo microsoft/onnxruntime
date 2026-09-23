@@ -55,6 +55,10 @@ class WebGpuKernel : public OpKernel {
                                  AllocatorPtr alloc,
                                  /*out*/ bool& is_packed);
 
+ protected:
+  const WebGpuExecutionProvider& ExecutionProvider() const noexcept { return ep_; }
+  WebGpuContext& Context() const noexcept { return webgpu_context_; }
+
  private:
   const WebGpuExecutionProvider& ep_;
   WebGpuContext& webgpu_context_;

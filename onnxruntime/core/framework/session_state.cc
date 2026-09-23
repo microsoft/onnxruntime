@@ -1164,6 +1164,15 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD)
+    // The static training planner only knows activation lifetimes. Let the execution frame
+    // trace opted-in workspace too, rather than caching an activation-only pattern forever.
+    const auto* execution_plan = GetExecutionPlan();
+    if (execution_plan != nullptr && !execution_plan->workspace_allocation_plan.empty()) {
+      return nullptr;
+    }
+#endif
+
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
@@ -1187,31 +1196,34 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
 }
 
 void SessionState::ResolveMemoryPatternFlag() {
+  // Memory-pattern lifetimes rely on a fixed execution order. Multiple logical streams
+  // for the same device make that order nondeterministic for both activations and workspaces.
+  bool multi_stream = false;
+  auto cmp = [](const OrtDevice& op1, const OrtDevice& op2) {
+    if (op1.Type() != op2.Type()) return op1.Type() < op2.Type();
+    if (op1.MemType() != op2.MemType()) return op1.MemType() < op2.MemType();
+    return op1.Id() < op2.Id();
+  };
+  std::set<OrtDevice, decltype(cmp)> device_set(cmp);
+  auto& streams = GetExecutionPlan()->execution_plan;
+  for (auto& logic_stream : streams) {
+    if (device_set.find(logic_stream->device_) != device_set.end()) {
+      multi_stream = true;
+      break;
+    }
+    device_set.insert(logic_stream->device_);
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  enable_workspace_mem_pattern_ = !multi_stream;
+#endif
+
   if (enable_mem_pattern_) {
     for (auto* input : graph_viewer_->GetInputs()) {
       if (!input->HasTensorOrScalarShape()) {
         enable_mem_pattern_ = false;
         break;
       }
-    }
-
-    // if there are nodes belong to the same device be partitioned to multiple streams
-    // disable the memory pattern because the execution order is not fixed.
-    // TODO: we can improve memory pattern to support multiple streams
-    bool multi_stream = false;
-    auto cmp = [](const OrtDevice& op1, const OrtDevice& op2) {
-      if (op1.Type() != op2.Type()) return op1.Type() < op2.Type();
-      if (op1.MemType() != op2.MemType()) return op1.MemType() < op2.MemType();
-      return op1.Id() < op2.Id();
-    };
-    std::set<OrtDevice, decltype(cmp)> device_set(cmp);
-    auto& streams = GetExecutionPlan()->execution_plan;
-    for (auto& logic_stream : streams) {
-      if (device_set.find(logic_stream->device_) != device_set.end()) {
-        multi_stream = true;
-        break;
-      }
-      device_set.insert(logic_stream->device_);
     }
 
     if (multi_stream)
@@ -1241,6 +1253,28 @@ Status SessionState::UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> ten
   mem_patterns_.emplace(key, std::move(mem_patterns));
   return Status::OK();
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+const MemoryPatternGroup* SessionState::GetWorkspaceMemoryPatternGroup() const {
+  std::lock_guard<std::mutex> lock(workspace_mem_pattern_lock_);
+  return workspace_mem_pattern_ ? &*workspace_mem_pattern_ : nullptr;
+}
+
+Status SessionState::UpdateWorkspaceMemoryPatternGroupCache(
+    MemoryPatternGroup workspace_mem_patterns) const {
+  std::lock_guard<std::mutex> lock(workspace_mem_pattern_lock_);
+  if (!workspace_mem_pattern_) {
+    workspace_mem_pattern_.emplace(std::move(workspace_mem_patterns));
+  }
+
+  return Status::OK();
+}
+
+bool SessionState::GetEnableStaticWorkspacePreallocation() const {
+  return sess_options_.config_options.GetConfigOrDefault(
+             kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
+}
+#endif
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
@@ -2068,8 +2102,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
   // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
-  // This collects workspace slot requirements for future offset planning.
-  // Requirements are reported per graph but are not yet persisted in a workspace plan.
+  // Opted-in kernels also register synthetic workspace slots for run-scoped memory-pattern planning.
   {
     SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
     size_t nodes_with_workspace = 0;
@@ -2088,6 +2121,18 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     const bool strict_workspace_verification =
         session_options.config_options.GetConfigOrDefault(
             kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1";
+    const bool enable_static_workspace_preallocation =
+        session_options.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
+    ORT_RETURN_IF(enable_static_workspace_preallocation &&
+                      session_options.execution_mode != ExecutionMode::ORT_SEQUENTIAL,
+                  "Workspace memory-pattern planning requires sequential execution mode.");
+    int next_workspace_pattern_id = -1;
+    if (enable_static_workspace_preallocation) {
+      ORT_RETURN_IF_NOT(p_seq_exec_plan_.has_value(),
+                        "Workspace memory-pattern planning requires a sequential execution plan.");
+      p_seq_exec_plan_->workspace_allocation_plan.clear();
+    }
 
     const SessionState* reservation_owner = this;
     while (reservation_owner->parent_ != nullptr) {
@@ -2143,6 +2188,47 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
                              << "' (" << node.OpType() << "): " << requirements.size()
                              << " slot(s), " << declared_bytes << " bytes total";
+
+      if (enable_static_workspace_preallocation && kernel->SupportsPreallocatedWorkspace()) {
+        InlinedHashSet<int> registered_slot_ids;
+        auto& node_workspace_plan = p_seq_exec_plan_->workspace_allocation_plan[node.Index()];
+        node_workspace_plan.reserve(requirements.size());
+        for (const auto& requirement : requirements) {
+          ORT_RETURN_IF_NOT(registered_slot_ids.insert(requirement.slot_id).second,
+                            "Duplicate workspace slot_id=", requirement.slot_id,
+                            " declared by node '", node.Name(), "' (", node.OpType(), ").");
+          const OrtDevice device = kernel->GetDevice(OrtMemTypeDefault);
+          const size_t alignment_padding =
+              requirement.alignment_bytes > 1 ? requirement.alignment_bytes - 1 : 0;
+          const size_t unaligned_allocation_bytes = static_cast<size_t>(
+              SafeInt<size_t>(requirement.size_bytes) + alignment_padding);
+          const size_t block_alignment =
+              std::max(static_cast<size_t>(device.GetAlignment()), kAllocAlignment);
+          ORT_RETURN_IF(requirement.alignment_bytes > block_alignment,
+                        "Workspace alignment of ", requirement.alignment_bytes,
+                        " bytes for node '", node.Name(), "' exceeds allocator alignment of ",
+                        block_alignment, " bytes.");
+          size_t allocation_bytes = 0;
+          ORT_RETURN_IF_NOT(
+              IAllocator::CalcMemSizeForArrayWithAlignment(
+                  unaligned_allocation_bytes, 1, block_alignment, &allocation_bytes),
+              "Workspace memory-pattern allocation size overflow for node '", node.Name(), "'.");
+          ORT_RETURN_IF(next_workspace_pattern_id == std::numeric_limits<int>::min(),
+                        "Too many workspace slots to assign memory-pattern identifiers.");
+          node_workspace_plan.push_back(
+              SequentialExecutionPlan::WorkspaceAllocationPlan{
+                  next_workspace_pattern_id,
+                  requirement.slot_id,
+                  requirement.size_bytes,
+                  allocation_bytes,
+                  requirement.alignment_bytes,
+                  device});
+          --next_workspace_pattern_id;
+          LOGS(logger_, INFO) << "Workspace memory-pattern planning: registered "
+                              << requirement.size_bytes << " bytes for node '"
+                              << node.Name() << "' slot_id=" << requirement.slot_id;
+        }
+      }
 
       if (reservation == nullptr) {
         ++missing_reservation;

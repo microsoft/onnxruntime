@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -10,6 +11,32 @@
 
 namespace onnxruntime {
 namespace test {
+
+#if !defined(__wasm__)
+TEST(MatMulNBitsWorkspace, DP4AEligibility) {
+  using contrib::webgpu::CanApplyDP4AMatrixMatMulNBits;
+
+  EXPECT_TRUE(CanApplyDP4AMatrixMatMulNBits(
+      true, "nvidia", 4, 32, 16, 128, 4, 4, false, false));
+  EXPECT_FALSE(CanApplyDP4AMatrixMatMulNBits(
+      true, "nvidia", 4, 32, 16, 128, 4, 3, false, false));
+  EXPECT_TRUE(CanApplyDP4AMatrixMatMulNBits(
+      true, "nvidia", 4, 32, 16, 128, 4, 1, true, true));
+  EXPECT_FALSE(CanApplyDP4AMatrixMatMulNBits(
+      true, "apple", 4, 32, 16, 128, 4, 64, false, false));
+  EXPECT_FALSE(CanApplyDP4AMatrixMatMulNBits(
+      false, "nvidia", 4, 32, 16, 128, 4, 64, false, false));
+}
+
+TEST(MatMulNBitsWorkspace, SubgroupPrepackTileSizes) {
+  using contrib::webgpu::SubgroupMatrixMatMulNBitsTileSizeA;
+
+  EXPECT_EQ(SubgroupMatrixMatMulNBitsTileSizeA(0), 128u);
+  EXPECT_EQ(SubgroupMatrixMatMulNBitsTileSizeA(1), 64u);
+  EXPECT_EQ(SubgroupMatrixMatMulNBitsTileSizeA(2), 32u);
+  EXPECT_EQ(SubgroupMatrixMatMulNBitsTileSizeA(3), 32u);
+}
+#endif
 
 // Reference matmul using MatMulComputeHelper for shape/offset computation.
 // Supports arbitrary-rank batched matmul with broadcasting.

@@ -5,6 +5,11 @@
 
 #include <sstream>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include <atomic>
+#include <iostream>
+#include "core/platform/env_var_utils.h"
+#endif
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -26,6 +31,21 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD)
+namespace {
+
+bool WorkspaceLookupTraceEnabled() {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<int>(
+          "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE", 0) != 0;
+  return enabled;
+}
+
+std::atomic<size_t> workspace_trace_frame_id{0};
+
+}  // namespace
+#endif
+
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
                                  gsl::span<const int> fetch_mlvalue_idxs)
@@ -435,6 +455,18 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
     // if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
+#if !defined(ORT_MINIMAL_BUILD)
+      if (WorkspaceLookupTraceEnabled()) {
+        const size_t frame_id =
+            workspace_trace_frame_id.fetch_add(1, std::memory_order_relaxed);
+        if (frame_id < 512) {
+          std::cerr << "[workspace_pattern_lookup] frame=" << frame_id
+                    << " state="
+                    << (mem_patterns_ == nullptr ? "cache_miss_recording" : "cache_hit")
+                    << std::endl;
+        }
+      }
+#endif
       // if no existing patterns, generate one in this execution frame
       if (!mem_patterns_) {
         planner_.emplace(*session_state.GetExecutionPlan());
@@ -520,6 +552,62 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
       }
     }
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* execution_plan = session_state.GetExecutionPlan();
+  if (!session_state.GetEnableMemoryPattern() &&
+      session_state.GetEnableWorkspaceMemoryPattern() &&
+      session_state.GetEnableStaticWorkspacePreallocation() &&
+      execution_plan != nullptr &&
+      !execution_plan->workspace_allocation_plan.empty()) {
+    workspace_mem_patterns_ = session_state.GetWorkspaceMemoryPatternGroup();
+    if (workspace_mem_patterns_ == nullptr) {
+      workspace_planner_.emplace(*execution_plan);
+    } else {
+      workspace_buffers_.reserve(workspace_mem_patterns_->locations.size());
+      for (size_t i = 0; i < workspace_mem_patterns_->locations.size(); ++i) {
+        const auto& location = workspace_mem_patterns_->locations[i];
+        const size_t peak_size = workspace_mem_patterns_->patterns[i].PeakSize();
+        if (peak_size == 0) {
+          continue;
+        }
+
+        AllocatorPtr alloc = GetAllocator(location);
+        void* buffer = nullptr;
+        ORT_TRY {
+#ifdef ORT_ENABLE_STREAM
+          Stream* workspace_stream = nullptr;
+          if (alloc->IsStreamAware() && device_streams_) {
+            workspace_stream = device_streams_->GetStreamForDevice(location);
+          }
+
+          buffer = workspace_stream != nullptr
+                       ? alloc->AllocOnStream(peak_size, workspace_stream)
+                       : alloc->Alloc(peak_size);
+#else
+          buffer = alloc->Alloc(peak_size);
+#endif
+          if (buffer == nullptr) {
+            LOGS(session_state_.Logger(), INFO)
+                << "Allocation of workspace memory-pattern buffer for "
+                << location.ToString() << " returned nullptr";
+          }
+        }
+        ORT_CATCH(const OnnxRuntimeException& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            LOGS(session_state_.Logger(), INFO)
+                << "Allocation of workspace memory-pattern buffer for "
+                << location.ToString() << " failed. Error:" << ex.what();
+          });
+        }
+
+        if (buffer != nullptr) {
+          workspace_buffers_[location] = BufferUniquePtr(buffer, BufferDeleter(alloc));
+        }
+      }
+    }
+  }
+#endif
 }
 
 ExecutionFrame::~ExecutionFrame() = default;
@@ -976,6 +1064,143 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
     }
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+Status ExecutionFrame::GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
+                                           size_t allocation_bytes, size_t alignment_bytes,
+                                           WorkspaceBufferRegion& workspace) {
+  workspace = {};
+  static std::atomic<bool> logged_recording_pattern{false};
+  static std::atomic<bool> logged_no_memory_pattern{false};
+  static std::atomic<bool> logged_no_location_pattern{false};
+  static std::atomic<bool> logged_no_block{false};
+  static std::atomic<bool> logged_size_mismatch{false};
+  static std::atomic<bool> logged_no_buffer{false};
+  static std::atomic<bool> logged_success{false};
+
+  OrtValuePatternPlanner* workspace_planner =
+      planner_ ? &*planner_ : (workspace_planner_ ? &*workspace_planner_ : nullptr);
+  if (workspace_planner != nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_recording_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=recording_pattern"
+                << " pattern_id=" << pattern_id
+                << " allocation_bytes=" << allocation_bytes
+                << std::endl;
+    }
+    ORT_RETURN_IF_ERROR(workspace_planner->TraceAllocation(pattern_id, location, allocation_bytes));
+    return Status::OK();
+  }
+
+  const MemoryPatternGroup* workspace_patterns =
+      mem_patterns_ != nullptr ? mem_patterns_ : workspace_mem_patterns_;
+  if (workspace_patterns == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_memory_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_memory_pattern"
+                << " pattern_id=" << pattern_id
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  const auto* pattern = workspace_patterns->GetPatterns(location);
+  if (pattern == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_location_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_location_pattern"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  const auto* block = pattern->GetBlock(pattern_id);
+  if (block == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_block.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_block"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  if (block->size_ != allocation_bytes) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_size_mismatch.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=size_mismatch"
+                << " pattern_id=" << pattern_id
+                << " block_bytes=" << block->size_
+                << " allocation_bytes=" << allocation_bytes
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  auto& workspace_buffers = mem_patterns_ != nullptr ? buffers_ : workspace_buffers_;
+  auto buffer_it = workspace_buffers.find(location);
+  if (buffer_it == workspace_buffers.end()) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_buffer.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_buffer"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  void* const buffer = buffer_it->second.get();
+  size_t offset_bytes = block->offset_;
+  if (alignment_bytes > 1) {
+    const size_t remainder = offset_bytes % alignment_bytes;
+    if (remainder != 0) {
+      offset_bytes = static_cast<size_t>(
+          SafeInt<size_t>(offset_bytes) + alignment_bytes - remainder);
+    }
+  }
+
+  ORT_RETURN_IF(offset_bytes - block->offset_ > block->size_,
+                "Invalid planned workspace offset.");
+  workspace = WorkspaceBufferRegion{
+      buffer,
+      offset_bytes,
+      block->size_ - (offset_bytes - block->offset_)};
+  if (WorkspaceLookupTraceEnabled() &&
+      !logged_success.exchange(true, std::memory_order_relaxed)) {
+    std::cerr << "[workspace_buffer_lookup] state=success"
+              << " pattern_id=" << pattern_id
+              << " allocation_bytes=" << allocation_bytes
+              << " location=" << location.ToString()
+              << std::endl;
+  }
+  return Status::OK();
+}
+
+void ExecutionFrame::ReleasePlannedWorkspace(int pattern_id, const OrtDevice& location) {
+  OrtValuePatternPlanner* workspace_planner =
+      planner_ ? &*planner_ : (workspace_planner_ ? &*workspace_planner_ : nullptr);
+  if (workspace_planner != nullptr) {
+    const auto status = workspace_planner->TraceFree(pattern_id, location);
+    if (!status.IsOK()) {
+      LOGS(session_state_.Logger(), WARNING)
+          << "TraceFree for workspace pattern_id=" << pattern_id
+          << " failed: " << status.ErrorMessage();
+    }
+  }
+}
+Status ExecutionFrame::GenerateWorkspacePatterns(MemoryPatternGroup& out) {
+  if (!workspace_planner_) {
+    return Status(ONNXRUNTIME, FAIL,
+                  "Workspace memory pattern planner is not enabled on this execution frame.");
+  }
+
+  return workspace_planner_->GeneratePatterns(out);
+}
+#endif
 
 // generate memory pattern based on the tracing of memory allocation/free in current execution
 // return error if the planner is not setup.

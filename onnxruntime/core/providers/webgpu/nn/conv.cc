@@ -23,7 +23,9 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   }
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
   *transposed_kernel = context.CreateGPUTensor(kernel->DataType(), transposed_kernel_shape);
-  const Tensor reshaped_kernel(kernel->DataType(), kernel_shape, const_cast<void*>(kernel->DataRaw()), kernel->Location());
+  const Tensor reshaped_kernel(kernel->DataType(), kernel_shape,
+                               const_cast<void*>(kernel->DataRawBase()), kernel->Location(),
+                               kernel->ByteOffset());
   return Transpose::DoTranspose(context, perm, reshaped_kernel, *transposed_kernel);
 }
 

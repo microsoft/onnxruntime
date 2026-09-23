@@ -1,14 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/int4.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
+#include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -40,6 +45,145 @@ class ExecutionFrameTest : public ::testing::Test {
   ExecutionFrameTest() : tp_(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("ExecutionFrameTest"), 2, true) {
   }
 };
+
+#if !defined(ORT_MINIMAL_BUILD)
+ONNX_OPERATOR_SCHEMA(WorkspacePreallocationTestOp)
+    .SetDoc("Test operator for run-scoped workspace preallocation.")
+    .Input(0, "requested_bytes", "Workspace request.", "tensor(int64)")
+    .Output(0, "used_preallocated", "Whether the planned workspace was used.", "tensor(bool)");
+
+class WorkspacePreallocationTestKernel final : public OpKernel {
+ public:
+  explicit WorkspacePreallocationTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
+
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape>,
+      InlinedVector<WorkspaceRequirement>& requirements) const override {
+    requirements = {WorkspaceRequirement{128, /*slot_id=*/0, /*alignment_bytes=*/64}};
+    return Status::OK();
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    const size_t requested_bytes = SafeInt<size_t>(*context->Input<Tensor>(0)->Data<int64_t>());
+    void* workspace = nullptr;
+    ORT_RETURN_IF_ERROR(context->GetPreallocatedWorkspace(0, requested_bytes, &workspace));
+    const bool used_preallocated = workspace != nullptr;
+    IAllocatorUniquePtr<uint8_t> scratch;
+    if (!used_preallocated) {
+      AllocatorPtr allocator;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+      scratch = IAllocator::MakeUniquePtr<uint8_t>(allocator, requested_bytes);
+      workspace = scratch.get();
+    }
+    std::fill_n(static_cast<uint8_t*>(workspace), requested_bytes, uint8_t{0x5a});
+    *context->Output(0, TensorShape{})->MutableData<bool>() = used_preallocated;
+    return Status::OK();
+  }
+};
+
+TEST_F(ExecutionFrameTest, WorkspacePatternCachesAndRejectsOversizedRequests) {
+  Model model("workspace_preallocation", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  input_type.mutable_tensor_type()->mutable_shape();
+  TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  output_type.mutable_tensor_type()->mutable_shape();
+  auto& input_arg = graph.GetOrCreateNodeArg("requested_bytes", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("used_preallocated", &output_type);
+  Node& node = graph.AddNode("workspace", "WorkspacePreallocationTestOp", "", {&input_arg}, {&output_arg});
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, CreateCPUExecutionProvider()));
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  auto registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("WorkspacePreallocationTestOp")
+                        .Provider(kCpuExecutionProvider)
+                        .SinceVersion(1)
+                        .Build();
+  ASSERT_STATUS_OK(registry->Register(KernelCreateInfo(
+      std::move(kernel_def),
+      [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<WorkspacePreallocationTestKernel>(info);
+        return Status::OK();
+      })));
+  kernel_registry_manager.RegisterKernelRegistry(registry);
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+#ifdef ORT_MEMORY_PROFILE
+  MemoryProfiler memory_profiler;
+#endif
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm, logger, profiler, options);
+#ifdef ORT_MEMORY_PROFILE
+  state.SetMemoryProfiler(&memory_profiler);
+#endif
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+  ASSERT_TRUE(state.GetEnableMemoryPattern());
+  const OpKernel* kernel = state.GetKernel(node.Index());
+  ASSERT_NE(kernel, nullptr);
+  const auto& plans = state.GetExecutionPlan()->workspace_allocation_plan.at(node.Index());
+  ASSERT_EQ(plans.size(), 1u);
+  const auto& plan = plans.front();
+  ASSERT_EQ(plan.size_bytes, 128u);
+  ASSERT_GT(plan.allocation_bytes, plan.size_bytes);
+
+  int input_index = -1;
+  int output_index = -1;
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("requested_bytes", input_index));
+  ASSERT_STATUS_OK(state.GetOrtValueNameIdxMap().GetIdx("used_preallocated", output_index));
+  const bool terminate = false;
+  size_t run = 0;
+  for (int64_t requested_bytes : {128, 128, 129, 128}) {
+    SCOPED_TRACE(MakeString("run=", run, ", requested_bytes=", requested_bytes));
+    OrtValue input;
+    CreateMLValue<int64_t>(TensorShapeVector{}, &requested_bytes, OrtMemoryInfo(), &input);
+    const auto feeds = gsl::make_span(&input, 1);
+    const auto feed_indices = gsl::make_span(&input_index, 1);
+    std::vector<OrtValue> outputs;
+    ExecutionFrame frame(feed_indices, feeds, gsl::make_span(&output_index, 1), outputs, {},
+#ifdef ORT_ENABLE_STREAM
+                         nullptr,
+#endif
+                         state);
+    EXPECT_EQ(frame.HasMemoryPatternPlanner(), run == 0);
+    {
+      OpKernelContextInternal context(state, frame, *kernel, logger, terminate, nullptr);
+      ASSERT_STATUS_OK(kernel->Compute(&context));
+    }
+    ASSERT_STATUS_OK(frame.GetOutputs(outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(*outputs[0].Get<Tensor>().Data<bool>(), run != 0 && requested_bytes <= 128);
+
+    if (frame.HasMemoryPatternPlanner()) {
+      MemoryPatternGroup patterns;
+      ASSERT_STATUS_OK(frame.GeneratePatterns(patterns));
+      ASSERT_STATUS_OK(state.UpdateMemoryPatternGroupCache(feeds, std::move(patterns)));
+    }
+    const InlinedHashMap<int, TensorShape>* inferred_shapes = nullptr;
+    const auto* patterns = state.GetMemoryPatternGroup(feeds, feed_indices, inferred_shapes);
+    ASSERT_NE(patterns, nullptr);
+    const auto* pattern = patterns->GetPatterns(plan.location);
+    ASSERT_NE(pattern, nullptr);
+    const auto* block = pattern->GetBlock(plan.pattern_id);
+    ASSERT_NE(block, nullptr);
+    EXPECT_EQ(block->size_, plan.allocation_bytes);
+    ++run;
+  }
+}
+
+#endif
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
@@ -467,6 +611,115 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(p->PeakSize(), 2u * kAllocAlignment);  // each allocation is kAllocAlignment-byte aligned
   ASSERT_EQ(p->GetBlock(3)->offset_, 0u);
   ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
+}
+
+TEST_F(ExecutionFrameTest, WorkspacePatternWithoutActivationPattern) {
+  auto cpu_xp = CreateCPUExecutionProvider();
+  const auto xp_type = cpu_xp->Type();
+  const auto cpu_allocator = cpu_xp->CreatePreferredAllocators()[0];
+  const OrtDevice location = cpu_allocator->Info().device;
+  onnxruntime::Model model("test", true, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{onnxruntime::kOnnxDomain, 13}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model.MainGraph();
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  onnxruntime::NodeArg input_def("X", &tensor_float), output_def("Y", &tensor_float);
+  auto& node = graph.AddNode("node1", "Relu", "Relu operator",
+                             ArgMap{&input_def}, ArgMap{&output_def});
+  node.SetExecutionProviderType(xp_type);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  KernelRegistryManager kernel_registry_manager;
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto* execution_plan =
+      const_cast<SequentialExecutionPlan*>(state.GetExecutionPlan());
+  ASSERT_NE(execution_plan, nullptr);
+  execution_plan->workspace_allocation_plan[node.Index()] = {
+      {-1, 0, 1024, 1024, 256, location},
+      {-2, 1, 512, 512, 256, location},
+  };
+
+  const auto& name_idx_map = state.GetOrtValueNameIdxMap();
+  int input_idx = -1;
+  int output_idx = -1;
+  ASSERT_STATUS_OK(name_idx_map.GetIdx("X", input_idx));
+  ASSERT_STATUS_OK(name_idx_map.GetIdx("Y", output_idx));
+  OrtValue input;
+  std::array<float, 1> input_data{1.0f};
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1}),
+                       input_data.data(), OrtMemoryInfo(), input);
+
+  {
+    std::vector<OrtValue> outputs;
+    ExecutionFrame frame(
+        AsSpan({input_idx}), AsSpan({input}), AsSpan({output_idx}), outputs, {},
+#ifdef ORT_ENABLE_STREAM
+        {},
+#endif
+        state);
+    EXPECT_FALSE(frame.HasMemoryPatternPlanner());
+    ASSERT_TRUE(frame.HasWorkspaceMemoryPatternPlanner());
+
+    WorkspaceBufferRegion first_region;
+    WorkspaceBufferRegion second_region;
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-1, location, 1024, 256, first_region));
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-2, location, 512, 256, second_region));
+    EXPECT_EQ(first_region.buffer, nullptr);
+    EXPECT_EQ(second_region.buffer, nullptr);
+    frame.ReleasePlannedWorkspace(-2, location);
+    frame.ReleasePlannedWorkspace(-1, location);
+
+    MemoryPatternGroup workspace_patterns;
+    ASSERT_STATUS_OK(frame.GenerateWorkspacePatterns(workspace_patterns));
+    const MemoryPattern* pattern = workspace_patterns.GetPatterns(location);
+    ASSERT_NE(pattern, nullptr);
+    ASSERT_NE(pattern->GetBlock(-1), nullptr);
+    ASSERT_NE(pattern->GetBlock(-2), nullptr);
+    EXPECT_NE(pattern->GetBlock(-1)->offset_, pattern->GetBlock(-2)->offset_);
+    ASSERT_STATUS_OK(
+        state.UpdateWorkspaceMemoryPatternGroupCache(std::move(workspace_patterns)));
+  }
+
+  {
+    std::vector<OrtValue> outputs;
+    ExecutionFrame frame(
+        AsSpan({input_idx}), AsSpan({input}), AsSpan({output_idx}), outputs, {},
+#ifdef ORT_ENABLE_STREAM
+        {},
+#endif
+        state);
+    EXPECT_FALSE(frame.HasMemoryPatternPlanner());
+    EXPECT_FALSE(frame.HasWorkspaceMemoryPatternPlanner());
+
+    WorkspaceBufferRegion first_region;
+    WorkspaceBufferRegion second_region;
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-1, location, 1024, 256, first_region));
+    ASSERT_STATUS_OK(frame.GetPlannedWorkspace(-2, location, 512, 256, second_region));
+    ASSERT_NE(first_region.buffer, nullptr);
+    EXPECT_EQ(second_region.buffer, first_region.buffer);
+    EXPECT_NE(second_region.offset_bytes, first_region.offset_bytes);
+    EXPECT_GE(first_region.size_bytes, 1024u);
+    EXPECT_GE(second_region.size_bytes, 512u);
+    frame.ReleasePlannedWorkspace(-2, location);
+    frame.ReleasePlannedWorkspace(-1, location);
+  }
 }
 
 #ifdef ENABLE_TRAINING

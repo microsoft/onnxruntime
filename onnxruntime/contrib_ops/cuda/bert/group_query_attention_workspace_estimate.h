@@ -33,6 +33,9 @@ struct GQAWorkspaceEstimateConfig {
   int64_t causal = 1;
   int64_t local_window_size = -1;
   bool sliding_window_cache = false;
+  // Required for non-windowed estimation because WorkspaceInputShape does not
+  // carry the total_sequence_length scalar value.
+  int64_t max_total_sequence_length = 0;
   bool do_rotary = false;
   bool smooth_softmax = false;
   float softcap = 0.0f;

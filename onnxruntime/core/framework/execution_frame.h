@@ -15,6 +15,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
+#include "core/framework/workspace_requirement.h"
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
@@ -95,6 +96,17 @@ class IExecutionFrame {
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual Status GetPlannedWorkspace(int /*pattern_id*/, const OrtDevice& /*location*/,
+                                     size_t /*allocation_bytes*/, size_t /*alignment_bytes*/,
+                                     WorkspaceBufferRegion& workspace) {
+    workspace = {};
+    return Status::OK();
+  }
+
+  virtual void ReleasePlannedWorkspace(int /*pattern_id*/, const OrtDevice& /*location*/) {}
+#endif
+
  protected:
   OrtValue& GetMutableMLValue(int ort_value_index) { return const_cast<OrtValue&>(GetMLValue(ort_value_index)); }
 
@@ -169,6 +181,17 @@ class ExecutionFrame final : public IExecutionFrame {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  bool HasWorkspaceMemoryPatternPlanner() const {
+    return workspace_planner_.has_value();
+  }
+
+  Status GenerateWorkspacePatterns(MemoryPatternGroup& out);
+
+  Status GetPlannedWorkspace(int pattern_id, const OrtDevice& location,
+                             size_t allocation_bytes, size_t alignment_bytes,
+                             WorkspaceBufferRegion& workspace) override;
+  void ReleasePlannedWorkspace(int pattern_id, const OrtDevice& location) override;
+
   std::optional<size_t> GetOrtValueDynamicAllocation(int ort_value_index) const {
     auto it = ort_value_to_dynamic_allocations_size_.find(ort_value_index);
     if (it != ort_value_to_dynamic_allocations_size_.end()) {
@@ -251,6 +274,12 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Big chunks on different locations that will be used by mem_pattern.
   InlinedHashMap<OrtDevice, BufferUniquePtr> buffers_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const MemoryPatternGroup* workspace_mem_patterns_{nullptr};
+  std::optional<OrtValuePatternPlanner> workspace_planner_;
+  InlinedHashMap<OrtDevice, BufferUniquePtr> workspace_buffers_;
+#endif
 
   // Given the input shapes of the executed graph, ExecutionFrame tries inferring
   // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed

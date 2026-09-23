@@ -20,6 +20,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_legacy_workspace.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "core/platform/env_var_utils.h"
@@ -34,6 +35,10 @@ using namespace onnxruntime::cuda;
 // ORT_MATMULNBITS_CHUNK_SIZE overrides the default chunk size (32768).
 constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
 constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
+constexpr const char* kTraceLegacyWorkspaceEnvVar =
+    "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE";
+constexpr const char* kTraceLegacyWorkspaceConfig =
+    "ep.cuda.matmul_nbits.trace_legacy_workspace";
 constexpr int64_t kDefaultChunkTargetRows = 32768;
 
 #if USE_FPA_INTB_GEMM
@@ -188,6 +193,13 @@ class MatMulNBits final : public CudaKernel {
     if (chunk_target_rows_ < 1) {
       chunk_target_rows_ = kDefaultChunkTargetRows;
     }
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+    trace_legacy_workspace_ =
+        info.GetConfigOptions().GetConfigOrDefault(
+            kTraceLegacyWorkspaceConfig, "0") == "1" ||
+        ParseEnvironmentVariableWithDefault<int>(
+            kTraceLegacyWorkspaceEnvVar, 0) != 0;
+#endif
 
 #if USE_FPA_INTB_GEMM
     weight_prepacked_ = info.GetAttrOrDefault<int64_t>("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
@@ -296,28 +308,26 @@ class MatMulNBits final : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
-#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
-  // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
-  // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
-  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
-  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
+  // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): declares the workspace for
+  // either the fpA_intB CUTLASS path or the legacy dequantize-plus-GEMM path. Declared only for the
+  // in-tree hierarchy; the plugin build inherits the adapter OpKernel's default no-op.
   Status DeclareWorkspaceRequirements(
       gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsPreallocatedWorkspace() const noexcept override { return true; }
+#endif
 #endif
 
-  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
-  // recent ComputeInternal() call (zero when it requested none) so a test can verify the Level-2
-  // estimate against the real runtime request. This atomic is not correlated to a specific Run() when
-  // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
-  // tests. Do not build anything on top of it.
-  //
-  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
-  // the requested byte count; all early-return and no-workspace paths therefore remain zero.
+  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace requested by the most recent
+  // ComputeInternal() call (zero when none was requested). This atomic is not correlated to a specific
+  // Run() when concurrent runs share one kernel instance and is only intended for single-threaded tests.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
-#endif
+  bool LastComputeUsedPreallocatedWorkspace() const {
+    return last_compute_used_preallocated_workspace_.load(std::memory_order_relaxed);
+  }
 
  private:
 #if USE_FPA_INTB_GEMM
@@ -348,6 +358,9 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool force_chunked_{false};
   int64_t chunk_target_rows_{kDefaultChunkTargetRows};
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+  bool trace_legacy_workspace_{false};
+#endif
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
@@ -365,10 +378,11 @@ class MatMulNBits final : public CudaKernel {
   IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
   IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
+#endif
 
   // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
   mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
-#endif
+  mutable std::atomic<bool> last_compute_used_preallocated_workspace_{false};
 };
 
 }  // namespace cuda

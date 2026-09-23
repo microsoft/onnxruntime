@@ -77,7 +77,8 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
  */
 inline Tensor CreateTensorView(const Tensor& tensor, const TensorShape& new_shape) {
   ORT_ENFORCE(tensor.Shape().Size() == new_shape.Size(), "Cannot reshape tensor ", tensor.Shape().ToString(), " to ", new_shape.ToString());
-  return {tensor.DataType(), new_shape, const_cast<void*>(tensor.DataRaw()), tensor.Location()};
+  return {tensor.DataType(), new_shape, const_cast<void*>(tensor.DataRawBase()),
+          tensor.Location(), tensor.ByteOffset()};
 }
 
 /**
@@ -95,7 +96,8 @@ inline Tensor CreateTensorView(const Tensor& tensor, MLDataType new_data_type, c
               "Cannot reshape tensor ", tensor.Shape().ToString(), " to ", new_shape.ToString(),
               " with data type ", DataTypeImpl::ToString(new_data_type), ". The byte size of the original tensor is ",
               byte_size, " and the byte size of the new tensor is ", new_byte_size);
-  return {new_data_type, new_shape, const_cast<void*>(tensor.DataRaw()), tensor.Location()};
+  return {new_data_type, new_shape, const_cast<void*>(tensor.DataRawBase()),
+          tensor.Location(), tensor.ByteOffset()};
 }
 
 /**
