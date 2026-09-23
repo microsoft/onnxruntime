@@ -131,6 +131,27 @@ def parse_args() -> argparse.Namespace:
         help="Coupled QDQ domain and opset profile; default: onnx.",
     )
     parser.add_argument(
+        "--activation-type",
+        choices=("uint16", "uint8"),
+        default="uint16",
+        help="Activation QDQ type at the MatMul input and output; default: uint16.",
+    )
+    parser.add_argument(
+        "--activation-scale",
+        type=float,
+        help="Override the input activation QDQ scale.",
+    )
+    parser.add_argument(
+        "--activation-zero-point",
+        type=int,
+        help="Override the input activation QDQ zero point.",
+    )
+    parser.add_argument(
+        "--output-zero-point",
+        type=int,
+        help="Override the output activation QDQ zero point.",
+    )
+    parser.add_argument(
         "--block-size",
         type=int,
         choices=(32, 128),
@@ -161,8 +182,15 @@ def parse_args() -> argparse.Namespace:
         help="Override the reference model's per-tensor output scale.",
     )
     args = parser.parse_args()
-    if args.output_scale is not None and args.output_scale <= 0:
-        parser.error("--output-scale must be greater than zero")
+    for name in ("activation_scale", "output_scale"):
+        value = getattr(args, name)
+        if value is not None and (not np.isfinite(value) or value <= 0):
+            parser.error(f"--{name.replace('_', '-')} must be finite and greater than zero")
+    limit = 255 if args.activation_type == "uint8" else 65535
+    for name in ("activation_zero_point", "output_zero_point"):
+        value = getattr(args, name)
+        if value is not None and not 0 <= value <= limit:
+            parser.error(f"--{name.replace('_', '-')} must be in [0, {limit}]")
     if args.omit_weight_zero_point and (
         args.weight_signedness != "signed"
         or args.weight_symmetry != "symmetric"
@@ -409,19 +437,34 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             args.block_axis,
         )
     )
+    activation_dtype = np.dtype(np.uint8 if args.activation_type == "uint8" else np.uint16)
+    activation_max = np.iinfo(activation_dtype).max
+    default_scale_multiplier = 65535 / activation_max
+    default_zero_point_multiplier = activation_max / 65535
+    activation_scale = (
+        projection.activation_scale * default_scale_multiplier
+        if args.activation_scale is None else args.activation_scale
+    )
+    activation_zero_point = (
+        round(projection.activation_zero_point * default_zero_point_multiplier)
+        if args.activation_zero_point is None else args.activation_zero_point
+    )
     output_scale = (
-        projection.output_scale
-        if args.output_scale is None
-        else args.output_scale
+        projection.output_scale * default_scale_multiplier
+        if args.output_scale is None else args.output_scale
+    )
+    output_zero_point = (
+        round(projection.output_zero_point * default_zero_point_multiplier)
+        if args.output_zero_point is None else args.output_zero_point
     )
 
     initializers = [
         numpy_helper.from_array(
-            np.asarray(projection.activation_scale, dtype=np.float32),
+            np.asarray(activation_scale, dtype=np.float32),
             "activation_scale",
         ),
         numpy_helper.from_array(
-            np.asarray(projection.activation_zero_point, dtype=np.uint16),
+            np.asarray(activation_zero_point, dtype=activation_dtype),
             "activation_zero_point",
         ),
         numpy_helper.from_array(quantized_weight, "weight_quantized"),
@@ -430,7 +473,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             np.asarray(output_scale, dtype=np.float32), "output_scale"
         ),
         numpy_helper.from_array(
-            np.asarray(projection.output_zero_point, dtype=np.uint16),
+            np.asarray(output_zero_point, dtype=activation_dtype),
             "output_zero_point",
         ),
     ]
@@ -556,6 +599,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
     )
     model.metadata_props.add(key="projection", value=args.projection)
     model.metadata_props.add(key="qdq_profile", value=args.qdq_profile)
+    model.metadata_props.add(key="activation_type", value=args.activation_type)
     model.metadata_props.add(
         key="weight_quantization", value=args.weight_quantization
     )
@@ -582,7 +626,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
         vitisai_metadata = {
             "architectures": "CLIPModel",
             "model_type": "clip",
-            "activation_dtype": "QUInt16",
+            "activation_dtype": "QUInt8" if args.activation_type == "uint8" else "QUInt16",
             "weight_dtype": (
                 f"{'QInt' if args.weight_signedness == 'signed' else 'QUInt'}"
                 f"{args.weight_bit_width}"

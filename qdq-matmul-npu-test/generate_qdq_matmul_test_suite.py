@@ -278,6 +278,10 @@ def generate_model(
     block_size: int,
     block_axis: int,
     seed: int,
+    *,
+    activation_type: str = "uint16",
+    activation_scale: float | None = None,
+    output_scale: float | None = None,
 ) -> tuple[int, str]:
     command = [
         python,
@@ -300,8 +304,14 @@ def generate_model(
         category.qdq_profile,
         "--seed",
         str(seed),
+        "--activation-type",
+        activation_type,
         "--add-vitisai-metadata"
     ]
+    if activation_scale is not None:
+        command.extend(["--activation-scale", str(activation_scale)])
+    if output_scale is not None:
+        command.extend(["--output-scale", str(output_scale)])
     if variant.omit_zero_point:
         command.append("--omit-weight-zero-point")
     if category.quantization == "blockwise":

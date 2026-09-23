@@ -195,6 +195,15 @@ def load_onnxruntime() -> Any:
     return ort
 
 
+_registered_provider_libraries: dict[str, Path] = {}
+
+
+def registered_provider_library(provider_name: str) -> Path:
+    if provider_name not in _registered_provider_libraries:
+        raise RuntimeError(f"{provider_name} has not been registered in this process")
+    return _registered_provider_libraries[provider_name]
+
+
 def register_provider(provider_name: str) -> Any:
     preload_packaged_onnxruntime()
     provider_library = get_provider_library(provider_name)
@@ -202,6 +211,7 @@ def register_provider(provider_name: str) -> Any:
     import onnxruntime as ort
 
     ort.register_execution_provider_library(provider_name, str(provider_library))
+    _registered_provider_libraries[provider_name] = provider_library
     print(f"Registered {provider_name} from {provider_library}")
     return ort
 
