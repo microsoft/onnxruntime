@@ -11,7 +11,7 @@
 #include "moe_helper.h"
 #include <limits>
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/kernel_usage.h"
+#include "core/framework/kernel_pilot.h"
 #endif
 
 namespace onnxruntime {

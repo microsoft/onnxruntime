@@ -203,14 +203,14 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  KernelUsage* GetKernelUsage() const override {
+  KernelPilot* GetKernelPilot() const override {
     auto* state = session_state_.GetMoeExpertState();
-    kernel_usage_ = state ? state->GetKernelUsage(GetKernel()) : nullptr;
-    return kernel_usage_;
+    kernel_pilot_ = state ? state->GetKernelPilot(GetKernel()) : nullptr;
+    return kernel_pilot_;
   }
 
   Status RecordKernelUsage() const {
-    if (kernel_usage_ == nullptr) {
+    if (kernel_pilot_ == nullptr) {
       return Status::OK();
     }
     return session_state_.GetMoeExpertState()->RecordUsage(GetKernel());
@@ -278,7 +278,7 @@ class OpKernelContextInternal : public OpKernelContext {
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
-  mutable KernelUsage* kernel_usage_{nullptr};
+  mutable KernelPilot* kernel_pilot_{nullptr};
 
   class AccountingAllocator : public IAllocator {
    public:

@@ -1599,9 +1599,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
   if (routing_snapshot_) {
-    auto* usage = context->GetKernelUsage();
-    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
-    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert counting is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
   }
   const size_t routing_element_count = instrumentation != nullptr
                                            ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))

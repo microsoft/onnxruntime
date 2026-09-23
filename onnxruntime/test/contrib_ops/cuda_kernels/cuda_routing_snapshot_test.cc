@@ -74,7 +74,7 @@ class CudaRoutingSnapshotTest : public ::testing::Test {
     return std::make_shared<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(device), CUDA_PINNED);
   }
 
-  void ExpectSelectedExperts(const KernelUsage& usage,
+  void ExpectSelectedExperts(const KernelPilot::MoeExpertSelection& usage,
                              const InlinedVector<int>& expected) {
     gsl::span<const int> selected;
     ASSERT_STATUS_OK(usage.GetSelectedExperts(selected));
@@ -86,7 +86,7 @@ class CudaRoutingSnapshotTest : public ::testing::Test {
 };
 
 TEST_F(CudaRoutingSnapshotTest, CollectsWhileLaterDeviceWorkIsPending) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> ids{0, 0, 2};
@@ -111,7 +111,7 @@ TEST_F(CudaRoutingSnapshotTest, CollectsWhileLaterDeviceWorkIsPending) {
 }
 
 TEST_F(CudaRoutingSnapshotTest, EnqueuesWithoutWaitingForRouting) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   const InlinedVector<int> ids{1, 3};
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
@@ -134,7 +134,7 @@ TEST_F(CudaRoutingSnapshotTest, EnqueuesWithoutWaitingForRouting) {
 }
 
 TEST_F(CudaRoutingSnapshotTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   for (const InlinedVector<int>& ids : {InlinedVector<int>{0, 0, 2}, InlinedVector<int>{2, 3}}) {
@@ -153,7 +153,7 @@ TEST_F(CudaRoutingSnapshotTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
 }
 
 TEST_F(CudaRoutingSnapshotTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> previous{0, 2};
@@ -168,7 +168,7 @@ TEST_F(CudaRoutingSnapshotTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvoca
 }
 
 TEST_F(CudaRoutingSnapshotTest, RejectsInvalidRoutingAndRecovers) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   for (const int invalid : {-1, 4}) {
     ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
@@ -185,7 +185,7 @@ TEST_F(CudaRoutingSnapshotTest, RejectsInvalidRoutingAndRecovers) {
 }
 
 TEST_F(CudaRoutingSnapshotTest, RejectsUninitializedCollection) {
-  KernelUsage usage;
+  KernelPilot::MoeExpertSelection usage;
   contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
   EXPECT_FALSE(snapshot.BeginInvocation(usage, 0).IsOK());
   EXPECT_FALSE(snapshot.Capture(device_ids_, 1, stream_).IsOK());

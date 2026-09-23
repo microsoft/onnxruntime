@@ -13,7 +13,7 @@
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
-#include "core/framework/kernel_usage.h"
+#include "core/framework/kernel_pilot.h"
 
 namespace onnxruntime {
 
@@ -61,7 +61,7 @@ class MoeExpertState {
   Status FinalizeInitialization();
   Status BeginRun() const;
   void EndRun() const;
-  KernelUsage* GetKernelUsage(const OpKernel* kernel);
+  KernelPilot* GetKernelPilot(const OpKernel* kernel);
   // Commit the kernel's collected usage after a successful invocation.
   Status RecordUsage(const OpKernel* kernel);
   // During a Run, only this kernel may read its counters.
@@ -94,7 +94,7 @@ class MoeExpertState {
   struct KernelState {
     explicit KernelState(ExpertRange range) : experts(range) {}
     ExpertRange experts;
-    KernelUsage usage;
+    KernelPilot pilot;
   };
   std::map<Key, NodeInfo> nodes_;
   NodeHashMap<const OpKernel*, KernelState> kernels_;

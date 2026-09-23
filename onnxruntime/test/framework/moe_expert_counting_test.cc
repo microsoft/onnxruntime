@@ -165,12 +165,12 @@ SessionOptions CountingOptions() {
   return options;
 }
 
-class NoKernelUsageContext final : public OpKernelContextInternal {
+class NoKernelPilotContext final : public OpKernelContextInternal {
  public:
   using OpKernelContextInternal::OpKernelContextInternal;
 
-  KernelUsage* GetKernelUsage() const override {
-    ADD_FAILURE() << "Disabled expert counting must not access KernelUsage.";
+  KernelPilot* GetKernelPilot() const override {
+    ADD_FAILURE() << "Disabled expert counting must not access KernelPilot.";
     return nullptr;
   }
 };
@@ -180,11 +180,12 @@ class CollectingTestKernel final : public OpKernel {
   CollectingTestKernel(const OpKernelInfo& info, const bool& fail) : OpKernel(info), fail_(fail) {}
 
   Status Compute(OpKernelContext* context) const override {
-    auto* usage = context->GetKernelUsage();
-    ORT_RETURN_IF_NOT(usage, "Missing test kernel collector.");
-    ORT_RETURN_IF_ERROR(usage->BeginInvocation(kExperts));
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "Missing test kernel collector.");
+    auto& usage = pilot->Moe();
+    ORT_RETURN_IF_ERROR(usage.BeginInvocation(kExperts));
     const int selected[] = {fail_ ? 1 : 2};
-    ORT_RETURN_IF_ERROR(usage->Collect(selected));
+    ORT_RETURN_IF_ERROR(usage.Collect(selected));
     ORT_RETURN_IF(fail_, "Intentional failure after collecting usage.");
     auto* output = context->Output(0, context->Input<Tensor>(0)->Shape());
     for (auto& value : output->MutableDataAsSpan<MLFloat16>()) {
@@ -232,9 +233,9 @@ void TestDisabledRecording(bool quantized) {
     for (NodeIndex index : state.GetGraphViewer().GetNodesInTopologicalOrder()) {
       const auto* kernel = state.GetKernel(index);
       ASSERT_NE(kernel, nullptr);
-      NoKernelUsageContext context(state, frame, *kernel, state.Logger(), terminate, nullptr);
-      EXPECT_EQ(context.OpKernelContextInternal::GetKernelUsage(), nullptr);
-      EXPECT_EQ(context.OpKernelContext::GetKernelUsage(), nullptr);
+      NoKernelPilotContext context(state, frame, *kernel, state.Logger(), terminate, nullptr);
+      EXPECT_EQ(context.OpKernelContextInternal::GetKernelPilot(), nullptr);
+      EXPECT_EQ(context.OpKernelContext::GetKernelPilot(), nullptr);
       ASSERT_STATUS_OK(context.RecordKernelUsage());
       ASSERT_STATUS_OK(kernel->Compute(&context));
       if (kernel->Node().OpType() == (quantized ? "QMoE" : "MoE")) {
@@ -326,14 +327,15 @@ TEST(MoeExpertCountingTest, ContextExposesSessionOwnedCollector) {
   const auto* kernel = session_state.GetKernel(0);
   ASSERT_NE(kernel, nullptr);
   OpKernelContextInternal context(session_state, frame, *kernel, session_state.Logger(), terminate, nullptr);
-  auto* usage = context.GetKernelUsage();
-  ASSERT_NE(usage, nullptr);
-  EXPECT_EQ(usage, state->GetKernelUsage(kernel));
-  EXPECT_EQ(context.GetKernelUsage(), usage);
-  EXPECT_NE(usage, state->GetKernelUsage(session_state.GetKernel(1)));
-  ASSERT_STATUS_OK(usage->BeginInvocation(kExperts));
+  auto* pilot = context.GetKernelPilot();
+  ASSERT_NE(pilot, nullptr);
+  EXPECT_EQ(pilot, state->GetKernelPilot(kernel));
+  EXPECT_EQ(context.GetKernelPilot(), pilot);
+  EXPECT_NE(pilot, state->GetKernelPilot(session_state.GetKernel(1)));
+  auto& usage = pilot->Moe();
+  ASSERT_STATUS_OK(usage.BeginInvocation(kExperts));
   const int selected[] = {0, 2, 0};
-  ASSERT_STATUS_OK(usage->Collect(selected));
+  ASSERT_STATUS_OK(usage.Collect(selected));
   EXPECT_EQ(state->GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
   ASSERT_STATUS_OK(context.RecordKernelUsage());
   EXPECT_EQ(state->GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));

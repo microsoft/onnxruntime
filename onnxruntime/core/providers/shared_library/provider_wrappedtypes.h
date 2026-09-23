@@ -1362,8 +1362,8 @@ struct OpKernelContext final {
     return g_host->OpKernelContext__GetRunInstrumentationContext(this);
   }
 
-  KernelUsage* GetKernelUsage() const {
-    return g_host->OpKernelContext__GetKernelUsage(this);
+  KernelPilot* GetKernelPilot() const {
+    return g_host->OpKernelContext__GetKernelPilot(this);
   }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)

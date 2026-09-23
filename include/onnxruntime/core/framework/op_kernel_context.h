@@ -4,7 +4,7 @@
 namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
-class KernelUsage;
+class KernelPilot;
 class RunInstrumentationContext;
 #endif
 class Stream;
@@ -227,8 +227,8 @@ class OpKernelContext {
 #if !defined(ORT_MINIMAL_BUILD)
  public:
   // Keep new virtuals after existing declarations to preserve their vtable slots.
-  // Session-owned collector for this kernel; nullptr when collection is unavailable.
-  virtual KernelUsage* GetKernelUsage() const { return nullptr; }
+  // Session-owned pilot for this kernel; nullptr when unavailable.
+  virtual KernelPilot* GetKernelPilot() const { return nullptr; }
 #endif
 
  private:

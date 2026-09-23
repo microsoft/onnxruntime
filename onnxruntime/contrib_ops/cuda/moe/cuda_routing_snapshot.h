@@ -5,7 +5,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/framework/kernel_usage.h"
+#include "core/framework/kernel_pilot.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -24,7 +24,7 @@ class CudaRoutingSnapshot {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaRoutingSnapshot);
 
-  Status BeginInvocation(KernelUsage& usage, size_t expert_count) {
+  Status BeginInvocation(KernelPilot::MoeExpertSelection& usage, size_t expert_count) {
     // A failed invocation may have returned after enqueueing a copy but before consuming it.
     ORT_RETURN_IF_ERROR(WaitForCopy());
     ORT_RETURN_IF_ERROR(usage.BeginInvocation(expert_count));
@@ -85,7 +85,7 @@ class CudaRoutingSnapshot {
   }
 
   AllocatorPtr pinned_allocator_;
-  KernelUsage* usage_{nullptr};
+  KernelPilot::MoeExpertSelection* usage_{nullptr};
   IAllocatorUniquePtr<int> host_ids_;
   size_t capacity_{0};
   size_t captured_count_{0};

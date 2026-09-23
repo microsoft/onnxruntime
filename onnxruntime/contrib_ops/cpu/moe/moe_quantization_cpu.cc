@@ -2542,10 +2542,11 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
 #if !defined(ORT_MINIMAL_BUILD)
   if (enable_moe_expert_counting_) {
-    auto* usage = context->GetKernelUsage();
-    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
-    ORT_RETURN_IF_ERROR(usage->BeginInvocation(static_cast<size_t>(num_experts)));
-    ORT_RETURN_IF_ERROR(usage->Collect(gsl::make_span(route_expert, routing_element_count)));
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert counting is enabled but its collector is unavailable.");
+    auto& usage = pilot->Moe();
+    ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
+    ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
   }
   if (instrumentation != nullptr) {
     RecordMoeRoutingEvent(*instrumentation, Node(),

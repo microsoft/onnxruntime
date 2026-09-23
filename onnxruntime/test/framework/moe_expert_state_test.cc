@@ -58,10 +58,10 @@ class MoeExpertStateTest : public testing::Test {
   const OpKernel* kernels_[3]{};
 
   Status CollectAndRecord(MoeExpertState& state, const OpKernel* kernel, gsl::span<const int> ids) {
-    auto* usage = state.GetKernelUsage(kernel);
-    ORT_RETURN_IF_NOT(usage, "Missing test kernel collector.");
-    ORT_RETURN_IF_ERROR(usage->BeginInvocation(usage->ExpertCount()));
-    ORT_RETURN_IF_ERROR(usage->Collect(ids));
+    auto* pilot = state.GetKernelPilot(kernel);
+    ORT_RETURN_IF_NOT(pilot, "Missing test kernel collector.");
+    ORT_RETURN_IF_ERROR(pilot->Moe().BeginInvocation(pilot->Moe().ExpertCount()));
+    ORT_RETURN_IF_ERROR(pilot->Moe().Collect(ids));
     return state.RecordUsage(kernel);
   }
 };
@@ -69,12 +69,12 @@ class MoeExpertStateTest : public testing::Test {
 TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   MoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
-  auto* usage = state.GetKernelUsage(kernels_[0]);
-  ASSERT_NE(usage, nullptr);
+  auto* pilot = state.GetKernelPilot(kernels_[0]);
+  ASSERT_NE(pilot, nullptr);
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 2));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[2], "main/0/4:body", 0, "MoE", 4));
-  EXPECT_EQ(state.GetKernelUsage(kernels_[0]), usage);
-  EXPECT_NE(state.GetKernelUsage(kernels_[1]), usage);
+  EXPECT_EQ(state.GetKernelPilot(kernels_[0]), pilot);
+  EXPECT_NE(state.GetKernelPilot(kernels_[1]), pilot);
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_EQ(state.TotalExpertCount(), 9U);
   size_t expert_id = 99;
@@ -225,11 +225,11 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(CollectAndRecord(state, kernels_[0], negative).IsOK());
   EXPECT_FALSE(state.RecordUsage(kernels_[1]).IsOK());
   EXPECT_FALSE(state.RecordUsage(nullptr).IsOK());
-  EXPECT_EQ(state.GetKernelUsage(kernels_[1]), nullptr);
-  EXPECT_EQ(state.GetKernelUsage(nullptr), nullptr);
-  ASSERT_STATUS_OK(state.GetKernelUsage(kernels_[0])->BeginInvocation(3));
+  EXPECT_EQ(state.GetKernelPilot(kernels_[1]), nullptr);
+  EXPECT_EQ(state.GetKernelPilot(nullptr), nullptr);
+  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->Moe().BeginInvocation(3));
   EXPECT_FALSE(state.RecordUsage(kernels_[0]).IsOK());
-  ASSERT_STATUS_OK(state.GetKernelUsage(kernels_[0])->BeginInvocation(2));
+  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->Moe().BeginInvocation(2));
   InlinedVector<double> counters{7};
   EXPECT_FALSE(state.GetCounters(kernels_[1], counters).IsOK());
   EXPECT_FALSE(state.GetCounters(nullptr, counters).IsOK());

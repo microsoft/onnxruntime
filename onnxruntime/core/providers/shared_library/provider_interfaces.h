@@ -46,7 +46,7 @@ class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
 class RunInstrumentationContext;
-class KernelUsage;
+class KernelPilot;
 
 struct ModelSavingOptions;
 
@@ -1452,7 +1452,7 @@ struct ProviderHost {
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
 
-  virtual KernelUsage* OpKernelContext__GetKernelUsage(const OpKernelContext* p) = 0;
+  virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
