@@ -2651,6 +2651,16 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
                                 });
         break;
       }
+      case 16: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  constexpr size_t element_size = 16;
+                                  const auto* src = static_cast<const uint8_t*>(sparse_data) + from_idx * element_size;
+                                  auto* dst = static_cast<uint8_t*>(dense_data) + to_idx * element_size;
+                                  memcpy(dst, src, element_size);
+                                });
+        break;
+      }
 
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
