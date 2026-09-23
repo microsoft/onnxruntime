@@ -107,9 +107,9 @@ punctuation) that make CSV quoting fragile.
 # ort_version	1.23.0
 # ort_git_commit	<git-sha-or-unknown>
 # ort_build_config	Release
-schema_version	n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	packing_sm	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel
-1	12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	1	1	80	23	0	0	0	0	1	1	3	0	0	0	0	1
-1	12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	64	1	80	17	0	0	0	0	0	-1	4	0	0	0	0	0
+n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	packing_sm	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	1	1	80	23	0	0	0	0	1	1	3	0	0	0	0	1
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	80	64	1	80	17	0	0	0	0	0	-1	4	0	0	0	0	0
 ...
 ```
 
@@ -161,9 +161,9 @@ signature = {
 ```
 
 - Used both to name the cache file and as a stored guard. On load, a mismatch on
-  `device_name` / `sm` / `cuda_runtime` / `ort_version` / `ort_git_commit` / `ort_build_config`
-  rejects the file (forces re-profiling). `multiprocessor_count` and `cuda_driver` are recorded for
-  diagnostics and can be promoted to strict checks if needed.
+  `device_name` / `sm` / `cuda_runtime` / `ort_version` rejects the file (forces re-profiling).
+  `multiprocessor_count`, `cuda_driver`, `ort_git_commit`, and `ort_build_config` are recorded for
+  diagnostics only; every loaded CUTLASS tactic is also re-validated against the current runner.
 - Rationale: RTX 4090 and RTX 4060 are both `sm_89` but perform differently, so the **device name**,
   not just SM, is the primary discriminator — matching the requirement.
 
@@ -256,9 +256,10 @@ unit-testable.
   explicit cache prefix and let the offline Python tool derive `<model_path>.*.tsv` when possible.
 
 ### Phase 5 — Offline tuning tool *(depends on 4)*
-- `onnxruntime/python/tools/fpa_intb_tune.py` (+ CLI): `--model`, `--output-prefix`, `--enable-gemv`,
-  `--m-values`. Sets the env/session options, builds a CUDA EP session, runs dummy inferences over
-  the requested M values to force profiling, flushes the sidecars, prints the paths and tuned shapes.
+- `onnxruntime/python/tools/fpa_intb_tune.py` (+ CLI): `--model`, `--output-prefix`, `--m-values`,
+  `--no-inference`. Sets session options, builds a CUDA EP session, runs dummy inferences over
+  the requested M values to force profiling, releases the session to flush the cache, prints the
+  path and tuned shapes.
 
 ### Phase 6 — Docs + tests *(depends on 2–5)*
 - Document env vars, sidecar format, hardware guard, and the offline tool in
@@ -304,7 +305,7 @@ and must avoid dependencies on non-plugin CUDA EP internals.
 
 ## 12. Open considerations
 
-1. **Strictness of driver/MP checks** — start with strict device name, SM, runtime, ORT version, git
-  commit, and build config; keep driver and MP count diagnostic unless validation shows they must be
-  strict.
+1. **Strictness of driver/MP checks** — the guard is strict on device name, SM, runtime, and ORT
+  version; driver, MP count, git commit, and build config stay diagnostic unless validation shows
+  they must be strict.
 2. **JSON fallback** — switch to hand-rolled JSON only if nested/optional structure is later required.

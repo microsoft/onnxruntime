@@ -199,7 +199,9 @@ onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginP
   key.n_16b = gemmId.n;
   key.k = gemmId.k;
   key.activation_dtype = (gemmId.dtype == onnxruntime::llm::nvinfer::DataType::kBF16) ? "bfloat16" : "half";
-  key.weight_type = (mQuantBits == 8) ? "uint8_t" : "uint4b_t";
+  key.weight_type = (mQuantBits == INT8_BITS)   ? "uint8_t"
+                    : (mQuantBits == INT2_BITS) ? "uint2b_t"
+                                                : "uint4b_t";
   key.bits = mQuantBits;
   key.block_size = mGroupSize;
   key.has_zero_points = mHasZeros;
@@ -290,7 +292,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
   // Teardown path: stage only (no disk write). Every MatMulNBits kernel destructor calls this, so
   // flushing here would rewrite the whole cache file once per node. The staged tactics are written
-  // to disk a single time when the process-global cache table is destroyed (see matmul_nbits.cc).
+  // to disk once at CUDA EP teardown (FlushMatMulNBitsTacticCaches in matmul_nbits.cc).
   stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
 }
 }  // namespace onnxruntime::llm::kernels::weight_only

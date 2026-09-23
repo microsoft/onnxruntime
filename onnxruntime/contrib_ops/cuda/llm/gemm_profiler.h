@@ -198,7 +198,7 @@ class GemmPluginProfiler {
   // inference via getBestConfigOrProfile) into the subclass's persistent cache, if one is configured.
   // This only populates the process-global in-memory cache; it does NOT write to disk, so calling it
   // from every MatMulNBits kernel destructor does not cause O(number-of-nodes) full-file rewrites.
-  // The staged tactics are written to disk once, when the process-global cache is torn down. No-op if
+  // The staged tactics are written to disk once, at CUDA EP teardown. No-op if
   // `gemmId` was never profiled or the subclass has no persistent cache. Best-effort, off the hot path.
   void persistProfiledTactics(GemmIdType const& gemmId) {
     reader_lock lock(mMNKProfileMap->mutex);

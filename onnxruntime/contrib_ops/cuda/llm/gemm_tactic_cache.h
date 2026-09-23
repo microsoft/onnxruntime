@@ -69,6 +69,9 @@ struct HardwareSignature {
   // Computes the signature for the current CUDA device and build.
   static HardwareSignature Compute();
 
+  // Computes the signature for an already-queried device (avoids a cudaGetDeviceProperties call).
+  static HardwareSignature FromDevice(std::string device_name, int sm, int multiprocessor_count);
+
   // Strict reuse guard: device_name, sm, cuda_runtime, and ort_version must all match.
   // multiprocessor_count, cuda_driver, ort_git_commit, and ort_build_config are recorded for
   // diagnostics only and are NOT part of the guard: a tactic is just a config selected among
@@ -107,7 +110,7 @@ struct MatMulNBitsKey {
   int n_16b = 0;
   int k = 0;
   std::string activation_dtype;  // "half" / "bfloat16"
-  std::string weight_type;       // "uint4b_t" / "uint8_t"
+  std::string weight_type;       // "uint2b_t" / "uint4b_t" / "uint8_t"
   int bits = 0;
   int block_size = 0;
   bool has_zero_points = false;
@@ -132,12 +135,14 @@ struct MatMulNBitsKeyHash {
 //     file lock so concurrent sessions tuning different shapes do not lose updates.
 class MatMulNBitsTacticCache {
  public:
+  // Resolves the cache file path, or returns an empty string when persistence is disabled.
+  // Resolution order: session-config prefix, session-config dir, env prefix, env dir.
+  static std::string ResolveFilePath(const std::string& config_dir, const std::string& config_prefix,
+                                     const HardwareSignature& signature);
+
   // Returns a configured cache if persistence is enabled, otherwise nullptr (callers keep the
-  // in-process-only behavior). Resolution order for the file location:
-  //   1. explicit session-config `prefix`/`dir` arguments (when non-empty),
-  //   2. ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX / ORT_CUDA_GEMM_TACTIC_CACHE_DIR env vars.
-  // A non-empty prefix wins over a dir. The returned cache has already attempted to load
-  // matching rows from disk.
+  // in-process-only behavior). The file location follows ResolveFilePath. The returned cache has
+  // already attempted to load matching rows from disk.
   static std::shared_ptr<MatMulNBitsTacticCache> MaybeCreate(const std::string& config_dir = "",
                                                              const std::string& config_prefix = "");
 

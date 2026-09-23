@@ -479,7 +479,8 @@ explicit file prefix, via environment variable or session-config option:
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | `ep.cuda.gemm_tactic_cache_prefix` | Explicit file prefix; writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
 
 Resolution order: session-config prefix → session-config dir → env prefix → env
-dir. A non-empty prefix wins over a directory. When none is set, nothing is
+dir. A non-empty prefix wins over a directory, and any session-config value
+overrides both env vars. When none is set, nothing is
 written and behavior is unchanged. Cache instances are process-global and keyed
 by their resolved location, so all `MatMulNBits` nodes/sessions that resolve to
 the same location share one cache, while sessions configured with different
@@ -515,13 +516,14 @@ workload, use
 python -m onnxruntime.tools.fpa_intb_tune \
     --model model.onnx \
     --output-prefix /path/to/cache/mymodel \
-    --enable-gemv \
     --m-values 1,8,16,32,64,128,256,512,1024,2048
 ```
 
-It sets the cache prefix and profiling env vars, creates a CUDA-EP session (which
-profiles the bucket set during kernel construction), best-effort runs dummy
-inferences at each `M`, then prints the cache path and a summary of tuned shapes.
+It enables the fpA_intB path, the cache prefix, and the profile bucket set through
+session config entries, creates a CUDA-EP session (which profiles the bucket set during
+kernel construction), best-effort runs dummy inferences at each `M`, releases the session
+so lazily profiled buckets are flushed, then prints the cache path and a summary of tuned
+shapes.
 
 **onnxruntime-genai integration.** Two options:
 
@@ -562,7 +564,7 @@ present. `ComputeInternal` then:
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
-| `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. |
+| `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.1). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.1); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
@@ -606,7 +608,7 @@ present. `ComputeInternal` then:
   [onnxruntime/test/contrib_ops/cuda_kernels/gemm_tactic_cache_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/gemm_tactic_cache_test.cc)
   (config serialize/parse round-trip, signature-mismatch rejection, appended-column
   tolerance, store/load and merge). Build with `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`
-  and run `./onnxruntime_provider_test --gtest_filter=GemmTacticCacheTest.*`.
+  and run `./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All`.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
 - To compare the router specialization against the generic path, run the same
