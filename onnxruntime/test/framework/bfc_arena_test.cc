@@ -125,6 +125,39 @@ TEST(BFCArenaTest, CaptureRejectsPersistentAllocationsAndNestedScopes) {
   ASSERT_TRUE(nested.End().IsOK());
 }
 
+TEST(BFCArenaTest, CaptureTransfersOwnershipDuringReplay) {
+  for (bool cancel : {false, true}) {
+    SCOPED_TRACE(cancel);
+    auto arena = std::make_shared<BFCArena>(std::make_unique<CPUAllocator>(), 1 << 20);
+    const std::array<AllocatorPtr, 1> allocators{arena};
+    void* persistent = nullptr;
+    {
+      ArenaAllocationCapture capture(allocators);
+      ASSERT_TRUE(capture.Begin(false).IsOK());
+      persistent = arena->Alloc(256);
+      void* unused = arena->Reserve(64);
+      arena->Free(persistent);
+      arena->Free(unused);
+      ASSERT_TRUE(capture.End().IsOK());
+      ASSERT_TRUE(capture.Begin(true).IsOK());
+      EXPECT_EQ(arena->Alloc(256), persistent);
+      if (cancel) {
+        capture.Cancel();
+      } else {
+        EXPECT_EQ(arena->Reserve(64), unused);
+        arena->Free(unused);
+        EXPECT_THAT(capture.End().ErrorMessage(), testing::HasSubstr("persistent buffer"));
+      }
+    }
+    AllocatorStats stats;
+    arena->GetStats(&stats);
+    ASSERT_EQ(stats.bytes_in_use, 256);
+    arena->Free(persistent);
+    arena->GetStats(&stats);
+    EXPECT_EQ(stats.bytes_in_use, 0);
+  }
+}
+
 TEST(BFCArenaTest, AllocationsAndDeallocations) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   // Allocate 256 raw pointers of sizes between 100 bytes and about a meg

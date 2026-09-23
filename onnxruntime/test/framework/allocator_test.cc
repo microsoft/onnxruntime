@@ -12,6 +12,7 @@
 #include "core/session/ort_apis.h"
 
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/asserts.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -319,6 +320,41 @@ TEST(AllocatorTest, IArenaWrapper_CaptureRejectsChangedScratch) {
       EXPECT_THROW(arena->Reserve(256), OnnxRuntimeException);
     }
     capture.Cancel();
+  }
+}
+
+TEST(AllocatorTest, IArenaWrapper_CaptureTransfersOwnershipDuringReplay) {
+  for (bool cancel : {false, true}) {
+    SCOPED_TRACE(cancel);
+    MockArenaOrtAllocator mock;
+    auto arena = std::make_shared<IArenaImplWrappingOrtAllocator>(
+        OrtAllocatorUniquePtr(&mock, [](OrtAllocator*) {}));
+    OrtAllocatorImplWrappingIAllocator kernel_allocator{AllocatorPtr{arena}};
+    OrtAllocator* api_allocator = &kernel_allocator;
+    const std::array<AllocatorPtr, 1> allocators{arena};
+    void* persistent = nullptr;
+    {
+      ArenaAllocationCapture capture(allocators);
+      ASSERT_STATUS_OK(capture.Begin(false));
+      persistent = api_allocator->Alloc(api_allocator, 256);
+      void* unused = api_allocator->Reserve(api_allocator, 64);
+      api_allocator->Free(api_allocator, persistent);
+      api_allocator->Free(api_allocator, unused);
+      ASSERT_STATUS_OK(capture.End());
+      ASSERT_STATUS_OK(capture.Begin(true));
+      EXPECT_EQ(api_allocator->Alloc(api_allocator, 256), persistent);
+      if (cancel) {
+        capture.Cancel();
+      } else {
+        EXPECT_EQ(api_allocator->Reserve(api_allocator, 64), unused);
+        api_allocator->Free(api_allocator, unused);
+        ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(capture.End(), "persistent buffer");
+      }
+    }
+    // Only unused scratch belongs to the capture; the kernel still owns persistent.
+    ASSERT_EQ(mock.free_count, 1);
+    api_allocator->Free(api_allocator, persistent);
+    EXPECT_EQ(mock.free_count, 2);
   }
 }
 

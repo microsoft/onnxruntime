@@ -557,6 +557,8 @@ void* ArenaAllocationCapture::Allocate(IAllocator& arena, size_t size, Stream* s
     ORT_ENFORCE(allocation.arena == &arena && allocation.size == size &&
                     allocation.stream == stream && allocation.reserve == reserve,
                 "CUDA partition scratch allocation sequence changed during capture.");
+    // The kernel owns this buffer until it frees it, even if the replay scope fails.
+    allocation.owned = false;
     return allocation.pointer;
   }
 

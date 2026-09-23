@@ -96,7 +96,9 @@ capture requirements instead.
   Control flow, asynchronous host kernels, partial execution, and per-run stream
   overrides are not supported.
 - CPU inputs consumed *directly* by CUDA kernels as host-side control data must
-  retain their captured values. Changes return an error requesting a new graph ID.
+  retain their captured values. Select a new graph ID before changing them. A
+  mismatch detected during partition replay invalidates the session because earlier
+  partitions may already have updated outputs or in-place state.
   This differs from CPU tensor data transferred through a `MemcpyFromHost` node,
   which is refreshed on every invocation.
 - CUDA kernels producing host outputs are rejected. Shape/data-dependent changes
@@ -110,8 +112,9 @@ capture requirements instead.
 - Capture warm-up executes CPU computation repeatedly, so stateful CPU operators
   are not an appropriate workload.
 - Individual graph retirement is not implemented. After an execution/capture
-  failure, recreate the session. Input binding validation errors before execution
-  do not invalidate already captured buckets.
+  failure, including termination between partitions, recreate the session. Input
+  binding validation errors and termination detected before execution do not
+  invalidate already captured buckets.
 
 This is not a claim that a particular 27B model fits in 12 or 24 GB. That requires
 measurement with its actual quantization, context length, KV cache, placement, and
@@ -130,7 +133,9 @@ ID instead of the partition executor's internal IDs, and preserve enabled or dis
 memory-pattern settings. Mixed-device graphs must still select partitioned execution.
 The same routing and mixed-device tests run with the CUDA plugin, with additional
 coverage for configurable warm-up counts and scratch retention across the allocator
-C ABI boundary.
+C ABI boundary. Failure regressions check that scratch retained by a kernel during
+a rejected replay is freed only by that kernel, and that partial replay failures
+invalidate every captured bucket while pre-execution validation remains recoverable.
 
 Real-model evaluation must compare eager and captured output parity, confirm
 partition replay in logs, and measure peak VRAM and prefill/decode latency. A

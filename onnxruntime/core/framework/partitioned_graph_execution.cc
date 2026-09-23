@@ -38,7 +38,7 @@ struct TensorSignature {
                   "Partitioned CUDA graph tensor address, shape, type, or device changed. Use a new gpu_graph_id.");
     ORT_RETURN_IF(!contents.empty() &&
                       std::memcmp(contents.data(), tensor.DataRaw(), contents.size()) != 0,
-                  "A CPU control input to a captured CUDA partition changed. Use a new gpu_graph_id.");
+                  "A CPU control input to a captured CUDA partition changed. Recreate the session.");
     return Status::OK();
   }
 
@@ -149,9 +149,7 @@ struct PartitionedGraphExecution::Impl {
         const auto& partition = partitions[i];
         ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
         if (!partition.capture) {
-          failed = true;
           ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger));
-          failed = false;
           continue;
         }
         auto& captured = *state.partitions[i];
@@ -162,9 +160,7 @@ struct PartitionedGraphExecution::Impl {
             ORT_RETURN_IF_ERROR(signature.Check(*value));
           }
           LOGS(logger, INFO) << "Replaying CUDA partition " << i << " with internal graph id " << captured.graph_id;
-          failed = true;
           ORT_RETURN_IF_ERROR(provider.ReplayGraph(captured.graph_id, true));
-          failed = false;
           continue;
         }
         ORT_RETURN_IF(state.ready, "CUDA partition graph is missing.");
@@ -173,7 +169,6 @@ struct PartitionedGraphExecution::Impl {
         const int capture_id = plugin && pass < 2 ? -1 : captured.graph_id;
         ORT_RETURN_IF_ERROR(partition_options.config_options.AddConfigEntry(
             kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(capture_id).c_str()));
-        failed = true;
         ORT_RETURN_IF_ERROR(provider.OnRunStart(partition_options));
         bool ended = false;
         auto end_run = gsl::finally([&]() {
@@ -206,11 +201,8 @@ struct PartitionedGraphExecution::Impl {
         if (captured_graph) {
           ORT_RETURN_IF_ERROR(SaveSignatures(state, partition, captured));
         }
-        failed = false;
       }
-      failed = true;
       ORT_RETURN_IF_ERROR(state.streams.p_->CleanUp(true));
-      failed = false;
       if (pass >= 2 &&
           std::all_of(state.partitions.begin(), state.partitions.end(),
                       [&](const auto& captured) { return !captured || provider.IsGraphCaptured(captured->graph_id); })) {
@@ -225,6 +217,7 @@ struct PartitionedGraphExecution::Impl {
   Status Run(const RunOptions& options, int graph_id, FeedsFetchesManager& manager,
              gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, const logging::Logger& logger) {
     ORT_RETURN_IF(failed, "A previous partitioned CUDA execution failed; recreate the session.");
+    ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
     ORT_RETURN_IF(options.only_execute_path_to_fetches || options.sync_stream != nullptr,
                   "Partitioned CUDA capture does not support partial execution or per-run stream overrides.");
     ORT_RETURN_IF_NOT(options.config_options.GetConfigOrDefault(
@@ -290,13 +283,11 @@ struct PartitionedGraphExecution::Impl {
     }
 
     owner_thread = std::this_thread::get_id();
-    auto invalidate_incomplete_capture = gsl::finally([&]() {
-      if (!state.ready) {
-        failed = true;
-      }
-    });
+    // Any failure after execution begins may leave partially updated outputs or in-place state.
+    failed = true;
     ORT_RETURN_IF_ERROR(Execute(state, options, logger));
     ORT_RETURN_IF_ERROR(state.frame->GetOutputs(fetches));
+    failed = false;
     return Status::OK();
   }
 

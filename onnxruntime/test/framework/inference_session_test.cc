@@ -2089,7 +2089,7 @@ TEST(InferenceSessionTests, PartitionedCudaGraphSelectsWholeSessionForEmptyGraph
   }
 }
 
-static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1) {
+static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1, bool test_termination = false) {
   auto create_provider = [&]() {
     if (plugin_warmup_count >= 0) {
       ConfigOptions config;
@@ -2110,8 +2110,22 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1) {
 #ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
   ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
 #endif
+  RunOptions run_options;
+  RunOptions* terminate_on_replay = nullptr;
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
+  if (test_termination) {
+    options.session_log_severity_level = static_cast<int>(Severity::kINFO);
+    options.user_logging_param = &terminate_on_replay;
+    options.user_logging_function = [](void* param, OrtLoggingLevel, const char*, const char*, const char*,
+                                       const char* message) {
+      auto* active_run = *static_cast<RunOptions**>(param);
+      if (active_run && std::string_view(message).find("Replaying CUDA partition") != std::string_view::npos) {
+        // Inject termination deterministically between the first replay and the following CPU partition.
+        active_run->terminate = true;
+      }
+    };
+  }
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
       kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
@@ -2184,7 +2198,6 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1) {
   OrtValue input;
   CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                        std::vector<int64_t>{3, 2}, std::vector<float>(6, 1.0f), &input);
-  RunOptions run_options;
   const std::array<std::string, 1> input_names{"X"};
   const std::array<std::string, 1> output_names{"Y"};
   std::array<OrtValue, 1> feeds{input};
@@ -2240,6 +2253,23 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1) {
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(other_thread_status, "thread that captured them");
   ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
 
+  if (test_termination) {
+    run_options.terminate = true;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "terminated");
+    run_options.terminate = false;
+    ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+
+    terminate_on_replay = &run_options;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "terminated");
+    ASSERT_TRUE(run_options.terminate);
+    terminate_on_replay = nullptr;
+    run_options.terminate = false;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  }
+
   SessionOptions legacy_options = options;
   ASSERT_STATUS_OK(legacy_options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "0"));
   InferenceSession legacy_session(legacy_options, GetEnvironment());
@@ -2251,6 +2281,91 @@ static void RunPartitionedCudaGraphTest(int plugin_warmup_count = -1) {
 TEST(InferenceSessionTests, PartitionedCudaGraphReexecutesCpuBetweenCudaPartitions) {
   RunPartitionedCudaGraphTest();
 }
+
+TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterPartialTermination) {
+  RunPartitionedCudaGraphTest(-1, true);
+}
+
+#ifndef USE_CUDA_MINIMAL
+TEST(InferenceSessionTests, PartitionedCudaGraphInvalidatesAfterControlInputChanges) {
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.enable_cuda_graph = 1;
+  auto cuda = CudaExecutionProviderWithOptions(&cuda_options);
+  if (!cuda) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto* cuda_ep = cuda.get();
+#ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
+  ASSERT_NE(cuda_ep->GetOrtEp(), nullptr);
+#endif
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnablePartitionedCudaGraph, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsNameBasedLayerAssignment, "cpu(cpu_);gpu(gpu_)"));
+  Model model("partition_control_input", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 13}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  TypeProto type, shape_type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  shape_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  shape_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto& x = graph.GetOrCreateNodeArg("X", &type);
+  auto& shape = graph.GetOrCreateNodeArg("shape", &shape_type);
+  auto& a = graph.GetOrCreateNodeArg("A", &type);
+  auto& b = graph.GetOrCreateNodeArg("B", nullptr);
+  auto& y = graph.GetOrCreateNodeArg("Y", nullptr);
+  graph.AddNode("cpu_prefix", "Neg", "", {&x}, {&a});
+  graph.AddNode("gpu_reshape", "Reshape", "", {&a, &shape}, {&b});
+  graph.AddNode("cpu_suffix", "Neg", "", {&b}, {&y});
+  graph.SetInputs({&x, &shape});
+  graph.SetOutputs({&a, &y});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto bytes = model.ToProto().SerializeAsString();
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    if (node.Name() == "gpu_reshape") {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    } else if (node.Name().find("cpu_") == 0) {
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+    }
+  }
+  const auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue input, shape_input;
+  CreateMLValue<float>(cpu_allocator, {4}, {1.0f, 2.0f, 3.0f, 4.0f}, &input);
+  CreateMLValue<int64_t>(cpu_allocator, {2}, {2, 2}, &shape_input);
+  const std::array<std::string, 2> input_names{"X", "shape"}, output_names{"A", "Y"};
+  const std::array<OrtValue, 2> feeds{input, shape_input};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
+  ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -1.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+
+  input.GetMutable<Tensor>()->MutableData<float>()[0] = 9.0f;
+  auto* shape_data = shape_input.GetMutable<Tensor>()->MutableData<int64_t>();
+  shape_data[0] = 1;
+  shape_data[1] = 4;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "CPU control input");
+  EXPECT_FLOAT_EQ(fetches[0].Get<Tensor>().Data<float>()[0], -9.0f);
+  EXPECT_FLOAT_EQ(fetches[1].Get<Tensor>().Data<float>()[0], 1.0f);
+  shape_data[0] = 2;
+  shape_data[1] = 2;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7"));
+  fetches.clear();
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session.Run(run_options, input_names, feeds, output_names, &fetches), "recreate the session");
+}
+#endif
 
 #ifdef ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP
 TEST(InferenceSessionTests, PartitionedCudaGraphPluginWarmupCounts) {
