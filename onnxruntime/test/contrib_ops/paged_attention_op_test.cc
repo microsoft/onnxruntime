@@ -58,6 +58,7 @@ struct EndToEndCase {
   int num_blocks = 2;
   int max_num_blocks_per_seq = 1;
   float scale = 0.0f;  // 0 means kernel default = 1/sqrt(head_size)
+  bool is_causal = true;
   std::vector<int32_t> cumulative_seqlens_q;
   std::vector<int32_t> past_seqlens;
   std::vector<int32_t> block_table;
@@ -88,18 +89,17 @@ struct IoBindingCase {
   std::string expected_error;
 };
 
-// Softmax with causal masking: masked positions get -inf → 0 after exp.
-// Uses fp32 throughout to establish a reference the fp16 kernel is compared
-// against with a loose tolerance.
-void CausalSoftmax(std::vector<float>& scores, int q_pos) {
+// Masked positions get zero probability. Uses fp32 throughout to establish a
+// reference the fp16 kernel is compared against with a loose tolerance.
+void MaskedSoftmax(std::vector<float>& scores, int valid_key_end) {
   const int len = static_cast<int>(scores.size());
   float max_val = -std::numeric_limits<float>::infinity();
-  for (int i = 0; i <= q_pos && i < len; ++i) {
+  for (int i = 0; i < valid_key_end && i < len; ++i) {
     max_val = std::max(max_val, scores[i]);
   }
   float sum = 0.0f;
   for (int i = 0; i < len; ++i) {
-    if (i > q_pos) {
+    if (i >= valid_key_end) {
       scores[i] = 0.0f;
     } else {
       scores[i] = std::exp(scores[i] - max_val);
@@ -173,7 +173,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
     }
   }
 
-  // 2) For each token, run causal SDPA against the (past + new) K/V window.
+  // 2) For each token, run SDPA against the visible part of the (past + new) K/V window.
   std::vector<float> expected_output_f(c.token_count * hidden_size, 0.0f);
   for (int b = 0; b < c.batch_size; ++b) {
     const int cum_lo = c.cumulative_seqlens_q[b];
@@ -201,10 +201,13 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
       }
     }
 
-    // For each new query token, do causal SDPA.
+    // For each new query token, causal attention stops at that query position.
+    // Non-causal block attention sees the full live request, including later
+    // query tokens from the same submitted block.
     for (int local_tok = 0; local_tok < q_len; ++local_tok) {
       const int t = cum_lo + local_tok;
       const int q_pos = past + local_tok;  // Absolute position in the KV window.
+      const int valid_key_end = c.is_causal ? q_pos + 1 : total_kv_len;
       for (int n_q = 0; n_q < c.num_heads; ++n_q) {
         const int h_kv = n_q / gqa_factor;
 
@@ -219,12 +222,12 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
           }
           scores[s] = dot * scale;
         }
-        CausalSoftmax(scores, q_pos);
+        MaskedSoftmax(scores, valid_key_end);
 
         // out[t, n_q * head_size + d] = sum_s scores[s] * v[s, d]
         for (int d = 0; d < c.head_size; ++d) {
           float acc = 0.0f;
-          for (int s = 0; s <= q_pos && s < total_kv_len; ++s) {
+          for (int s = 0; s < valid_key_end; ++s) {
             const float v = v_window[(h_kv * total_kv_len + s) * c.head_size + d];
             acc += scores[s] * v;
           }
@@ -238,6 +241,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
   test.AddAttribute<int64_t>("num_heads", c.num_heads);
   test.AddAttribute<int64_t>("kv_num_heads", c.kv_num_heads);
   test.AddAttribute<float>("scale", c.scale);
+  test.AddAttribute<int64_t>("is_causal", c.is_causal ? 1 : 0);
   test.AddAttribute<int64_t>("do_rotary", 0);
 
   test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
@@ -2305,6 +2309,59 @@ TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
   c.cumulative_seqlens_q = {0, 32};
   c.past_seqlens = {32};      // nonzero past
   c.block_table = {5, 2, 0};  // non-contiguous physical pages
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_DirectPagedDecode) {
+  EndToEndCase c{};
+  c.token_count = 4;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 4};
+  c.past_seqlens = {4};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_FusedPagedPrefill) {
+  EndToEndCase c{};
+  c.token_count = 32;
+  c.num_heads = 2;
+  c.kv_num_heads = 2;
+  c.head_size = 128;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 32};
+  c.past_seqlens = {0};
+  c.block_table = {0};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_ForcedFallback) {
+  EndToEndCase c{};
+  c.token_count = 64;
+  c.num_heads = 2;
+  c.kv_num_heads = 2;
+  c.head_size = 128;
+  c.block_size = 16;
+  c.num_blocks = 8;
+  c.max_num_blocks_per_seq = 4;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 64};
+  c.past_seqlens = {0};
+  c.block_table = {3, 1, 5, 2};
+  RunEndToEndCaseOnAvailableProviders(c);
+}
+
+TEST(PagedAttention, WebGpu_NonCausal_RaggedSequences) {
+  EndToEndCase c{};
+  c.batch_size = 2;
+  c.token_count = 4;
+  c.num_heads = 2;
+  c.kv_num_heads = 1;
+  c.num_blocks = 3;
+  c.is_causal = false;
+  c.cumulative_seqlens_q = {0, 3, 4};
+  c.past_seqlens = {2, 4};
+  c.block_table = {0, 2};
   RunEndToEndCaseOnAvailableProviders(c);
 }
 

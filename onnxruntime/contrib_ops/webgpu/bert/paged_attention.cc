@@ -455,8 +455,9 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1,
-              "PagedAttention (WebGPU): is_causal=0 is not supported yet.");
+  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
+  ORT_ENFORCE(is_causal_ || local_window_size_ <= 0,
+              "PagedAttention (WebGPU): is_causal=0 with local_window_size > 0 is not supported yet.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   has_explicit_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
@@ -538,6 +539,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                                           has_explicit_scale_,
                                                           /*max_threads_per_block*/ 0));
   parameters.local_window_size = local_window_size_;
+  parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
@@ -1002,7 +1004,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   gqa_params.v_hidden_size = parameters.kv_hidden_size;
   gqa_params.v_head_size = parameters.head_size;
   gqa_params.num_heads = parameters.num_heads;
-  gqa_params.is_unidirectional = true;
+  gqa_params.is_unidirectional = is_causal_;
   gqa_params.past_present_share_buffer = false;
   gqa_params.do_rotary = false;  // Q/K already rotated above.
   gqa_params.scale = parameters.scale;
