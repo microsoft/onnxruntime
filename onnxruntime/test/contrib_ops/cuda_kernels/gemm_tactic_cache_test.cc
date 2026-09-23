@@ -6,8 +6,8 @@
 // manually and only the (de)serialization, TSV parsing, and file round-trip paths
 // are exercised.
 //
-// Run like:
-//  ./onnxruntime_provider_test --gtest_filter=GemmTacticCacheTest.*
+// Built into onnxruntime_providers_cuda_ut (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON); run like:
+//  ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.All
 #if USE_FPA_INTB_GEMM
 #include <gtest/gtest.h>
 
@@ -136,6 +136,23 @@ TEST(GemmTacticCacheTest, TsvEncodeDecodeRoundTrip) {
     EXPECT_EQ(encoded.find('\n'), std::string::npos) << "encoded still has newline: " << s;
     EXPECT_EQ(gc::TsvDecode(encoded), s) << "round-trip failed for: " << s;
   }
+}
+
+TEST(GemmTacticCacheTest, TsvDecodeKeepsMalformedEscapes) {
+  EXPECT_EQ(gc::TsvDecode("%-1"), "%-1");
+  EXPECT_EQ(gc::TsvDecode("% 9"), "% 9");
+  EXPECT_EQ(gc::TsvDecode("%4"), "%4");
+  EXPECT_EQ(gc::TsvDecode("a%41b"), "aAb");
+}
+
+TEST(GemmTacticCacheTest, ResolveFilePathSessionConfig) {
+  const auto sig = MakeSignature("NVIDIA H200", 90);
+  const std::string suffix = ".matmulnbits_fpa_intb.tsv";
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "", sig),
+            "/tmp/dir/NVIDIA_H200_sm90" + suffix);
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("", "/tmp/model", sig), "/tmp/model" + suffix);
+  // A prefix wins over a directory.
+  EXPECT_EQ(gc::MatMulNBitsTacticCache::ResolveFilePath("/tmp/dir", "/tmp/model", sig), "/tmp/model" + suffix);
 }
 
 TEST(GemmTacticCacheTest, ConfigColumnsRoundTripSm80) {

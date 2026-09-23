@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -74,8 +75,9 @@ bool ParseInt(const std::string& s, int& value) {
   }
   errno = 0;
   char* end = nullptr;
-  long parsed = std::strtol(s.c_str(), &end, 10);
-  if (end == s.c_str() || *end != '\0' || errno != 0) {
+  const long long parsed = std::strtoll(s.c_str(), &end, 10);
+  if (end == s.c_str() || *end != '\0' || errno != 0 ||
+      parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max()) {
     return false;
   }
   value = static_cast<int>(parsed);
@@ -207,15 +209,12 @@ std::string TsvDecode(const std::string& s) {
   std::string out;
   out.reserve(s.size());
   for (size_t i = 0; i < s.size(); ++i) {
-    if (s[i] == '%' && i + 2 < s.size()) {
-      auto hex = s.substr(i + 1, 2);
-      char* end = nullptr;
-      long code = std::strtol(hex.c_str(), &end, 16);
-      if (end == hex.c_str() + 2) {
-        out.push_back(static_cast<char>(code));
-        i += 2;
-        continue;
-      }
+    if (s[i] == '%' && i + 2 < s.size() &&
+        std::isxdigit(static_cast<unsigned char>(s[i + 1])) &&
+        std::isxdigit(static_cast<unsigned char>(s[i + 2]))) {
+      out.push_back(static_cast<char>(std::stoi(s.substr(i + 1, 2), nullptr, 16)));
+      i += 2;
+      continue;
     }
     out.push_back(s[i]);
   }
@@ -223,18 +222,21 @@ std::string TsvDecode(const std::string& s) {
 }
 
 HardwareSignature HardwareSignature::Compute() {
-  HardwareSignature sig;
-
   int device = 0;
   if (cudaGetDevice(&device) == cudaSuccess) {
     cudaDeviceProp prop{};
     if (cudaGetDeviceProperties(&prop, device) == cudaSuccess) {
-      sig.device_name = prop.name;
-      sig.sm = prop.major * 10 + prop.minor;
-      sig.multiprocessor_count = prop.multiProcessorCount;
+      return FromDevice(prop.name, prop.major * 10 + prop.minor, prop.multiProcessorCount);
     }
   }
+  return FromDevice(std::string(), 0, 0);
+}
 
+HardwareSignature HardwareSignature::FromDevice(std::string device_name, int sm, int multiprocessor_count) {
+  HardwareSignature sig;
+  sig.device_name = std::move(device_name);
+  sig.sm = sm;
+  sig.multiprocessor_count = multiprocessor_count;
   sig.cuda_runtime = CUDART_VERSION;
   int driver = 0;
   if (cudaDriverGetVersion(&driver) == cudaSuccess) {
@@ -377,32 +379,35 @@ const std::vector<std::string>& MatMulNBitsColumnNames() {
 MatMulNBitsTacticCache::MatMulNBitsTacticCache(std::string file_path, HardwareSignature signature)
     : file_path_(std::move(file_path)), signature_(std::move(signature)) {}
 
-std::shared_ptr<MatMulNBitsTacticCache> MatMulNBitsTacticCache::MaybeCreate(
-    const std::string& config_dir, const std::string& config_prefix) {
-  // Session-config values take precedence; fall back to the environment variables.
+std::string MatMulNBitsTacticCache::ResolveFilePath(const std::string& config_dir, const std::string& config_prefix,
+                                                    const HardwareSignature& signature) {
   std::string prefix = config_prefix;
-  if (prefix.empty()) {
-    prefix = ParseEnvironmentVariableWithDefault<std::string>(kEnvCachePrefix, "");
-  }
   std::string dir = config_dir;
-  if (dir.empty()) {
+  // Any session-config value overrides both env vars, so an env prefix cannot shadow a session dir.
+  if (prefix.empty() && dir.empty()) {
+    prefix = ParseEnvironmentVariableWithDefault<std::string>(kEnvCachePrefix, "");
     dir = ParseEnvironmentVariableWithDefault<std::string>(kEnvCacheDir, "");
   }
 
-  HardwareSignature signature = HardwareSignature::Compute();
-
-  std::string file_path;
   const std::string suffix = std::string(".") + kTableMatMulNBits + ".tsv";
   if (!prefix.empty()) {
-    file_path = prefix + suffix;
-  } else if (!dir.empty()) {
-    file_path = dir + "/" + signature.FilePrefixToken() + suffix;
-  } else {
-    // Persistence disabled: keep today's in-process-only behavior.
+    return prefix + suffix;
+  }
+  if (!dir.empty()) {
+    return dir + "/" + signature.FilePrefixToken() + suffix;
+  }
+  return std::string();
+}
+
+std::shared_ptr<MatMulNBitsTacticCache> MatMulNBitsTacticCache::MaybeCreate(
+    const std::string& config_dir, const std::string& config_prefix) {
+  HardwareSignature signature = HardwareSignature::Compute();
+  std::string file_path = ResolveFilePath(config_dir, config_prefix, signature);
+  if (file_path.empty()) {
     return nullptr;
   }
 
-  auto cache = std::make_shared<MatMulNBitsTacticCache>(file_path, std::move(signature));
+  auto cache = std::make_shared<MatMulNBitsTacticCache>(std::move(file_path), std::move(signature));
   auto status = cache->Load();
   ORT_UNUSED_PARAMETER(status);  // A missing/mismatched file simply yields an empty cache.
   return cache;
