@@ -186,7 +186,7 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  if(WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
+  if(WIN32 AND NOT onnxruntime_USE_1DS_TELEMETRY)
     target_compile_definitions(onnxruntime_common PUBLIC USE_WINDOWS_TELEMETRY)
     set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
         "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")

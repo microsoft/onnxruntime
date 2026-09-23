@@ -170,19 +170,36 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-# On Windows, 1DS is the default telemetry backend. This option preserves the Microsoft-internal
-# TraceLogging backend for forks that provide TraceLoggingConfigPrivate.h.
-option(onnxruntime_USE_WINDOWS_TELEMETRY "Use Windows TraceLogging instead of 1DS telemetry" OFF)
-if(onnxruntime_USE_WINDOWS_TELEMETRY AND NOT WIN32)
-  message(FATAL_ERROR "onnxruntime_USE_WINDOWS_TELEMETRY is only supported on Windows")
+# AUTO preserves the historical direct-CMake behavior: USE_TELEMETRY=ON selects TraceLogging on
+# Windows and 1DS elsewhere. Repository build scripts pass 1DS explicitly.
+set(onnxruntime_TELEMETRY_BACKEND "AUTO" CACHE STRING "Telemetry backend: AUTO, 1DS, or WINDOWS")
+set_property(CACHE onnxruntime_TELEMETRY_BACKEND PROPERTY STRINGS AUTO 1DS WINDOWS)
+string(TOUPPER "${onnxruntime_TELEMETRY_BACKEND}" onnxruntime_TELEMETRY_BACKEND)
+if(NOT onnxruntime_TELEMETRY_BACKEND MATCHES "^(AUTO|1DS|WINDOWS)$")
+  message(FATAL_ERROR
+    "Invalid onnxruntime_TELEMETRY_BACKEND='${onnxruntime_TELEMETRY_BACKEND}'. "
+    "Expected AUTO, 1DS, or WINDOWS.")
 endif()
+
+# Deprecated compatibility alias for callers that adopted this option before the backend selector.
+option(onnxruntime_USE_WINDOWS_TELEMETRY "Use Windows TraceLogging instead of 1DS telemetry" OFF)
 if(onnxruntime_USE_WINDOWS_TELEMETRY)
+  set(onnxruntime_TELEMETRY_BACKEND "WINDOWS")
+endif()
+
+if(onnxruntime_TELEMETRY_BACKEND STREQUAL "WINDOWS")
+  if(NOT WIN32)
+    message(FATAL_ERROR "The WINDOWS telemetry backend is only supported on Windows")
+  endif()
   set(onnxruntime_USE_TELEMETRY ON CACHE BOOL "Build with Telemetry" FORCE)
 endif()
-set(onnxruntime_USE_1DS_TELEMETRY
-    "${onnxruntime_USE_TELEMETRY}")
-if(WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
-  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+
+set(onnxruntime_USE_1DS_TELEMETRY OFF)
+if(onnxruntime_USE_TELEMETRY)
+  if(onnxruntime_TELEMETRY_BACKEND STREQUAL "1DS" OR
+     (onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO" AND NOT WIN32))
+    set(onnxruntime_USE_1DS_TELEMETRY ON)
+  endif()
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
   message(WARNING "1DS telemetry is not supported for UWP builds. Telemetry will be disabled.")

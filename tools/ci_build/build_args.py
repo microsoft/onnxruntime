@@ -892,6 +892,12 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
     )
     telemetry_group.add_argument(
+        "--use_telemetry",
+        dest="use_telemetry_legacy",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    telemetry_group.add_argument(
         "--use_windows_telemetry",
         action="store_true",
         help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
@@ -1035,6 +1041,20 @@ def parse_arguments() -> argparse.Namespace:
     # Treat --build_wasm_static_lib as implying --build_wasm
     if args.build_wasm_static_lib:
         args.build_wasm = True
+
+    if args.use_telemetry_legacy:
+        warnings.warn(
+            "--use_telemetry is deprecated because telemetry is enabled by default. "
+            "On Windows it retains its historical TraceLogging behavior; use "
+            "--use_windows_telemetry to request that backend explicitly.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        if not target_supports_telemetry(args):
+            parser.error("--use_telemetry requires a telemetry-capable target")
+        args.use_telemetry = True
+        if is_windows():
+            args.use_windows_telemetry = True
 
     if not target_supports_telemetry(args):
         args.use_telemetry = False

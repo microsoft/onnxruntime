@@ -138,7 +138,7 @@ std::string GetToken() {
   constexpr size_t klen = sizeof(kXorKey) - 1;
 #ifdef _WIN32
   std::string decoded = DecodeBase64(
-      "fllXSmJHWBYMX1cqWldIYU0KTA0IVnpWD0lkRloSWwhIf11ZQWsQXhZEXFIrX0NMYE1aWVAIAXxDDE5hF11DX1lQd1pdVWVFWUM=");
+      "fllXSmJHWBYMX1cqWldIYU0KTA0IVnpWD0lkRloSWwhILF5WGmBDDUdEC1csC0NMZhZYWVEPBH9DWEhlR15MCl1UfgwPVWVDX0U=");
 #else
   std::string decoded = DecodeBase64(
       "eg8KQWRGDBBdD1YuWl9JahRaTFhZVX4NDUhgRF9MXlhIegxYHGpFXxJEXVd/V0NMa0FXWVEOA3hDCxw3RFhCUF8Edl0NVWRMWEM=");

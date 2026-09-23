@@ -463,9 +463,11 @@ def generate_build_tree(
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
 
-    # 1DS is the default telemetry backend on all supported native platforms. Microsoft-internal
-    # Windows forks can retain the TraceLogging backend explicitly.
+    # Repository builds select a backend explicitly. This lets raw CMake retain the historical
+    # Windows USE_TELEMETRY=ON behavior for downstream forks while default build.py invocations use 1DS.
+    telemetry_backend = "WINDOWS" if args.use_windows_telemetry else "1DS"
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
+    cmake_args.append("-Donnxruntime_TELEMETRY_BACKEND=" + telemetry_backend)
     cmake_args.append("-Donnxruntime_USE_WINDOWS_TELEMETRY=" + ("ON" if args.use_windows_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
