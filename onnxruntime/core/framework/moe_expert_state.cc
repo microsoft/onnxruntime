@@ -161,6 +161,17 @@ Status MoeExpertState::GetExpertId(const OpKernel* kernel, int expert_id, size_t
   return Status::OK();
 }
 
+InlinedVector<MoeExpertState::ExpertStat> MoeExpertState::GetExpertStats() const {
+  InlinedVector<ExpertStat> stats;
+  stats.reserve(counters_.size());
+  for (const auto& [kernel, state] : kernels_) {
+    for (size_t expert = 0; expert < state.experts.count; ++expert) {
+      stats.push_back({kernel, expert, counters_[state.experts.begin + expert]});
+    }
+  }
+  return stats;
+}
+
 MoeExpertState::Snapshot MoeExpertState::GetSnapshot() const {
   Snapshot snapshot;
   for (const auto& [key, node] : nodes_) {

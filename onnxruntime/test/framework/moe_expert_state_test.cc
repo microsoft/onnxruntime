@@ -102,6 +102,22 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
   EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
+
+  const auto stats = state.GetExpertStats();
+  ASSERT_EQ(stats.size(), 9U);
+  for (const auto& stat : stats) {
+    if (stat.kernel == kernels_[0]) {
+      EXPECT_LT(stat.expert_id, 3U);
+      EXPECT_DOUBLE_EQ(stat.popularity, stat.expert_id == 1 ? 0.0 : 0.19);
+    } else if (stat.kernel == kernels_[1]) {
+      EXPECT_LT(stat.expert_id, 2U);
+      EXPECT_DOUBLE_EQ(stat.popularity, 0.0);
+    } else {
+      ASSERT_EQ(stat.kernel, kernels_[2]);
+      EXPECT_LT(stat.expert_id, 4U);
+      EXPECT_DOUBLE_EQ(stat.popularity, (stat.expert_id == 0 || stat.expert_id == 2) ? 0.1 : 0.0);
+    }
+  }
 }
 
 TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {

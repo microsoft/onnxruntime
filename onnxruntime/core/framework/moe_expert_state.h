@@ -69,6 +69,17 @@ class MoeExpertState {
   Status GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const;
   // Call only while no Run is active.
   Snapshot GetSnapshot() const;
+
+  // One entry per registered (kernel, local expert index). expert_id is local to that kernel,
+  // matching RegisterNode/GetExpertId, not a global counter index. Order is unspecified.
+  // Call only while no Run is active.
+  struct ExpertStat {
+    const OpKernel* kernel;
+    size_t expert_id;
+    double popularity;
+  };
+  InlinedVector<ExpertStat> GetExpertStats() const;
+
   size_t TotalExpertCount() const noexcept { return counters_.size(); }
 
  private:
