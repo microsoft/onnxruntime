@@ -331,6 +331,69 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
                                       "Null string data entry for initializer");
 }
 
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsMismatchedStringDataSize) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{1});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("string_0"),
+      builder.CreateString("string_1"),
+  });
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::STRING);
+  tensor_builder.add_string_data(string_data);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options),
+                                      "Initializer string data size mismatch");
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(FlatbufferUtilsTest, LoadSparseInitializerRejectsStringValues) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("sparse_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{0});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("unexpected"),
+  });
+
+  fbs::TensorBuilder values_builder(builder);
+  values_builder.add_name(name);
+  values_builder.add_dims(dims);
+  values_builder.add_data_type(fbs::TensorDataType::STRING);
+  values_builder.add_string_data(string_data);
+  auto values = values_builder.Finish();
+
+  auto raw_data = builder.CreateVector(std::vector<uint8_t>{});
+  fbs::TensorBuilder indices_builder(builder);
+  indices_builder.add_dims(dims);
+  indices_builder.add_data_type(fbs::TensorDataType::INT64);
+  indices_builder.add_raw_data(raw_data);
+  auto indices = indices_builder.Finish();
+
+  fbs::SparseTensorBuilder sparse_builder(builder);
+  sparse_builder.add_values(values);
+  sparse_builder.add_indices(indices);
+  sparse_builder.add_dims(dims);
+  builder.Finish(sparse_builder.Finish());
+
+  const auto* fbs_sparse_tensor = flatbuffers::GetRoot<fbs::SparseTensor>(builder.GetBufferPointer());
+  ONNX_NAMESPACE::SparseTensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, initializer, options),
+      "Unsupported sparse tensor data type");
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithoutDims) {
   flatbuffers::FlatBufferBuilder builder(256);
 

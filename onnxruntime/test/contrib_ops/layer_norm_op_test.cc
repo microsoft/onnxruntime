@@ -146,7 +146,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16Input) {
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
@@ -160,7 +160,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Float16ScaleOutput) {
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Float16InputScaleOutput) {
@@ -218,7 +218,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16Input) {
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-            kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+            kOpenVINOExecutionProvider, kNnapiExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
@@ -233,7 +233,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast) {
@@ -853,6 +853,20 @@ TEST(LayerNormTest, LayerNorm_ZeroVariance) {
   test.AddInput<float>("bias", {4}, {0.5f, 0.5f, 0.5f, 0.5f});
   test.AddOutput<float>("Y", dims, {0.5f, 0.5f, 0.5f, 0.5f});
   test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm_AxisExceedsRank) {
+  for (const int64_t axis : {2LL, 0xFFFFFFFFLL}) {
+    SCOPED_TRACE(MakeString("axis: ", axis));
+    OpTester test("LayerNormalization", 17);
+    test.AddAttribute("axis", axis);
+    test.AddInput<float>("X", {1, 2}, {1.0f, 2.0f});
+    test.AddInput<float>("Scale", {2}, {1.0f, 1.0f});
+    test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+    test.AddOutput<float>("Mean", {1, 1}, {0.0f});
+
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Unexpected axis value");
+  }
 }
 
 // Edge case: constant weights (as in issue #20429)

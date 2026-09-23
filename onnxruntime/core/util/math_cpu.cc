@@ -899,11 +899,31 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_hw = output_h * output_w;
   const int64_t hw = height * width;
   const int64_t hwc = hw * channels;
-  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
   if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 && pad_t == 0 && pad_b == 0) {
+    if (kernel_h == 2 && kernel_w == 2 && stride_h == 2 && stride_w == 2 &&
+        height % 2 == 0 && width % 2 == 0) {
+      // Each output has one input value. Write adjacent values together,
+      // without an output read or a separate zero fill.
+      for (int64_t c = 0; c < channels; ++c) {
+        for (int64_t h = 0; h < output_h; ++h) {
+          const float* src = data_col + c * 4 * output_hw + h * output_w;
+          float* dst = data_im + c * hw + h * 2 * width;
+          for (int64_t w = 0; w < output_w; ++w) {
+            // Keep the addition to positive zero for signed-zero behavior.
+            dst[2 * w] = 0.0f + src[w];
+            dst[2 * w + 1] = 0.0f + src[output_hw + w];
+            dst[width + 2 * w] = 0.0f + src[2 * output_hw + w];
+            dst[width + 2 * w + 1] = 0.0f + src[3 * output_hw + w];
+          }
+        }
+      }
+      return;
+    }
+
+    Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
     // Src (column) data cursor
     auto* src = data_col;
     // End of dst (image) data
@@ -941,6 +961,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   }
 
   // Fallback
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Src (col data) cursor
   auto* src = data_col;
@@ -956,6 +977,18 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
       int64_t w_offset = -pad_l;
       int64_t w_offset_end = w_offset + kernel_w * dilation_w;
       for (; w_offset < w_offset_end; w_offset += dilation_w) {
+        // The valid source columns are the same for each row of this kernel element.
+        const int64_t first_col = w_offset < 0 ? std::min(output_w, -(w_offset + 1) / stride_w + 1) : 0;
+        if (first_col == output_w) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t first_w = w_offset + first_col * stride_w;
+        if (first_w >= width) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t count = std::min(output_w - first_col, (width - 1 - first_w) / stride_w + 1);
         // End of src channel data
         auto* src_ce = src + output_hw;
         // Dst row offset
@@ -963,14 +996,11 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
           // End of src row data
           auto* src_we = src + output_w;
           if (is_a_ge_zero_and_a_lt_b(h, hw)) {
-            for (int64_t w = w_offset; src < src_we; src++, w += stride_w) {
-              if (is_a_ge_zero_and_a_lt_b(w, width)) {
-                dst[h + w] += *src;
-              }
+            for (int64_t col = 0; col < count; ++col) {
+              dst[h + first_w + col * stride_w] += src[first_col + col];
             }
-          } else {
-            src = src_we;
           }
+          src = src_we;
         }
       }
     }
