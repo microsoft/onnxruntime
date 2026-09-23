@@ -276,8 +276,6 @@ class Environment {
   // providing a CPU allocator.
   std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;
 
-  using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection
   // added to ep_libraries

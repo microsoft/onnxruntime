@@ -44,8 +44,8 @@ Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) c
     streams.push_back(reinterpret_cast<OrtSyncStream*>(src_dst_pairs[i].src_stream));
   }
 
-  auto* status = impl_.CopyTensors(&impl_, src_values.data(), dst_values.data(), streams.data(),
-                                   src_dst_pairs.size());
+  auto* status = impl_->CopyTensors(impl_.get(), src_values.data(), dst_values.data(), streams.data(),
+                                    src_dst_pairs.size());
 
   return ToStatusAndRelease(status);
 }
@@ -59,7 +59,7 @@ Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor
   const OrtValue* src_ptr = &src;
   OrtValue* dst_ptr = &dst;
   OrtSyncStream* stream_ptr = nullptr;  // static_cast<OrtSyncStream*>(stream);
-  auto* status = impl_.CopyTensors(&impl_, &src_ptr, &dst_ptr, &stream_ptr, 1);
+  auto* status = impl_->CopyTensors(impl_.get(), &src_ptr, &dst_ptr, &stream_ptr, 1);
 
   return ToStatusAndRelease(status);
 }

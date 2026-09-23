@@ -11,6 +11,7 @@
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
+#include "ep_test_hooks.h"
 
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -375,6 +376,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* t
                                                                  OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *data_transfer = factory.data_transfer_impl_.get();
+
+  if (ShouldFailCreateDataTransfer()) {
+    return factory.ort_api.CreateStatus(ORT_FAIL, "injected data transfer creation failure");
+  }
 
   return nullptr;
 }

@@ -18,6 +18,7 @@
 #include "core/framework/config_options.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
@@ -1405,6 +1406,7 @@ static FakeArenaOrtAllocator MakeFakeArenaAllocator(OrtMemoryInfo* mem_info, boo
 
 // Namespace-level storage so C function pointers can access the fake allocator.
 static OrtAllocator* g_fake_allocator_for_test = nullptr;
+static int g_fake_allocator_release_count = 0;
 
 static OrtStatus* ORT_API_CALL FakeCreateAllocator(OrtEp*, const OrtMemoryInfo*,
                                                    OrtAllocator** out) noexcept {
@@ -1412,8 +1414,30 @@ static OrtStatus* ORT_API_CALL FakeCreateAllocator(OrtEp*, const OrtMemoryInfo*,
   return nullptr;
 }
 
+static OrtStatus* ORT_API_CALL FakeCreateAllocatorWithError(OrtEp*, const OrtMemoryInfo*,
+                                                            OrtAllocator** out) noexcept {
+  *out = g_fake_allocator_for_test;
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "injected allocator creation failure");
+}
+
+static OrtStatus* ORT_API_CALL FakeCreateNullAllocator(OrtEp*, const OrtMemoryInfo*,
+                                                       OrtAllocator** out) noexcept {
+  *out = nullptr;
+  return nullptr;
+}
+
+static OrtStatus* ORT_API_CALL UnexpectedFactoryCreateAllocator(OrtEpFactory*, const OrtMemoryInfo*,
+                                                                const OrtKeyValuePairs*, OrtAllocator** out) noexcept {
+  *out = nullptr;
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "Unexpected call to OrtEpFactory::CreateAllocator");
+}
+
 static void ORT_API_CALL FakeReleaseAllocator(OrtEpFactory*, OrtAllocator*) noexcept {
   // No-op: tests own the fake allocator lifetime.
+}
+
+static void ORT_API_CALL FakeReleaseAllocatorCounting(OrtEpFactory*, OrtAllocator*) noexcept {
+  ++g_fake_allocator_release_count;
 }
 
 }  // namespace
@@ -1436,6 +1460,7 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ShrinkCapableAllocat
 
   g_fake_allocator_for_test = fake_alloc_ptr;
   ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.CreateAllocator = UnexpectedFactoryCreateAllocator;
   test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
 
   auto allocators = ep->CreatePreferredAllocators();
@@ -1468,6 +1493,7 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_NonShrinkAllocatorNo
 
   g_fake_allocator_for_test = fake_alloc_ptr;
   ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.CreateAllocator = UnexpectedFactoryCreateAllocator;
   test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocator;
 
   auto allocators = ep->CreatePreferredAllocators();
@@ -1476,6 +1502,74 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_NonShrinkAllocatorNo
   // Without Shrink, the allocator should NOT be exposed as IArena.
   EXPECT_EQ(allocators[0]->AsArena(), nullptr)
       << "Non-Shrink allocator must not be exposed as IArena";
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ReleasesReturnedAllocatorOnError) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto fake_allocator = MakeFakeArenaAllocator(ort_memory_info.get());
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = &fake_allocator;
+  g_fake_allocator_release_count = 0;
+  ort_ep->CreateAllocator = FakeCreateAllocatorWithError;
+  test_plugin_ep::g_test_ort_ep_factory.CreateAllocator = UnexpectedFactoryCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocatorCounting;
+
+  try {
+    static_cast<void>(ep->CreatePreferredAllocators());
+    FAIL() << "Expected allocator creation to fail";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_THAT(ex.what(), ::testing::HasSubstr("injected allocator creation failure"));
+  }
+  EXPECT_EQ(g_fake_allocator_release_count, 1);
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_AllowsNullAllocator) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_release_count = 0;
+  ort_ep->CreateAllocator = FakeCreateNullAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.CreateAllocator = UnexpectedFactoryCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocatorCounting;
+
+  EXPECT_TRUE(ep->CreatePreferredAllocators().empty());
+  EXPECT_EQ(g_fake_allocator_release_count, 0);
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_RejectsAllocatorWithNullMemoryInfo) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto fake_allocator = MakeFakeArenaAllocator(nullptr);
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ort_memory_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+
+  g_fake_allocator_for_test = &fake_allocator;
+  g_fake_allocator_release_count = 0;
+  ort_ep->CreateAllocator = FakeCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.CreateAllocator = UnexpectedFactoryCreateAllocator;
+  test_plugin_ep::g_test_ort_ep_factory.ReleaseAllocator = FakeReleaseAllocatorCounting;
+
+  try {
+    static_cast<void>(ep->CreatePreferredAllocators());
+    FAIL() << "Expected allocator validation to fail";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_THAT(ex.what(), ::testing::HasSubstr("OrtEp returned an allocator with null memory info."));
+  }
+  EXPECT_EQ(g_fake_allocator_release_count, 1);
 }
 
 TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
@@ -1861,5 +1955,67 @@ TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback)
 
   ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
 }
+
+TEST(PluginDataTransferTest, OwnsAndReleasesImplementation) {
+  struct TestDataTransferImpl : OrtDataTransferImpl {
+    explicit TestDataTransferImpl(size_t& release_count) : release_count{release_count} {
+      Release = [](OrtDataTransferImpl* this_ptr) noexcept {
+        auto* impl = static_cast<TestDataTransferImpl*>(this_ptr);
+        ++impl->release_count;
+        delete impl;
+      };
+      CanCopy = [](const OrtDataTransferImpl*, const OrtMemoryDevice*, const OrtMemoryDevice*) noexcept {
+        return false;
+      };
+      CopyTensors = [](OrtDataTransferImpl*, const OrtValue**, OrtValue**, OrtSyncStream**, size_t) noexcept {
+        return static_cast<OrtStatus*>(nullptr);
+      };
+    }
+
+    size_t& release_count;
+  };
+
+  size_t release_count = 0;
+  {
+    plugin_ep::DataTransfer data_transfer{
+        plugin_ep::OrtDataTransferImplPtr{new TestDataTransferImpl{release_count}}};
+  }
+
+  EXPECT_EQ(release_count, 1u);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(PluginDataTransferTest, RejectsImplementationWithMissingRequiredFunction) {
+  auto make_data_transfer_impl = []() {
+    OrtDataTransferImpl impl{};
+    impl.Release = [](OrtDataTransferImpl*) noexcept {};
+    impl.CanCopy = [](const OrtDataTransferImpl*, const OrtMemoryDevice*, const OrtMemoryDevice*) noexcept {
+      return false;
+    };
+    impl.CopyTensors = [](OrtDataTransferImpl*, const OrtValue**, OrtValue**, OrtSyncStream**, size_t) noexcept {
+      return static_cast<OrtStatus*>(nullptr);
+    };
+    return impl;
+  };
+
+  {
+    auto impl = make_data_transfer_impl();
+    impl.Release = nullptr;
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+  }
+
+  {
+    auto impl = make_data_transfer_impl();
+    impl.CanCopy = nullptr;
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+  }
+
+  {
+    auto impl = make_data_transfer_impl();
+    impl.CopyTensors = nullptr;
+    EXPECT_THROW(plugin_ep::DataTransfer{plugin_ep::OrtDataTransferImplPtr{&impl}}, OnnxRuntimeException);
+  }
+}
+#endif
 
 }  // namespace onnxruntime::test

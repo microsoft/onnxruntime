@@ -13,7 +13,7 @@ Status EpLibraryStaticPlugin::Load() {
   ORT_TRY {
     std::lock_guard<std::mutex> lock{mutex_};
     if (factories_.empty()) {
-      status = ep_library_plugin_utils::CreateFactories(create_fn_, registration_name_, factories_);
+      status = ep_library_plugin_utils::CreateFactories(create_fn_, release_fn_, registration_name_, factories_);
     }
   }
   ORT_CATCH(const std::exception& ex) {
@@ -25,20 +25,13 @@ Status EpLibraryStaticPlugin::Load() {
     });
   }
 
-  // Release anything that was created before the failure so a partial load does not leave the library
-  // half-initialized. There is no library handle to release.
-  if (!status.IsOK()) {
-    std::lock_guard<std::mutex> lock{mutex_};
-    ep_library_plugin_utils::ReleaseFactories(release_fn_, factories_, registration_name_);
-  }
-
   return status;
 }
 
 Status EpLibraryStaticPlugin::Unload() {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  ep_library_plugin_utils::ReleaseFactories(release_fn_, factories_, registration_name_);
+  factories_.clear();
 
   return Status::OK();
 }

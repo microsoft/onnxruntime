@@ -58,9 +58,11 @@ flowchart LR
 ### Failure handling
 
 `EpLibraryStaticPlugin` releases factories created before `CreateEpFactories` reports a failure. Existing
-`Environment::RegisterExecutionProviderLibrary` diagnostics cover duplicate names and factory or device errors. If
-automatic registration fails, `OrtEnv::GetOrCreateInstance` unpublishes and destroys the partial singleton before
-returning the error. Other threads therefore cannot observe incomplete static registration.
+`Environment::RegisterExecutionProviderLibrary` diagnostics cover duplicate names and factory or device errors.
+Registration stages factories, devices, allocators, and data transfers and rolls back dependent objects before
+releasing their factory on failure. If automatic registration fails, `OrtEnv::GetOrCreateInstance` unpublishes and
+destroys the partial singleton before returning the error. Other threads therefore cannot observe incomplete static
+registration.
 
 ## Decisions
 

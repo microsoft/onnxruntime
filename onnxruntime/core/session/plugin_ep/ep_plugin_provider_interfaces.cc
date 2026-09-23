@@ -25,6 +25,7 @@
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/plugin_ep/ep_allocator_utils.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
@@ -861,16 +862,17 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
 
   if (ep_factory_.CreateDataTransfer != nullptr) {
     OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+    plugin_ep::OrtDataTransferImplPtr owned_impl{data_transfer_impl};
     if (status != nullptr) {
       ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
     }
+
+    if (owned_impl != nullptr) {
+      return std::make_unique<plugin_ep::DataTransfer>(std::move(owned_impl));
+    }
   }
 
-  if (data_transfer_impl == nullptr) {
-    return {};
-  }
-
-  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  return {};
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
@@ -879,48 +881,19 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   const OrtKeyValuePairs* allocator_options = session_arena_options_ ? &*session_arena_options_ : nullptr;
 
-  for (const auto* memory_info : allocator_mem_infos_) {
-    OrtAllocator* ort_allocator_ptr = nullptr;
+  auto* ep_factory = &ep_factory_;
 
+  for (const auto* memory_info : allocator_mem_infos_) {
     if (!ort_ep_->CreateAllocator && !ep_factory_.CreateAllocator) {
       ORT_THROW("The OrtEpDevice requires the EP library to implement an allocator, but none were found.");
     }
 
-    // prefer OrtEp function if available, otherwise fall back to using the OrtEpFactory implementation.
-    OrtStatus* ort_status = ort_ep_->CreateAllocator
-                                ? ort_ep_->CreateAllocator(ort_ep_.get(), memory_info, &ort_allocator_ptr)
-                                : ep_factory_.CreateAllocator(&ep_factory_, memory_info, allocator_options,
-                                                              &ort_allocator_ptr);
-
-    // throw or log? start with throw
-    if (ort_status != nullptr) {
-      ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
-    }
-
-    if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
-      ORT_THROW(
-          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
-          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
-          "EP library should be opaque to ORT");
-    }
-
-    auto* ep_factory = &ep_factory_;
-    auto ort_allocator = OrtAllocatorUniquePtr(
-        ort_allocator_ptr,
-        [ep_factory](OrtAllocator* allocator) {
-          ep_factory->ReleaseAllocator(ep_factory, allocator);
-        });
-
-    // Use the arena wrapper when the allocator supports Shrink(), matching
-    // the logic in Environment::CreateSharedAllocatorImpl. This ensures
-    // per-session plugin arenas are visible to ShrinkMemoryArenas.
     AllocatorPtr alloc_ptr;
-    if (ort_allocator->version >= 25 && ort_allocator->Shrink != nullptr) {
-      alloc_ptr = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
-    } else {
-      alloc_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+    ORT_THROW_IF_ERROR(ep_allocator_utils::CreateAndWrapEpAllocator(ort_ep_.get(), *ep_factory, *memory_info,
+                                                                    allocator_options, alloc_ptr));
+    if (alloc_ptr != nullptr) {
+      allocators.push_back(std::move(alloc_ptr));
     }
-    allocators.push_back(std::move(alloc_ptr));
   }
 
   return allocators;

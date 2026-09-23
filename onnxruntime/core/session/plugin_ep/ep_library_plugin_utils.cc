@@ -3,64 +3,72 @@
 
 #include "core/session/plugin_ep/ep_library_plugin_utils.h"
 
+#include <array>
+#include <iterator>
+
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/error_code_helper.h"
 
 namespace onnxruntime {
 namespace ep_library_plugin_utils {
 
-Status CreateFactories(CreateEpApiFactoriesFn create_fn, const std::string& registration_name,
-                       std::vector<OrtEpFactory*>& factories) {
-  // allocate buffer for EP to add factories to. library can add up to 4 factories.
-  std::vector<OrtEpFactory*> new_factories{4, nullptr};
-
-  size_t num_factories = 0;
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(create_fn(registration_name.c_str(), OrtGetApiBase(),
-                                                   logging::LoggingManager::DefaultLogger().ToExternal(),
-                                                   new_factories.data(), new_factories.size(), &num_factories)));
-
-  factories.reserve(factories.size() + num_factories);
-  for (size_t i = 0; i < num_factories; ++i) {
-    factories.push_back(new_factories[i]);
-  }
-
-  return Status::OK();
-}
-
-void ReleaseFactories(ReleaseEpApiFactoryFn release_fn, std::vector<OrtEpFactory*>& factories,
-                      std::string_view library_description) {
-  if (factories.empty()) {
+void OrtEpFactoryDeleter::operator()(OrtEpFactory* factory) const noexcept {
+  if (factory == nullptr) {
     return;
   }
 
-  try {
-    for (size_t idx = 0, end = factories.size(); idx < end; ++idx) {
-      auto* factory = factories[idx];
-      if (factory == nullptr) {
-        continue;
-      }
+  auto status = ToStatusAndRelease(release_fn(factory));
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed with error: " << status.ErrorMessage();
+  }
+}
 
-      auto status = ToStatusAndRelease(release_fn(factory));
-      if (!status.IsOK()) {
-        // log it and treat it as released
-        LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_description << " with error: "
-                            << status.ErrorMessage();
-      }
+Status CreateFactories(CreateEpApiFactoriesFn create_fn, ReleaseEpApiFactoryFn release_fn,
+                       const std::string& registration_name,
+                       std::vector<OrtEpFactoryUniquePtr>& factories) {
+  constexpr size_t kMaxFactories = 4;
+  std::array<OrtEpFactory*, kMaxFactories> raw_factories{};
+  std::array<OrtEpFactoryUniquePtr, kMaxFactories> new_factories{};
 
-      factories[idx] = nullptr;  // clear the pointer in case there's a failure before all are released
+  // Make adoption non-throwing before provider code transfers any ownership to us.
+  const auto adopt_factories = [&]() noexcept {
+    for (size_t i = 0; i < raw_factories.size(); ++i) {
+      if (raw_factories[i] != nullptr) {
+        new_factories[i] = OrtEpFactoryUniquePtr{raw_factories[i], OrtEpFactoryDeleter{release_fn}};
+        raw_factories[i] = nullptr;
+      }
     }
+  };
 
-    factories.clear();
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "Failed releasing EP factories from " << library_description << ": " << ex.what();
+  size_t num_factories = 0;
+  OrtStatus* ort_status = create_fn(registration_name.c_str(), OrtGetApiBase(),
+                                    logging::LoggingManager::DefaultLogger().ToExternal(),
+                                    raw_factories.data(), raw_factories.size(), &num_factories);
+  adopt_factories();
+
+  if (ort_status != nullptr) {
+    return ToStatusAndRelease(ort_status);
   }
 
-  // TODO: Is there a better way? Is it worth worrying about?
-  if (!factories.empty()) {
-    LOGS_DEFAULT(ERROR) << "Unloading " << library_description << ". " << factories.size()
-                        << " factories were not released due to errors. This may cause memory leaks. "
-                           "Please check the error details in the log.";
+  ORT_RETURN_IF_NOT(num_factories <= new_factories.size(),
+                    "CreateEpFactories returned ", num_factories, " factories but the supplied capacity was ",
+                    new_factories.size(), ".");
+
+  for (size_t i = 0; i < new_factories.size(); ++i) {
+    if ((i < num_factories) != (new_factories[i] != nullptr)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "CreateEpFactories returned factory outputs inconsistent with num_factories.");
+    }
   }
+
+  factories.reserve(SafeInt<size_t>(factories.size()) + num_factories);
+  factories.insert(factories.end(),
+                   std::make_move_iterator(new_factories.begin()),
+                   std::make_move_iterator(new_factories.begin() + num_factories));
+
+  return Status::OK();
 }
 
 }  // namespace ep_library_plugin_utils

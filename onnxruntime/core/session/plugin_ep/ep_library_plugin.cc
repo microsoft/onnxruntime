@@ -28,7 +28,7 @@ Status EpLibraryPlugin::Load() {
         ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory",
                                                                 reinterpret_cast<void**>(&release_fn_)));
 
-        return ep_library_plugin_utils::CreateFactories(create_fn_, registration_name_, factories_);
+        return ep_library_plugin_utils::CreateFactories(create_fn_, release_fn_, registration_name_, factories_);
       }();
     }
   }
@@ -59,7 +59,7 @@ Status EpLibraryPlugin::Unload() {
   // Call ReleaseEpFactory for all factories and unload the library.
   // Current implementation assumes any error is permanent so does not leave pieces around to re-attempt Unload.
   if (handle_) {
-    ep_library_plugin_utils::ReleaseFactories(release_fn_, factories_, library_path_.string());
+    factories_.clear();
 
     ORT_RETURN_IF_ERROR(Env::Default().UnloadDynamicLibrary(handle_));
   }
