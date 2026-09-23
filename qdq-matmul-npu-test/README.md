@@ -6,6 +6,8 @@ Reusable CPU/EP drift investigation scripts, tests, and the agent/developer work
 [`drift_investigation\SKILL.md`](drift_investigation/SKILL.md). Run those tools as
 `python -m drift_investigation.<module>` from this directory. The original MatMul generator,
 WinML runner, model splitter, and report comparator remain here as shared entry points.
+The independent, weight-free OpenVINO mask-QDQ/attention bug package and issue draft
+are in [`openvino-attention-repro\README.md`](openvino-attention-repro/README.md).
 
 ## Set up
 
