@@ -1599,7 +1599,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
   if (kernel_usage_) {
-    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(static_cast<size_t>(moe_params.num_experts)));
+    auto* usage = context->GetKernelUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(*usage, static_cast<size_t>(moe_params.num_experts)));
   }
   const size_t routing_element_count = instrumentation != nullptr
                                            ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))
@@ -1851,9 +1853,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (kernel_usage_) {
       ORT_RETURN_IF_ERROR(kernel_usage_->Consume());
-      gsl::span<const int> selected_experts;
-      ORT_RETURN_IF_ERROR(kernel_usage_->GetSelectedExperts(selected_experts));
-      ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(selected_experts));
     }
     if (routing_record != nullptr) {
       ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
@@ -2111,13 +2110,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              workspace_size, total_scratch_bytes);
   }
 
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  if (kernel_usage_) {
-    gsl::span<const int> selected_experts;
-    ORT_RETURN_IF_ERROR(kernel_usage_->GetSelectedExperts(selected_experts));
-    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(selected_experts));
-  }
-#endif
   return Status::OK();
 }
 

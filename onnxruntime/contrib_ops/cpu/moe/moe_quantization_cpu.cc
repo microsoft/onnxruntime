@@ -1266,7 +1266,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
 #if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count = kernel_usage_ || enable_moe_expert_statistics_
+  const size_t routing_element_count = enable_moe_expert_counting_ || enable_moe_expert_statistics_
                                            ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
                                            : 0;
   const auto* instrumentation =
@@ -2541,12 +2541,11 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (kernel_usage_) {
-    ORT_RETURN_IF_ERROR(kernel_usage_->BeginInvocation(static_cast<size_t>(num_experts)));
-    ORT_RETURN_IF_ERROR(kernel_usage_->Collect(gsl::make_span(route_expert, routing_element_count)));
-    gsl::span<const int> selected_experts;
-    ORT_RETURN_IF_ERROR(kernel_usage_->GetSelectedExperts(selected_experts));
-    ORT_RETURN_IF_ERROR(context->RecordMoeExpertUsage(selected_experts));
+  if (enable_moe_expert_counting_) {
+    auto* usage = context->GetKernelUsage();
+    ORT_RETURN_IF_NOT(usage, "MoE expert counting is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(usage->BeginInvocation(static_cast<size_t>(num_experts)));
+    ORT_RETURN_IF_ERROR(usage->Collect(gsl::make_span(route_expert, routing_element_count)));
   }
   if (instrumentation != nullptr) {
     RecordMoeRoutingEvent(*instrumentation, Node(),

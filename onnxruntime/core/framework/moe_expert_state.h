@@ -4,7 +4,6 @@
 #pragma once
 
 #include <atomic>
-#include <cstdint>
 #include <istream>
 #include <map>
 #include <string>
@@ -14,6 +13,7 @@
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/kernel_usage.h"
 
 namespace onnxruntime {
 
@@ -61,8 +61,9 @@ class MoeExpertState {
   Status FinalizeInitialization();
   Status BeginRun() const;
   void EndRun() const;
-  // IDs are local to the kernel. Repeated IDs contribute only once per invocation.
-  Status RecordUsage(const OpKernel* kernel, gsl::span<const int> used_expert_ids);
+  KernelUsage* GetKernelUsage(const OpKernel* kernel);
+  // Commit the kernel's collected usage after a successful invocation.
+  Status RecordUsage(const OpKernel* kernel);
   // During a Run, only this kernel may read its counters.
   Status GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const;
   Status GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const;
@@ -79,11 +80,15 @@ class MoeExpertState {
     std::string node_type;
     ExpertRange experts;
   };
+  struct KernelState {
+    explicit KernelState(ExpertRange range) : experts(range) {}
+    ExpertRange experts;
+    KernelUsage usage;
+  };
   std::map<Key, NodeInfo> nodes_;
-  InlinedHashMap<const OpKernel*, ExpertRange> kernel_ranges_;
+  NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
-  InlinedVector<uint8_t> used_experts_;
   double alpha_{0.9};
   double beta_{0.1};
   bool initialized_{false};

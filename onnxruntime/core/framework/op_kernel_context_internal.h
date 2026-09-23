@@ -203,10 +203,17 @@ class OpKernelContextInternal : public OpKernelContext {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const override {
+  KernelUsage* GetKernelUsage() const override {
     auto* state = session_state_.GetMoeExpertState();
-    ORT_RETURN_IF_NOT(state, "MoE expert counting is enabled but its state is unavailable.");
-    return state->RecordUsage(GetKernel(), expert_ids);
+    kernel_usage_ = state ? state->GetKernelUsage(GetKernel()) : nullptr;
+    return kernel_usage_;
+  }
+
+  Status RecordKernelUsage() const {
+    if (kernel_usage_ == nullptr) {
+      return Status::OK();
+    }
+    return session_state_.GetMoeExpertState()->RecordUsage(GetKernel());
   }
 #endif
 
@@ -271,6 +278,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
+  mutable KernelUsage* kernel_usage_{nullptr};
+
   class AccountingAllocator : public IAllocator {
    public:
     AccountingAllocator(AllocatorPtr alloc) : IAllocator(alloc->Info()), allocator_(std::move(alloc)) {

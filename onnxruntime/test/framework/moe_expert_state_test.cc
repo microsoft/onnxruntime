@@ -56,13 +56,25 @@ class MoeExpertStateTest : public testing::Test {
 
   std::unique_ptr<InferenceSessionWrapper> session_;
   const OpKernel* kernels_[3]{};
+
+  Status CollectAndRecord(MoeExpertState& state, const OpKernel* kernel, gsl::span<const int> ids) {
+    auto* usage = state.GetKernelUsage(kernel);
+    ORT_RETURN_IF_NOT(usage, "Missing test kernel collector.");
+    ORT_RETURN_IF_ERROR(usage->BeginInvocation(usage->ExpertCount()));
+    ORT_RETURN_IF_ERROR(usage->Collect(ids));
+    return state.RecordUsage(kernel);
+  }
 };
 
 TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   MoeExpertState state;
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 3));
+  auto* usage = state.GetKernelUsage(kernels_[0]);
+  ASSERT_NE(usage, nullptr);
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 2));
   ASSERT_STATUS_OK(state.RegisterNode(kernels_[2], "main/0/4:body", 0, "MoE", 4));
+  EXPECT_EQ(state.GetKernelUsage(kernels_[0]), usage);
+  EXPECT_NE(state.GetKernelUsage(kernels_[1]), usage);
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_EQ(state.TotalExpertCount(), 9U);
   size_t expert_id = 99;
@@ -76,8 +88,8 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   EXPECT_EQ(expert_id, 5U);
 
   const int selected[] = {2, 0, 2, 0};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   const auto snapshot = state.GetSnapshot();
   const auto& first = snapshot.at({"main", 0}).counters;
   ASSERT_EQ(first.size(), 3U);
@@ -86,7 +98,7 @@ TEST_F(MoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSubgraphs) {
   EXPECT_DOUBLE_EQ(first[2], 0.19);
   EXPECT_EQ(snapshot.at({"main", 1}).counters, (InlinedVector<double>{0, 0}));
   EXPECT_EQ(snapshot.at({"main/0/4:body", 0}).counters, (InlinedVector<double>{0, 0, 0, 0}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[2], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[2], selected));
   InlinedVector<double> counters;
   ASSERT_STATUS_OK(state.GetCounters(kernels_[2], counters));
   EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
@@ -104,11 +116,11 @@ TEST_F(MoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   ASSERT_STATUS_OK(state.Load(initial));
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {2, 0, 2};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{2.25, 1, 0.75}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{1.375, 0.5, 0.625}));
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], {}));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], {}));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0.6875, 0.25, 0.3125}));
 }
 
@@ -167,7 +179,7 @@ TEST_F(MoeExpertStateTest, LoadsPartialStateAndValidatesAtomically) {
   }
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   const int selected[] = {1, 1};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
   ASSERT_EQ(counters.size(), 3U);
   EXPECT_DOUBLE_EQ(counters[0], 0);
@@ -184,7 +196,7 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "Add", 2).IsOK());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 0).IsOK());
   EXPECT_EQ(state.TotalExpertCount(), 2U);
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], {}).IsOK());
+  EXPECT_FALSE(state.RecordUsage(kernels_[0]).IsOK());
   EXPECT_FALSE(state.BeginRun().IsOK());
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "MoE", 2).IsOK());
@@ -193,17 +205,22 @@ TEST_F(MoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.FinalizeInitialization().IsOK());
   const int out_of_bounds[] = {0, 2};
   const int negative[] = {0, -1};
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], out_of_bounds).IsOK());
-  EXPECT_FALSE(state.RecordUsage(kernels_[0], negative).IsOK());
-  EXPECT_FALSE(state.RecordUsage(kernels_[1], {}).IsOK());
-  EXPECT_FALSE(state.RecordUsage(nullptr, {}).IsOK());
+  EXPECT_FALSE(CollectAndRecord(state, kernels_[0], out_of_bounds).IsOK());
+  EXPECT_FALSE(CollectAndRecord(state, kernels_[0], negative).IsOK());
+  EXPECT_FALSE(state.RecordUsage(kernels_[1]).IsOK());
+  EXPECT_FALSE(state.RecordUsage(nullptr).IsOK());
+  EXPECT_EQ(state.GetKernelUsage(kernels_[1]), nullptr);
+  EXPECT_EQ(state.GetKernelUsage(nullptr), nullptr);
+  ASSERT_STATUS_OK(state.GetKernelUsage(kernels_[0])->BeginInvocation(3));
+  EXPECT_FALSE(state.RecordUsage(kernels_[0]).IsOK());
+  ASSERT_STATUS_OK(state.GetKernelUsage(kernels_[0])->BeginInvocation(2));
   InlinedVector<double> counters{7};
   EXPECT_FALSE(state.GetCounters(kernels_[1], counters).IsOK());
   EXPECT_FALSE(state.GetCounters(nullptr, counters).IsOK());
   EXPECT_EQ(counters, (InlinedVector<double>{7}));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0}));
   const int selected[] = {1};
-  ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
   EXPECT_EQ(state.GetSnapshot().at({"main", 0}).counters, (InlinedVector<double>{0, 0.1}));
 }
 
@@ -224,7 +241,7 @@ TEST_F(MoeExpertStateTest, ValidCoefficientsKeepCountersBounded) {
       ASSERT_STATUS_OK(state.FinalizeInitialization());
       const int selected[] = {0, 0};
       for (int invocation = 0; invocation < 1024; ++invocation) {
-        ASSERT_STATUS_OK(state.RecordUsage(kernels_[0], selected));
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
         InlinedVector<double> counters;
         ASSERT_STATUS_OK(state.GetCounters(kernels_[0], counters));
         for (double counter : counters) {
@@ -247,10 +264,10 @@ TEST_F(MoeExpertStateTest, DistinctKernelsCanUpdateIndependently) {
   ASSERT_STATUS_OK(other.FinalizeInitialization());
   InlinedVector<std::thread> workers;
   for (const auto* kernel : kernels_) {
-    workers.emplace_back([&state, kernel]() {
+    workers.emplace_back([this, &state, kernel]() {
       const int selected[] = {1, 1};
       for (int j = 0; j < 100; ++j) {
-        ASSERT_STATUS_OK(state.RecordUsage(kernel, selected));
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
       }
     });
   }

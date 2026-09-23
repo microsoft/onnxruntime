@@ -189,11 +189,10 @@ The root `SessionState` owns a dedicated `MoeExpertState` shared with its subgra
 - per-node expert counters;
 - the global expert budget and per-node allocation targets.
 
-CPU and CUDA kernels share the concrete `KernelUsage` collector in `core/framework` to deduplicate selected expert IDs.
-CUDA-specific copies and events stay in a provider-side adapter. Kernels report the collected IDs through
-`OpKernelContext::RecordMoeExpertUsage()`. The context forwards the kernel
-identity and IDs to `MoeExpertState::RecordUsage()`, which owns the update logic. This is an internal C++ call, not a
-public C API.
+CPU and CUDA kernels obtain their session-owned `KernelUsage` collector through `OpKernelContext::GetKernelUsage()`.
+The concrete collector in `core/framework` deduplicates selected expert IDs; CUDA-specific copies and events stay
+in a provider-side adapter. After successful kernel execution, the executor commits the collected usage through
+`MoeExpertState::RecordUsage()`, which owns the counter-update logic. These are internal C++ calls, not a public C API.
 Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
 
@@ -238,9 +237,11 @@ Depends on PR 1.
 - Add `MoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
 - Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
 - Build the immutable kernel-pointer/expert-ID dictionary after kernel creation and before any run.
-- Share a concrete `KernelUsage` collector between CPU and CUDA; keep CUDA transfers and events in a provider adapter.
-- Keep counter updates and reads in `MoeExpertState`, keyed by kernel pointer. Expose a kernel-context recording method
-  and forward it through the internal C++ provider bridge without extending the public C API.
+- Own one concrete `KernelUsage` collector per registered kernel in the session state and expose it through the
+  kernel-context getter, forwarded through the internal C++ provider bridge. Keep CUDA transfers and events in a
+  provider adapter.
+- Keep counter updates and reads in `MoeExpertState`, keyed by kernel pointer. Commit collected usage after each
+  successful kernel invocation, without extending the public C API.
 - Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
 - Wire CPU and CUDA MoE/QMoE routing results into per-invocation updates:
 

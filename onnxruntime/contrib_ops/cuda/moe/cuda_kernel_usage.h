@@ -24,14 +24,16 @@ class CudaKernelUsage {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaKernelUsage);
 
-  Status BeginInvocation(size_t expert_count) {
+  Status BeginInvocation(KernelUsage& usage, size_t expert_count) {
     // A failed invocation may have returned after enqueueing a copy but before consuming it.
     ORT_RETURN_IF_ERROR(WaitForCopy());
-    return usage_.BeginInvocation(expert_count);
+    ORT_RETURN_IF_ERROR(usage.BeginInvocation(expert_count));
+    usage_ = &usage;
+    return Status::OK();
   }
 
   Status Capture(const int* expert_ids, size_t count, cudaStream_t stream) {
-    ORT_RETURN_IF_NOT(usage_.IsInitialized(), "Kernel usage collection was not initialized.");
+    ORT_RETURN_IF_NOT(usage_, "Kernel usage collection was not initialized.");
     ORT_RETURN_IF(copy_pending_, "The previous MoE routing snapshot has not been consumed.");
     cudaStreamCaptureStatus capture_status;
     CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
@@ -64,12 +66,7 @@ class CudaKernelUsage {
   Status Consume() {
     ORT_RETURN_IF_NOT(copy_pending_, "No MoE routing snapshot is available to consume.");
     ORT_RETURN_IF_ERROR(WaitForCopy());
-    return usage_.Collect(gsl::make_span(host_ids_.get(), captured_count_));
-  }
-
-  Status GetSelectedExperts(gsl::span<const int>& expert_ids) const {
-    ORT_RETURN_IF(copy_pending_, "The MoE routing snapshot must be consumed before reading selected experts.");
-    return usage_.GetSelectedExperts(expert_ids);
+    return usage_->Collect(gsl::make_span(host_ids_.get(), captured_count_));
   }
 
  private:
@@ -88,7 +85,7 @@ class CudaKernelUsage {
   }
 
   AllocatorPtr pinned_allocator_;
-  KernelUsage usage_;
+  KernelUsage* usage_{nullptr};
   IAllocatorUniquePtr<int> host_ids_;
   size_t capacity_{0};
   size_t captured_count_{0};

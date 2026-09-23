@@ -1617,9 +1617,8 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
-  Status OpKernelContext__RecordMoeExpertUsage(const OpKernelContext* p,
-                                               gsl::span<const int> expert_ids) override {
-    return p->RecordMoeExpertUsage(expert_ids);
+  KernelUsage* OpKernelContext__GetKernelUsage(const OpKernelContext* p) override {
+    return p->GetKernelUsage();
   }
   const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
       const OpKernelContext* p) override {

@@ -27,6 +27,7 @@ class KernelUsage {
   }
 
   bool IsInitialized() const noexcept { return !used_.empty(); }
+  size_t ExpertCount() const noexcept { return used_.size(); }
 
   Status Collect(gsl::span<const int> expert_ids) {
     ORT_RETURN_IF_NOT(IsInitialized(), "Kernel usage collection was not initialized.");

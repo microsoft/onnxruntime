@@ -4,6 +4,7 @@
 namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
+class KernelUsage;
 class RunInstrumentationContext;
 #endif
 class Stream;
@@ -226,9 +227,8 @@ class OpKernelContext {
 #if !defined(ORT_MINIMAL_BUILD)
  public:
   // Keep new virtuals after existing declarations to preserve their vtable slots.
-  virtual Status RecordMoeExpertUsage(gsl::span<const int> /*expert_ids*/) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MoE expert counting is unavailable in this kernel context.");
-  }
+  // Session-owned collector for this kernel; nullptr when collection is unavailable.
+  virtual KernelUsage* GetKernelUsage() const { return nullptr; }
 #endif
 
  private:

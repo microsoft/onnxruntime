@@ -11,7 +11,6 @@
 #include "moe_helper.h"
 #include <limits>
 #if !defined(ORT_MINIMAL_BUILD)
-#include <optional>
 #include "core/framework/kernel_usage.h"
 #endif
 
@@ -31,9 +30,8 @@ class MoEBaseCPU {
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
 #if !defined(ORT_MINIMAL_BUILD)
     const auto& options = op_kernel_info.GetConfigOptions();
-    if (options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
-      kernel_usage_.emplace();
-    }
+    enable_moe_expert_counting_ =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
     enable_moe_expert_statistics_ =
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
 #endif
@@ -84,7 +82,7 @@ class MoEBaseCPU {
   float swiglu_limit_;
   int64_t swiglu_fusion_;
 #if !defined(ORT_MINIMAL_BUILD)
-  mutable std::optional<KernelUsage> kernel_usage_;
+  bool enable_moe_expert_counting_{false};
   bool enable_moe_expert_statistics_{false};
 #endif
 };

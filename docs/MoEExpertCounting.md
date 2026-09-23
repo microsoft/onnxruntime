@@ -28,7 +28,8 @@ c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
 ```
 
 Selecting an expert for several token rows still contributes one `beta`. Unused experts still receive the decay term.
-Counts persist across `Run()` calls. A failed run can retain updates already recorded, including CUDA nodes whose
+Counts persist across `Run()` calls. Only successful kernel invocations commit their collected usage.
+A failed run can retain updates from earlier successful kernels, including CUDA nodes whose
 expert computations were still in flight when their counters were updated. Updates are not transactional across an
 entire model invocation.
 
@@ -41,7 +42,7 @@ After kernel creation, initialization builds an immutable dictionary
 `(OpKernel pointer, local expert ID) -> global expert index`, plus the contiguous expert range for each kernel.
 Counters are ordinary `double` values in a session-wide array. `RecordUsage()` uses the kernel pointer and this
 dictionary directly, without a mutex, atomic counters, graph-name lookup, or per-invocation allocation.
-A byte-per-expert selection mask is allocated at initialization to count repeated routing IDs only once.
+A `KernelUsage` collector is allocated for each kernel at initialization to count repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
 
@@ -50,10 +51,13 @@ there is no locking in the kernel update path. Different kernels may update thei
 one kernel must not execute twice simultaneously. Global snapshots must be read while no run is active. Registration,
 counter parameters, and file loading are frozen before execution starts.
 
-Kernels call `OpKernelContext::RecordMoeExpertUsage(expert_ids)`. The context forwards the current kernel pointer
-and local expert IDs to `MoeExpertState::RecordUsage()`, where validation and counter updates occur.
-The internal C++ shared-provider bridge forwards this recording call from CUDA to the runtime;
-neither `MoeExpertState` nor in-tree graph types cross the provider boundary.
+Kernels call `OpKernelContext::GetKernelUsage()` to obtain their session-owned collector, or `nullptr` when collection
+is unavailable. They reset it for the invocation and collect local expert IDs directly into it.
+After successful kernel execution, the executor calls `MoeExpertState::RecordUsage(kernel)` to commit the collected
+usage. An invocation that does not access its collector does not replay a previous invocation's selection.
+The internal C++ shared-provider bridge forwards only the getter from CUDA to the runtime.
+`KernelUsage` has the same provider-independent definition on both sides; neither `MoeExpertState` nor in-tree graph
+types cross the provider boundary.
 `MoeExpertState::GetCounters(kernel, counters)` reads one kernel's counters.
 `SessionState::GetMoeExpertState()->GetSnapshot()` provides an internally accessible snapshot of all registered nodes.
 There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
@@ -61,7 +65,7 @@ There is no public C API, `OrtApi` entry, or Python counter-retrieval API.
 `KernelUsage` in `core/framework/kernel_usage.h` collects and deduplicates local expert IDs for one invocation.
 It is a concrete, provider-independent collector shared by CPU and CUDA, with reusable selection storage and no
 counter-update logic. CPU kernels feed it their host routing IDs directly. The CUDA adapter, `CudaKernelUsage`,
-owns only the device-transfer resources and feeds completed host snapshots into the same collector.
+owns only the device-transfer resources and feeds completed host snapshots into the collector obtained from the context.
 `MoeExpertState` remains the sole owner of the global counters and their update logic.
 
 CUDA counting queues a routing-ID copy into pinned host memory and a copy-completion event after top-k, before
@@ -71,12 +75,13 @@ Fused QMoE routing keeps its fused prologue and queues the snapshot immediately 
 consumes each snapshot before reusing its host buffer and unions selected experts across all tiles before updating
 the counters once for the invocation. Same-stream ordering protects tile-local device routing scratch.
 Debug synchronization, `CUDA_LAUNCH_BLOCKING`, or optional tactic profiling can still serialize GPU work.
-Collectors are constructed once per kernel only when `session.enable_moe_expert_counting=1`. `KernelUsage` resets the
+Collectors are owned by the session state and constructed once per kernel only when
+`session.enable_moe_expert_counting=1`. `KernelUsage` resets the
 current invocation's selected-expert set while reusing its storage. The CUDA adapter also reuses its pinned host
 buffer and copy event. Buffer capacity grows only when needed for a larger invocation.
 
 Both counting and routing-logging options are cached at kernel construction. With their default values (`0`), the
-kernel skips counter recording, instrumentation-context lookups, collector construction, collection calls, and
+kernel skips collector and instrumentation-context lookups, collector construction, collection calls, and
 statistics-only size calculations.
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.

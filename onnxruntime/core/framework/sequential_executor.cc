@@ -670,6 +670,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
       }
 #endif
 #endif
+#if !defined(ORT_MINIMAL_BUILD)
+      if (status.IsOK()) {
+        status = kernel_ctx.RecordKernelUsage();
+      }
+#endif
     }
     ORT_CATCH(const OnnxRuntimeException& ort_ex) {
       ORT_HANDLE_EXCEPTION([&]() {

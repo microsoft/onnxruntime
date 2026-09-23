@@ -1362,8 +1362,8 @@ struct OpKernelContext final {
     return g_host->OpKernelContext__GetRunInstrumentationContext(this);
   }
 
-  Status RecordMoeExpertUsage(gsl::span<const int> expert_ids) const {
-    return g_host->OpKernelContext__RecordMoeExpertUsage(this, expert_ids);
+  KernelUsage* GetKernelUsage() const {
+    return g_host->OpKernelContext__GetKernelUsage(this);
   }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
