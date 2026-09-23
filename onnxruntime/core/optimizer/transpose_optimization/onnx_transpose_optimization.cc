@@ -1481,6 +1481,7 @@ static int EstimateValueRank(const api::GraphRef& graph, std::string_view input)
 }
 
 static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& extended_handlers);
+static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node);
 
 // Returns true if the provided transpose node is only consumed by nodes we can likely push it through.
 static bool CanLikelyRemoveTranspose(const api::GraphRef& graph, api::NodeRef& transpose,
@@ -3088,7 +3089,7 @@ static std::optional<std::vector<int64_t>> PreviewPushedOutputPerm(OptimizerCtx&
     return PreviewReduceOutputPerm(ctx, node, pushed_perm);
   }
 
-  if (op == "Concat") {
+  if (op == "Concat" || info->handler_fn == &HandleConcat) {
     std::optional<int64_t> axis = node.GetAttributeInt("axis");
     if (axis == std::nullopt || !NormalizeAndValidateAxis(*axis, rank)) {
       return std::nullopt;
@@ -3166,7 +3167,28 @@ static std::optional<std::vector<int64_t>> PreviewPushedOutputPerm(OptimizerCtx&
     return pushed_perm;
   }
 
-  return pushed_perm;
+  // Relu/Add/Clip and other handlers that always transpose every output with the same perm. Extended handlers that
+  // can reject the node (FastGelu with bias, MaxPool with indices, ...) must not be treated as perm-preserving.
+  if (info->handler_fn == &HandleSimpleNode || info->handler_fn == &HandleSimpleNodeBroadcast) {
+    return pushed_perm;
+  }
+
+  return std::nullopt;
+}
+
+static bool ValueIsOnTransposableInput(OptimizerCtx& ctx, api::NodeRef& consumer, std::string_view value) {
+  const HandlerInfo* info = GetHandler(consumer, ctx.extended_handlers);
+  if (info == nullptr) {
+    return false;
+  }
+  const std::vector<size_t> indices = info->transposible_inputs_fn(ctx, consumer);
+  const auto inputs = consumer.Inputs();
+  for (size_t idx : indices) {
+    if (idx < inputs.size() && inputs[idx] == value) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Follows outputs through handlers that transpose their outputs to find the Transposes that a Transpose with
@@ -3176,74 +3198,154 @@ static std::optional<std::vector<int64_t>> PreviewPushedOutputPerm(OptimizerCtx&
 // `tolerate_stranded_branches` decides what a branch that ends without a Transpose means. With false the query fails,
 // which is what the cost model wants: the pushed Transpose has to be consumed everywhere to be free. With true the
 // branch is ignored and the pushed Transpose is left sitting on it.
-static CancelWalkResult PushedTransposeCancelsImpl(OptimizerCtx& ctx, std::string_view value,
-                                                   const std::vector<int64_t>& pushed_perm,
+//
+// Evaluated with an explicit stack so a long unary chain cannot overflow the C++ process stack.
+static CancelWalkResult PushedTransposeCancelsImpl(OptimizerCtx& ctx, std::string_view start_value,
+                                                   const std::vector<int64_t>& start_perm,
                                                    bool tolerate_stranded_branches) {
-  const std::string key = CancelWalkCacheKey(value, pushed_perm, tolerate_stranded_branches);
-  const auto cached = ctx.pushed_transpose_cancels_cache.find(key);
-  if (cached != ctx.pushed_transpose_cancels_cache.end()) {
-    if (cached->second == kCancelWalkInProgress) {
-      return CancelWalkResult::kNoCancel;
+  struct Frame {
+    std::string value;
+    std::vector<int64_t> pushed_perm;
+    std::string key;
+    bool expanded = false;
+    CancelWalkResult acc = CancelWalkResult::kNoCancel;
+    size_t child_i = 0;
+    std::vector<std::pair<std::string, std::vector<int64_t>>> children;
+  };
+
+  auto lookup = [&ctx](const std::string& key) -> const int8_t* {
+    const auto it = ctx.pushed_transpose_cancels_cache.find(key);
+    if (it == ctx.pushed_transpose_cancels_cache.end()) {
+      return nullptr;
     }
-    return static_cast<CancelWalkResult>(cached->second);
-  }
+    return &it->second;
+  };
 
-  ctx.pushed_transpose_cancels_cache[key] = kCancelWalkInProgress;
+  std::vector<Frame> stack;
+  Frame start_frame;
+  start_frame.value = std::string(start_value);
+  start_frame.pushed_perm = start_perm;
+  start_frame.key = CancelWalkCacheKey(start_frame.value, start_frame.pushed_perm, tolerate_stranded_branches);
+  stack.push_back(std::move(start_frame));
 
-  const auto consumers = ctx.graph.GetValueConsumers(value);
-  CancelWalkResult result = CancelWalkResult::kNoCancel;
-  if (!consumers->comprehensive) {
-    if (!tolerate_stranded_branches) {
-      result = CancelWalkResult::kFail;
-      ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
-      return result;
-    }
-  }
+  CancelWalkResult start_result = CancelWalkResult::kNoCancel;
 
-  if (consumers->nodes.empty()) {
-    result = tolerate_stranded_branches ? CancelWalkResult::kNoCancel : CancelWalkResult::kFail;
-    ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
-    return result;
-  }
+  while (!stack.empty()) {
+    Frame& frame = stack.back();
 
-  const std::vector<int64_t> cancel_perm = InvertPerm(pushed_perm);
-  for (auto& consumer : consumers->nodes) {
-    if (consumer->IsOp("Transpose")) {
-      const auto consumer_perm = GetPermAttrIfValid(*consumer);
-      if (!consumer_perm.has_value() || *consumer_perm != cancel_perm) {
-        result = CancelWalkResult::kFail;
-        break;
-      }
-      result = CombineCancelWalk(result, CancelWalkResult::kCancel);
-      continue;
-    }
-
-    const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, pushed_perm);
-    if (!output_perm.has_value()) {
-      if (!tolerate_stranded_branches) {
-        result = CancelWalkResult::kFail;
-        break;
-      }
-      continue;
-    }
-
-    for (auto out : consumer->Outputs()) {
-      if (out.empty()) {
+    if (!frame.expanded) {
+      if (const int8_t* cached = lookup(frame.key)) {
+        if (*cached == kCancelWalkInProgress) {
+          start_result = CancelWalkResult::kNoCancel;
+          stack.pop_back();
+          continue;
+        }
+        start_result = static_cast<CancelWalkResult>(*cached);
+        stack.pop_back();
         continue;
       }
-      result = CombineCancelWalk(
-          result, PushedTransposeCancelsImpl(ctx, out, *output_perm, tolerate_stranded_branches));
-      if (result == CancelWalkResult::kFail) {
-        break;
+
+      ctx.pushed_transpose_cancels_cache[frame.key] = kCancelWalkInProgress;
+      frame.expanded = true;
+
+      const auto consumers = ctx.graph.GetValueConsumers(frame.value);
+      if (!consumers->comprehensive && !tolerate_stranded_branches) {
+        frame.acc = CancelWalkResult::kFail;
+        ctx.pushed_transpose_cancels_cache[frame.key] = static_cast<int8_t>(frame.acc);
+        start_result = frame.acc;
+        stack.pop_back();
+        continue;
+      }
+
+      if (consumers->nodes.empty()) {
+        frame.acc = tolerate_stranded_branches ? CancelWalkResult::kNoCancel : CancelWalkResult::kFail;
+        ctx.pushed_transpose_cancels_cache[frame.key] = static_cast<int8_t>(frame.acc);
+        start_result = frame.acc;
+        stack.pop_back();
+        continue;
+      }
+
+      const std::vector<int64_t> cancel_perm = InvertPerm(frame.pushed_perm);
+      bool terminal_fail = false;
+      for (auto& consumer : consumers->nodes) {
+        if (!CanModifyNode(ctx, *consumer) || !ValueIsOnTransposableInput(ctx, *consumer, frame.value)) {
+          if (!tolerate_stranded_branches) {
+            frame.acc = CancelWalkResult::kFail;
+            terminal_fail = true;
+            break;
+          }
+          continue;
+        }
+
+        if (consumer->IsOp("Transpose")) {
+          const auto consumer_perm = GetPermAttrIfValid(*consumer);
+          if (!consumer_perm.has_value() || *consumer_perm != cancel_perm) {
+            frame.acc = CancelWalkResult::kFail;
+            terminal_fail = true;
+            break;
+          }
+          frame.acc = CombineCancelWalk(frame.acc, CancelWalkResult::kCancel);
+          continue;
+        }
+
+        const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, frame.pushed_perm);
+        if (!output_perm.has_value()) {
+          if (!tolerate_stranded_branches) {
+            frame.acc = CancelWalkResult::kFail;
+            terminal_fail = true;
+            break;
+          }
+          continue;
+        }
+
+        for (auto out : consumer->Outputs()) {
+          if (out.empty()) {
+            continue;
+          }
+          frame.children.emplace_back(std::string(out), *output_perm);
+        }
+      }
+
+      if (terminal_fail || frame.children.empty()) {
+        ctx.pushed_transpose_cancels_cache[frame.key] = static_cast<int8_t>(frame.acc);
+        start_result = frame.acc;
+        stack.pop_back();
+        continue;
       }
     }
-    if (result == CancelWalkResult::kFail) {
-      break;
+
+    if (frame.child_i < frame.children.size()) {
+      const auto& child = frame.children[frame.child_i];
+      const std::string child_key = CancelWalkCacheKey(child.first, child.second, tolerate_stranded_branches);
+      if (const int8_t* cached = lookup(child_key)) {
+        if (*cached == kCancelWalkInProgress) {
+          frame.acc = CombineCancelWalk(frame.acc, CancelWalkResult::kNoCancel);
+        } else {
+          frame.acc = CombineCancelWalk(frame.acc, static_cast<CancelWalkResult>(*cached));
+        }
+        ++frame.child_i;
+        if (frame.acc == CancelWalkResult::kFail) {
+          ctx.pushed_transpose_cancels_cache[frame.key] = static_cast<int8_t>(frame.acc);
+          start_result = frame.acc;
+          stack.pop_back();
+        }
+        continue;
+      }
+
+      Frame child_frame;
+      child_frame.value = child.first;
+      child_frame.pushed_perm = child.second;
+      child_frame.key = child_key;
+      stack.push_back(std::move(child_frame));
+      continue;
     }
+
+    ctx.pushed_transpose_cancels_cache[frame.key] = static_cast<int8_t>(frame.acc);
+    start_result = frame.acc;
+    stack.pop_back();
   }
 
-  ctx.pushed_transpose_cancels_cache[key] = static_cast<int8_t>(result);
-  return result;
+  return start_result;
 }
 
 static bool PushedTransposeCancels(OptimizerCtx& ctx, std::string_view value,
@@ -3302,6 +3404,8 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
     int kept_output_transposes = 0;
     auto outputs = node.Outputs();
     int out_cost = 0;
+    const std::optional<std::vector<int64_t>> pushed_output_perm =
+        PreviewPushedOutputPerm(ctx, const_cast<api::NodeRef&>(node), perm);
     // Having multiple outputs is rare. When it happens (Split), the total size of the outputs isn't much larger
     // than the largest input. Cost is rank currently, so just use the largest cost (rank) over all outputs.
     for (auto out : outputs) {
@@ -3316,7 +3420,8 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
       }
 
       any_output_leads_to_transpose = true;
-      if (PushedTransposeCancels(ctx, out, perm, /*tolerate_stranded_branches*/ false)) {
+      if (pushed_output_perm.has_value() &&
+          PushedTransposeCancels(ctx, out, *pushed_output_perm, /*tolerate_stranded_branches*/ false)) {
         continue;
       }
 
@@ -3376,7 +3481,12 @@ static bool PushBreaksTransposeQDQNodeUnit(OptimizerCtx& ctx, const api::NodeRef
     return false;
   }
 
-  return !PushedTransposeCancels(ctx, node.Outputs()[0], perm, /*tolerate_stranded_branches*/ true);
+  auto q_output_perm = PreviewPushedOutputPerm(ctx, const_cast<api::NodeRef&>(node), perm);
+  if (!q_output_perm.has_value()) {
+    return true;
+  }
+
+  return !PushedTransposeCancels(ctx, node.Outputs()[0], *q_output_perm, /*tolerate_stranded_branches*/ true);
 }
 
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
