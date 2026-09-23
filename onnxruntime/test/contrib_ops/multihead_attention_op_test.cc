@@ -692,6 +692,160 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, CpuSharedCacheInitializerOnlyUsesPastSequenceLength) {
+  struct TestCase {
+    int32_t past_sequence_length;
+    int64_t max_sequence_length;
+    std::vector<float> past_key;
+    std::vector<float> past_value;
+    std::vector<float> present_key;
+    std::vector<float> present_value;
+    std::vector<float> output;
+  };
+
+  const std::vector<TestCase> test_cases{
+      {0, 2, {-1.0f, -1.0f}, {-1.0f, -1.0f}, {2.0f, 3.0f}, {20.0f, 30.0f}, {25.0f, 25.0f}},
+      {1, 3, {10.0f, -1.0f, -1.0f}, {100.0f, -1.0f, -1.0f}, {10.0f, 2.0f, 3.0f}, {100.0f, 20.0f, 30.0f}, {50.0f, 50.0f}},
+  };
+
+  for (const auto& test_case : test_cases) {
+    SCOPED_TRACE(test_case.past_sequence_length);
+    OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", 1);
+
+    tester.AddInput<float>("query", {1, 2, 1}, {0.0f, 0.0f}, true);
+    tester.AddInput<float>("key", {1, 2, 1}, {2.0f, 3.0f}, true);
+    tester.AddInput<float>("value", {1, 2, 1}, {20.0f, 30.0f}, true);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOptionalInputEdge<int32_t>();
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("past_key", {1, 1, test_case.max_sequence_length, 1}, test_case.past_key, true);
+    tester.AddInput<float>("past_value", {1, 1, test_case.max_sequence_length, 1}, test_case.past_value, true);
+    tester.AddInput<int32_t>("past_sequence_length", {1}, {test_case.past_sequence_length}, true);
+
+    tester.AddOutput<float>("output", {1, 2, 1}, test_case.output);
+    tester.AddOutput<float>("present_key", {1, 1, test_case.max_sequence_length, 1}, test_case.present_key);
+    tester.AddOutput<float>("present_value", {1, 1, test_case.max_sequence_length, 1}, test_case.present_value);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(MultiHeadAttentionTest, CpuSharedCacheCopiesEachHeadFromCorrectInputStride) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int num_heads = 2;
+  constexpr int head_size = 1;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int past_sequence_length = 1;
+  constexpr int max_sequence_length = 3;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f), true);
+  tester.AddInput<float>("key", {batch_size, sequence_length, hidden_size},
+                         {2.0f, 20.0f, 3.0f, 30.0f}, true);
+  tester.AddInput<float>("value", {batch_size, sequence_length, hidden_size},
+                         {20.0f, 200.0f, 30.0f, 300.0f}, true);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {batch_size, num_heads, max_sequence_length, head_size},
+                         {10.0f, -1.0f, -1.0f, 100.0f, -1.0f, -1.0f}, true);
+  tester.AddInput<float>("past_value", {batch_size, num_heads, max_sequence_length, head_size},
+                         {100.0f, -1.0f, -1.0f, 1000.0f, -1.0f, -1.0f}, true);
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {past_sequence_length}, true);
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          {50.0f, 500.0f, 50.0f, 500.0f});
+  tester.AddOutput<float>("present_key", {batch_size, num_heads, max_sequence_length, head_size},
+                          {10.0f, 2.0f, 3.0f, 100.0f, 20.0f, 30.0f});
+  tester.AddOutput<float>("present_value", {batch_size, num_heads, max_sequence_length, head_size},
+                          {100.0f, 20.0f, 30.0f, 1000.0f, 200.0f, 300.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, SharedCacheRejectsDistinctValueHeadSize) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {1, 2, 2}, std::vector<float>(4, 0.0f), true);
+  tester.AddInput<float>("key", {1, 2, 2}, {2.0f, 3.0f, 4.0f, 5.0f}, true);
+  tester.AddInput<float>("value", {1, 2, 1}, {20.0f, 30.0f}, true);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {1, 1, 3, 2}, {10.0f, 11.0f, -1.0f, -1.0f, -1.0f, -1.0f}, true);
+  tester.AddInput<float>("past_value", {1, 1, 3, 1}, {100.0f, -1.0f, -1.0f}, true);
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {1}, true);
+
+  tester.AddOutput<float>("output", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddOutput<float>("present_key", {1, 1, 3, 2}, std::vector<float>(6));
+  tester.AddOutput<float>("present_value", {1, 1, 3, 1}, std::vector<float>(3));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Input 'past_value' dimension 3 should be same as head_size",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, SharedCacheRequiresPresentOutputs) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddInput<float>("key", {1, 2, 1}, {2.0f, 3.0f});
+  tester.AddInput<float>("value", {1, 2, 1}, {20.0f, 30.0f});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {1, 1, 3, 1}, {10.0f, -1.0f, -1.0f});
+  tester.AddInput<float>("past_value", {1, 1, 3, 1}, {100.0f, -1.0f, -1.0f});
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {1});
+
+  tester.AddOutput<float>("output", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Shared past/present buffer requires both present_key and present_value outputs.",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, SharedCacheRejectsSequenceBeyondCapacity) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddInput<float>("key", {1, 2, 1}, {2.0f, 3.0f});
+  tester.AddInput<float>("value", {1, 2, 1}, {20.0f, 30.0f});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("past_key", {1, 1, 3, 1}, {10.0f, 11.0f, -1.0f});
+  tester.AddInput<float>("past_value", {1, 1, 3, 1}, {100.0f, 110.0f, -1.0f});
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {2});
+
+  tester.AddOutput<float>("output", {1, 2, 1}, {0.0f, 0.0f});
+  tester.AddOutput<float>("present_key", {1, 1, 3, 1}, std::vector<float>(3));
+  tester.AddOutput<float>("present_value", {1, 1, 3, 1}, std::vector<float>(3));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "must not exceed max_sequence_length",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, OutputQKWithPaddingMaskAndAttentionBias) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
