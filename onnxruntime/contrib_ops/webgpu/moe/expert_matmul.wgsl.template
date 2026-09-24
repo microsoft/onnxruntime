@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#use guardAgainstOutOfBoundsWorkgroupSizes .getByOffset .setByOffset
+#use .getByOffset .setByOffset
 
 #param has_bias
 
 $MAIN {
-  let total = uniforms.rows * uniforms.cols;
-  guardAgainstOutOfBoundsWorkgroupSizes(total);
-
-  let row = global_idx / uniforms.cols;
-  let col = global_idx % uniforms.cols;
+  let row = global_id.y;
+  let col = global_id.x;
+  if (row >= uniforms.rows || col >= uniforms.cols) {
+    return;
+  }
+  let output_offset = row * uniforms.cols + col;
   let weight_base = (uniforms.expert_idx * uniforms.cols + col) * uniforms.inner;
   var value = 0.0;
   for (var inner = 0u; inner < uniforms.inner; inner++) {
@@ -19,5 +20,5 @@ $MAIN {
 #if has_bias
   value += f32(bias.getByOffset(uniforms.expert_idx * uniforms.cols + col));
 #endif
-  output.setByOffset(global_idx, output_element_t(value));
+  output.setByOffset(output_offset, output_element_t(value));
 } // MAIN

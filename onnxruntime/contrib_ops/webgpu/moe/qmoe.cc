@@ -538,7 +538,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       activation
           .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(128)
-          .SetDispatchGroupSize(((used_by * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
+          .SetDispatchGroupSize((static_cast<uint32_t>(moe_params.inter_size) + 127) / 128, used_by)
           .AddUniformVariables({used_by, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
                                 activation_beta_, swiglu_limit_})
           .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());

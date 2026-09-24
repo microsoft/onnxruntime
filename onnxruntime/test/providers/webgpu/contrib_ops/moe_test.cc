@@ -249,24 +249,64 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
 TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
-  constexpr int hidden_size = 8;
-  constexpr int inter_size = 8;
+  constexpr int hidden_size = 2;
+  constexpr int inter_size = 2;
 
-  const std::vector<float> input(num_rows * hidden_size, 0.25f);
+  const std::vector<float> input = {-1.0f, 0.5f, 1.5f, -2.0f};
   const std::vector<float> router_probs = {10.0f, 0.0f, 0.0f, 10.0f};
-  std::vector<float> fc2_bias(hidden_size, 1.0f);
-  fc2_bias.insert(fc2_bias.end(), hidden_size, 2.0f);
-  std::vector<float> expected(hidden_size, 1.0f);
-  expected.insert(expected.end(), hidden_size, 2.0f);
 
   const auto run_case = [&](const std::string& activation_type, int64_t swiglu_fusion,
                             bool has_fc3, bool use_fp16, bool dense_3d) {
     GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 
     const int fc1_size = activation_type == "swiglu" && !has_fc3 ? 2 * inter_size : inter_size;
-    const std::vector<float> fc1_weights(num_experts * fc1_size * hidden_size, 0.0f);
-    const std::vector<float> fc2_weights(num_experts * hidden_size * inter_size, 0.0f);
-    const std::vector<float> fc3_weights(num_experts * inter_size * hidden_size, 0.0f);
+    std::vector<float> fc1_weights(num_experts * fc1_size * hidden_size, 0.0f);
+    std::vector<float> fc2_weights(num_experts * hidden_size * inter_size, 0.0f);
+    std::vector<float> fc3_weights(num_experts * inter_size * hidden_size, 0.0f);
+    for (int expert = 0; expert < num_experts; ++expert) {
+      const int fc1_base = expert * fc1_size * hidden_size;
+      if (activation_type == "swiglu" && !has_fc3) {
+        const std::array<int, 2> gate_rows = swiglu_fusion == 1 ? std::array<int, 2>{0, 2}
+                                                                : std::array<int, 2>{0, 1};
+        const std::array<int, 2> linear_rows = swiglu_fusion == 1 ? std::array<int, 2>{1, 3}
+                                                                  : std::array<int, 2>{2, 3};
+        for (int col = 0; col < hidden_size; ++col) {
+          fc1_weights[fc1_base + gate_rows[col] * hidden_size + col] = 1.0f;
+          fc1_weights[fc1_base + linear_rows[col] * hidden_size + col] = 2.0f;
+        }
+      } else {
+        for (int col = 0; col < hidden_size; ++col) {
+          fc1_weights[fc1_base + col * hidden_size + col] = 1.0f;
+        }
+      }
+      for (int col = 0; col < hidden_size; ++col) {
+        fc2_weights[expert * hidden_size * inter_size + col * inter_size + col] = 1.0f;
+        fc3_weights[expert * inter_size * hidden_size + col * hidden_size + col] = 2.0f;
+      }
+    }
+
+    const auto activate = [&](float value) {
+      if (activation_type == "relu") {
+        return std::max(value, 0.0f);
+      }
+      if (activation_type == "gelu") {
+        return 0.5f * value *
+               (1.0f + std::tanh(0.7978845608f * (value + 0.044715f * value * value * value)));
+      }
+      if (activation_type == "silu" || activation_type == "swiglu") {
+        return value / (1.0f + std::exp(-value));
+      }
+      return value;
+    };
+    std::vector<float> expected;
+    expected.reserve(input.size());
+    for (float value : input) {
+      float result = activate(value);
+      if (has_fc3 || activation_type == "swiglu") {
+        result *= 2.0f * value;
+      }
+      expected.push_back(result);
+    }
     const std::vector<int64_t> input_dims = dense_3d ? std::vector<int64_t>{1, num_rows, hidden_size}
                                                      : std::vector<int64_t>{num_rows, hidden_size};
 
@@ -283,7 +323,7 @@ TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
       tester.AddOptionalInputEdge<MLFloat16>();
       tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
                                  ToFloat16(fc2_weights));
-      tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+      tester.AddOptionalInputEdge<MLFloat16>();
       if (has_fc3) {
         tester.AddInput<MLFloat16>("fc3_experts_weights", {num_experts, inter_size, hidden_size},
                                    ToFloat16(fc3_weights));
@@ -299,7 +339,7 @@ TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
       tester.AddInput<float>("fc1_experts_weights", {num_experts, fc1_size, hidden_size}, fc1_weights);
       tester.AddOptionalInputEdge<float>();
       tester.AddInput<float>("fc2_experts_weights", {num_experts, hidden_size, inter_size}, fc2_weights);
-      tester.AddInput<float>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias);
+      tester.AddOptionalInputEdge<float>();
       if (has_fc3) {
         tester.AddInput<float>("fc3_experts_weights", {num_experts, inter_size, hidden_size}, fc3_weights);
       } else {
@@ -391,16 +431,17 @@ TEST(MoETest, MoETest_WebGPU_ChunkBoundary) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 
   constexpr int num_rows = 2049;
-  constexpr int hidden_size = 8;
+  constexpr int hidden_size = 1;
+  // The first 2,048-token chunk used to request 131,072 FC1 workgroups and
+  // 65,536 activation workgroups, exceeding the common per-dimension limit.
+  constexpr int inter_size = 4096;
 
   std::vector<float> input(num_rows * hidden_size);
   for (int index = 0; index < num_rows * hidden_size; ++index) {
     input[index] = static_cast<float>((index % 13) - 6) / 8.0f;
   }
-  std::vector<float> identity(hidden_size * hidden_size, 0.0f);
-  for (int index = 0; index < hidden_size; ++index) {
-    identity[index * hidden_size + index] = 1.0f;
-  }
+  const std::vector<float> fc1_weights(inter_size * hidden_size, 1.0f);
+  const std::vector<float> fc2_weights(hidden_size * inter_size, 1.0f / inter_size);
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", 1);
@@ -408,9 +449,9 @@ TEST(MoETest, MoETest_WebGPU_ChunkBoundary) {
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddInput<float>("input", {num_rows, hidden_size}, input);
   tester.AddInput<float>("router_probs", {num_rows, 1}, std::vector<float>(num_rows, 0.0f));
-  tester.AddInput<float>("fc1_experts_weights", {1, hidden_size, hidden_size}, identity);
+  tester.AddInput<float>("fc1_experts_weights", {1, inter_size, hidden_size}, fc1_weights);
   tester.AddOptionalInputEdge<float>();
-  tester.AddInput<float>("fc2_experts_weights", {1, hidden_size, hidden_size}, identity);
+  tester.AddInput<float>("fc2_experts_weights", {1, hidden_size, inter_size}, fc2_weights);
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();

@@ -206,7 +206,7 @@ Status RunExpertMatMul(ComputeContext& context, const Tensor* input, const Tenso
   }
   matmul.AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(64)
-      .SetDispatchGroupSize((rows * cols + 63) / 64)
+      .SetDispatchGroupSize((cols + 63) / 64, rows)
       .AddUniformVariables({rows, cols, inner, expert_idx})
       .CacheHint(bias != nullptr);
   return context.RunProgram(matmul);
@@ -328,7 +328,7 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
       }
       activation.AddOutput({&activated, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(128)
-          .SetDispatchGroupSize((used_by * inter_size + 127) / 128)
+          .SetDispatchGroupSize((inter_size + 127) / 128, used_by)
           .AddUniformVariables({used_by, inter_size, activation_alpha_, activation_beta_, swiglu_limit_})
           .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_output.has_value());
       ORT_RETURN_IF_ERROR(context.RunProgram(activation));
