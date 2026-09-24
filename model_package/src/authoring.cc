@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <system_error>
 
 #include "asset_hasher.h"
 #include "manifest_parser.h"
@@ -77,13 +78,15 @@ ModelPackageStatus* RefreshSharedAssetsHelper(ModelPackage* pkg) {
   return mp::RefreshSharedAssets(pkg, mp::PathOptionsFor(pkg));
 }
 
-ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) {
+ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) try {
   mp::DropViewCache(pkg);
   if (refresh_assets) {
     if (auto* s = RefreshSharedAssetsHelper(pkg)) return s;
   }
   if (auto* s = mp::RefreshPackageMetadata(pkg)) return s;
   return mp::RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/false);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 ordered_json& EnsureManifestComponentsObject(ModelPackage* pkg) {
@@ -125,7 +128,7 @@ ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
 
 ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage* pkg,
                                                     const char* name,
-                                                    const char* component_json) {
+                                                    const char* component_json) try {
   if (!pkg) return NullArg("pkg");
   if (!name) return NullArg("name");
   if (!component_json) return NullArg("component_json");
@@ -153,11 +156,13 @@ ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage* pkg,
   }
   RebuildComponentIndex(pkg);
   return PostMutate(pkg);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
                                                       const char* name,
-                                                      const char* path) {
+                                                      const char* path) try {
   if (!pkg) return NullArg("pkg");
   if (!name) return NullArg("name");
   if (!path) return NullArg("path");
@@ -213,6 +218,8 @@ ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
   }
   RebuildComponentIndex(pkg);
   return PostMutate(pkg);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* name) {
@@ -238,7 +245,7 @@ ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* 
 ModelPackageStatus* ModelPackage_SetVariant(ModelPackage* pkg,
                                             const char* component_name,
                                             const char* variant_name,
-                                            const char* variant_json) {
+                                            const char* variant_json) try {
   if (!pkg) return NullArg("pkg");
   if (!component_name) return NullArg("component_name");
   if (!variant_name) return NullArg("variant_name");
@@ -282,6 +289,8 @@ ModelPackageStatus* ModelPackage_SetVariant(ModelPackage* pkg,
   // Invalidate cached component JSON.
   comp->component_json_cache.reset();
   return PostMutate(pkg);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 ModelPackageStatus* ModelPackage_RemoveVariant(ModelPackage* pkg,
@@ -333,7 +342,7 @@ ModelPackageStatus* MutateExecutorInfo(ModelPackage* pkg,
                                        const char* component,
                                        const char* variant,
                                        const char* namespace_,
-                                       const ordered_json* new_value /* null = remove */) {
+                                       const ordered_json* new_value /* null = remove */) try {
   if (!pkg) return NullArg("pkg");
   if (!component) return NullArg("component");
   if (!variant) return NullArg("variant");
@@ -368,6 +377,8 @@ ModelPackageStatus* MutateExecutorInfo(ModelPackage* pkg,
   if (auto* s = ReparseVariantInPlace(pkg, comp, var)) return s;
   comp->component_json_cache.reset();
   return PostMutate(pkg, /*refresh_assets=*/false);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 }  // namespace
@@ -409,7 +420,7 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
                                                 const char* source_dir,
                                                 const char* expected_uri_or_null,
                                                 bool copy_in,
-                                                const char** out_uri) {
+                                                const char** out_uri) try {
   if (!pkg) return NullArg("pkg");
   if (!source_dir) return NullArg("source_dir");
   if (!out_uri) return NullArg("out_uri");
@@ -455,6 +466,8 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   }
   *out_uri = pkg->shared_assets[sit->second]->uri_cache.c_str();
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char* uri) {

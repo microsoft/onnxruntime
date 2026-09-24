@@ -437,7 +437,8 @@ TEST(ModelPackageApiTest, AdvancedOptionsKeepFallbackFactories) {
   const auto root = std::filesystem::temp_directory_path() / "ort_mp_advanced_factories";
   BuildPackage(root, "model", {{"plugin", "example_ep", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
   Ort::SessionOptions options;
-  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {});
+  const std::unordered_map<std::string, std::string> ep_options;
+  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, ep_options);
   options.AddConfigEntry("model_package.test_option", "caller");
   auto observations = std::make_shared<ProviderObservations>();
   static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
@@ -463,7 +464,8 @@ TEST(ModelPackageApiTest, DefaultOptionsIncludeDeviceDefaultsAndPackageOverrides
     }
     BuildPackage(root, "model", {variant});
     Ort::SessionOptions options;
-    options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {{"run_really_fast", "caller"}});
+    const std::unordered_map<std::string, std::string> ep_options{{"run_really_fast", "caller"}};
+    options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, ep_options);
     options.AddConfigEntry("model_package.test_option", "caller");
     auto observations = std::make_shared<ProviderObservations>();
     auto& factory = static_cast<OrtSessionOptions*>(options)->provider_factories.front();
@@ -501,7 +503,8 @@ TEST(ModelPackageApiTest, DefaultOptionsRegisterPluginCustomDomainsBeforeLoad) {
     ASSERT_TRUE(model.SerializeToOstream(&output));
   }
   Ort::SessionOptions options;
-  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {});
+  const std::unordered_map<std::string, std::string> ep_options;
+  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, ep_options);
   auto session = CreateSessionFromModelPackage(root, "model", options, true);
   CheckSquareModel(session);
   std::filesystem::remove_all(root);
@@ -699,6 +702,18 @@ TEST(ModelPackageApiTest, ResolveStringRef) {
       ctx.get(), nullptr, ("sha256:" + missing_digest).c_str(), /*must_exist=*/0, &resolved);
   EXPECT_NE(status, nullptr);
   if (status != nullptr) Ort::GetApi().ReleaseStatus(status);
+
+  std::filesystem::remove_all(asset_dir);
+  const char* sentinel = "unchanged";
+  resolved = sentinel;
+  Ort::Status missing_asset(pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), nullptr, ("sha256:" + digest).c_str(), /*must_exist=*/1, &resolved));
+  EXPECT_FALSE(missing_asset.IsOK());
+  EXPECT_EQ(resolved, sentinel);
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), nullptr, ("sha256:" + digest).c_str(), /*must_exist=*/0, &resolved));
+  ASSERT_NE(resolved, nullptr);
+  EXPECT_FALSE(std::filesystem::exists(ToPathString(resolved)));
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);

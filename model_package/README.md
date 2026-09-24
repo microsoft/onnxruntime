@@ -8,8 +8,9 @@ without dragging in a session runtime. It is distributed and consumed as
 
 All C API strings, including filesystem paths, are UTF-8. On Windows, convert
 native UTF-16 paths before calling the library; returned paths are also UTF-8.
-Directory hashes encode relative filenames as UTF-8 with `/` separators on
-every platform.
+Path-conversion failures return `MODEL_PACKAGE_ERR_IO`; no alternative encoding
+is tried. Directory hashes retain the existing native filename encoding with `/`
+separators, including the Windows code page, so published asset URIs do not change.
 
 The library owns three things:
 

@@ -465,7 +465,7 @@ bool test_commit_unicode_paths_and_assets() {
   Sandbox s;
   const std::string directory = u8"\u6a21\u578b_\U0001F9EA";
   const std::string asset_directory = u8"\u6743\u91cd";
-  const std::string filename = u8"\u53c2\u6570.bin";
+  const std::string filename = "weights.bin";
   s.Write(asset_directory + "/" + filename, "weights");
   const auto root = s.path(directory);
   PkgHandle package = MakeAuthoredPkgAt(root);
