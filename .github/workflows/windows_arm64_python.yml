@@ -1,0 +1,125 @@
+name: Windows ARM64 Build And Python Test
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build_windows_arm64_python_wheel:
+    name: Build Windows ARM64 Python 3.12 wheel
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-win-gh-arm64",
+      "JobId=windows-arm64-python-3.12-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+    env:
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}\build
+      OrtPackageId: Microsoft.ML.OnnxRuntime
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: 3.12
+          architecture: arm64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: arm64
+
+      - name: Verify native ARM64 environment
+        shell: pwsh
+        run: |
+          $osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          if ($osArchitecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
+            throw "Expected an ARM64 runner, but detected $osArchitecture."
+          }
+
+          python -c "import platform; assert platform.machine().lower() in ('arm64', 'aarch64'), platform.machine()"
+
+      - name: Install Python modules
+        shell: pwsh
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+
+      - name: Build
+        shell: pwsh
+        run: |
+          python tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir "${{ github.workspace }}\build" `
+            --skip_submodule_sync `
+            --update `
+            --build `
+            --parallel `
+            --enable_lto `
+            --enable_pybind `
+            --enable_onnx_tests `
+            --use_vcpkg `
+            --use_vcpkg_ms_internal_asset_cache `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --use_azure
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Build wheel
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+        shell: pwsh
+        run: |
+          python "${{ github.workspace }}\setup.py" bdist_wheel --use_azure
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Install wheel
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+        shell: pwsh
+        run: |
+          python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+          $wheel = Get-ChildItem -Path dist\*.whl -File
+          if ($wheel.Count -ne 1) {
+            throw "Expected exactly one wheel, but found $($wheel.Count)."
+          }
+
+          python -m pip install --disable-pip-version-check --upgrade $wheel.FullName tabulate
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Run Python tests
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+        shell: pwsh
+        run: |
+          $env:PATH = "${{ github.workspace }}\build\RelWithDebInfo\_deps\vcpkg-src\installed\arm64-windows\bin;$env:PATH"
+
+          python onnxruntime_test_python_azure.py
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          python onnx_backend_test_series.py
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
