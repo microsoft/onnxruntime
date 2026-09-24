@@ -582,4 +582,3 @@ jobs:
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
         working-directory: ${{ github.workspace }}\csharp
-        continue-on-error: true
