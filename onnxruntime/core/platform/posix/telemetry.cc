@@ -397,26 +397,26 @@ bool PrepareHighVolumeEvent(EventBuilder& event, uint32_t session_id) {
   return true;
 }
 
-bool PrepareProcessEvent(EventBuilder& event) {
+bool PrepareSampledProcessEvent(EventBuilder& event) {
   if (!telemetry_internal::ShouldSampleSession(
           GetAppSessionGuid(), 0,
-          telemetry_internal::kProcessEventSampleRatePercent)) {
+          telemetry_internal::kOtherProcessEventSampleRatePercent)) {
     return false;
   }
 
-  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  event.SetPopsample(telemetry_internal::kOtherProcessEventSampleRatePercent);
   return true;
 }
 
 #ifdef _WIN32
-bool PrepareProcessEvent(EventProperties& event) {
+bool PrepareSampledProcessEvent(EventProperties& event) {
   if (!telemetry_internal::ShouldSampleSession(
           GetAppSessionGuid(), 0,
-          telemetry_internal::kProcessEventSampleRatePercent)) {
+          telemetry_internal::kOtherProcessEventSampleRatePercent)) {
     return false;
   }
 
-  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  event.SetPopsample(telemetry_internal::kOtherProcessEventSampleRatePercent);
   return true;
 }
 #endif
@@ -1241,9 +1241,6 @@ void PosixTelemetry::LogRuntimeError(
     const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 
     auto builder = EventBuilder("RuntimeError", EventPriority::HIGH);
-    if (!PrepareHighVolumeEvent(builder, session_id)) {
-      return;
-    }
     auto event = builder.AddUInt32("sessionId", session_id)
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1266,9 +1263,6 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
     }
 
     auto builder = EventBuilder("RuntimeInferenceError", EventPriority::HIGH);
-    if (!PrepareHighVolumeEvent(builder, session_id)) {
-      return;
-    }
     auto event = builder.AddUInt32("sessionId", session_id)
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1313,7 +1307,7 @@ void PosixTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
     }
 
     auto event = telemetry_internal::BuildExecutionProviderEvent(*adapterLuid);
-    if (!PrepareProcessEvent(event)) {
+    if (!PrepareSampledProcessEvent(event)) {
       return;
     }
 
@@ -1335,7 +1329,7 @@ void PosixTelemetry::LogDriverInfoEvent(
     }
 
     auto event = telemetry_internal::BuildDriverInfoEvent(device_class, driver_names, driver_versions);
-    if (!PrepareProcessEvent(event)) {
+    if (!PrepareSampledProcessEvent(event)) {
       return;
     }
 
@@ -1509,7 +1503,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
     }
 
     auto builder = EventBuilder("RegisterEpLibraryEnd", EventPriority::NORMAL);
-    if (!PrepareProcessEvent(builder)) {
+    if (!PrepareSampledProcessEvent(builder)) {
       return;
     }
     auto event = builder.AddString("registrationName", registration_name)
@@ -1533,7 +1527,7 @@ void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registra
 
     const std::string scrubbed_lib_path = ScrubStringForTelemetry(lib_path);
     auto builder = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL);
-    if (!PrepareProcessEvent(builder)) {
+    if (!PrepareSampledProcessEvent(builder)) {
       return;
     }
     auto event = builder.AddString("registrationName", registration_name)

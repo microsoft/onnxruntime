@@ -79,6 +79,8 @@ struct RunConfig {
   bool spin_backoff_max_set = false;
   bool exit_after_session_creation = false;
   uint32_t hold_ms_after_session_creation{0};
+  bool enable_telemetry = false;
+  uint32_t telemetry_smoke_sessions{1};
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
   bool use_extensions = false;

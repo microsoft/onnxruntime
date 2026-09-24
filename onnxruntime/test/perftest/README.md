@@ -26,6 +26,12 @@ Options:
 
 	-r: [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.
 
+	--enable_telemetry: Allow telemetry for this run. The performance test suppresses telemetry by default.
+	For a backend ingestion smoke test, use `-n --enable_telemetry --telemetry_smoke_sessions=500 --hold_ms_after_session_creation=120000 <model_path>`.
+	Repeated sessions exercise the default 1% client-side sampling without changing production sampling.
+	Do not set CI, ORT_RUNNING_UNIT_TESTS, or ORT_DISABLE_TELEMETRY in the test process.
+	ProcessInfo is emitted once per process without sampling. Backend ingestion can take several minutes.
+
 	-s: Show statistics result, like P75, P90.
 
 	-t: [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.

@@ -31,6 +31,9 @@ int real_main(int argc, char* argv[]) {
     fprintf(stderr, "%s", "See 'onnxruntime_perf_test --help'.");
     return -1;
   }
+  if (!test_config.run_config.enable_telemetry) {
+    onnxruntime::test::SuppressTelemetryForTests();
+  }
   Ort::Env env{nullptr};
   {
     bool failed = false;
@@ -108,7 +111,6 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  onnxruntime::test::SuppressTelemetryForTests();
   int retval = -1;
   ORT_TRY {
     retval = real_main(argc, argv);
@@ -132,6 +134,9 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
     perf_runner.LogSessionCreationTime();
+    for (uint32_t i = 1; i < test_config.run_config.telemetry_smoke_sessions; ++i) {
+      perftest::PerformanceRunner additional_runner(env, test_config, rd);
+    }
     if (test_config.run_config.hold_ms_after_session_creation > 0) {
       std::cout << "SESSION_READY" << std::endl;
       std::this_thread::sleep_for(

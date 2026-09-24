@@ -190,6 +190,10 @@ ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_
 ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig().run_config.hold_ms_after_session_creation,
           "When used with -n, keeps the process alive for the specified number of milliseconds after session creation.\n"
           "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
+ABSL_FLAG(bool, enable_telemetry, false, "Allow telemetry for this run instead of suppressing it as a test.");
+ABSL_FLAG(uint32_t, telemetry_smoke_sessions, 1,
+          "Number of sessions to initialize when using -n --enable_telemetry. "
+          "Use 500 or more to exercise sampled session events.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
@@ -555,6 +559,14 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --hold_ms_after_session_creation
   test_config.run_config.hold_ms_after_session_creation = absl::GetFlag(FLAGS_hold_ms_after_session_creation);
+  test_config.run_config.enable_telemetry = absl::GetFlag(FLAGS_enable_telemetry);
+  test_config.run_config.telemetry_smoke_sessions = absl::GetFlag(FLAGS_telemetry_smoke_sessions);
+  if (test_config.run_config.telemetry_smoke_sessions == 0 ||
+      (test_config.run_config.telemetry_smoke_sessions != 1 &&
+       (!test_config.run_config.enable_telemetry || !test_config.run_config.exit_after_session_creation))) {
+    fprintf(stderr, "--telemetry_smoke_sessions requires a positive count and -n --enable_telemetry.\n");
+    return false;
+  }
   if (test_config.run_config.hold_ms_after_session_creation > 0 &&
       !test_config.run_config.exit_after_session_creation) {
     fprintf(stderr, "WARNING: --hold_ms_after_session_creation has no effect without -n.\n");
