@@ -9,9 +9,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
+#include "core/providers/webgpu/ep/version_policy.h"
 #include "core/session/onnxruntime_env_config_keys.h"
 
 // To make symbols visible on macOS/iOS
@@ -71,8 +73,16 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
     };
 
     try {
-      // Manual init for the C++ API
-      onnxruntime::ep::ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION);
+      const char* runtime_version = ort_api_base == nullptr ? nullptr : ort_api_base->GetVersionString();
+      if (runtime_version == nullptr) {
+        throw std::runtime_error("Failed to initialize WebGPU EP: ORT runtime version is unavailable.");
+      }
+      const bool is_additional_version = onnxruntime::webgpu::ep::IsAdditionalOrtVersion(
+          runtime_version, ORT_PLUGIN_EP_ADDITIONAL_ORT_VERSIONS);
+
+      // Exceptions bypass only the version floor; ApiInit still validates the version and requests
+      // the runtime's actual API version. The runtime must supply any required API backports.
+      onnxruntime::ep::ApiInit(ort_api_base, is_additional_version ? nullptr : ORT_PLUGIN_EP_MIN_ORT_VERSION);
     } catch (const std::exception& e) {
       return report_error(ort_api_base, e.what());
     } catch (...) {

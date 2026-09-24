@@ -11,10 +11,13 @@ For more information about plugin EPs, see the
 - [`VERSION_NUMBER`](VERSION_NUMBER) — Base plugin EP version consumed by the CI pipeline. The pipeline derives the
   final package version (release, dev) from this via
   [`tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml`](../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml).
-- [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) — Minimum compatible core `onnxruntime` version. Single source
-  of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
-  specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
-  time, and the native plugin EP code validates compatibility at registration time.
+- [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) — Start of the continuously supported core `onnxruntime`
+  version range.
+- [`ADDITIONAL_SUPPORTED_ONNXRUNTIME_VERSIONS`](ADDITIONAL_SUPPORTED_ONNXRUNTIME_VERSIONS) — Exact older releases
+  containing the required plugin EP API backports, one version per line. An empty file means no exceptions to the
+  minimum version. Matching is exact: listing `1.28.3` does not also allow `1.28.4`. The packages do not declare a hard
+  dependency on a specific ONNX Runtime package; the native plugin validates this combined compatibility policy at
+  registration time, and both package READMEs use the same policy.
 - [`paths.txt`](paths.txt) — Specifies directories and paths that are related to the WebGPU EP. These paths are used to
   filter the commits considered when identifying changes between releases, e.g., for generating release notes.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
@@ -23,6 +26,15 @@ For more information about plugin EPs, see the
   [`csharp/README.md`](csharp/README.md) for build and test instructions.
 
 ## How it fits together
+
+The current registration policy allows exactly `1.28.3`, or `1.30.1` and later. An exception only
+relaxes the version floor: API initialization still requests the runtime's actual API version and
+does not provide missing API backports. Qualify the actual exception runtime before deployment;
+version-policy tests alone do not establish runtime compatibility.
+
+Packaging CI tests the version policy and both README templates, and runs runtime smoke tests
+against the continuous minimum. Exception runtimes are not assumed to be available on public
+package feeds and require separate runtime qualification.
 
 The plugin EP is built as a shared library (`onnxruntime_providers_webgpu.{dll,so,dylib}`) by the main ONNX Runtime
 build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into:

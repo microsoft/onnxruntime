@@ -82,17 +82,42 @@
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
                                ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
 
-    # Bake the minimum compatible ORT version (the single source of truth lives in
-    # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime.
-    # Format is strict "MAJOR.MINOR.PATCH".
+    # Bake the continuous minimum and exact compatibility exceptions into the EP DLL.
     set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
-    file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
+    set(_ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS_FILE
+        "${REPO_ROOT}/plugin-ep-webgpu/ADDITIONAL_SUPPORTED_ONNXRUNTIME_VERSIONS")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}"
+                 "${_ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS_FILE}")
+    file(READ "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
+    string(STRIP "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
     if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
       message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "
                           "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
     endif()
+    if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+      message(FATAL_ERROR "WebGPU plugin EP minimum ORT version must be \"MAJOR.MINOR.PATCH\", got "
+                          "\"${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}\"")
+    endif()
+    file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS_FILE}"
+         _ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSION_LINES)
+    set(_ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS "")
+    foreach(_ORT_VERSION IN LISTS _ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSION_LINES)
+      string(STRIP "${_ORT_VERSION}" _ORT_VERSION)
+      if(_ORT_VERSION STREQUAL "")
+        continue()
+      endif()
+      if(NOT _ORT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+        message(FATAL_ERROR "WebGPU plugin EP additional ORT version must be \"MAJOR.MINOR.PATCH\", got "
+                            "\"${_ORT_VERSION}\"")
+      endif()
+      list(APPEND _ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS "${_ORT_VERSION}")
+    endforeach()
+    list(JOIN _ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS ","
+         _ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS_CSV)
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
-                               ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
+                               ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}"
+                               ORT_PLUGIN_EP_ADDITIONAL_ORT_VERSIONS="${_ORT_PLUGIN_EP_WEBGPU_ADDITIONAL_ORT_VERSIONS_CSV}")
 
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)

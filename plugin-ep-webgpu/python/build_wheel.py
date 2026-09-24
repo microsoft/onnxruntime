@@ -21,11 +21,10 @@ import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
-# Import the shared template helper from _packaging_utils.py in the parent directory.
+# Import the shared packaging helpers from the parent directory.
 sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402, I001  (path setup must precede import)
+from _packaging_utils import gen_file_from_template, get_ort_version_substitutions  # noqa: E402, I001
 
 
 # Patterns for binaries to include in the package
@@ -77,16 +76,12 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     if not copied:
         raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
 
-    # Substitute the minimum ORT version into the staged README in place.
-    min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
-    if not min_ort_version:
-        raise ValueError(f"{MIN_ONNXRUNTIME_VERSION_FILE} is empty")
-
+    # Substitute the supported ORT versions into the staged README in place.
     staged_readme = package_dir / "README.md"
     gen_file_from_template(
         staged_readme,
         staged_readme,
-        {"min_onnxruntime_version": min_ort_version},
+        get_ort_version_substitutions(SCRIPT_DIR.parent),
     )
 
     # Render pyproject.toml from its template

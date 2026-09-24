@@ -22,6 +22,7 @@
 #include "core/framework/run_options.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/ep/version_policy.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
@@ -38,6 +39,33 @@ namespace test {
 namespace {
 
 using namespace webgpu::options;
+
+TEST(WebGpuVersionPolicyTest, MatchesOnlyExactAdditionalVersions) {
+  constexpr std::string_view additional_versions = "1.28.3,1.30.1";
+
+  EXPECT_TRUE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", additional_versions));
+  EXPECT_TRUE(webgpu::ep::IsAdditionalOrtVersion("1.30.1", additional_versions));
+
+  for (const char* version : {"", "1.28", "1.28.2", "1.28.4", "1.29.0", "1.30.0", "1.30.10",
+                              "1.31.0", "1.32.0", "2.0.0", "1.28.3-dev", "invalid"}) {
+    EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion(version, additional_versions)) << version;
+  }
+}
+
+TEST(WebGpuVersionPolicyTest, HandlesEmptyAndSingleVersionLists) {
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", ""));
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("", ""));
+  EXPECT_TRUE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", "1.28.3"));
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("1.28", "1.28.3"));
+}
+
+TEST(WebGpuVersionPolicyTest, DoesNotMatchSubstringsOrEmptyEntries) {
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", "1.28.30,11.28.3"));
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("", ",1.28.3,"));
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("1.28.3-dev", "1.28.3"));
+  EXPECT_FALSE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", "1.28.3-dev"));
+  EXPECT_TRUE(webgpu::ep::IsAdditionalOrtVersion("1.28.3", "1.27.1,1.28.3,1.29.2"));
+}
 
 ConfigOptions RobustnessOptions(const char* value) {
   ConfigOptions options;
