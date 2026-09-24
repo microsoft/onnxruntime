@@ -79,10 +79,8 @@ class MoeExpertState {
     size_t count;
   };
   struct KernelState {
-    KernelState(Key key, std::string node_type, ExpertRange range)
-        : key(std::move(key)), node_type(std::move(node_type)), experts(range) {}
+    KernelState(Key key, ExpertRange range) : key(std::move(key)), experts(range) {}
     Key key;
-    std::string node_type;
     ExpertRange experts;
     KernelPilot pilot;
   };

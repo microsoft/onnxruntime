@@ -13,6 +13,8 @@
 #include <tuple>
 
 #include "core/common/safeint.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 
@@ -49,7 +51,7 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  auto [entry, inserted] = kernels_.try_emplace(kernel, key, std::string(node_type), range);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range);
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
   return Status::OK();
@@ -93,7 +95,7 @@ Status MoeExpertState::Load(std::istream& input) {
     const auto node = nodes.find({scope, static_cast<size_t>(node_index)});
     ORT_RETURN_IF(node == nodes.end(), "Unknown MoE counter node at line ", line_number);
     const auto& kernel_state = kernels_.at(node->second);
-    ORT_RETURN_IF_NOT(kernel_state.node_type == type &&
+    ORT_RETURN_IF_NOT(node->second->Node().OpType() == type &&
                           static_cast<size_t>(expert_id) < kernel_state.experts.count,
                       "MoE counter type or expert index mismatch at line ", line_number);
     ORT_RETURN_IF_NOT(seen.emplace(scope, static_cast<size_t>(node_index), static_cast<size_t>(expert_id)).second,
