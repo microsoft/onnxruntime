@@ -79,6 +79,21 @@ var<workgroup> tile_sum: array<f32, m_tile>;
   }
 #endif
 
+fn local_window_start(query_end: u32) -> u32 {
+  return select(0u, query_end - min(query_end, uniforms.local_window_size),
+                uniforms.local_window_size > 0u);
+}
+
+fn visible_key_bounds(total_sequence_length: u32, past_sequence_length: u32, q_idx: u32) -> vec2<u32> {
+  let query_end = min(total_sequence_length, past_sequence_length + q_idx + 1u);
+#if is_unidirectional
+  let key_end = query_end;
+#else
+  let key_end = total_sequence_length;
+#endif
+  return vec2<u32>(local_window_start(query_end), key_end);
+}
+
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
@@ -110,7 +125,6 @@ $MAIN {
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif
-#if is_unidirectional
 #if use_seqlens_q
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b.
   let q_len_b = u32(seqlens_q[batch_idx]);
@@ -123,13 +137,8 @@ $MAIN {
   // q_base is the earliest query row in this workgroup and therefore has the earliest
   // window start. A tile older than that start is excluded by every row in the workgroup.
   let first_query_key_end = min(total_sequence_length, past_sequence_length + q_base + 1u);
-  let first_query_window_start = select(0u, first_query_key_end - uniforms.local_window_size,
-                                        uniforms.local_window_size > 0u &&
-                                            first_query_key_end > uniforms.local_window_size);
+  let first_query_window_start = local_window_start(first_query_key_end);
   let tile_excluded_by_window = total_seq_offset + tile_size <= first_query_window_start;
-#else
-  let tile_excluded_by_window = false;
-#endif
   // Tiles outside every query row publish neutral metadata so VxReduce ignores them.
   // Returning here avoids K/V loads for both quantized and dense KV caches.
   if (total_seq_offset >= total_sequence_length || tile_excluded_by_window) {
@@ -250,6 +259,9 @@ $MAIN {
   // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     let q_idx = q_base + m;
+    let key_bounds = visible_key_bounds(total_sequence_length, past_sequence_length, q_idx);
+    let valid_key_start = key_bounds.x;
+    let valid_key_end = key_bounds.y;
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
       var sum = f32(0);
       for (var i = 0u; i < tile_size_k_vec; i++) {
@@ -257,31 +269,16 @@ $MAIN {
       }
 
       sum += f32(loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx));
-#if is_unidirectional
-      if (total_seq_offset + local_idx > past_sequence_length + q_idx) {
+      if (total_seq_offset + local_idx < valid_key_start ||
+          total_seq_offset + local_idx >= valid_key_end) {
         sum = f32(-3.4028234663852886e+38f);
       }
-      let causal_sequence_length = past_sequence_length + q_idx + 1u;
-      if (uniforms.local_window_size > 0u &&
-          total_seq_offset + local_idx + uniforms.local_window_size < causal_sequence_length) {
-        sum = f32(-3.4028234663852886e+38f);
-      }
-#endif
       tile_qk[m][local_idx] = sum;
     }
     workgroupBarrier();
 
     // Compute per-tile max and sum for online softmax
     if (local_idx == 0u) {
-#if is_unidirectional
-      let valid_key_end = min(total_sequence_length, past_sequence_length + q_idx + 1u);
-      let valid_key_start = select(0u, valid_key_end - uniforms.local_window_size,
-                                   uniforms.local_window_size > 0u &&
-                                       valid_key_end > uniforms.local_window_size);
-#else
-      let valid_key_end = total_sequence_length;
-      let valid_key_start = 0u;
-#endif
       var l_max = f32(-3.4028234663852886e+38f);
       var l_sum = f32(0);
       for (var i = 0u; i < tile_size && (total_seq_offset + i) < valid_key_end; i++) {
@@ -309,15 +306,9 @@ $MAIN {
   // Normalize tile_qk with local max/sum
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
-#if is_unidirectional
-      let valid_key_end = min(total_sequence_length, past_sequence_length + q_base + m + 1u);
-      let valid_key_start = select(0u, valid_key_end - uniforms.local_window_size,
-                                   uniforms.local_window_size > 0u &&
-                                       valid_key_end > uniforms.local_window_size);
-#else
-      let valid_key_end = total_sequence_length;
-      let valid_key_start = 0u;
-#endif
+      let key_bounds = visible_key_bounds(total_sequence_length, past_sequence_length, q_base + m);
+      let valid_key_start = key_bounds.x;
+      let valid_key_end = key_bounds.y;
       if (total_seq_offset + local_idx >= valid_key_start &&
           total_seq_offset + local_idx < valid_key_end && tile_sum[m] > 0.0f) {
         tile_qk[m][local_idx] = exp(f32(tile_qk[m][local_idx]) - tile_max[m]) / tile_sum[m];
