@@ -20,7 +20,7 @@ jobs:
     name: Build Windows ARM64 Python 3.12 wheel
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-win-gh-arm64",
+      "1ES.Pool=onnxruntime-medium-win-gh-arm64-eus",
       "JobId=windows-arm64-python-3.12-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 180
