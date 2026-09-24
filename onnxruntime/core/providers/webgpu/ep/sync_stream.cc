@@ -35,16 +35,9 @@ struct WebGpuSyncStream final : OrtSyncStreamImpl {
     auto& ep = static_cast<WebGpuSyncStream*>(stream)->ep_;
     auto& context = WebGpuContextFactory::GetContext(ep.GetDeviceId());
     std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
+    // Submit before streamless readbacks (e.g., node dumps) use a different recording.
+    // Readbacks wait for completion; GPU consumers rely on ordering on the shared queue.
     ORT_THROW_IF_ERROR(context.Flush(ep.BufferManager(), ep.Recording()));
-    wgpu::QueueWorkDoneStatus completion = wgpu::QueueWorkDoneStatus::Error;
-    auto future = context.Device().GetQueue().OnSubmittedWorkDone(
-        wgpu::CallbackMode::WaitAnyOnly,
-        [](wgpu::QueueWorkDoneStatus status, wgpu::StringView, wgpu::QueueWorkDoneStatus* result) noexcept {
-          *result = status;
-        },
-        &completion);
-    ORT_THROW_IF_ERROR(context.Wait(future));
-    ORT_ENFORCE(completion == wgpu::QueueWorkDoneStatus::Success, "WebGPU queue completion failed.");
     return nullptr;
     EXCEPTION_TO_RETURNED_STATUS_END
   }

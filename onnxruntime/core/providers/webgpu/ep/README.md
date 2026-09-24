@@ -61,8 +61,15 @@ not guarantee freedom from contention.
 Environment transfers with no stream use their private command state. GPU-to-GPU copies
 without a stream submit before returning, but do not wait for GPU completion. A subsequent
 Session Run uses a different recording, so the transfer must submit its copy first; the shared
-device queue orders it before later Session work. Stream notifications still complete producer
-work synchronously during activation; their wait callbacks consequently have no remaining work.
+device queue orders it before later Session work.
+
+Stream flush and notification activation submit the owning Session's recording without a CPU
+wait. Submission is still needed before streamless readbacks, such as node I/O dumps, use a
+different recording. GPU consumers rely on the shared queue's submission order, and CPU
+consumers synchronize through blocking readbacks; notification wait callbacks are no-ops.
+These callbacks preserve WebGPU's existing submission-only behavior rather than providing a
+general host-completion barrier. In particular, returning GPU-backed outputs from Run does
+not guarantee that GPU execution has completed.
 
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
 copies, mixed feed copies, CPU outputs bound to GPU, concurrent Sessions, and same-Session and
