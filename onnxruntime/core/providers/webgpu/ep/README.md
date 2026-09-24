@@ -59,9 +59,10 @@ shared tensor. Plain allocations can flush pending Session work, so correctness 
 not guarantee freedom from contention.
 
 Environment transfers with no stream use their private command state. GPU-to-GPU copies
-without a stream submit and wait before returning. Stream notifications currently complete
-producer work synchronously during activation; the wait callbacks consequently have no
-remaining work. This conservative implementation prioritizes correctness over overlap.
+without a stream submit before returning, but do not wait for GPU completion. A subsequent
+Session Run uses a different recording, so the transfer must submit its copy first; the shared
+device queue orders it before later Session work. Stream notifications still complete producer
+work synchronously during activation; their wait callbacks consequently have no remaining work.
 
 The implementation requires an ORT build with stream support. CPU I/O, graph-internal CPU/GPU
 copies, mixed feed copies, CPU outputs bound to GPU, concurrent Sessions, and same-Session and

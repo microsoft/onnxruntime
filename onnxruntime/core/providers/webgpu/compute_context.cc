@@ -38,7 +38,8 @@ Tensor ComputeContext::CreateGPUTensor(MLDataType data_type, const TensorShape& 
   ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const size_t bytes = Tensor::CalculateTensorStorageSize(data_type, shape);
-  // Keep cached clears ordered on the kernel's stream without submitting each scratch allocation.
+  // For performance, use the kernel's stream: plain Alloc during Run immediately flushes cached-buffer
+  // clears, causing frequent submissions when scratch allocations reuse cached buffers.
   // A null stream still falls back to plain Alloc's immediate-submission policy.
   auto buffer = IAllocator::MakeUniquePtr<void>(
       allocator, bytes, false, reinterpret_cast<Stream*>(kernel_context_.GetSyncStream()));

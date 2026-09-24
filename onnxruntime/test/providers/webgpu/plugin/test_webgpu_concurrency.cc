@@ -767,7 +767,7 @@ TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessio
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyCompletesBeforeSessionRun) {
+TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyIsSubmittedBeforeSessionRun) {
   auto session = CreateSession();
   auto allocator = CreateSharedAllocator();
   const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);

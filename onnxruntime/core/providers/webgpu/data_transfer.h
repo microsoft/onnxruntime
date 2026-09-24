@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <mutex>
-
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 
@@ -68,7 +66,6 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
-  mutable std::mutex mutex_;
   const BufferManager& buffer_manager_;
   CommandRecordingState& recording_;
 };

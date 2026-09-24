@@ -518,18 +518,11 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
       if (src_is_gpu && dst_is_gpu && (streams == nullptr || streams[idx] == nullptr)) {
+        // Env copies use a separate recording: a subsequent Session::Run cannot submit this copy.
+        // Flush here so later Session work on the same queue is ordered after it, without a CPU wait.
         auto& context = WebGpuContextFactory::GetContext(impl.context_id_);
         std::lock_guard<std::recursive_mutex> lock{impl.recording_.mutex};
         ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), impl.recording_));
-        wgpu::QueueWorkDoneStatus completion = wgpu::QueueWorkDoneStatus::Error;
-        auto future = context.Device().GetQueue().OnSubmittedWorkDone(
-            wgpu::CallbackMode::WaitAnyOnly,
-            [](wgpu::QueueWorkDoneStatus result, wgpu::StringView, wgpu::QueueWorkDoneStatus* completion) noexcept {
-              *completion = result;
-            },
-            &completion);
-        ORT_THROW_IF_ERROR(context.Wait(future));
-        ORT_ENFORCE(completion == wgpu::QueueWorkDoneStatus::Success, "WebGPU copy completion failed.");
       }
     }
     return nullptr;

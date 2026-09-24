@@ -115,6 +115,8 @@ struct CommandRecordingState {
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
+  // TODO: Make BufferManager defer reuse of buffers belonging to unsubmitted batches, including
+  // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
   bool has_unsubmitted_work = false;
   std::vector<wgpu::Buffer> pending_buffers;
   std::vector<CapturedCommandInfo> deferred_dispatches;

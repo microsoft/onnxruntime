@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/data_transfer.h"
+
+#include <mutex>
+
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
@@ -14,7 +17,6 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
   auto& command_state = recording_;
-  std::lock_guard<std::mutex> lock{mutex_};
   std::lock_guard<std::recursive_mutex> recording_lock{command_state.mutex};
   if (bytes > 0) {
     if (dst_is_gpu) {
