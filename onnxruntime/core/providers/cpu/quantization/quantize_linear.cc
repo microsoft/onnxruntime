@@ -817,22 +817,24 @@ template <typename InputType, typename OutputType>
 void ParQuantizeLinear(const InputType* Input,
                        OutputType* Output,
                        size_t N,
-                       InputType Scale,
+                       float Scale,
                        size_t bd,
                        const OutputType* ZeroPoint,
                        bool saturate,
-                       concurrency::ThreadPool* thread_pool) {
+                       concurrency::ThreadPool* thread_pool,
+                       bool half_precision) {
 #if !defined(DISABLE_FLOAT8_TYPES)
   if constexpr (!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value) {
 #endif
     ORT_UNUSED_PARAMETER(saturate);
-    ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
+    ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0,
+                         thread_pool, half_precision);
 #if !defined(DISABLE_FLOAT8_TYPES)
   } else {
     ParQuantizeLinearSat(Input, Output, N, Scale,
                          ZeroPoint != nullptr ? ZeroPoint[bd]
                                               : OutputType(static_cast<InputType>(static_cast<float>(0)), true),
-                         saturate, thread_pool);
+                         saturate, thread_pool, half_precision);
   }
 #endif
 }
@@ -841,12 +843,13 @@ void ParQuantizeLinear(const InputType* Input,
  * @brief Compute per-tensor or per-axis quantization.
  */
 template <typename T, typename InT>
-void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const T* zero_point, T* output,
-                 int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size, bool saturate) {
+void ComputeLoop(OpKernelContext* ctx, const InT* input, QuantizeLinearScale scale, const T* zero_point, T* output,
+                 int64_t process_block_count, int64_t broadcast_dim, int64_t process_block_size,
+                 bool saturate, bool half_precision) {
   for (size_t n = 0; n < static_cast<size_t>(process_block_count); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
       ParQuantizeLinear(input, output, static_cast<size_t>(process_block_size), scale[bd], bd, zero_point,
-                        saturate, ctx->GetOperatorThreadPool());
+                        saturate, ctx->GetOperatorThreadPool(), half_precision);
       input += process_block_size;
       output += process_block_size;
     }
@@ -859,27 +862,27 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
 #define CREATE_SUB_BYTE_ZP(TYPE, zp, ELEMENTS_PER_BYTE) CREATE_SUB_BYTE_ZP_##ELEMENTS_PER_BYTE(TYPE, zp)
 
 // Quantizes float32 to sub-byte types using MLAS kernel (4-bit) or generic quantization (2-bit).
-#define DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(SUB_BYTE_TYPE, QUANT_FUNC, ELEMENTS_PER_BYTE)                        \
-  template <>                                                                                                     \
-  void ComputeLoop(OpKernelContext* ctx, const float* input, const float* scale, const SUB_BYTE_TYPE* zero_point, \
-                   SUB_BYTE_TYPE* output, int64_t M, int64_t K, int64_t N, bool saturate) {                       \
-    ORT_UNUSED_PARAMETER(saturate);                                                                               \
-    size_t output_index = 0;                                                                                      \
-    constexpr size_t shift_bits = (ELEMENTS_PER_BYTE == 2) ? 1 : 2; /* log2(ELEMENTS_PER_BYTE) */                 \
-    constexpr size_t mask = ELEMENTS_PER_BYTE - 1;                  /* For modulo operation */                    \
-    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                         \
-      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                    \
-        size_t bd_i = bd >> shift_bits; /* bd / ELEMENTS_PER_BYTE */                                              \
-        size_t bd_j = bd & mask;        /* bd % ELEMENTS_PER_BYTE */                                              \
-        SUB_BYTE_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                         \
-        QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(N),                            \
-                   scale[bd], CREATE_SUB_BYTE_ZP(SUB_BYTE_TYPE, zp, ELEMENTS_PER_BYTE),                           \
-                   ctx->GetOperatorThreadPool());                                                                 \
-        input += N;                                                                                               \
-        output_index += static_cast<size_t>(N);                                                                   \
-      }                                                                                                           \
-    }                                                                                                             \
-    assert(output_index == static_cast<size_t>(SafeInt<size_t>(M) * K * N));                                      \
+#define DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(SUB_BYTE_TYPE, QUANT_FUNC, ELEMENTS_PER_BYTE)                               \
+  template <>                                                                                                            \
+  void ComputeLoop(OpKernelContext* ctx, const float* input, QuantizeLinearScale scale, const SUB_BYTE_TYPE* zero_point, \
+                   SUB_BYTE_TYPE* output, int64_t M, int64_t K, int64_t N, bool saturate, bool half_precision) {         \
+    ORT_UNUSED_PARAMETER(saturate);                                                                                      \
+    size_t output_index = 0;                                                                                             \
+    constexpr size_t shift_bits = (ELEMENTS_PER_BYTE == 2) ? 1 : 2; /* log2(ELEMENTS_PER_BYTE) */                        \
+    constexpr size_t mask = ELEMENTS_PER_BYTE - 1;                  /* For modulo operation */                           \
+    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                                \
+      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                           \
+        size_t bd_i = bd >> shift_bits; /* bd / ELEMENTS_PER_BYTE */                                                     \
+        size_t bd_j = bd & mask;        /* bd % ELEMENTS_PER_BYTE */                                                     \
+        SUB_BYTE_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                                \
+        QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(N),                                   \
+                   scale[bd], CREATE_SUB_BYTE_ZP(SUB_BYTE_TYPE, zp, ELEMENTS_PER_BYTE),                                  \
+                   ctx->GetOperatorThreadPool(), half_precision);                                                        \
+        input += N;                                                                                                      \
+        output_index += static_cast<size_t>(N);                                                                          \
+      }                                                                                                                  \
+    }                                                                                                                    \
+    assert(output_index == static_cast<size_t>(SafeInt<size_t>(M) * K * N));                                             \
   }
 
 DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(Int4x2, ParQuantizeLinearStdS4, 2)
@@ -892,9 +895,9 @@ DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(UInt2x4, ParQuantizeLinearStdU2, 4)
 // into output sub-byte buffer.
 #define DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(SUB_BYTE_TYPE, ELEMENTS_PER_BYTE)                                         \
   template <>                                                                                                          \
-  void ComputeLoop<SUB_BYTE_TYPE, MLFloat16>(OpKernelContext * ctx, const MLFloat16* input, const MLFloat16* scale,    \
+  void ComputeLoop<SUB_BYTE_TYPE, MLFloat16>(OpKernelContext * ctx, const MLFloat16* input, QuantizeLinearScale scale, \
                                              const SUB_BYTE_TYPE* zero_point, SUB_BYTE_TYPE* output, int64_t M,        \
-                                             int64_t K, int64_t N, bool saturate) {                                    \
+                                             int64_t K, int64_t N, bool saturate, bool half_precision) {               \
     ORT_UNUSED_PARAMETER(saturate);                                                                                    \
                                                                                                                        \
     size_t total_size = static_cast<size_t>(SafeInt<size_t>(M) * K * N);                                               \
@@ -910,7 +913,7 @@ DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(UInt2x4, ParQuantizeLinearStdU2, 4)
         SUB_BYTE_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                              \
         ParQuantizeLinearStd<SUB_BYTE_TYPE::UnpackedType>(input, tmp_buf.get() + tmp_buf_index,                        \
                                                           static_cast<size_t>(N), scale[bd],                           \
-                                                          zp, ctx->GetOperatorThreadPool());                           \
+                                                          zp, ctx->GetOperatorThreadPool(), half_precision);           \
         input += N;                                                                                                    \
         tmp_buf_index += static_cast<size_t>(N);                                                                       \
       }                                                                                                                \
@@ -933,83 +936,6 @@ DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt4x2, 2)
 DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(Int2x4, 4)
 DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt2x4, 4)
 
-template <typename OutT, typename InT, typename ScaleT>
-void QuantizeLinearWithPrecision(const InT* input, const ScaleT* scale, const OutT* zero_point,
-                                 OutT* output, size_t count, size_t K, size_t N, size_t block_size,
-                                 bool half_precision, bool saturate, concurrency::ThreadPool* thread_pool) {
-  constexpr size_t elements_per_byte =
-      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, OutT>::value   ? 2
-      : boost::mp11::mp_contains<TypeList<Int2x4, UInt2x4>, OutT>::value ? 4
-                                                                         : 1;
-  const size_t blocks = block_size ? K / block_size + (K % block_size != 0) : 0;
-  auto quantize = [&](size_t i) {
-    const size_t axis_index = (i / N) % K;
-    const size_t scale_index = block_size ? ((i / N / K) * blocks + axis_index / block_size) * N + i % N
-                                          : axis_index;
-    float value = static_cast<float>(input[i]);
-    float divisor = static_cast<float>(scale[scale_index]);
-    if (half_precision) {
-      // Round the operands and quotient before rounding to a quantized value.
-      value = MLFloat16(MLFloat16(value).ToFloat() / MLFloat16(divisor).ToFloat()).ToFloat();
-    } else {
-      value /= divisor;
-    }
-
-#if !defined(DISABLE_FLOAT8_TYPES)
-    if constexpr (boost::mp11::mp_contains<element_type_lists::AllFloat8, OutT>::value) {
-      return OutT(value, saturate);
-    } else
-#endif
-    {
-      ORT_UNUSED_PARAMETER(saturate);
-      float zp = 0.0f;
-      float low;
-      float high;
-      if constexpr (elements_per_byte > 1) {
-        if (zero_point) {
-          zp = zero_point[scale_index / elements_per_byte].GetElem(scale_index % elements_per_byte);
-        }
-        low = static_cast<float>(OutT::min_val);
-        high = static_cast<float>(OutT::max_val);
-      } else {
-        if (zero_point) {
-          zp = static_cast<float>(zero_point[scale_index]);
-        }
-        low = static_cast<float>(std::numeric_limits<OutT>::lowest());
-        high = static_cast<float>(std::numeric_limits<OutT>::max());
-      }
-      // Clamp before the integer conversion, including quotients that overflow.
-      return static_cast<int32_t>(std::min(high, std::max(low, RoundHalfToEven(value) + zp)));
-    }
-  };
-
-  const size_t units = count / elements_per_byte + (count % elements_per_byte != 0);
-  constexpr size_t thread_block_size = 128;
-  const auto thread_blocks = narrow<std::ptrdiff_t>(units / thread_block_size + (units % thread_block_size != 0));
-  const TensorOpCost unit_cost{static_cast<double>(thread_block_size * elements_per_byte * (sizeof(InT) + sizeof(ScaleT))),
-                               static_cast<double>(thread_block_size * sizeof(OutT)),
-                               static_cast<double>(thread_block_size * elements_per_byte * 8)};
-  auto quantize_range = [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    const size_t first = static_cast<size_t>(begin) * thread_block_size;
-    const size_t last = std::min(static_cast<size_t>(end) * thread_block_size, units);
-    for (size_t unit = first; unit < last; ++unit) {
-      if constexpr (elements_per_byte > 1) {
-        // Each worker owns complete bytes, including an incomplete final byte.
-        OutT packed{};
-        const size_t first_element = unit * elements_per_byte;
-        const size_t packed_count = std::min(elements_per_byte, count - first_element);
-        for (size_t j = 0; j < packed_count; ++j) {
-          packed.SetElem(j, static_cast<typename OutT::UnpackedType>(quantize(first_element + j)));
-        }
-        output[unit] = packed;
-      } else {
-        output[unit] = static_cast<OutT>(quantize(unit));
-      }
-    }
-  };
-  concurrency::ThreadPool::TryParallelFor(thread_pool, thread_blocks, unit_cost, quantize_range);
-}
-
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
 Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -1029,28 +955,17 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   T* output = y.MutableData<T>();
 
   const auto precision = precision_ == 0 ? y_scale.GetElementType() : precision_;
-  if (x.GetElementType() != y_scale.GetElementType() || precision == ONNX_NAMESPACE::TensorProto::FLOAT16) {
-    auto quantize = [&]<typename InT, typename ScaleT>(const InT* input, const ScaleT* scale) {
-      QuantizeLinearWithPrecision(input, scale, zero_point, output,
-                                  narrow<size_t>(x_shape.Size()), narrow<size_t>(broadcast_dim),
-                                  narrow<size_t>(process_block_size), narrow<size_t>(block_size_),
-                                  precision == ONNX_NAMESPACE::TensorProto::FLOAT16,
-                                  saturate_, ctx->GetOperatorThreadPool());
-    };
-    if (x.IsDataType<float>()) {
-      if (y_scale.IsDataType<float>()) {
-        quantize(x.Data<float>(), y_scale.Data<float>());
-      } else {
-        quantize(x.Data<float>(), y_scale.Data<MLFloat16>());
-      }
-    } else {
-      if (y_scale.IsDataType<float>()) {
-        quantize(x.Data<MLFloat16>(), y_scale.Data<float>());
-      } else {
-        quantize(x.Data<MLFloat16>(), y_scale.Data<MLFloat16>());
-      }
-    }
+  const bool half_precision = precision == ONNX_NAMESPACE::TensorProto::FLOAT16;
+  const QuantizeLinearScale scale = y_scale.IsDataType<float>()
+                                        ? QuantizeLinearScale(y_scale.Data<float>())
+                                        : QuantizeLinearScale(y_scale.Data<MLFloat16>());
+  if (x_shape.Size() == 0) {
     return Status::OK();
+  }
+
+  if constexpr (boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2, Int2x4, UInt2x4>, T>::value) {
+    // Partial-byte writes preserve adjacent elements and leave unused tail bits zero.
+    std::fill_n(output, y.SizeInBytes() / sizeof(T), T{});
   }
 
   constexpr int output_type_group_ =
@@ -1067,7 +982,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
         BlockedQuantizeLinear<float, T, output_type_group_>::opNotLastAxis(
             ctx->GetOperatorThreadPool(),
             x.Data<float>(),
-            y_scale.Data<float>(),
+            scale,
             zero_point,
             output,
             static_cast<std::ptrdiff_t>(process_block_count),
@@ -1075,22 +990,24 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
             static_cast<std::ptrdiff_t>(process_block_size),
             static_cast<std::ptrdiff_t>(block_size_),
             128,
-            saturate_);
+            saturate_,
+            half_precision);
       } else {
         BlockedQuantizeLinear<float, T, output_type_group_>::opLastAxis(
             ctx->GetOperatorThreadPool(),
             x.Data<float>(),
-            y_scale.Data<float>(),
+            scale,
             zero_point,
             output,
             static_cast<std::ptrdiff_t>(process_block_count),
             static_cast<std::ptrdiff_t>(broadcast_dim),
             static_cast<std::ptrdiff_t>(block_size_),
-            saturate_);
+            saturate_,
+            half_precision);
       }
     } else {
-      ComputeLoop<T, float>(ctx, x.Data<float>(), y_scale.Data<float>(), zero_point, output,
-                            process_block_count, broadcast_dim, process_block_size, saturate_);
+      ComputeLoop<T, float>(ctx, x.Data<float>(), scale, zero_point, output,
+                            process_block_count, broadcast_dim, process_block_size, saturate_, half_precision);
     }
   } else if (x.IsDataType<MLFloat16>()) {
     if (block_size_) {
@@ -1098,7 +1015,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
         BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opNotLastAxis(
             ctx->GetOperatorThreadPool(),
             x.Data<MLFloat16>(),
-            y_scale.Data<MLFloat16>(),
+            scale,
             zero_point,
             output,
             static_cast<std::ptrdiff_t>(process_block_count),
@@ -1106,22 +1023,24 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
             static_cast<std::ptrdiff_t>(process_block_size),
             static_cast<std::ptrdiff_t>(block_size_),
             128,
-            saturate_);
+            saturate_,
+            half_precision);
       } else {
         BlockedQuantizeLinear<MLFloat16, T, output_type_group_>::opLastAxis(
             ctx->GetOperatorThreadPool(),
             x.Data<MLFloat16>(),
-            y_scale.Data<MLFloat16>(),
+            scale,
             zero_point,
             output,
             static_cast<std::ptrdiff_t>(process_block_count),
             static_cast<std::ptrdiff_t>(broadcast_dim),
             static_cast<std::ptrdiff_t>(block_size_),
-            saturate_);
+            saturate_,
+            half_precision);
       }
     } else {
-      ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), y_scale.Data<MLFloat16>(), zero_point, output,
-                                process_block_count, broadcast_dim, process_block_size, saturate_);
+      ComputeLoop<T, MLFloat16>(ctx, x.Data<MLFloat16>(), scale, zero_point, output,
+                                process_block_count, broadcast_dim, process_block_size, saturate_, half_precision);
     }
   } else {
     ORT_THROW("Unsupported input type.");

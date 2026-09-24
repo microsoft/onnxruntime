@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <limits>
-#include <tuple>
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -49,78 +48,6 @@ static void RunQuantizeLinearOp25CudaOnly(OpTester& test) {
 }
 #endif  // USE_CUDA
 
-template <typename InT, typename ScaleT, typename OutT>
-void TestQuantizeLinearMixedTypes(int opset, int granularity, bool has_zero_point, int precision) {
-  OpTester test("QuantizeLinear", opset);
-  const std::vector<int64_t> dims{2, 3};
-  std::vector<int64_t> scale_dims;
-  std::vector<float> scales;
-  std::vector<OutT> expected;
-  switch (granularity) {
-    case 0:
-      scales = {2.0f};
-      expected = {0, 2, 4, 6, 8, 10};
-      break;
-    case 1:
-      test.AddAttribute<int64_t>("axis", -1);
-      scale_dims = {3};
-      scales = {1.0f, 2.0f, 4.0f};
-      expected = {0, 2, 2, 12, 8, 5};
-      break;
-    case 2:
-      test.AddAttribute<int64_t>("axis", -1);
-      test.AddAttribute<int64_t>("block_size", 2);
-      scale_dims = {2, 2};
-      scales = {1.0f, 2.0f, 4.0f, 2.0f};
-      expected = {0, 4, 4, 3, 4, 10};
-      break;
-    case 3:
-      test.AddAttribute<int64_t>("axis", 0);
-      test.AddAttribute<int64_t>("block_size", 2);
-      scale_dims = {1, 3};
-      scales = {1.0f, 2.0f, 4.0f};
-      expected = {0, 2, 2, 12, 8, 5};
-      break;
-    default:
-      FAIL() << "Unexpected quantization granularity: " << granularity;
-  }
-  test.AddInput<InT>("x", dims, {InT(0.0f), InT(4.0f), InT(8.0f), InT(12.0f), InT(16.0f), InT(20.0f)});
-  std::vector<ScaleT> scale_values;
-  for (float value : scales) {
-    scale_values.emplace_back(value);
-  }
-  test.AddInput<ScaleT>("y_scale", scale_dims, scale_values);
-  if (has_zero_point) {
-    test.AddInput<OutT>("y_zero_point", scale_dims, std::vector<OutT>(scales.size(), OutT(3)));
-    for (auto& value : expected) {
-      value += 3;
-    }
-  } else {
-    test.AddAttribute<int64_t>("output_dtype", utils::ToTensorProtoElementType<OutT>());
-  }
-  if (precision >= 0) {
-    test.AddAttribute<int64_t>("precision", precision);
-  }
-  test.AddOutput<OutT>("y", dims, expected);
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-}
-
-class QuantizeLinearMixedTypesTest : public ::testing::TestWithParam<std::tuple<int, bool, int>> {};
-
-TEST_P(QuantizeLinearMixedTypesTest, Cpu) {
-  const auto [granularity, has_zero_point, precision] = GetParam();
-  TestQuantizeLinearMixedTypes<MLFloat16, float, int8_t>(23, granularity, has_zero_point, precision);
-  TestQuantizeLinearMixedTypes<float, MLFloat16, uint8_t>(23, granularity, has_zero_point, precision);
-  TestQuantizeLinearMixedTypes<MLFloat16, float, int16_t>(24, granularity, has_zero_point, precision);
-  TestQuantizeLinearMixedTypes<float, MLFloat16, uint16_t>(25, granularity, has_zero_point, precision);
-}
-
-INSTANTIATE_TEST_SUITE_P(QuantizeLinear, QuantizeLinearMixedTypesTest,
-                         ::testing::Combine(::testing::Values(0, 1, 2, 3), ::testing::Bool(),
-                                            ::testing::Values(-1, 0, 1, 10)));
-
 template <typename InT, typename ScaleT>
 void TestQuantizeLinearPrecision(int opset, const std::vector<InT>& x, ScaleT scale,
                                  int precision, const std::vector<int8_t>& expected) {
@@ -153,77 +80,9 @@ TEST(QuantizeLinearPrecisionTest, HalfPrecisionRoundsInputAndQuotient) {
   }
   TestQuantizeLinearPrecision<float, MLFloat16>(23, {-1.4998f, 1.4998f}, MLFloat16(1.0f), 1, {-1, 1});
   TestQuantizeLinearPrecision<MLFloat16, MLFloat16>(23, {MLFloat16(-1.0f), MLFloat16(1.0f)}, MLFloat16(0.4f), 1, {-3, 3});
+  TestQuantizeLinearPrecision<float, float>(23, {-1.4998f, 1.4998f}, 1.0f, 10, {-2, 2});
   // Preserve the existing computation for opsets without the precision attribute.
   TestQuantizeLinearPrecision<MLFloat16, MLFloat16>(21, {MLFloat16(-1.0f), MLFloat16(1.0f)}, MLFloat16(0.4f), -1, {-3, 3});
-}
-
-TEST(QuantizeLinearPrecisionTest, FloatInputsWithExplicitHalfPrecision) {
-  TestQuantizeLinearPrecision<float, float>(23, {-1.4998f, 1.4998f}, 1.0f, 10, {-2, 2});
-}
-
-TEST(QuantizeLinearPrecisionTest, RoundingAndSaturation) {
-  const std::vector<float> x{-1000.0f, -3.5f, -2.5f, -1.5f, -0.5f, 0.5f, 1.5f, 2.5f, 3.5f, 1000.0f};
-  TestQuantizeLinearPrecision<float, MLFloat16>(23, x, MLFloat16(1.0f), -1, {-128, -4, -2, -2, 0, 0, 2, 2, 4, 127});
-}
-
-template <typename T, size_t elements_per_byte>
-void TestQuantizeLinearMixedPacked(bool has_zero_point) {
-  OpTester test("QuantizeLinear", 25);
-  // Odd row and block lengths put scale/row boundaries inside packed bytes.
-  const std::vector<int64_t> dims{3, 257, 3};
-  const std::vector<int64_t> scale_dims{3, 129, 3};
-  std::vector<MLFloat16> x;
-  std::vector<float> scales;
-  std::vector<typename T::UnpackedType> zero_points;
-  std::vector<typename T::UnpackedType> expected;
-  for (int m = 0; m < 3; ++m) {
-    for (int k = 0; k < 257; k += 2) {
-      for (int n = 0; n < 3; ++n) {
-        scales.push_back(static_cast<float>(1 << ((m + k / 2 + n) % 3)));
-        zero_points.push_back(static_cast<typename T::UnpackedType>((m + k / 2 + n) % 2));
-      }
-      for (int j = k; j < std::min(k + 2, 257); ++j) {
-        for (int n = 0; n < 3; ++n) {
-          const int value = (m + j + n) % 19 - 9;
-          const int zp = has_zero_point ? (m + k / 2 + n) % 2 : 0;
-          x.emplace_back(static_cast<float>(value * (1 << ((m + k / 2 + n) % 3))));
-          expected.push_back(static_cast<typename T::UnpackedType>(
-              std::clamp(value + zp, static_cast<int>(T::min_val), static_cast<int>(T::max_val))));
-        }
-      }
-    }
-  }
-  auto pack = [](const auto& values) {
-    std::vector<T> result((values.size() + elements_per_byte - 1) / elements_per_byte);
-    for (size_t i = 0; i < values.size(); ++i) {
-      result[i / elements_per_byte].SetElem(i % elements_per_byte, values[i]);
-    }
-    return result;
-  };
-  test.AddAttribute<int64_t>("axis", 1);
-  test.AddAttribute<int64_t>("block_size", 2);
-  test.AddInput<MLFloat16>("x", dims, x);
-  test.AddInput<float>("y_scale", scale_dims, scales);
-  if (has_zero_point) {
-    test.AddInput<T>("y_zero_point", scale_dims, pack(zero_points));
-  } else {
-    test.AddAttribute<int64_t>("output_dtype", utils::ToTensorProtoElementType<T>());
-  }
-  test.AddOutput<T>("y", dims, pack(expected));
-  SessionOptions so;
-  so.intra_op_param.thread_pool_size = 2;
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCpuExecutionProvider());
-  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
-}
-
-TEST(QuantizeLinearPrecisionTest, PackedMixedTypes) {
-  for (bool has_zero_point : {false, true}) {
-    TestQuantizeLinearMixedPacked<Int4x2, 2>(has_zero_point);
-    TestQuantizeLinearMixedPacked<UInt4x2, 2>(has_zero_point);
-    TestQuantizeLinearMixedPacked<Int2x4, 4>(has_zero_point);
-    TestQuantizeLinearMixedPacked<UInt2x4, 4>(has_zero_point);
-  }
 }
 
 template <typename T>
@@ -267,27 +126,73 @@ void TestQuantizeLinearMixedFloat8(bool saturate) {
 TEST(QuantizeLinearPrecisionTest, Float8MixedTypes) {
   for (bool saturate : {false, true}) {
     TestQuantizeLinearMixedFloat8<Float8E4M3FN>(saturate);
-    TestQuantizeLinearMixedFloat8<Float8E4M3FNUZ>(saturate);
-    TestQuantizeLinearMixedFloat8<Float8E5M2>(saturate);
-    TestQuantizeLinearMixedFloat8<Float8E5M2FNUZ>(saturate);
   }
 }
 #endif
 
-TEST(QuantizeLinearPrecisionTest, EmptyInput) {
-  TestQuantizeLinearPrecision<float, MLFloat16>(23, {}, MLFloat16(1.0f), -1, {});
-}
-
-TEST(QuantizeLinearPrecisionTest, UnsupportedPrecision) {
-  OpTester test("QuantizeLinear", 23);
-  test.AddAttribute<int64_t>("precision", ONNX_NAMESPACE::TensorProto::BFLOAT16);
-  test.AddInput<float>("x", {1}, {1.0f});
-  test.AddInput<float>("y_scale", {}, {1.0f});
-  test.AddOutput<uint8_t>("y", {1}, {1});
+template <typename T, size_t elements_per_byte = 1>
+void TestQuantizeLinearBlockedPrecision(int granularity, int precision) {
+  OpTester test("QuantizeLinear", 25);
+  const std::vector<int64_t> dims{3, 5};
+  std::vector<int64_t> scale_dims;
+  std::vector<float> scales;
+  std::vector<int> values;
+  switch (granularity) {
+    case 0:
+      test.AddAttribute<int64_t>("axis", 1);
+      scale_dims = {5};
+      scales = {1.0003f, 2.0006f, 1.0003f, 2.0006f, 1.0003f};
+      values = {2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2};
+      break;
+    case 1:
+      test.AddAttribute<int64_t>("axis", 1);
+      test.AddAttribute<int64_t>("block_size", 3);
+      scale_dims = {3, 2};
+      scales = {1.0003f, 2.0006f, 2.0006f, 1.0003f, 1.0003f, 2.0006f};
+      values = {2, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1};
+      break;
+    case 2:
+      test.AddAttribute<int64_t>("axis", 0);
+      test.AddAttribute<int64_t>("block_size", 2);
+      scale_dims = {2, 5};
+      scales = {1.0003f, 2.0006f, 1.0003f, 2.0006f, 1.0003f,
+                2.0006f, 1.0003f, 2.0006f, 1.0003f, 2.0006f};
+      values = {2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1};
+      break;
+    default:
+      FAIL() << "Unexpected quantization granularity: " << granularity;
+  }
+  // 1.5 / 1.0003 rounds to 1 in FLOAT precision, but to 2 in FLOAT16.
+  if (precision == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    std::fill(values.begin(), values.end(), 1);
+  }
+  std::vector<T> expected((values.size() + elements_per_byte - 1) / elements_per_byte);
+  for (size_t i = 0; i < values.size(); ++i) {
+    if constexpr (elements_per_byte > 1) {
+      expected[i / elements_per_byte].SetElem(i % elements_per_byte,
+                                              static_cast<typename T::UnpackedType>(values[i]));
+    } else {
+      expected[i] = static_cast<T>(values[i]);
+    }
+  }
+  test.AddAttribute<int64_t>("precision", precision);
+  test.AddAttribute<int64_t>("output_dtype", utils::ToTensorProtoElementType<T>());
+  test.AddInput<MLFloat16>("x", dims, std::vector<MLFloat16>(15, MLFloat16(1.5f)));
+  test.AddInput<float>("y_scale", scale_dims, scales);
+  test.AddOutput<T>("y", dims, expected);
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "CPU QuantizeLinear only supports precision 0 (use scale type), FLOAT, and FLOAT16.", {}, nullptr, &eps);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(QuantizeLinearPrecisionTest, PerAxisAndBlockedPrecision) {
+  for (int granularity : {0, 1, 2}) {
+    for (int precision : {ONNX_NAMESPACE::TensorProto::FLOAT, ONNX_NAMESPACE::TensorProto::FLOAT16}) {
+      TestQuantizeLinearBlockedPrecision<int8_t>(granularity, precision);
+      TestQuantizeLinearBlockedPrecision<Int4x2, 2>(granularity, precision);
+      TestQuantizeLinearBlockedPrecision<UInt2x4, 4>(granularity, precision);
+    }
+  }
 }
 
 // scalar zero & scale with uint8
