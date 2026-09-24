@@ -807,6 +807,30 @@ TEST(NchwcOptimizerTests, PreExistingFusedConvWithNchwcSumInput) {
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
+TEST(NchwcOptimizerTests, PreExistingFusedConvWithNchwSumInput) {
+  const int64_t channels = static_cast<int64_t>(MlasNchwcGetBlockSize());
+
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput<float>({1, channels, 5, 5});
+    auto* weights_arg = helper.MakeInitializer({channels, channels, 1, 1});
+    auto* bias_arg = helper.MakeInitializer({channels});
+    auto* sum_arg = helper.MakeInput<float>({1, channels, 5, 5});
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddNode("FusedConv", {input_arg, weights_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.FusedConv"], 1);
+  };
+
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, ConvBinary) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
