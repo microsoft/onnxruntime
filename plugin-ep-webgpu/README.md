@@ -36,6 +36,11 @@ Packaging CI tests the version policy and both README templates, and runs runtim
 against the continuous minimum. Exception runtimes are not assumed to be available on public
 package feeds and require separate runtime qualification.
 
+Plugin builds with unit tests also run `onnxruntime_webgpu_version_policy_test`. Each case loads the
+actual plugin in a fresh process and calls `CreateEpFactories` with a stub runtime API, checking
+version acceptance, the requested API version, and API initialization errors without a GPU or an
+older runtime package. These tests do not replace qualification against the actual exception runtime.
+
 The plugin EP is built as a shared library (`onnxruntime_providers_webgpu.{dll,so,dylib}`) by the main ONNX Runtime
 build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into:
 
