@@ -1326,10 +1326,6 @@ struct OpKernelContext final {
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
-  const IKernelPilotMoeLoggingContext* GetMoeLoggingContext() const {
-    return g_host->OpKernelContext__GetMoeLoggingContext(this);
-  }
-
   KernelPilot* GetKernelPilot() const {
     return g_host->OpKernelContext__GetKernelPilot(this);
   }

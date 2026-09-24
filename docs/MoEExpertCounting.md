@@ -6,8 +6,9 @@ Enable expert usage counters with the session configuration entry:
 session.enable_moe_expert_counting=1
 ```
 
-The default is `0`. Counting is independent of `session.enable_moe_expert_statistics` and does not emit routing logs,
-enable profiling, change expert placement, or swap weights. Configure the update with:
+The default is `0`. Counting alone does not emit logs, enable profiling, change expert placement, or swap weights.
+`session.enable_moe_expert_statistics=1` enables the same counter updates and emits one structured
+`moe_expert_counters` log after each successful MoE kernel invocation. Configure the update with:
 
 ```text
 session.moe_expert_counter_alpha=<finite non-negative value> # default: 0.9
@@ -17,7 +18,7 @@ session.moe_expert_counter_beta=<finite non-negative value>  # default: 0.1
 The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either coefficient.
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
-capture are not supported with counting enabled.
+capture are not supported when either counting or counter-update logging is enabled.
 Minimal builds omit the counter state and its initialization/run bookkeeping, and reject counter configuration
 except for explicitly disabling counting.
 
@@ -34,9 +35,9 @@ expert computations were still in flight when their counters were updated. Updat
 entire model invocation.
 
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
-The state owns a `KernelPilotMoeExpertState::LoggingContext` while routing logging is active. It contains the request ID,
-logging limits, and deferred CUDA records. Because there is a single active logging context per session, a concurrent
-Run is rejected while MoE routing logging is active; concurrent Runs remain allowed when only expert counting is enabled.
+While counter-update logging is active, the state also stores the current request ID and logger. Because those fields
+describe one Run, a concurrent Run is rejected while logging is active; concurrent Runs remain allowed when only expert
+counting is enabled.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
 for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
@@ -44,7 +45,9 @@ for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
 After kernel creation, initialization builds an immutable dictionary
 `(OpKernel pointer, local expert ID) -> global expert index`, plus the contiguous expert range for each kernel.
 Counters are ordinary `double` values in a session-wide array. `RecordUsage()` uses the kernel pointer and this
-dictionary directly, without a mutex, atomic counters, graph-name lookup, or per-invocation allocation.
+dictionary directly, without atomic counters, graph-name lookup, or per-invocation allocation. When logging is enabled,
+the same method emits one `moe_expert_counters` JSON record containing the request ID, node identity, deduplicated
+selected experts, and the updated counters.
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
@@ -93,7 +96,7 @@ For each MoE or QMoE invocation, the events are:
 6. If the kernel returns successfully, `SequentialExecutor` calls `RecordKernelUsage()`, which forwards the kernel
    pointer to `KernelPilotMoeExpertState::RecordUsage()`. A failed kernel skips this commit.
 7. `RecordUsage()` reads the selected IDs, applies the decay coefficient to all counters in that kernel's range, and
-   adds the configured contribution to each selected expert.
+   adds the configured contribution to each selected expert. If logging is active, it then logs that counter update.
 8. The next invocation calls `BeginInvocation()` again; counters persist, but the transient selection is reset.
 
 CUDA counting queues a routing-ID copy into pinned host memory and a copy-completion event after top-k, before
@@ -103,14 +106,13 @@ Fused QMoE routing keeps its fused prologue and queues the snapshot immediately 
 consumes each snapshot before reusing its host buffer and unions selected experts across all tiles before updating
 the counters once for the invocation. Same-stream ordering protects tile-local device routing scratch.
 Debug synchronization, `CUDA_LAUNCH_BLOCKING`, or optional tactic profiling can still serialize GPU work.
-Pilots are owned by the session state and constructed once per kernel only when
-`session.enable_moe_expert_counting=1`. `KernelPilotMoeExpertSelection` resets the
+Pilots are owned by the session state and constructed once per kernel when expert counting or counter-update logging
+is enabled. `KernelPilotMoeExpertSelection` resets the
 current invocation's selected-expert set while reusing its storage. The CUDA adapter also reuses its pinned host
 buffer and copy event. Buffer capacity grows only when needed for a larger invocation.
 
-Both counting and routing-logging options are cached at kernel construction. With their default values (`0`), the
-kernel skips collector and MoE run-context lookups, collector construction, collection calls, and
-statistics-only size calculations.
+Both counting and counter-update logging options are cached at kernel construction. With their default values (`0`), the
+kernel skips collector construction, collection calls, and statistics-only size calculations.
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.
 
@@ -122,8 +124,8 @@ Optionally set:
 session.moe_expert_counter_state_file=/path/to/counters.txt
 ```
 
-This requires counting to be enabled. The UTF-8 text file begins with `moe_expert_state 1`, followed by whitespace-separated
-records:
+This requires counting or counter-update logging to be enabled. The UTF-8 text file begins with
+`moe_expert_state 1`, followed by whitespace-separated records:
 
 ```text
 moe_expert_state 1

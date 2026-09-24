@@ -5,7 +5,6 @@ namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
 class KernelPilot;
-class IKernelPilotMoeLoggingContext;
 #endif
 class Stream;
 namespace concurrency {
@@ -217,8 +216,6 @@ class OpKernelContext {
   // Keep new virtuals after existing declarations to preserve their vtable slots.
   // Session-owned pilot for this kernel; nullptr when unavailable.
   virtual KernelPilot* GetKernelPilot() const { return nullptr; }
-  // Session-owned context for the currently active MoE logging Run.
-  virtual const IKernelPilotMoeLoggingContext* GetMoeLoggingContext() const { return nullptr; }
 #endif
 
  private:

@@ -59,10 +59,6 @@ class OpKernelContextInternal : public OpKernelContext {
     return kernel_pilot_;
   }
 
-  const IKernelPilotMoeLoggingContext* GetMoeLoggingContext() const override {
-    return session_state_.GetMoeLoggingContext();
-  }
-
   Status RecordKernelUsage() const {
     if (kernel_pilot_ == nullptr) {
       return Status::OK();

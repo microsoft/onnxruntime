@@ -21,7 +21,6 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
@@ -1621,11 +1620,6 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
-  const IKernelPilotMoeLoggingContext* OpKernelContext__GetMoeLoggingContext(
-      const OpKernelContext* p) override {
-    return p->GetMoeLoggingContext();
-  }
-
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

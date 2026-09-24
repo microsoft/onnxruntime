@@ -30,9 +30,8 @@ class MoEBaseCPU {
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
 #if !defined(ORT_MINIMAL_BUILD)
     const auto& options = op_kernel_info.GetConfigOptions();
-    enable_moe_expert_counting_ =
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
-    enable_moe_expert_statistics_ =
+    enable_moe_expert_tracking_ =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
         options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
 #endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
@@ -82,8 +81,7 @@ class MoEBaseCPU {
   float swiglu_limit_;
   int64_t swiglu_fusion_;
 #if !defined(ORT_MINIMAL_BUILD)
-  bool enable_moe_expert_counting_{false};
-  bool enable_moe_expert_statistics_{false};
+  bool enable_moe_expert_tracking_{false};
 #endif
 };
 

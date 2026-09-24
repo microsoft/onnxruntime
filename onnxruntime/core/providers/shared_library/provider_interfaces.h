@@ -10,7 +10,6 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
-#include "core/framework/kernel_pilot_moe_logging_context.h"
 #include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
 
@@ -1426,9 +1425,6 @@ struct ProviderHost {
 #endif
 
   // Run instrumentation support — appended at end to preserve vtable ABI compatibility.
-  virtual const IKernelPilotMoeLoggingContext* OpKernelContext__GetMoeLoggingContext(
-      const OpKernelContext* p) = 0;
-
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };
 

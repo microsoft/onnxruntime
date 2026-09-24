@@ -35,11 +35,12 @@ class MoEBase {
   MoEBase(const OpKernelInfo& op_kernel_info, const cudaDeviceProp& device_prop) {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     const auto& options = op_kernel_info.GetConfigOptions();
-    if (options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1") {
+    const bool enable_moe_expert_tracking =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+    if (enable_moe_expert_tracking) {
       routing_snapshot_.emplace(op_kernel_info.GetAllocator(OrtMemTypeCPU));
     }
-    enable_moe_expert_statistics_ =
-        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
 #endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
 
@@ -100,9 +101,8 @@ class MoEBase {
   int64_t block_size_;
   int sm_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  // Only constructed when counting is enabled; overlapping runs are rejected by the session.
+  // Constructed when counting or counter-update logging is enabled.
   mutable std::optional<KernelPilotMoeExpertSelectionCuda> routing_snapshot_;
-  bool enable_moe_expert_statistics_{false};
 #endif
 };
 

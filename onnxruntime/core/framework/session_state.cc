@@ -1605,7 +1605,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state,
-                                             std::string graph_scope) {
+                                              std::string graph_scope) {
   moe_expert_state_ = std::move(state);
   for (const auto& node : graph_.Nodes()) {
     if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
@@ -1678,26 +1678,22 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     double alpha = 0.0;
     double beta = 0.0;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
-    if (enable_moe_expert_counting) {
-      const auto alpha_value =
-          sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
-      const auto beta_value =
-          sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
-      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
-                        "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
-      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
-                        "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
-      ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
-    }
+    const auto alpha_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
+    const auto beta_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
+    ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
-    if (enable_moe_expert_counting) {
-      const auto state_file =
-          sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
-      if (!state_file.empty()) {
-        std::ifstream input(ToPathString(state_file));
-        ORT_RETURN_IF_NOT(input.is_open(), "Unable to open MoE expert counter state file: ", state_file);
-        ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
-      }
+    const auto state_file =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
+    if (!state_file.empty()) {
+      std::ifstream input(ToPathString(state_file));
+      ORT_RETURN_IF_NOT(input.is_open(), "Unable to open MoE expert counter state file: ", state_file);
+      ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
   }

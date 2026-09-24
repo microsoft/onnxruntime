@@ -2800,15 +2800,17 @@ common::Status InferenceSession::Initialize() {
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
-      ORT_RETURN_IF_NOT(enable_moe_expert_counting,
-                        kOrtSessionOptionsConfigMoeExpertCounterStateFile, " requires expert counting to be enabled.");
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics,
+                        kOrtSessionOptionsConfigMoeExpertCounterStateFile,
+                        " requires expert counting or statistics logging to be enabled.");
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
     for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
                             kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
-      ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() && !enable_moe_expert_counting,
-                    key, " requires expert counting to be enabled.");
+      ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics,
+                    key, " requires expert counting or statistics logging to be enabled.");
     }
     if (enable_moe_expert_counting) {
       for (const auto& execution_provider : execution_providers_) {
@@ -3735,25 +3737,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndLogging());
     }
   });
-  InlinedVector<AllocatorPtr> arenas_to_shrink;
-  if (collect_moe_statistics) {
-    ORT_RETURN_IF_NOT(is_inited_, "Session not initialized.");
-    ORT_RETURN_IF_NOT(
-        run_options.config_options.GetConfigOrDefault(
-            kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0",
-        "MoE expert statistics requires execution-provider synchronization at the end of each run.");
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-
-    const std::string& shrink_memory_arenas =
-        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
-    if (!shrink_memory_arenas.empty()) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
-    }
-  }
-#else
-  InlinedVector<AllocatorPtr> arenas_to_shrink;
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
 
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
@@ -3814,25 +3799,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
-#if !defined(ORT_MINIMAL_BUILD)
-      if (!collect_moe_statistics) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-      }
-#else
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-#endif
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
           run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
-#if !defined(ORT_MINIMAL_BUILD)
-      if (!collect_moe_statistics && !shrink_memory_arenas.empty()) {
-#else
       if (!shrink_memory_arenas.empty()) {
-#endif
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
       }
 

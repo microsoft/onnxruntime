@@ -9,10 +9,13 @@
 #include <thread>
 
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+#include "core/common/logging/logging.h"
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/session_state.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/capturing_sink.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 namespace onnxruntime::test {
@@ -128,6 +131,36 @@ TEST_F(KernelPilotMoeExpertStateTest, KernelExpertDictionarySeparatesNodesAndSub
       EXPECT_DOUBLE_EQ(stat.popularity, (stat.expert_id == 0 || stat.expert_id == 2) ? 0.1 : 0.0);
     }
   }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 7, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_counter_update");
+  ASSERT_STATUS_OK(state.BeginLogging("request \"one\"", *logger));
+
+  const int selected[] = {2, 0, 2};
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  ASSERT_STATUS_OK(state.EndLogging());
+
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  const std::string& message = capturing_sink_ptr->Messages()[0];
+  constexpr std::string_view marker{"moe_expert_counters "};
+  const size_t marker_position = message.find(marker);
+  ASSERT_NE(marker_position, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
+  EXPECT_EQ(event["request_id"], "request \"one\"");
+  EXPECT_EQ(event["node_index"], 7);
+  EXPECT_EQ(event["node_type"], "Identity");
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({2, 0}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.0, 0.1}));
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {

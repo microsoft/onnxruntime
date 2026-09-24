@@ -31,8 +31,8 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
     : execution_frame_(frame),
       kernel_(kernel),
       threadpool_(threadpool),
-logger_(&logger),
-stream_(stream) {
+      logger_(&logger),
+      stream_(stream) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 

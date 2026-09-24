@@ -20,17 +20,16 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
-// Log MoE expert-routing decisions at INFO severity.
+// Log MoE expert-counter updates at INFO severity. This enables counter updates even when expert counting is disabled.
 // "0": disable (default); "1": enable.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";
 
 // Persist per-expert usage counters across Run() calls, without changing placement.
-// "0": disable (default); "1": enable. Independent of routing-statistics logging.
-// When enabled, overlapping Run calls on the same session are rejected.
+// "0": disable (default); "1": enable. Counting alone does not emit statistics logs.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
     "session.enable_moe_expert_counting";
-// Optional UTF-8 initial counter-state file. Requires expert counting to be enabled.
+// Optional UTF-8 initial counter-state file. Requires expert counting or statistics logging to be enabled.
 static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
     "session.moe_expert_counter_state_file";
 // Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.

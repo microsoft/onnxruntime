@@ -984,29 +984,6 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
   EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
 }
 
-TEST(InferenceSessionTests, MoeLoggingLimitsRoutingVolume) {
-  auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
-  logging::LoggingManager logging_manager(
-      std::move(capturing_sink), logging::Severity::kINFO, false,
-      logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_logging_limit");
-  KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.BeginLogging("request", *logger));
-  const auto* logging_context = state.GetLoggingContext();
-  ASSERT_NE(logging_context, nullptr);
-
-  EXPECT_TRUE(logging_context->TryReserveMoeRoutingRecord(
-      KernelPilotMoeExpertState::LoggingContext::kMaxMoeRoutingElementsPerRun));
-  EXPECT_FALSE(logging_context->TryReserveMoeRoutingRecord(1));
-
-  ASSERT_STATUS_OK(state.EndLogging());
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
-}
-
 TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
   auto capturing_sink = std::make_unique<CapturingSink>();
   logging::LoggingManager logging_manager(
@@ -1019,8 +996,6 @@ TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
   const Status concurrent_status = state.BeginLogging("second", *logger);
   ASSERT_FALSE(concurrent_status.IsOK());
   EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
-  ASSERT_NE(state.GetLoggingContext(), nullptr);
-  EXPECT_EQ(state.GetLoggingContext()->RequestId(), "first");
 
   ASSERT_STATUS_OK(state.EndLogging());
   ASSERT_STATUS_OK(state.BeginLogging("second", *logger));
@@ -1094,39 +1069,6 @@ TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider)
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("not supported by the CUDA plugin execution provider"));
-}
-
-TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
-  auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
-  logging::LoggingManager logging_manager(
-      std::move(capturing_sink), logging::Severity::kINFO, false,
-      logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_routing_json");
-  KernelPilotMoeExpertState state;
-  ASSERT_STATUS_OK(state.BeginLogging("request \"one\"", *logger));
-  const auto* logging_context = state.GetLoggingContext();
-  ASSERT_NE(logging_context, nullptr);
-  const TimePoint now = std::chrono::high_resolution_clock::now();
-
-  logging_context->RecordMoeRoutingEvent(
-      now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
-  ASSERT_STATUS_OK(state.EndLogging());
-
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  const std::string& message = capturing_sink_ptr->Messages()[0];
-  const size_t marker = message.find("moe_routing ");
-  ASSERT_NE(marker, std::string::npos);
-  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
-  EXPECT_EQ(event["request_id"], "request \"one\"");
-  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
-  EXPECT_EQ(event["node_index"], 42);
-  EXPECT_EQ(event["node_type"], "QMoE");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
-  EXPECT_EQ(event["num_rows"], 1);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], 0);
 }
 
 // See issue #27732 for details on why this is disabled.

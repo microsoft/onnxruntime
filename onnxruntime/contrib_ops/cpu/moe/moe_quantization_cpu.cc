@@ -3,7 +3,6 @@
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
 #if !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/moe_profiler.h"
 #endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
@@ -1266,19 +1265,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
 #if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count = enable_moe_expert_counting_ || enable_moe_expert_statistics_
+  const size_t routing_element_count = enable_moe_expert_tracking_
                                            ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
                                            : 0;
-  const auto* logging_context =
-      enable_moe_expert_statistics_ ? GetMoeLoggingContext(context) : nullptr;
-  if (logging_context != nullptr) {
-    ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(logging_context, input_shape));
-    if (!logging_context->TryReserveMoeRoutingRecord(routing_element_count)) {
-      logging_context = nullptr;
-    }
-  }
-  const TimePoint logging_context_start =
-      logging_context != nullptr ? logging_context->StartProfiling() : TimePoint{};
 #endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
@@ -2541,18 +2530,12 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (enable_moe_expert_counting_) {
+  if (enable_moe_expert_tracking_) {
     auto* pilot = context->GetKernelPilot();
-    ORT_RETURN_IF_NOT(pilot, "MoE expert counting is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
     auto& usage = pilot->Moe();
     ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
     ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
-  }
-  if (logging_context != nullptr) {
-    RecordMoeRoutingEvent(*logging_context, Node(),
-                          gsl::make_span(route_expert, routing_element_count),
-                          gsl::make_span(route_scale, routing_element_count),
-                          num_tokens, k_, logging_context_start);
   }
 #endif
 
