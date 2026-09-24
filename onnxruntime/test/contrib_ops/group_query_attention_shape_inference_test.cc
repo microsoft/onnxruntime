@@ -25,7 +25,8 @@ common::Status ResolveGroupQueryAttention(
     int64_t kv_num_heads,
     const std::vector<std::variant<int64_t, std::string>>& query_shape,
     const std::function<void(const NodeArg&)>& verify = nullptr,
-    bool provide_unshaped_value = false) {
+    bool provide_unshaped_value = false,
+    const std::function<void(const NodeArg&, const NodeArg&)>& verify_present = nullptr) {
   const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
   Model model("packed_group_query_attention", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
@@ -44,9 +45,18 @@ common::Status ResolveGroupQueryAttention(
   NodeArg* seqlens_k = builder.MakeInput<int32_t>({1}, {0});
   NodeArg* total_sequence_length = builder.MakeInput<int32_t>({1}, {1});
   NodeArg* output = builder.MakeOutput();
+  std::vector<NodeArg*> outputs{output};
+  NodeArg* present_key = nullptr;
+  NodeArg* present_value = nullptr;
+  if (verify_present) {
+    present_key = builder.MakeOutput();
+    present_value = builder.MakeOutput();
+    outputs.push_back(present_key);
+    outputs.push_back(present_value);
+  }
   std::vector<NodeArg*> inputs = {query, key, value, &empty, &empty,
                                   seqlens_k, total_sequence_length};
-  Node& node = builder.AddNode("GroupQueryAttention", inputs, {output}, kMSDomain);
+  Node& node = builder.AddNode("GroupQueryAttention", inputs, outputs, kMSDomain);
   node.AddAttribute("num_heads", num_heads);
   node.AddAttribute("kv_num_heads", kv_num_heads);
   builder.SetGraphOutputs();
@@ -54,6 +64,9 @@ common::Status ResolveGroupQueryAttention(
   auto status = graph.Resolve();
   if (status.IsOK() && verify) {
     verify(*output);
+  }
+  if (status.IsOK() && verify_present) {
+    verify_present(*present_key, *present_value);
   }
   return status;
 }
@@ -123,7 +136,17 @@ TEST(GroupQueryAttentionShapeInferenceTest, UnshapedValueInputIsNotPacked) {
         EXPECT_EQ(shape->dim(1).dim_value(), 1);
         EXPECT_EQ(shape->dim(2).dim_value(), 32);
       },
-      true);
+      true,
+      [](const NodeArg& present_key, const NodeArg& present_value) {
+        auto verify_present = [](const NodeArg& present) {
+          const auto* shape = present.Shape();
+          ASSERT_NE(shape, nullptr);
+          ASSERT_EQ(shape->dim_size(), 4);
+          EXPECT_EQ(shape->dim(3).dim_value(), 8);
+        };
+        verify_present(present_key);
+        verify_present(present_value);
+      });
   ASSERT_STATUS_OK(status);
 }
 
