@@ -12,7 +12,8 @@ Module Name:
 Abstract:
 
     This module implements the half precision floating point matrix/matrix
-    multiply operation (HGEMM) on top of the SVE kernels.
+    multiply operation (HGEMM) on top of the SVE kernels, falling back to the
+    NEON HGEMM dispatch on CPUs without SVE.
 
 --*/
 
@@ -57,12 +58,30 @@ MlasHgemmMultiplyBeta(
         return;
     }
     auto* c = reinterpret_cast<_mlas_fp16_*>(C);
+    // C may be uninitialized when beta == 0, so it must not be read.
+    if (beta == 0.0f) {
+        for (size_t m = 0; m < CountM; ++m) {
+            std::fill_n(c + m * ldc, CountN, static_cast<_mlas_fp16_>(0));
+        }
+        return;
+    }
     for (size_t m = 0; m < CountM; ++m) {
         _mlas_fp16_* row = c + m * ldc;
         for (size_t n = 0; n < CountN; ++n) {
             row[n] = MLAS_Float2Half(MLAS_Half2Float(row[n]) * beta);
         }
     }
+}
+
+
+static bool
+MlasHgemmUseSve()
+{
+#if defined(MLAS_USE_SVE)
+    return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve();
+#else
+    return false;
+#endif
 }
 
 
@@ -196,7 +215,7 @@ MlasHgemmKernelLoop(
         } else
 #endif
         {
-            // Not reached, MlasHGemmSupported() is false without SVE.
+            // Not reached, MlasGemmBatch routes CPUs without SVE to MlasHgemmNeonBatch.
             MLAS_UNREFERENCED_PARAMETER(b);
             MLAS_UNREFERENCED_PARAMETER(CountK);
             MLAS_UNREFERENCED_PARAMETER(CountN);
@@ -445,15 +464,256 @@ MlasHGemmSupported(
         MLAS_UNREFERENCED_PARAMETER(TransB);
         return false;
     }
-#if defined(MLAS_USE_SVE)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+    if (MlasHgemmUseSve()) {
         return (TransA == CblasNoTrans || TransA == CblasTrans) &&
                (TransB == CblasNoTrans || TransB == CblasTrans);
     }
-#endif
-    MLAS_UNREFERENCED_PARAMETER(TransA);
-    MLAS_UNREFERENCED_PARAMETER(TransB);
+
+    const auto* dispatch = GetMlasPlatform().HGemmDispatch;
+    if (TransA == CblasNoTrans && TransB == CblasTrans) {
+        return dispatch &&
+               dispatch->HGemmKernel_TransposedB &&
+               dispatch->HPackBKernel_TransposedB &&
+               dispatch->HGemmKernel_PackedB;
+    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
+        return dispatch &&
+               dispatch->HGemmKernel_B &&
+               dispatch->HPackBKernel_B &&
+               dispatch->HGemmKernel_PackedB;
+    }
     return false;
+}
+
+
+//
+// NEON fallback for CPUs without SVE: C = alpha * A * op(B) + beta * C through
+// MLAS_HGEMM_DISPATCH. Only TransA == CblasNoTrans is supported.
+//
+static void
+MlasHgemmNeonOperation(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* DataParams,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    )
+{
+    const size_t lda = DataParams->lda;
+    const size_t ldb = DataParams->ldb;
+    const size_t ldc = DataParams->ldc;
+    const _mlas_fp16_ alpha = DataParams->alpha;
+    const _mlas_fp16_ beta = DataParams->beta;
+    const auto* dispatch = GetMlasPlatform().HGemmDispatch;
+    constexpr size_t StrideM = 2;
+    const auto beta_add = MLAS_FP16(1.0f);
+    constexpr size_t buffer_size = MLAS_HGEMM_STRIDEN * MLAS_HGEMM_STRIDEK;
+
+    if (TransA == CblasNoTrans && TransB == CblasTrans) {
+        const auto* A = DataParams->A + RangeStartM * lda;
+        const auto* B = DataParams->B + RangeStartN * ldb;
+        auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+        if (RangeCountM <= StrideM) {
+            if (!dispatch || !dispatch->HGemmKernel_TransposedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
+            }
+            // When M is small, B is visited once. The overhead of Pack(B') exceeds the benefits
+            // from A x Pack(B'). Therefore directly calculate A x B'.
+            // Without PackB, to utilize memory locality, iterate full K.
+            constexpr size_t StrideN = MLAS_HGEMM_STRIDEN_THREAD_ALIGN;
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                dispatch->HGemmKernel_TransposedB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
+                B += countN * ldb;
+                C += countN;
+            }
+        } else {
+            if (!dispatch || !dispatch->HPackBKernel_TransposedB || !dispatch->HGemmKernel_PackedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
+            }
+            // 16N is the smallest pack unit.
+            MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], MLAS_HGEMM_STRIDEN_THREAD_ALIGN * sizeof(_mlas_fp16_));
+            size_t StrideN = MLAS_HGEMM_STRIDEN;
+            size_t StrideK = MLAS_HGEMM_STRIDEK;
+            if (RangeCountN >= K) {
+                while (StrideK / 2 >= K) {
+                    StrideN *= 2;
+                    StrideK /= 2;
+                }
+            } else {
+                while (StrideN > MLAS_HGEMM_STRIDEN_THREAD_ALIGN && StrideN / 2 >= RangeCountN) {
+                    StrideK *= 2;
+                    StrideN /= 2;
+                }
+            }
+
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                const MLAS_FP16* a = A;
+                const MLAS_FP16* b = B;
+                MLAS_FP16* c = C;
+                for (size_t k = 0, countK; k < K; k += countK) {
+                    countK = std::min(StrideK, K - k);
+                    dispatch->HPackBKernel_TransposedB(b, PackedB, countN, countK, ldb);
+                    const MLAS_FP16* aa = a;
+                    MLAS_FP16* cc = c;
+                    for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+                        countM = std::min(StrideM, RangeCountM - m);
+                        // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
+                        dispatch->HGemmKernel_PackedB(
+                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add.val);
+                        aa += countM * lda;
+                        cc += countM * ldc;
+                    }
+                    a += countK;
+                    b += countK;
+                }
+                B += countN * ldb;
+                C += countN;
+            }
+        }
+    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
+        const auto* A = DataParams->A + RangeStartM * lda;
+        const auto* B = DataParams->B + RangeStartN;
+        auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+        if (RangeCountM <= StrideM) {
+            if (!dispatch || !dispatch->HGemmKernel_B) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
+            }
+            // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
+            // from A x Pack(B). Therefore directly calculate A x B.
+            dispatch->HGemmKernel_B(A, B, C, RangeCountM, RangeCountN, K, lda, ldb, ldc, alpha, beta);
+        } else {
+            if (!dispatch || !dispatch->HPackBKernel_B || !dispatch->HGemmKernel_PackedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
+            }
+            MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], MLAS_HGEMM_STRIDEN_THREAD_ALIGN * sizeof(_mlas_fp16_));
+            size_t StrideN = MLAS_HGEMM_STRIDEN;
+            size_t StrideK = MLAS_HGEMM_STRIDEK;
+            if (RangeCountN >= K) {
+                while (StrideK / 2 >= K) {
+                    StrideN *= 2;
+                    StrideK /= 2;
+                }
+            } else {
+                while (StrideN > MLAS_HGEMM_STRIDEN_THREAD_ALIGN && StrideN / 2 >= RangeCountN) {
+                    StrideK *= 2;
+                    StrideN /= 2;
+                }
+            }
+
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                const MLAS_FP16* a = A;
+                const MLAS_FP16* b = B;
+                MLAS_FP16* c = C;
+                for (size_t k = 0, countK; k < K; k += countK) {
+                    countK = std::min(StrideK, K - k);
+                    dispatch->HPackBKernel_B(b, PackedB, countN, countK, ldb);
+                    const MLAS_FP16* aa = a;
+                    MLAS_FP16* cc = c;
+                    for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+                        countM = std::min(StrideM, RangeCountM - m);
+                        // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
+                        dispatch->HGemmKernel_PackedB(
+                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add.val);
+                        aa += countM * lda;
+                        cc += countM * ldc;
+                    }
+                    a += countK;
+                    b += countK * ldb;
+                }
+                B += countN;
+                C += countN;
+            }
+        }
+    } else {
+        MLAS_THROW_EX(std::runtime_error, "hgemm without SVE only supports A x Transposed(B) or A x B");
+    }
+}
+
+
+static void
+MlasHgemmNeonBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
+        if (Data[gemm_i].BIsPacked) {
+            MLAS_THROW_EX(std::runtime_error, "hgemm packed B requires SVE");
+        }
+    }
+
+    if (K == 0) {
+        for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
+            MlasHgemmMultiplyBeta(Data[gemm_i].C, M, N, Data[gemm_i].ldc, MLAS_Half2Float(Data[gemm_i].beta));
+        }
+        return;
+    }
+
+    if (!ThreadPool) {
+        for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
+            MlasHgemmNeonOperation(TransA, TransB, K, &Data[gemm_i], 0, M, 0, N);
+        }
+        return;
+    }
+
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchSize);
+    ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchSize;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    constexpr size_t StrideM = 128;
+
+    size_t nc = N;
+    if (ThreadsPerGemm > 1) {
+        const size_t BlockedM = MlasDivRoundup(M, StrideM);
+        const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
+        if (max_nc < nc) {
+            nc = std::min(
+                nc, MlasDivRoundup(max_nc, MLAS_HGEMM_STRIDEN_THREAD_ALIGN) * MLAS_HGEMM_STRIDEN_THREAD_ALIGN);
+        }
+    }
+    const size_t StrideN = nc;
+
+    const size_t ThreadCountM = MlasDivRoundup(M, StrideM);
+    const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
+    ThreadsPerGemm = ThreadCountM * ThreadCountN;
+
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+
+        const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
+        const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
+
+        const size_t RangeStartM = ThreadIdM * StrideM;
+        const size_t RangeCountM = std::min(M - RangeStartM, (size_t)StrideM);
+
+        const size_t RangeStartN = ThreadIdN * StrideN;
+        const size_t RangeCountN = std::min(N - RangeStartN, (size_t)StrideN);
+
+        MlasHgemmNeonOperation(TransA, TransB, K, &Data[gemm_i], RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    });
 }
 
 
@@ -527,6 +787,11 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    if (!MlasHgemmUseSve()) {
+        MlasHgemmNeonBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        return;
+    }
+
     const double Complexity = double(M) * double(N) * double(K) * double(BatchSize);
     ptrdiff_t TargetThreadCount =
         ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
@@ -581,7 +846,7 @@ MlasHGemmPackBSize(
     size_t K
     )
 {
-    if (!MlasHGemmSupported(CblasNoTrans, TransB)) {
+    if (!MlasHgemmUseSve() || !MlasHGemmSupported(CblasNoTrans, TransB)) {
         return 0;
     }
 
@@ -603,6 +868,11 @@ MlasHGemmPackB(
     void* PackedB
     )
 {
+    // The SVE packers assume nonzero counts.
+    if (N == 0 || K == 0) {
+        return;
+    }
+
     const size_t AlignedN =
         (N + MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1) & ~size_t(MLAS_HGEMM_STRIDEN_THREAD_ALIGN - 1);
     auto* D = static_cast<MLAS_HGEMM_FP16*>(PackedB);
