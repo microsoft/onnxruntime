@@ -834,6 +834,50 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
 
+TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
+  SessionOptions so;
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("failed_load_and_initialize_profile");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "invalid"));
+
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  EXPECT_EQ(session.Load(MODEL_URI).Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "must be set to either");
+
+  const std::string profile_file = session.EndProfiling();
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto events = nlohmann::json::parse(profile_stream);
+  const auto has_event = [&events](const char* name) {
+    return std::any_of(events.begin(), events.end(),
+                       [name](const auto& event) { return event["name"] == name; });
+  };
+  EXPECT_TRUE(has_event("model_loading_uri"));
+  EXPECT_TRUE(has_event("session_initialization"));
+  EXPECT_GE(std::count_if(events.begin(), events.end(),
+                          [](const auto& event) { return event["name"] == "model_loading_uri"; }),
+            2);
+}
+
+TEST(InferenceSessionTests, InitializeBeforeLoadRecordsProfilingEvent) {
+  SessionOptions so;
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("initialize_before_load_profile");
+
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Model was not loaded");
+
+  const std::string profile_file = session.EndProfiling();
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto events = nlohmann::json::parse(profile_stream);
+  EXPECT_TRUE(std::any_of(events.begin(), events.end(),
+                          [](const auto& event) { return event["name"] == "session_initialization"; }));
+}
+
 TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
   // Build a model whose only node consumes an input that is never defined (not a graph
   // input, initializer, or another node's output), so graph Resolve must reject it gracefully.

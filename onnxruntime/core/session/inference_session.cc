@@ -1096,16 +1096,11 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
-#if defined(ORT_USE_TELEMETRY)
 #define ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status) status = [&]() -> Status {
 #define ORT_TELEMETRY_CAPTURE_STATUS_END() \
   return Status::OK();                     \
   }                                        \
   ()
-#else
-#define ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
-#define ORT_TELEMETRY_CAPTURE_STATUS_END()
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
@@ -1180,13 +1175,9 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
-#if defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
-#endif
   ORT_TRY {
-#if defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
-#endif
 
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -1226,6 +1217,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#else
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
 
   return status;
@@ -2181,11 +2174,11 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-#if defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
-  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
 #endif
+  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
 
   Status status = Status::OK();
   ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
@@ -2328,6 +2321,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#else
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
   return status;
 }
@@ -2709,9 +2704,7 @@ common::Status InferenceSession::Initialize() {
     if (session_profiler_.IsEnabled()) {
       start_time = session_profiler_.Start();
     }
-#if defined(ORT_USE_TELEMETRY)
     Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
-#endif
     return start_time;
   };
 
@@ -2719,11 +2712,7 @@ common::Status InferenceSession::Initialize() {
     const Status status = ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "Session initialization canceled due to user request.");
-#if defined(ORT_USE_TELEMETRY)
     return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-    return status;
-#endif
   }
 
   bool have_cpu_ep = false;
@@ -2733,12 +2722,8 @@ common::Status InferenceSession::Initialize() {
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       const Status status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
-#if defined(ORT_USE_TELEMETRY)
       initial_guard.unlock();
       return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-      return status;
-#endif
     }
 
     if (is_inited_) {
@@ -2751,12 +2736,8 @@ common::Status InferenceSession::Initialize() {
       if (key == kOrtSessionOptionsGqaValueLayout) {
         const Status status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                             "GQA layout disabled");
-#if defined(ORT_USE_TELEMETRY)
         initial_guard.unlock();
         return RecordSessionCreationEndTelemetry(start_timing(), status);
-#else
-        return status;
-#endif
       }
     }
 #endif
@@ -4758,6 +4739,8 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
 #if defined(ORT_USE_TELEMETRY)
   Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
       session_id_, status, TimeDiffMicroSeconds(tp));
+#else
+  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status, 0);
 #endif
   return status;
 }
