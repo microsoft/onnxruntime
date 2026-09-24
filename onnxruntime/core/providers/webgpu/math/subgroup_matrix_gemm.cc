@@ -29,10 +29,10 @@ namespace {
 // impl (shared with the subgroup-matrix MatMul kernel).
 class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
  public:
-  SubgroupMatrixGemmImpl(const Gemm& parent, int32_t config_index,
+  SubgroupMatrixGemmImpl(const Gemm& parent, SubgroupMatrixConfig config,
                          SubgroupMatrixTilingSelector tiling_selector)
       : Gemm::GemmOptImpl(parent),
-        config_index_(config_index),
+        config_(config),
         tiling_selector_(std::move(tiling_selector)) {}
 
   Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
@@ -122,7 +122,7 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
       return Status::OK();
     }
 
-    const auto& config = supported_subgroup_matrix_configs[config_index_];
+    const auto& config = config_;
     const uint32_t tile_m = tiling->tile_m;
     const uint32_t tile_n = tiling->tile_n;
     const uint32_t split_k = tiling->split_k;
@@ -134,13 +134,17 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
     const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
-    SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k};
+    SubgroupMatrixGemmProgram program{has_c, trans_a, trans_b, config, sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(config.subgroupSize * split_k);
     if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
       program.SetSubgroupSize(config.subgroupSize);
     }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
-    program.CacheHint(has_c, trans_a, trans_b, config_index_, sg_mat_count_m, sg_mat_count_n, split_k)
+    program.CacheHint(has_c, trans_a, trans_b,
+                      static_cast<uint32_t>(config.componentType),
+                      static_cast<uint32_t>(config.resultComponentType),
+                      config.M, config.N, config.K, config.subgroupSize,
+                      sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddOutput({output, ProgramTensorMetadataDependency::Rank, output->Shape(), 1})
@@ -155,7 +159,7 @@ class SubgroupMatrixGemmImpl final : public Gemm::GemmOptImpl {
   }
 
  private:
-  const int32_t config_index_;
+  const SubgroupMatrixConfig config_;
   SubgroupMatrixTilingSelector tiling_selector_;
 };
 
@@ -194,8 +198,7 @@ Status SubgroupMatrixGemmProgram::GenerateShaderCode(ShaderHelper& shader) const
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  const auto& config = supported_subgroup_matrix_configs[config_index_];
-  if (config.Is(8, 16, 16)) {
+  if (config_.Is(8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, output, has_c_, trans_a_, trans_b_,
                                      sg_mat_count_m_, sg_mat_count_n_, split_k_);
   }
@@ -207,8 +210,9 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context) {
   // Only run on devices that report the 8x16x16 F16 subgroup-matrix config this
   // kernel is implemented for and can provide its required subgroup size.
-  const auto config_index = SelectSubgroupMatrixConfig(context, /*is_fp16=*/true, {{8, 16, 16, 32}});
-  if (!config_index) {
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  const auto config = SelectSubgroupMatrixConfig(context, {{kF16, kF16, 8, 16, 16, 32, false}});
+  if (!config) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -219,7 +223,7 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
   if (!tiling_selector) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixGemmImpl>(parent, *config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixGemmImpl>(parent, *config, std::move(tiling_selector));
 }
 
 }  // namespace webgpu

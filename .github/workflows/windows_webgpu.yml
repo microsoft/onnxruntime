@@ -56,11 +56,6 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -176,11 +171,6 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
-        with:
-          architecture: x64
-
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -226,7 +216,6 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.dll
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.pdb
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
-            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [
@@ -250,11 +239,6 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
-        with:
-          architecture: x64
-
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -312,11 +296,6 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
-        with:
-          architecture: x64
-
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
