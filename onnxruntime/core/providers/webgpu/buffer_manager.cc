@@ -522,10 +522,11 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
-  context_.Flush(*this);
+  ORT_THROW_IF_ERROR(context_.Flush(*this));
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
@@ -540,17 +541,32 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
+WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero,
+                                 bool submit_zero_initialize) const {
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
   auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
   if (buffer) {
+    if (initialize_to_zero) {
+      // initialize_to_zero controls whether a cached buffer is cleared. submit_zero_initialize separately controls
+      // whether that clear is submitted before Create returns. Session::Run defers submission to preserve dispatch
+      // batching, while allocations made outside Run submit immediately so subsequent queue work observes the clear.
+      auto buffer_guard = wgpu::Buffer::Acquire(buffer);
+      ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+      context_.EndComputePass();
+      context_.GetCommandEncoder().ClearBuffer(buffer, 0, buffer_size);
+      if (submit_zero_initialize) {
+        ORT_THROW_IF_ERROR(context_.Flush(*this));
+      }
+      return buffer_guard.MoveToCHandle();
+    }
     return buffer;
   }
 
@@ -584,6 +600,10 @@ void BufferManager::Release(WGPUBuffer buffer) const {
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
+  // Encode pending deferred dispatches before recording the readback; the flush below submits both
+  // in order.
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches());
+
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
@@ -595,13 +615,32 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  context_.Flush(*this);
+  ORT_THROW_IF_ERROR(context_.Flush(*this));
 
   // TODO: revise wait in whole project
 
-  ORT_ENFORCE(context_.Wait(staging_buffer.MapAsync(wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly, [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
-  })) == Status::OK());
+  struct MapAsyncResult {
+    wgpu::MapAsyncStatus status{};
+    std::string message{};
+  } map_async_result;
+
+  ORT_THROW_IF_ERROR(context_.Wait(
+      staging_buffer.MapAsync(
+          wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly,
+          // Note: Don't throw from a Dawn callback.
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message,
+             MapAsyncResult* result) noexcept {
+            result->status = status;
+            if (auto message_sv = static_cast<std::string_view>(message);
+                !message_sv.empty()) {
+              result->message = std::string{message_sv};
+            }
+          },
+          &map_async_result)));
+
+  ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+              "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+              static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
 
   auto mapped_data = staging_buffer.GetConstMappedRange();
   memcpy(dst, mapped_data, size);

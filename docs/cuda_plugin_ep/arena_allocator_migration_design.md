@@ -329,6 +329,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   auto* typed = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed->GetKind()) {
     case CudaAllocatorKind::kDevice:
+      if (typed->IsExternalDeviceAllocator()) {
+        delete static_cast<CudaExternalDeviceAllocator*>(allocator);
+        return;
+      }
       delete static_cast<CudaDeviceAllocator*>(allocator);
       return;
     case CudaAllocatorKind::kPinned:
@@ -344,6 +348,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
 This handles:
 - **Shared allocators** — `RegisterExecutionProviderLibrary` iterates over each `OrtEpDevice` and calls `CreateAllocator` for each device's memory infos. Each device gets its own shared arena.
 - **Per-session allocators** — each session calls `CreateAllocator` (returning the same shared arena for the device) and `ReleaseAllocator` on session teardown.
+- **External allocator sessions** — when a `CudaEp` instance is configured with `gpu_external_alloc` and `gpu_external_free`, it advertises `OrtEp::CreateAllocator` and creates a per-session `CudaExternalDeviceAllocator` from that EP's config. The factory's device cache does not store external allocator callbacks or a shared external allocator, so a later session on the same GPU without external allocator options still uses the factory's internal arena/mempool path. Release falls through to the raw allocator case above and uses `CudaAllocatorBase::IsExternalDeviceAllocator()` to delete it with the correct concrete type.
 
 The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`. When replacing, `ReleaseAllocator` is called on the old allocator first (dropping that device's arena if ref count hits zero), then `CreateAllocator` is called again with the new options — potentially creating a new arena with different config for that specific device.
 
@@ -382,9 +387,9 @@ The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be
 
 `PluginExecutionProvider::CreatePreferredAllocators()` calls `ep_factory_.CreateAllocator()` for each memory info registered by the EP's devices. Today this passes `allocator_options = nullptr`, which means the factory always creates arenas with default config.
 
-**Session-level plumbing (new).** To support session-level arena config (e.g. `ep.cudapluginexecutionprovider.arena.max_mem`), `PluginExecutionProvider` needs to:
+**Session-level plumbing (new).** To support session-level arena config (e.g. `ep.cuda.arena.max_mem`), `PluginExecutionProvider` needs to:
 
-1. **Extract arena options at construction time (gated).** The constructor already receives `const OrtSessionOptions& session_options`. The extraction is gated on `ep_factory_.CreateAllocator != nullptr` — only factory-based allocator creation accepts `allocator_options`, so the scan is skipped entirely for plugin EPs that don't implement factory-level allocator creation (the `OrtEp::CreateAllocator` path has no options parameter). When gated in, the constructor constructs the EP-specific prefix via `OrtSessionOptions::GetProviderOptionPrefix(ep->GetName(ep.get()))` (which lowercases the EP name), appends `"arena."`, and scans `session_options.value.config_options` for matching keys. Matching keys are stored with the EP prefix stripped (bare `"arena.*"` keys) in a `std::optional<OrtKeyValuePairs>` member (`session_arena_options_`). The EP-name prefix ensures that only keys intended for this specific EP are extracted — e.g. `ep.cudapluginexecutionprovider.arena.*` keys will never match a session for a different plugin EP.
+1. **Extract arena options at construction time (gated).** The constructor already receives `const OrtSessionOptions& session_options`. The extraction is gated on `ep_factory_.CreateAllocator != nullptr` — only factory-based allocator creation accepts `allocator_options`, so the scan is skipped entirely for plugin EPs that don't implement factory-level allocator creation (the `OrtEp::CreateAllocator` path has no options parameter). When gated in, the constructor constructs the EP-specific prefix via `OrtSessionOptions::GetProviderOptionPrefix(ep->GetName(ep.get()))`, appends `"arena."`, and scans `session_options.value.config_options` for matching keys. Matching keys are stored with the EP prefix stripped (bare `"arena.*"` keys) in a `std::optional<OrtKeyValuePairs>` member (`session_arena_options_`). The EP-name prefix ensures that only keys intended for this specific EP are extracted — e.g. `ep.cuda.arena.*` keys will never match a session for a different plugin EP.
 
 2. **Pass options in `CreatePreferredAllocators`.** If `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()`. Otherwise pass `nullptr` (preserving existing behavior for EPs that don't use arena keys).
 
@@ -396,7 +401,7 @@ This means:
 ```
 Session-level flow:
 SessionOptionsAppendExecutionProvider_V2(session, ep_devices, keys[], values[])
-  → keys stored in session_options.config_options as "ep.cudapluginexecutionprovider.arena.*"
+  → keys stored in session_options.config_options as "ep.cuda.arena.*"
   → PluginExecutionProvider constructor extracts "arena.*" keys
   → CreatePreferredAllocators() builds OrtKeyValuePairs and passes to CreateAllocator()
   → factory creates/reuses arena with provided config
@@ -409,8 +414,8 @@ SessionOptionsAppendExecutionProvider_V2(session, ep_devices, keys[], values[])
 Environment-level config can be passed via `OrtEnvCreationOptions::config_entries`:
 
 ```cpp
-api->AddKeyValuePair(kvps, "ep_factory.CudaPluginExecutionProvider.arena.extend_strategy", "1");
-api->AddKeyValuePair(kvps, "ep_factory.CudaPluginExecutionProvider.arena.max_mem", "4294967296");
+api->AddKeyValuePair(kvps, "ep.cuda.arena.extend_strategy", "1");
+api->AddKeyValuePair(kvps, "ep.cuda.arena.max_mem", "4294967296");
 
 OrtEnvCreationOptions options{};
 options.config_entries = kvps;
@@ -419,7 +424,7 @@ api->CreateEnvWithOptions(&options, &env);
 
 **Current gap:** `RegisterExecutionProviderLibrary` does not extract env config entries and pass them as `allocator_options` to `CreateSharedAllocatorImpl`. To support env-level arena config, this needs to be plumbed:
 
-1. `RegisterExecutionProviderLibrary` constructs a prefix via `"ep_factory." + std::string(factory->GetName ? factory->GetName(factory) : "") + "."` (case-sensitive, using `GetName` as-is — see Section 3.6). Note: `GetName` is a C function pointer on `OrtEpFactory`, invoked as `factory->GetName(factory)`. Implementations must handle `GetName == nullptr` or a `nullptr` return defensively. The prefix is then used to obtain a snapshot of the environment config entries via `Environment::GetConfigEntries()` (which acquires `config_entries_mutex_` under a shared lock)
+1. `RegisterExecutionProviderLibrary` constructs a prefix via `OrtSessionOptions::GetProviderOptionPrefix(factory->GetName(factory))` (for CUDA this is `ep.cuda.`; see Section 3.6). Note: `GetName` is a C function pointer on `OrtEpFactory`, invoked as `factory->GetName(factory)`. Implementations must handle `GetName == nullptr` or a `nullptr` return defensively. The prefix is then used to obtain a snapshot of the environment config entries via `Environment::GetConfigEntries()` (which acquires `config_entries_mutex_` under a shared lock)
 2. Scans the snapshot for keys matching the prefix, strips the prefix, and builds `OrtKeyValuePairs` with bare `arena.*` keys
 3. Passes to `CreateSharedAllocatorImpl` as `allocator_options`
 4. `CreateSharedAllocatorImpl` forwards to `ep_factory->CreateAllocator`
@@ -436,19 +441,23 @@ ORT has two separate configuration namespaces for EP-specific options.
 
 | | Environment-level | Session-level |
 |---|---|---|
-| **Prefix pattern** | `ep_factory.<ep_name>.` | `ep.<ep_name>.` |
-| **Who constructs the prefix?** | No one — convention from C API doc comments only | ORT core (`GetProviderOptionPrefix`) |
-| **Lowercasing applied?** | **Not defined** — ORT never constructs or parses this prefix today | **Yes** — `GetLowercaseString(GetName())` |
+| **Prefix pattern** | Provider-specific prefix from `GetProviderOptionPrefix()` for proposed CUDA plugin allocator plumbing | Provider-specific prefix from `GetProviderOptionPrefix()` |
+| **Who constructs the prefix?** | Proposed ORT core plumbing in `RegisterExecutionProviderLibrary` | ORT core (`GetProviderOptionPrefix`) |
+| **Lowercasing applied?** | Usually yes; CUDA uses the stable short prefix `ep.cuda.` | Usually yes; CUDA uses the stable short prefix `ep.cuda.` |
 | **Backing store** | `std::map<string,string>` (case-sensitive) | `std::unordered_map<string,string>` (case-sensitive) |
 | **Set via** | `CreateEnvWithOptions` (`OrtEnvCreationOptions.config_entries`) | `SessionOptionsAppendExecutionProvider_V2` |
-| **CUDA plugin `GetName()`** | `"CudaPluginExecutionProvider"` | `"CudaPluginExecutionProvider"` |
+| **CUDA plugin `GetName()`** | `"CUDAExecutionProvider"` | `"CUDAExecutionProvider"` |
 
-The C API documentation (`onnxruntime_c_api.h`) describes the environment-level prefix as `ep_factory.<ep_name>.` where `<ep_name>` is the factory's own name (from `OrtEpFactory::GetName()`), **not** the user-provided registration name passed to `RegisterExecutionProviderLibrary`. However, ORT core does not currently construct, parse, or normalize this prefix — it is purely a documentation convention. The design (Section 3.5 / 5.3) proposes new code in `RegisterExecutionProviderLibrary` that would extract these keys for the first time, which requires deciding on a casing convention.
+The C API documentation (`onnxruntime_c_api.h`) describes a generic environment-level convention as `ep_factory.<ep_name>.` where `<ep_name>` is the factory's own name (from `OrtEpFactory::GetName()`), **not** the user-provided registration name passed to `RegisterExecutionProviderLibrary`. However, ORT core does not currently construct, parse, or normalize this prefix. For CUDA plugin allocator options, use the same stable CUDA prefix as session/provider options: `ep.cuda.*`.
 
-The session-level prefix is always lowercased by ORT via `GetLowercaseString`:
+Most session-level prefixes are lowercased by ORT via `GetLowercaseString`; CUDA is special-cased to use `ep.cuda.`:
 
 ```cpp
 // abi_session_options.cc — GetProviderOptionPrefix
+if (std::string_view{provider_name} == "CUDAExecutionProvider") {
+  return "ep.cuda.";
+}
+
 std::string key_prefix = "ep.";
 key_prefix += onnxruntime::utils::GetLowercaseString(provider_name);
 key_prefix += ".";
@@ -456,21 +465,13 @@ key_prefix += ".";
 
 Both backing stores (`std::map` and `std::unordered_map`) use exact string comparison — key lookup is case-sensitive.
 
-#### Casing convention for `ep_factory.` prefix
+#### CUDA prefix convention
 
-Since new code must be written to extract `ep_factory.` keys, we must decide how the `<ep_name>` portion is matched:
-
-| Option | Env-level example key | Pros | Cons |
-|--------|----------------------|------|------|
-| **(A) Use `GetName()` as-is** | `ep_factory.CudaPluginExecutionProvider.arena.*` | Exact match to factory identity; unambiguous | Inconsistent with session-level (lowercase); users must get casing exactly right; error-prone |
-| **(B) Lowercase like session-level** | `ep_factory.cudapluginexecutionprovider.arena.*` | Consistent with `ep.cudapluginexecutionprovider.*`; users see one pattern | Diverges from C API doc comment which doesn't specify lowercasing; slight surprise if user reads `GetName()` |
-| **(C) Case-insensitive matching** | Either casing works | Most forgiving for users | Requires scanning all map entries (can't use `std::map::find`); unusual; extra code |
-
-**Recommendation: Option A** — use `GetName()` as-is, respecting the C API specification which is case-sensitive. The `ep_factory.<ep_name>.` prefix uses the factory's own name verbatim:
+CUDA plugin environment-level allocator options should use the same prefix as CUDA session options. This avoids exposing `CUDAExecutionProvider` casing in option keys and keeps users on one CUDA namespace:
 
 ```
-Environment: ep_factory.CudaPluginExecutionProvider.arena.extend_strategy
-Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
+Environment: ep.cuda.arena.extend_strategy
+Session:     ep.cuda.arena.extend_strategy
 ```
 
 The new code in `RegisterExecutionProviderLibrary` constructs the prefix as:
@@ -479,10 +480,10 @@ The new code in `RegisterExecutionProviderLibrary` constructs the prefix as:
 // Note: GetName is a function pointer on the C struct OrtEpFactory.
 // Must be called as factory->GetName(factory) and null-checked.
 const char* ep_name = (factory->GetName) ? factory->GetName(factory) : nullptr;
-std::string prefix = "ep_factory." + std::string(ep_name ? ep_name : "") + ".";
+std::string prefix = ep_name ? OrtSessionOptions::GetProviderOptionPrefix(ep_name) : std::string{};
 ```
 
-The session-level prefix continues to use `GetLowercaseString` independently. While the two prefixes use different casing conventions, the `ep_factory.` prefix is specified by the C API documentation as `<ep_name>` (the factory's identity), and the backing store (`std::map`) is case-sensitive. Introducing lowercasing here would diverge from the documented contract.
+The generic `ep_factory.<ep_name>.` convention remains documented in the public C API comments for EPs that choose to consume it directly via `GetEnvConfigEntries()`, but CUDA should prefer `ep.cuda.*` for consistency with its session/provider options.
 
 #### Conflict between namespaces
 
@@ -663,8 +664,8 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `inference_session.cc` | **`ValidateAndParseShrinkArenaString`** and **`ShrinkMemoryArenas`**: simplified to use `allocator->AsArena()` directly, which now also discovers plugin arenas wrapped via `IArenaImplWrappingOrtAllocator`. |
 | `device_stream_collection.cc` | `ReleaseSingleStreamBuffers`: simplified to use `allocator->AsArena()` directly (removed `alloc_type == OrtArenaAllocator` check). |
 | Future: `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName(factory) + "."` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
-| Future: `ep_plugin_provider_interfaces.h` | Add `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
-| Future: `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
+| `ep_plugin_provider_interfaces.h` | Added `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
+| `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` and `ort_ep_->CreateAllocator == nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
 
 ### 5.4 Shrink and ORT Core Arena Integration
 
@@ -742,8 +743,8 @@ Plugin allocators that do not implement `Shrink` (e.g., read-only allocators) co
 7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Pointer identity match against device cache entries, decrement ref count, destroy if zero. Fall back to `CudaAllocatorBase`-based `delete` for non-arena types (Section 3.3 pseudocode).
 8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After existing stream sync and deferred buffer cleanup, call `arena->ResetChunksUsingStream(this_ptr)` for the device's arena (Section 3.4).
 9. **No CMake changes needed:** The glob picks up new `.cc` files in `plugin/` automatically.
-10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `factory->GetName(factory)` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract `ep_factory.<ep_name>.arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
-11. **Plumb session-level arena options in `PluginExecutionProvider`:** In the constructor (`ep_plugin_provider_interfaces.cc`), extract `ep.<ep_name>.arena.*` keys from `session_options.value.config_options`, strip the EP prefix, and store as bare `arena.*` keys. In `CreatePreferredAllocators()`, build `OrtKeyValuePairs` from the stored map and pass to `ep_factory_.CreateAllocator()` (see Section 3.5).
+10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `OrtSessionOptions::GetProviderOptionPrefix(factory->GetName(factory))` (with null-guard), obtain config snapshot via `GetConfigEntries()`, extract `ep.cuda.arena.*` keys for CUDA, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
+11. **Plumb session-level arena options in `PluginExecutionProvider`:** In the constructor (`ep_plugin_provider_interfaces.cc`), extract keys with the EP-specific arena prefix from `session_options.value.config_options`, strip the EP prefix, and store as bare `arena.*` keys. In `CreatePreferredAllocators()`, build `OrtKeyValuePairs` from the stored map and pass to `ep_factory_.CreateAllocator()` (see Section 3.5).
 
 ### Phase 2: CudaMempoolArena Migration
 

@@ -22,7 +22,8 @@ class Conv3DNaiveProgram final : public Program<Conv3DNaiveProgram> {
       {"strides", ProgramUniformVariableDataType::Uint32},
       {"dilations", ProgramUniformVariableDataType::Uint32},
       {"x_spatial", ProgramUniformVariableDataType::Uint32},
-      {"x_channels", ProgramUniformVariableDataType::Uint32});
+      {"x_channels", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   const Activation& activation_;

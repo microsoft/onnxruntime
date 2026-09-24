@@ -8,9 +8,14 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "core/framework/node_shape_resolver.h"
+#endif
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_external_data_loader.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -40,6 +45,15 @@
 #endif
 
 #include "core/providers/cuda/cuda_stream_handle.h"
+
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
+#endif
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#endif
 
 using namespace onnxruntime::common;
 
@@ -551,6 +565,11 @@ Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   return GetPerThreadContext().ReplayGraph(graph_annotation_id, sync);
 }
 
+void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
+  std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
+  captured_host_buffers_.push_back(std::move(buffer));
+}
+
 namespace cuda {
 
 template <>
@@ -835,6 +854,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, float, ReduceMean);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, double, ReduceMean);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, MLFloat16, ReduceMean);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, BFloat16, ReduceMean);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, int32_t, ReduceMean);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, float, ReduceMin);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, double, ReduceMin);
@@ -1274,6 +1294,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, float, ReduceMean);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, double, ReduceMean);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMean);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, BFloat16, ReduceMean);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMean);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, float, ReduceProd);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, double, ReduceProd);
@@ -1661,6 +1682,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDom
 // Opset 22.
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool);
@@ -2126,6 +2148,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, float, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, double, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, MLFloat16, ReduceMean)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, BFloat16, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, int32_t, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, float, ReduceMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 17, double, ReduceMin)>,
@@ -2564,6 +2587,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, float, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, double, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, MLFloat16, ReduceMean)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, BFloat16, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, int32_t, ReduceMean)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, float, ReduceProd)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 18, double, ReduceProd)>,
@@ -2952,6 +2976,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       // Opset 22
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, LpNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, BFloat16, LpNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, float, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, double, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 22, MLFloat16, AveragePool)>,
@@ -3407,6 +3432,15 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
   return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
+std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+  if (info_.external_data_loader_reading_threads == 0) {
+    return nullptr;
+  }
+
+  return std::make_unique<cuda::ExternalDataLoader>(
+      info_.device_id, info_.external_data_loader_reading_threads);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const IKernelLookup& kernel_lookup,
@@ -3526,7 +3560,99 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     } else {
       auto* node = graph.GetNode(node_index);
-      auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+      std::optional<Level1MemoryEstimate> level1_memory_estimate;
+
+#if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
+      // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
+      // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
+      // allocations remain separate so their different lifetimes are visible in reporting.
+      if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
+        const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
+        const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
+        const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
+        const auto& input_defs = node->InputDefs();
+        const TensorShape* input_a_shape =
+            inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
+                ? nullptr
+                : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
+        const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
+            fpa_intb_gemm.has_value()
+                ? std::optional<std::string_view>{*fpa_intb_gemm}
+                : std::nullopt,
+            profile_m.has_value()
+                ? std::optional<std::string_view>{*profile_m}
+                : std::nullopt,
+            /*input_shape_is_upper_bound=*/input_a_shape != nullptr};
+        level1_memory_estimate =
+            input_a_shape != nullptr
+                ? contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, input_a_shape->GetDims(), GetDeviceProp(), estimate_options)
+                : contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, GetDeviceProp(), estimate_options);
+        if (level1_memory_estimate.has_value()) {
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                                << " bytes, runtime transient="
+                                << level1_memory_estimate->runtime_transient_bytes
+                                << " bytes, persistent prepack="
+                                << level1_memory_estimate->persistent_prepack_bytes
+                                << " bytes, initialization scratch="
+                                << level1_memory_estimate->initialization_scratch_bytes << " bytes";
+        }
+      }
+#endif
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+      // PackedAttention and PackedMultiHeadAttention remain log-only. Their
+      // route-aware workspace is not added to the partition budget yet.
+      if (node != nullptr &&
+          (node->OpType() == "PackedAttention" ||
+           node->OpType() == "PackedMultiHeadAttention") &&
+          node->Domain() == kMSDomain) {
+        const auto input_shapes = ResolveNodeInputShapes(
+            *node, &graph.GetGraph(),
+            resource_accountant->GetMaxShapeInferenceResult());
+        const auto ws = contrib::cuda::EstimatePackedAttentionWorkspace(
+            *node, gsl::make_span(input_shapes), GetDeviceProp(),
+            *GetAttentionKernelOptions());
+        if (ws.has_value()) {
+          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name()
+                             << ": " << ws->total_workspace_bytes << " bytes";
+        }
+      }
+
+      if (node != nullptr && node->OpType() == "GroupQueryAttention" &&
+          node->Domain() == kMSDomain) {
+        // Unlike PA/PMHA above, GQA participates in #31962 accounting. A
+        // successful estimate is supplied to ComputeResourceCount and can
+        // affect the CUDA partition acceptance decision.
+        const auto input_shapes = ResolveNodeInputShapes(
+            *node, &graph.GetGraph(),
+            resource_accountant->GetMaxShapeInferenceResult());
+        const auto& input_defs = node->InputDefs();
+        const bool head_sink_is_constant_initializer =
+            input_defs.size() > 11 && input_defs[11] != nullptr &&
+            input_defs[11]->Exists() &&
+            graph.IsConstantInitializer(input_defs[11]->Name(), true);
+        const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
+            *node, gsl::make_span(input_shapes), GetDeviceProp(),
+            *GetAttentionKernelOptions(), head_sink_is_constant_initializer);
+        if (ws.has_value()) {
+          Level1MemoryEstimate estimate;
+          contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);
+          level1_memory_estimate = estimate;
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << ws->total_workspace_bytes << " bytes";
+        }
+      }
+#endif
+
+      const auto resource_count_variant =
+          resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
+      const auto resource_count = std::get<size_t>(resource_count_variant);
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)
@@ -3550,6 +3676,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
   }
+
   /*
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {

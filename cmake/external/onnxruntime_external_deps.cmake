@@ -7,8 +7,9 @@ include(external/helper_functions.cmake)
 
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
-  # Lines start with "#" are comments
-  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+  # Lines start with "#" are comments, so skip them.
+  # cpp_client_telemetry is only needed for telemetry on non-Windows platforms, so skip if telemetry is not enabled or it's Windows platform.
+  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR (onnxruntime_USE_TELEMETRY AND NOT WIN32)))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -87,7 +88,7 @@ if (onnxruntime_BUILD_BENCHMARKS)
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
     EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES benchmark
+    FIND_PACKAGE_ARGS 1.9.5 NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
@@ -185,9 +186,10 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_msvc_unreachable_code.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_msvc_map_unreachable_code.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_compiler_incomplete_type.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -361,42 +363,52 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      PATCH_COMMAND
-        # https://github.com/microsoft/onnxruntime/issues/10038
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+  if(onnxruntime_USE_VCPKG AND NOT APPLE)
+    find_package(cpuinfo CONFIG REQUIRED)
   else()
-    onnxruntime_fetchcontent_declare(
-      pytorch_cpuinfo
-      URL ${DEP_URL_pytorch_cpuinfo}
-      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-      EXCLUDE_FROM_ALL
-      FIND_PACKAGE_ARGS NAMES cpuinfo
-    )
+    if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
+      message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/324
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/microsoft/onnxruntime/issues/10038
+          ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch &&
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    else()
+      onnxruntime_fetchcontent_declare(
+        pytorch_cpuinfo
+        URL ${DEP_URL_pytorch_cpuinfo}
+        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
+        PATCH_COMMAND
+          # https://github.com/pytorch/cpuinfo/pull/400
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+          ${PROJECT_SOURCE_DIR}/patches/cpuinfo/enable_deinit_refcounting.patch
+      )
+    endif()
+    onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
   endif()
-  set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
-  onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
   if(TARGET cpuinfo::cpuinfo AND NOT TARGET cpuinfo)
     message(STATUS "Aliasing cpuinfo::cpuinfo to cpuinfo")
     add_library(cpuinfo ALIAS cpuinfo::cpuinfo)
@@ -544,6 +556,48 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# An installed ONNX package ships pre-generated protobuf headers/sources that ONNX Runtime compiles into its own
+# objects, so both must resolve to a single protobuf runtime with a single message representation. If they do not,
+# the mismatch is not caught by the linker: it shows up as heap corruption while copying onnx::AttributeProto (see
+# https://github.com/microsoft/onnxruntime/issues/28664). Validate the two ways this can happen.
+if(onnx_FOUND OR ONNX_FOUND)
+  if(NOT Protobuf_FOUND)
+    message(FATAL_ERROR
+            "ONNX was resolved to an installed package but protobuf is being built from source by ONNX Runtime. "
+            "The installed ONNX links a different protobuf runtime than the one ONNX Runtime would use. "
+            "Install a protobuf CMake config package and make it discoverable via CMAKE_PREFIX_PATH, or force ONNX "
+            "to be built from source with -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER.")
+  endif()
+
+  if(TARGET ONNX::onnx_proto)
+    get_target_property(onnx_package_definitions ONNX::onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  else()
+    get_target_property(onnx_package_definitions onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  endif()
+  if(onnx_package_definitions)
+    if("ONNX_USE_LITE_PROTO=1" IN_LIST onnx_package_definitions)
+      set(onnx_package_protobuf_flavor "lite")
+    else()
+      set(onnx_package_protobuf_flavor "full")
+    endif()
+    if(onnxruntime_USE_FULL_PROTOBUF)
+      set(onnxruntime_protobuf_flavor "full")
+    else()
+      set(onnxruntime_protobuf_flavor "lite")
+    endif()
+    if(NOT onnx_package_protobuf_flavor STREQUAL onnxruntime_protobuf_flavor)
+      message(FATAL_ERROR
+              "The installed ONNX package links the ${onnx_package_protobuf_flavor} protobuf runtime but ONNX "
+              "Runtime is configured for the ${onnxruntime_protobuf_flavor} one "
+              "(onnxruntime_USE_FULL_PROTOBUF=${onnxruntime_USE_FULL_PROTOBUF}). Rebuild ONNX with a matching "
+              "ONNX_USE_LITE_PROTO, or reconfigure ONNX Runtime to use the ${onnx_package_protobuf_flavor} runtime.")
+    endif()
+  endif()
+  message(STATUS "Using ONNX from find_package(or vcpkg). ONNX version: ${ONNX_VERSION}, "
+                 "protobuf version: ${Protobuf_VERSION}")
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -635,6 +689,34 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
+  if (DAWN_USE_AGILITY_SDK)
+    if (NOT WIN32)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is only supported on Windows.")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_CUSTOM_DAWN_SRC_PATH.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is not supported for WindowsStore/UWP.")
+    endif()
+    if (onnxruntime_target_platform STREQUAL "ARM" OR
+        onnxruntime_target_platform STREQUAL "ARM64EC")
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK does not support Windows ARM32 or ARM64EC. "
+              "Use an x86, x64, or ARM64 target.")
+    endif()
+    if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
+    endif()
+    if (onnxruntime_USE_EP_API_ADAPTERS)
+      # Plugin EP packages cannot guarantee that the Agility SDK runtime DLLs are deployed
+      # next to the host executable.
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_USE_EP_API_ADAPTERS=ON (plugin EP build). "
+              "It is intended for local development builds only.")
+    endif()
+  endif()
+
   # TODO: the following code is used to disable building Dawn using vcpkg temporarily
   # until we figure out how to resolve the packaging pipeline failures
   #
@@ -650,7 +732,14 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DAWN_SUPPORTS_CXX_MODULES OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      if (NOT onnxruntime_USE_EXTERNAL_DAWN AND NOT onnxruntime_DISABLE_RTTI)
+        # ORT derives from dawn::platform::Platform to configure Dawn's worker pool.
+        # Match ORT's RTTI setting so Dawn emits the base class typeinfo required by the subclass.
+        set(DAWN_ENABLE_RTTI ON CACHE BOOL "" FORCE)
+      endif()
+
       if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
         set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
@@ -783,28 +872,30 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
-          # The dawn_buffer_fix_injection.patch contains the following changes:
-          #
-          # - (private) Fix importJsBuffer calling wrong WGPUBufferImpl constructor
-          #   Without this patch, importJsBuffer calls emwgpuCreateBuffer which invokes the
-          #   (source, mappedAtCreation=false) constructor instead of the injection constructor
-          #   tagged with kImportedFromJS. This patch adjusts the injection constructor signature
-          #   to disambiguate it from the (source, mappedAtCreation) overload so emwgpuCreateBuffer
-          #   reliably selects the injection constructor and imported buffers are properly tagged
-          #   as kImportedFromJS.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
-
           # The dawn_parallel_build_fix.patch contains the following changes:
           #
           # - (private) Fix parallel build race condition in emdawnwebgpu header copy
-          #   The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
-          #   without ensuring the destination directory exists first. When building with
-          #   parallel jobs (-j32), the copy commands for webgpu_glfw.h and
-          #   webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
-          #   has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
-          #   This patch adds cmake -E make_directory before the copy so the directory is
-          #   always present regardless of parallel build ordering.
+          #   Two separate fixes address this race:
+          #
+          #   1. The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
+          #      without ensuring the destination directory exists first. When building with
+          #      parallel jobs (-j32), the copy commands for webgpu_glfw.h and
+          #      webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
+          #      has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
+          #      This patch adds cmake -E make_directory before the copy so the directory is
+          #      always present regardless of parallel build ordering.
+          #
+          #   2. webgpu_enum_class_bitmasks.h is listed in emdawnwebgpu_cpp's HEADERS, which
+          #      causes CMake to add it to INTERFACE_SOURCES. When ORT targets link to
+          #      emdawnwebgpu_cpp, CMake propagates this generated file to ORT's directory scope
+          #      and generates a second copy of the cmake -E copy recipe for that file.
+          #      With parallel make (-jN), both the Dawn-directory recipe and the ORT-directory
+          #      recipe run concurrently for the same output file, causing the copy to fail.
+          #      Removing webgpu_enum_class_bitmasks.h from emdawnwebgpu_cpp's HEADERS
+          #      eliminates the duplicate recipe. The header remains accessible via the include
+          #      directory set on emdawnwebgpu_c_include (${EM_BUILD_GEN_DIR}/include), and
+          #      build ordering is preserved through the emdawnwebgpu_c -> emdawnwebgpu_c_include
+          #      -> emdawnwebgpu_headers_gen dependency chain.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
 
@@ -821,7 +912,36 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
 
+    if (DAWN_USE_AGILITY_SDK)
+      # Set Dawn's expected Chromium CIPD layout before configuring Dawn. The SDK
+      # package is populated below, before any Dawn target is compiled.
+      if (FETCHCONTENT_BASE_DIR)
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${FETCHCONTENT_BASE_DIR}/dawn-src")
+      else()
+        set(ONNXRUNTIME_DAWN_SRC_DIR "${CMAKE_BINARY_DIR}/_deps/dawn-src")
+      endif()
+      set(DAWN_AGILITY_SDK_DIR "${ONNXRUNTIME_DAWN_SRC_DIR}/third_party/agility-sdk"
+          CACHE PATH "Directory containing the D3D12 Agility SDK" FORCE)
+      message(STATUS "Dawn Agility SDK directory: ${DAWN_AGILITY_SDK_DIR}")
+    endif()
+
     onnxruntime_fetchcontent_makeavailable(dawn)
+
+    if (DAWN_USE_AGILITY_SDK)
+      onnxruntime_fetchcontent_declare(
+        dawn_agility_sdk
+        URL ${DEP_URL_dawn_agility_sdk}
+        URL_HASH SHA1=${DEP_SHA1_dawn_agility_sdk}
+        SOURCE_DIR "${DAWN_AGILITY_SDK_DIR}/src"
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(dawn_agility_sdk)
+      if (NOT EXISTS "${DAWN_AGILITY_SDK_DIR}/src/build/native/include/d3d12.h")
+        message(FATAL_ERROR
+                "The Agility SDK package does not contain build/native/include/d3d12.h: "
+                "${DAWN_AGILITY_SDK_DIR}/src")
+      endif()
+    endif()
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -880,6 +1000,27 @@ endif()
 
 set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
+  # Work around a CMake limitation (present through at least CMake 3.31 and current
+  # upstream master) when building natively on a Windows-on-ARM64 host. FindCUDAToolkit
+  # only sets the Windows import-library search suffix when the host is x64:
+  #
+  #   if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+  #     if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+  #       set(_CUDAToolkit_win_search_dirs lib/x64)
+  #       set(_CUDAToolkit_win_stub_search_dirs lib/x64/stubs)
+  #
+  # On an ARM64 host the suffix is left empty, so find_library() for cudart only looks in
+  # "lib64" and never finds <cuda_home>/lib/.../cudart.lib. find_package(CUDAToolkit) then
+  # fails with: Could NOT find CUDAToolkit (missing: CUDA_CUDART). Pre-seed the (internal)
+  # search-suffix variables with win-arm64 import-library locations (lib/arm64 and
+  # lib/arm64/stubs) so the toolkit's cudart.lib can be found. FindCUDAToolkit unsets
+  # these at the end, so this only affects the search below and is a no-op once CMake
+  # gains native WoA support.
+  if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+    set(_CUDAToolkit_win_search_dirs lib/arm64)
+    set(_CUDAToolkit_win_stub_search_dirs lib/arm64/stubs)
+  endif()
+
   find_package(CUDAToolkit REQUIRED)
 
   # cuDNN is not needed for minimal CUDA builds (e.g., TensorRT-only builds)
@@ -896,6 +1037,182 @@ endif()
 if(onnxruntime_USE_SNPE)
   include(external/find_snpe.cmake)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
+endif()
+
+# 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
+                        "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
+  endif()
+  set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE OFF)
+  if(onnxruntime_USE_VCPKG AND NOT ANDROID AND NOT TARGET MSTelemetry::mat)
+    # The telemetry manifest feature installs this package. Keep it required so a broken vcpkg
+    # integration cannot silently switch dependency models within a vcpkg build.
+    find_package(MSTelemetry CONFIG REQUIRED)
+  endif()
+  if(onnxruntime_USE_VCPKG AND TARGET MSTelemetry::mat AND NOT ANDROID)
+    message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
+    set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
+  else()
+    # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
+    # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      include(external/telemetry_linux_http.cmake)
+    endif()
+    set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
+
+    # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
+    # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
+    # HttpClient_Android and its Java bridge.
+    # Use cpp_client_telemetry's canonical build options. The SDK keeps its
+    # build policy and dependency selection local to 1DS.
+    set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
+    set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
+    set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
+    set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS CDS module" FORCE)
+    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector" FORCE)
+    set(MATSDK_BUILD_SIGNALS OFF CACHE BOOL "Disable 1DS signals module" FORCE)
+    set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    set(MATSDK_BUILD_AZMON OFF CACHE BOOL "Disable 1DS Azure Monitor module" FORCE)
+    set(MATSDK_BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
+    set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    if(APPLE)
+      set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+    endif()
+    # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
+    # transport. On Apple/Android the SDK selects the native transport.
+    set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
+    set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
+    set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
+    set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
+    # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
+    # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
+    set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
+
+    # Android uses the Java transport; all other source builds use the SDK's
+    # canonical Apple/system or fetched mbedTLS transport selection.
+    set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
+
+    if(NOT Patch_FOUND)
+      message(FATAL_ERROR
+              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
+    endif()
+    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
+        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
+        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
+    onnxruntime_fetchcontent_declare(
+      cpp_client_telemetry
+      URL ${DEP_URL_cpp_client_telemetry}
+      URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
+      EXCLUDE_FROM_ALL
+    )
+    onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
+    if(ANDROID)
+      target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
+    endif()
+
+    if(ANDROID)
+      string(CONCAT _ort_android_telemetry_java_source_dir
+          "${cpp_client_telemetry_SOURCE_DIR}/lib/android_build/maesdk/src/main/java/"
+          "com/microsoft/applications/events")
+      file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/android/telemetry-java")
+      set(_ort_android_telemetry_java_dir
+          "${CMAKE_BINARY_DIR}/android/telemetry-java/ai/onnxruntime/telemetry")
+      file(MAKE_DIRECTORY "${_ort_android_telemetry_java_dir}")
+      foreach(_ort_android_telemetry_java_file HttpClient.java HttpClientRequest.java)
+        file(READ
+             "${_ort_android_telemetry_java_source_dir}/${_ort_android_telemetry_java_file}"
+             _ort_android_telemetry_java_source)
+        string(REPLACE
+               "package com.microsoft.applications.events;"
+               "package ai.onnxruntime.telemetry;"
+               _ort_android_telemetry_java_source
+               "${_ort_android_telemetry_java_source}")
+        file(WRITE
+             "${_ort_android_telemetry_java_dir}/${_ort_android_telemetry_java_file}"
+             "${_ort_android_telemetry_java_source}")
+      endforeach()
+
+      set(_ort_android_telemetry_resource_dir "${CMAKE_BINARY_DIR}/android/telemetry-resources/META-INF")
+      file(MAKE_DIRECTORY "${_ort_android_telemetry_resource_dir}")
+      configure_file(
+        "${cpp_client_telemetry_SOURCE_DIR}/LICENSE"
+        "${_ort_android_telemetry_resource_dir}/LICENSE-1DS"
+        COPYONLY)
+    endif()
+
+    if(TARGET mat)
+      if(TARGET sqlite3_bundled)
+        # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
+        # size reductions and extension-loading hardening on the bundled replacement.
+        target_compile_definitions(sqlite3_bundled PRIVATE
+          SQLITE_OMIT_LOAD_EXTENSION
+          SQLITE_OMIT_DEPRECATED
+          SQLITE_OMIT_UTF16
+          SQLITE_OMIT_PROGRESS_CALLBACK
+          SQLITE_OMIT_SHARED_CACHE
+          SQLITE_OMIT_GET_TABLE
+          SQLITE_OMIT_COMPLETE
+          SQLITE_OMIT_TCL_VARIABLE
+          SQLITE_DQS=0
+          SQLITE_DEFAULT_MEMSTATUS=0
+          SQLITE_DEFAULT_FOREIGN_KEYS=0
+        )
+      endif()
+      foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
+        if(TARGET ${_ort_apple_dep})
+          if(APPLE AND _ort_requested_apple_architectures)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}"
+              XCODE_ATTRIBUTE_ARCHS "${_ort_requested_apple_architectures}")
+          endif()
+          get_target_property(_ort_apple_inc
+            ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
+          if(_ort_apple_inc)
+            set_target_properties(${_ort_apple_dep} PROPERTIES
+              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
+          endif()
+        endif()
+      endforeach()
+      # ORT enables -ffast-math globally, which conflicts with
+      # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
+      # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
+      target_compile_options(mat PRIVATE
+        -fno-finite-math-only
+        -Wno-unused-const-variable
+        $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+      )
+      # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
+      # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
+      if(APPLE)
+        foreach(_ort_mat_tgt mat sqlite3_bundled zlib_bundled)
+          if(TARGET ${_ort_mat_tgt})
+            target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
+          endif()
+        endforeach()
+        if(TARGET sqlite3_bundled)
+          target_compile_options(sqlite3_bundled PRIVATE -Wno-ambiguous-macro)
+        endif()
+      endif()
+      if(TARGET sqlite3_bundled
+         AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
+         AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
+      endif()
+    endif()
+
+    set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
+  endif()
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

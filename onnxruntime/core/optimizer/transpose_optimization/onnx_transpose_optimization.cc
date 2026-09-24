@@ -31,14 +31,22 @@ constexpr bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape)
   return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
 }
 
-static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
+static std::optional<std::vector<int64_t>> DataInt64(api::TensorRef& tensor) {
+  if (tensor.DType() != api::DataType::INT64) {
+    return std::nullopt;
+  }
+
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
   std::vector<int64_t> result(data_int, data_int + tensor.NumElements());
   return result;
 }
 
-static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
+static std::optional<std::vector<int32_t>> DataInt32(api::TensorRef& tensor) {
+  if (tensor.DType() != api::DataType::INT32) {
+    return std::nullopt;
+  }
+
   std::vector<uint8_t> raw_data = tensor.Data();
   int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
   std::vector<int32_t> result(data_int, data_int + tensor.NumElements());
@@ -222,6 +230,10 @@ static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
   return axis >= 0 && axis < rank_int;
 }
 
+static bool IsAxisInRangeForPerm(int64_t axis, gsl::span<const int64_t> perm) {
+  return axis >= 0 && gsl::narrow_cast<size_t>(axis) < perm.size();
+}
+
 /// <summary>
 /// Check if an output value has a single consumer that is a node.
 /// </summary>
@@ -345,6 +357,11 @@ class DQToLookPast {
     return dq_node_->Outputs()[0];
   }
 
+  bool CanSetTransposedInput(gsl::span<const int64_t> perm_inv) const {
+    return quant_info_.mode != QuantizationMode::kPerAxis ||
+           IsAxisInRangeForPerm(quant_info_.norm_axis, perm_inv);
+  }
+
   /// <summary>
   /// Sets the DQ's new transposed input[0]. The DQ's axis and output shape are updated.
   /// </summary>
@@ -352,6 +369,7 @@ class DQToLookPast {
   /// <param name="new_input">name of new transposed input[0]</param>
   /// <param name="perm_inv">inverse transpose permutation used to update the DQ's axis</param>
   void SetTransposedInput(api::GraphRef& graph, std::string_view new_input, gsl::span<const int64_t> perm_inv) {
+    assert(CanSetTransposedInput(perm_inv));
     if (quant_info_.mode == QuantizationMode::kPerAxis) {
       quant_info_.norm_axis = perm_inv[gsl::narrow_cast<size_t>(quant_info_.norm_axis)];
     }
@@ -405,6 +423,18 @@ class DQToLookPast {
   std::unique_ptr<api::NodeRef> dq_node_;
   QuantizationInfo quant_info_;
 };
+
+static bool CanTransposeInputWithQDQ(const api::GraphRef& graph, std::string_view input,
+                                     gsl::span<const int64_t> perm) {
+  auto producer = graph.GetNodeProducingOutput(input);
+  if (!producer || producer->OpType() != "DequantizeLinear") {
+    return true;
+  }
+
+  auto quant_info = GetQuantizationInfo(graph, *producer);
+  return !quant_info || quant_info->mode != QuantizationMode::kPerAxis ||
+         IsAxisInRangeForPerm(quant_info->norm_axis, perm);
+}
 
 /// <summary>
 /// Return a DequantizeLinear node if it's input is a constant initializer and it has a single consumer.
@@ -513,11 +543,15 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   if (dq_quant_info->mode == QuantizationMode::kPerAxis) {
     if (is_transpose) {
       auto perm = GetPermAttrIfValid(next_node);
-      assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
+      if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
+        return false;
+      }
       axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
     } else if (is_unsqueeze) {
       auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
-      assert(axes.has_value());  // 'axes' are required for Unsqueeze
+      if (!axes.has_value()) {
+        return false;
+      }
 
       const auto dq_output_info = graph.GetValueInfo(dq_node.Outputs()[0]);
       std::optional<size_t> dq_output_rank = dq_output_info->ShapeRank();
@@ -1165,11 +1199,20 @@ static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::Ten
   }
 }
 
+bool CanTransposeInput(const api::GraphRef& graph, const api::NodeRef& node, size_t i,
+                       const std::vector<int64_t>& perm_inv) {
+  return CanTransposeInputWithQDQ(graph, node.Inputs()[i], perm_inv);
+}
+
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
-static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t i,
+static bool TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t i,
                                const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   std::string_view input = node.Inputs()[i];
+
+  if (!CanTransposeInput(graph, node, i, perm_inv)) {
+    return false;
+  }
 
   // Only local constants are editable
   std::unique_ptr<api::TensorRef> constant = graph.GetLocalConstant(input);
@@ -1182,8 +1225,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // look past a DQ node for a constant initializer. essentially we pretend the DQ node doesn't exist
     // to enable directly making changes to the initializer. any nodes added for other consumers of the initializer
     // in 'Case 1' are prior to the DQ so we don't break up any QDQ node units.
-    dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, input);
-    if (dq_to_look_past) {
+    auto dq_candidate = GetDQWithConstInitializerInputAndSingleConsumer(graph, input);
+    if (dq_candidate && dq_candidate->CanSetTransposedInput(perm_inv)) {
+      dq_to_look_past = std::move(dq_candidate);
       // underlying string for the input name is in the Node so it's safe to store in string_view constant_dq_input
       constant_dq_input = dq_to_look_past->GetInput0();
       constant = graph.GetLocalConstant(constant_dq_input);
@@ -1217,7 +1261,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
     // If there is only one element return early as the transpose won't change the data
     if (constant->NumElements() == 1) {
-      return;
+      return true;
     }
 
     // This is a special case where the constant is 1D with length == perm.
@@ -1238,7 +1282,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
       // unset updated input so reconnect_nodes doesn't change it back
       input = "";
-      return;
+      return true;
     }
 
     if (consumers->nodes.size() > 0) {
@@ -1259,7 +1303,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
       constant_dq_input = "";  // DQ input was already updated so we don't need reconnect_nodes to handle it
     }
 
-    return;
+    return true;
   }
 
   // Case 2: input is a Transpose node
@@ -1269,7 +1313,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(graph, *inp_node);
 
-    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode)) {
+    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode) &&
+        (dq_quant_info->mode != QuantizationMode::kPerAxis ||
+         IsAxisInRangeForPerm(dq_quant_info->norm_axis, perm_inv))) {
       dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info);
       std::string_view dq_input = dq_to_look_past->GetInput0();
       inp_node = graph.GetNodeProducingOutput(dq_input);
@@ -1298,7 +1344,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
           graph.RemoveNode(*inp_node);
         }
 
-        return;
+        return true;
       }
 
       if (!dq_to_look_past) {
@@ -1318,7 +1364,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
         node.SetInput(i, transpose_out);
 
-        return;
+        return true;
       } else {
         // fall through to regular processing if the Transpose prior to the DQ doesn't cancel out cleanly
       }
@@ -1335,7 +1381,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   for (auto& consumer : consumers->nodes) {
     if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer) == perm) {
       node.SetInput(i, consumer->Outputs()[0]);
-      return;
+      return true;
     }
   }
 
@@ -1352,19 +1398,21 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     MakeQDQNodeUnit(graph, *inp_node);
   }
+
+  return true;
 }
 
 // this TransposeInput is used by the layout transformer to wrap a node in Transpose ops.
 // there's no OptimizerCtx in that scenario
-void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
+bool TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,
                     const std::vector<int64_t>& perm_inv) {
-  TransposeInputImpl(graph, node, i, perm, perm_inv);
+  return TransposeInputImpl(graph, node, i, perm, perm_inv);
 }
 
 static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm,
                            const std::vector<int64_t>& perm_inv) {
-  TransposeInputImpl(ctx.graph, node, i, perm, perm_inv);
+  static_cast<void>(TransposeInputImpl(ctx.graph, node, i, perm, perm_inv));
 }
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
@@ -1948,8 +1996,11 @@ bool HandleReduceOps(HandlerArgs& args) {
     empty_axes = true;
   } else {
     axes_const = args.ctx.graph.GetConstant(inputs[1]);
-    if (axes_const != nullptr && axes_const->NumElements() == 0) {
-      empty_axes = true;
+    if (axes_const != nullptr) {
+      if (axes_const->DType() != api::DataType::INT64) {
+        return false;
+      }
+      empty_axes = axes_const->NumElements() == 0;
     }
   }
 
@@ -1974,11 +2025,11 @@ bool HandleReduceOps(HandlerArgs& args) {
 
   // Case 3: Const axes
   auto axes = DataInt64(*axes_const);
-  if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
+  if (!axes || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
     return false;
   }
 
-  std::vector<int64_t> new_axes = SortedAxesForTransposedInput(axes, args.perm);
+  std::vector<int64_t> new_axes = SortedAxesForTransposedInput(*axes, args.perm);
   std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
   std::string_view new_axes_const = AddInitializerInt64(args.ctx.graph, axes_shape, new_axes);
   std::string_view axes_inp = inputs[1];
@@ -2125,8 +2176,9 @@ static bool HandleArgMinMax(HandlerArgs& args) {
 constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
 
 // Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
-static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std::vector<int64_t> values,
-                                                       api::DataType dtype) {
+static std::optional<std::string_view> AddIntInitializerMatchingDtype(api::GraphRef& graph,
+                                                                      std::vector<int64_t> values,
+                                                                      api::DataType dtype) {
   std::vector<int64_t> shape{gsl::narrow_cast<int64_t>(values.size())};
 
   if (dtype == api::DataType::INT32) {
@@ -2139,20 +2191,32 @@ static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std
     return AddInitializerInt32(graph, shape, values_int32);
   }
 
-  return AddInitializerInt64(graph, shape, values);
+  if (dtype == api::DataType::INT64) {
+    return AddInitializerInt64(graph, shape, values);
+  }
+
+  return std::nullopt;
 }
 
 // Gets int data from an int32 or int64 tensor
-static std::vector<int64_t> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
+static std::optional<std::vector<int64_t>> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
   if (dtype == api::DataType::INT32) {
-    std::vector<int32_t> values_int32 = DataInt32(tensor);
+    auto values_int32 = DataInt32(tensor);
+    if (!values_int32) {
+      return std::nullopt;
+    }
+
     std::vector<int64_t> values;
-    values.reserve(values_int32.size());
-    for (int32_t v : values_int32) {
+    values.reserve(values_int32->size());
+    for (int32_t v : *values_int32) {
       values.push_back(gsl::narrow_cast<int64_t>(v));
     }
 
     return values;
+  }
+
+  if (dtype != api::DataType::INT64) {
+    return std::nullopt;
   }
 
   return DataInt64(tensor);
@@ -2196,7 +2260,9 @@ static bool HandleSlice(HandlerArgs& args) {
     const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
     api::DataType int_dtype = starts_value_info->DType();
 
-    if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
+    if ((int_dtype != api::DataType::INT32 && int_dtype != api::DataType::INT64) ||
+        starts_shape == std::nullopt || starts_shape->size() != 1 ||
+        (*starts_shape)[0] < 0 || static_cast<uint64_t>((*starts_shape)[0]) > rank) {
       return false;
     }
 
@@ -2206,8 +2272,11 @@ static bool HandleSlice(HandlerArgs& args) {
       new_axes.push_back(args.perm[i]);
     }
 
-    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
-    args.node.SetInput(3, new_axes_const);
+    auto new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
+    if (!new_axes_const) {
+      return false;
+    }
+    args.node.SetInput(3, *new_axes_const);
 
   } else {
     // Case 2: Axes input provided. Update if constant.
@@ -2219,15 +2288,18 @@ static bool HandleSlice(HandlerArgs& args) {
 
     api::DataType int_dtype = axes_const->DType();
     auto axes = TensorIntData(*axes_const, int_dtype);
-    if (!NormalizeAndValidateAxes(axes, rank)) {
+    if (!axes || !NormalizeAndValidateAxes(*axes, rank)) {
       return false;
     }
 
     // Update axes but leave the order unchanged (don't sort them). Need to line up with starts/ends/steps
-    new_axes = AxesForTransposedInput(axes, args.perm);
+    new_axes = AxesForTransposedInput(*axes, args.perm);
     std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
-    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
-    args.node.SetInput(3, new_axes_const);
+    auto new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
+    if (!new_axes_const) {
+      return false;
+    }
+    args.node.SetInput(3, *new_axes_const);
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
     }
@@ -2239,19 +2311,86 @@ static bool HandleSlice(HandlerArgs& args) {
 
 constexpr HandlerInfo slice_handler = {&FirstInput, &HandleSlice};
 
+// Pushes a Transpose past a Gather, but only for the scalar-indices case (indices is a 0-D
+// constant). Why so narrow:
+//   - General Gather output rank is `data.rank - 1 + indices.rank`. Computing the post-rewrite
+//     output perm correctly for arbitrary indices.rank is fiddly and easy to get wrong without
+//     a dedicated test rig. Scalar-indices is structurally identical to Squeeze along the
+//     gathered axis, which we already trust.
+//   - Requiring a constant indices tensor lets us read its rank from .Shape().empty(); a dynamic
+//     indices input has no statically-known rank in general, so we can't decide if we're in the
+//     scalar case at compile time.
+// Only the `data` input is transposable here (FirstInput selector); `indices` are positions,
+// not values to be permuted.
+static bool HandleGather(HandlerArgs& args) {
+  size_t rank = args.perm.size();
+
+  int64_t axis = args.node.GetAttributeIntDefault("axis", 0);
+  if (!NormalizeAndValidateAxis(axis, rank)) {
+    return false;
+  }
+
+  // Indices must be a constant whose shape is exactly [] (0-D scalar). Bail otherwise -- the
+  // general rank case isn't handled by this handler.
+  auto inputs = args.node.Inputs();
+  if (inputs.size() < 2) {
+    return false;
+  }
+  std::unique_ptr<api::TensorRef> indices_const = args.ctx.graph.GetConstant(inputs[1]);
+  if (indices_const == nullptr) {
+    return false;
+  }
+  if (!indices_const->Shape().empty()) {
+    return false;
+  }
+
+  // Remap axis under the input perm: the user's `Gather(axis=k)` on the transposed data is
+  // equivalent to gathering along original-data axis perm[k]. Output rank drops by 1, exactly
+  // the Squeeze case along axis perm[k].
+  int64_t new_axis = args.perm[gsl::narrow_cast<size_t>(axis)];
+  args.node.SetAttributeInt("axis", new_axis);
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  std::vector<int64_t> new_axes{new_axis};
+  TransposeOutputs(args.ctx, args.node, SqueezePerm(new_axes, args.perm));
+  return true;
+}
+
+constexpr HandlerInfo gather_handler = {&FirstInput, &HandleGather};
+
 static bool HandleTile(HandlerArgs& args) {
   size_t rank = args.perm.size();
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
 
-  std::string_view repeats_inp = args.node.Inputs()[1];
+  // Tile has 2 required inputs ('input' and 'repeats') per the ONNX spec; this is normally
+  // guaranteed by schema validation during Graph::Resolve, but that validation can be skipped
+  // for some build configurations (e.g. ORT-format models), so check explicitly here too, as
+  // the sibling Gather handler above does for its own required second input.
+  auto tile_inputs = args.node.Inputs();
+  if (tile_inputs.size() < 2) {
+    return false;
+  }
+  std::string_view repeats_inp = tile_inputs[1];
   std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
-    const std::vector<int64_t>& repeats = DataInt64(*repeats_const);
+    auto repeats = DataInt64(*repeats_const);
+    if (!repeats) {
+      return false;
+    }
+
+    // 'repeats' is required by the Tile spec to have one entry per dimension of the preceding
+    // Transpose's input, i.e. the same length as 'rank' derived from that Transpose's 'perm'. That
+    // isn't necessarily verified ahead of this point (e.g. shape inference may not have been able to
+    // validate it if the data input's rank wasn't statically known), so re-check it here before using
+    // values from 'perm_inv' (which are all < rank) to index into 'repeats'.
+    if (repeats->size() != rank) {
+      return false;
+    }
     std::vector<int64_t> new_repeats;
     new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
-      new_repeats.push_back(repeats[gsl::narrow_cast<size_t>(p)]);
+      new_repeats.push_back((*repeats)[gsl::narrow_cast<size_t>(p)]);
     }
 
     std::string_view new_repeats_const = AddInitializerInt64(args.ctx.graph, perm_shape, new_repeats);
@@ -2442,7 +2581,7 @@ static bool FinalizeReshapeShape(const std::vector<int64_t>& input_shape,      /
   return true;
 }
 
-bool HandleReshape(HandlerArgs& args) {
+static bool HandleReshapeAsTranspose(HandlerArgs& args) {
   // A Reshape can be logically equivalent to a Transpose if all dims with a value > 1 remain in the same order
   // and do not change size. If so, we can use HandleTransposeImpl to merge them.
   //  e.g. Reshape(input {1, 512, 4, 1}, shape {1, 1, 512, 4}) is equivalent to Transpose with perms { 0, 3, 1, 2 }
@@ -2470,9 +2609,12 @@ bool HandleReshape(HandlerArgs& args) {
   }
 
   auto reshape_requested_shape = DataInt64(*requested_shape_data);
+  if (!reshape_requested_shape) {
+    return false;
+  }
 
   // need rank to match for Reshape to be equivalent to a Transpose
-  if (transpose_input_shape->size() != reshape_requested_shape.size()) {
+  if (transpose_input_shape->size() != reshape_requested_shape->size()) {
     return false;
   }
 
@@ -2487,7 +2629,7 @@ bool HandleReshape(HandlerArgs& args) {
   }
 
   std::vector<int64_t> reshape_output_shape;
-  if (!FinalizeReshapeShape(*transpose_output_shape, reshape_requested_shape, allow_zero, reshape_output_shape)) {
+  if (!FinalizeReshapeShape(*transpose_output_shape, *reshape_requested_shape, allow_zero, reshape_output_shape)) {
     return false;
   }
 
@@ -2532,6 +2674,165 @@ bool HandleReshape(HandlerArgs& args) {
   return HandleTransposeImpl(args, perms);
 }
 
+// Push a Transpose past a Reshape when the Reshape *splits* one or more
+// post-transpose axes into contiguous groups of output axes.
+//
+// Example (motivating case):
+//   input {1, 12, 20, 24} -> Transpose(perm=[0,3,1,2]) -> {1, 24, 12, 20}
+//                         -> Reshape({1, 3, 8, 12, 20}) -> {1, 3, 8, 12, 20}
+//
+//   After: input -> Reshape({1, 12, 20, 3, 8}) -> Transpose(perm=[0,3,4,1,2])
+//                                              -> {1, 3, 8, 12, 20}
+//
+// Restrictions enforced:
+//   - Both transpose input shape and Reshape output shape (from shape
+//     inference on the Reshape's value_info) must be fully concrete
+//     (no symbolic / -1 / 0 dims). We drive off the output shape rather
+//     than the shape-input initializer so -1 / 0 have already been resolved
+//     by upstream shape inference.
+//   - Reshape output rank must exceed the transpose rank; equal or smaller
+//     ranks are covered by HandleReshapeAsTranspose.
+//   - The reshape output must partition into exactly one contiguous group per
+//     post-transpose axis, using every output dim.
+static bool HandleReshapeSplit(HandlerArgs& args) {
+  auto transpose_input_shape_opt = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
+  if (!transpose_input_shape_opt.has_value()) {
+    return false;
+  }
+  const std::vector<int64_t>& transpose_input_shape = *transpose_input_shape_opt;
+  for (int64_t d : transpose_input_shape) {
+    if (d < 0) {
+      return false;
+    }
+  }
+
+  size_t rank = args.perm.size();
+  if (transpose_input_shape.size() != rank) {
+    return false;
+  }
+  std::vector<int64_t> transposed_shape(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    transposed_shape[i] = transpose_input_shape[gsl::narrow_cast<size_t>(args.perm[i])];
+  }
+
+  // Match HandleReshapeAsTranspose: require the shape input to be a constant.
+  // We drive the partition off the inferred output shape (so -1 / 0 are already
+  // resolved), but we also write a new constant shape initializer, so the
+  // original must have been constant too.
+  auto shape_input_constant = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
+  if (shape_input_constant == nullptr || shape_input_constant->DType() != api::DataType::INT64 ||
+      shape_input_constant->Data().size() == 0) {
+    return false;
+  }
+
+  auto reshape_output_shape_opt = args.ctx.graph.GetValueInfo(args.node.Outputs()[0])->Shape();
+  if (!reshape_output_shape_opt.has_value()) {
+    return false;
+  }
+  const std::vector<int64_t>& requested_shape = *reshape_output_shape_opt;
+  for (int64_t d : requested_shape) {
+    if (d <= 0) {
+      return false;  // symbolic / -1 / 0 — inference didn't resolve; bail.
+    }
+  }
+
+  // This handler is for pure splits (output rank > post-transpose rank).
+  // Equal or smaller ranks are the domain of HandleReshapeAsTranspose.
+  if (requested_shape.size() <= rank) {
+    return false;
+  }
+
+  // Partition requested_shape into `rank` contiguous groups: group j's product
+  // must equal transposed_shape[j], consuming output dims left-to-right.
+  // Consume at least one output dim per group so that size-1 post-transpose
+  // axes get a unique home rather than an empty group (which would leave the
+  // next group's assignment ambiguous when the requested shape also contains
+  // leading 1s).
+  std::vector<std::pair<size_t, size_t>> groups;  // [start, end) in reshape-output axis space
+  groups.reserve(rank);
+  size_t cursor = 0;
+  for (size_t j = 0; j < rank; ++j) {
+    int64_t target = transposed_shape[j];
+    size_t group_start = cursor;
+    int64_t prod = 1;
+    do {
+      if (cursor >= requested_shape.size()) {
+        return false;
+      }
+      const int64_t dim = requested_shape[cursor];
+      // Bail before prod * dim would exceed target; this also prevents int64 overflow.
+      // dim is guaranteed > 0 by the earlier requested_shape validation, and target > 0
+      // whenever it is reachable (target == 0 falls through the do-while and fails the
+      // prod != target check below).
+      if (target > 0 && prod > target / dim) {
+        return false;
+      }
+      prod *= dim;
+      ++cursor;
+    } while (prod < target);
+    if (prod != target) {
+      return false;
+    }
+    groups.emplace_back(group_start, cursor);
+  }
+  if (cursor != requested_shape.size()) {
+    return false;
+  }
+
+  // Build the new (pre-Transpose) Reshape shape: iterate pre-transpose axes
+  // in order 0..rank-1. For each pre-transpose axis i, the post-transpose axis
+  // that carries it is args.perm_inv[i]; append that group's dims from
+  // requested_shape. This is the shape the Reshape emits when applied
+  // directly to the pre-transpose tensor. new_perm[k] records the position
+  // that requested_shape[k] ends up at, giving the Transpose that restores
+  // the original Reshape's externally-observed ordering.
+  std::vector<int64_t> new_reshape_shape;
+  new_reshape_shape.reserve(requested_shape.size());
+  std::vector<int64_t> new_perm(requested_shape.size());
+  for (size_t i = 0; i < rank; ++i) {
+    size_t j = gsl::narrow_cast<size_t>(args.perm_inv[i]);
+    const auto& [gs, ge] = groups[j];
+    for (size_t k = gs; k < ge; ++k) {
+      new_perm[k] = gsl::narrow_cast<int64_t>(new_reshape_shape.size());
+      new_reshape_shape.push_back(requested_shape[k]);
+    }
+  }
+
+  // Rewrite the graph:
+  //   1) Point the Reshape at the pre-transpose tensor with the new shape.
+  //   2) Insert a Transpose(new_perm) on the Reshape's output unless it's
+  //      identity (only possible when the original Transpose was a no-op).
+  //   3) Drop the original Transpose if nothing else consumes it.
+  std::string_view transpose_input = args.transpose.Inputs()[0];
+  std::vector<int64_t> shape_initializer_shape{gsl::narrow_cast<int64_t>(new_reshape_shape.size())};
+  std::string_view new_shape_init =
+      AddInitializerInt64(args.ctx.graph, shape_initializer_shape, new_reshape_shape);
+
+  const std::string old_shape_name(args.node.Inputs()[1]);
+  args.node.SetInput(0, transpose_input);
+  args.node.SetInput(1, new_shape_init);
+  if (!args.ctx.graph.HasValueConsumers(old_shape_name)) {
+    args.ctx.graph.RemoveInitializer(old_shape_name);
+  }
+
+  if (!IsIdentityPerm(new_perm)) {
+    TransposeOutput(args.ctx.graph, args.node, 0, new_perm, InvertPerm(new_perm));
+  }
+
+  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+    args.ctx.graph.RemoveNode(args.transpose);
+  }
+
+  return true;
+}
+
+bool HandleReshape(HandlerArgs& args) {
+  if (HandleReshapeAsTranspose(args)) {
+    return true;
+  }
+  return HandleReshapeSplit(args);
+}
+
 constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transposes_outputs*/ false};
 
 // TODO: check binary size of this and replace it with constexpr if large
@@ -2564,6 +2865,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Softsign", simple_node_handler},
     {"ThresholdedRelu", simple_node_handler},
     {"Celu", simple_node_handler},
+    {"Elu", simple_node_handler},
     {"HardSwish", simple_node_handler},
 
     {"Sin", simple_node_handler},
@@ -2632,6 +2934,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Squeeze", squeeze_handler},
     {"Unsqueeze", unsqueeze_handler},
     {"Slice", slice_handler},
+    {"Gather", gather_handler},
     {"Tile", tile_handler},
 
     {"Softmax", soft_hard_max_handler},
@@ -2751,6 +3054,13 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   std::vector<int64_t> perm_inv = InvertPerm(perm);
+  const auto inputs = node.Inputs();
+  for (size_t input_index : input_indices) {
+    if (!CanTransposeInputWithQDQ(ctx.graph, inputs[input_index], perm_inv)) {
+      return false;
+    }
+  }
+
   HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, outputs_leading_to_transpose};
   return info->handler_fn(args);
 }
@@ -3004,7 +3314,9 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   if (q_quant_info->mode == QuantizationMode::kPerAxis) {
     // Have to update the axis for newly inserted Q/DQ before a Transpose if using per-channel quantization.
     auto perm = GetPermAttrIfValid(transpose_node);
-    assert(perm.has_value());                        // onnx shape inferencing checks that `perm` is valid
+    if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
+      return false;
+    }
     axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
   }
 

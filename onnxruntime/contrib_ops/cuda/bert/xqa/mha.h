@@ -68,7 +68,11 @@ constexpr uint32_t tokensPerPage = TOKENS_PER_PAGE;
 
 using IOHead = Vec<InputElem, validElemsPerHead>;
 using InputHead = IOHead;
+#if defined(XQA_PAGED_INT4)
+using GMemCacheHead = Vec<uint8_t, validElemsPerHead / 2>;
+#else
 using GMemCacheHead = Vec<CacheElem, validElemsPerHead>;
+#endif
 
 constexpr uint32_t validElemsPerKHead = validElemsPerHead;
 constexpr bool lowPrecOutput = LOW_PREC_OUTPUT;
@@ -98,9 +102,9 @@ using KVCachePageIndex = int32_t;  // shape: KVCacheHead[nbKHeads][tokensPerPage
 constexpr bool allowSlidingWindow = SLIDING_WINDOW;
 
 struct BeamSearchParams {
-  uint32_t const* __restrict__ indices;  // shape: [batchSize][beamWidth][capacity]
+  const uint32_t* __restrict__ indices;  // shape: [batchSize][beamWidth][capacity]
   uint32_t capacity;
-  uint32_t const* __restrict__ ctxLenList;  // shape: [batchSize][beamWidth]. Should be [batchSize] but we have to
+  const uint32_t* __restrict__ ctxLenList;  // shape: [batchSize][beamWidth]. Should be [batchSize] but we have to
                                             // match trt-llm API.
 };
 

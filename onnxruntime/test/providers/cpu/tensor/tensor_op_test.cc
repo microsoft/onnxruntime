@@ -171,6 +171,59 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test allowzero=1 with zero dim and unknown dim (-1): infer unknown from non-zero product.
+// Input: {2, 0, 3} (0 elements), shape: {0, -1} → output: {0, 6}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 0, 3}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 6}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim and unknown dim: input {4, 0}, shape {0, 2, -1} → output {0, 2, 2}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {4, 0}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {3}, {0, 2, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 2, 2}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test allowzero=1 with zero dim, unknown dim, and multi-dim non-zero product.
+// Input: {3, 0, 5} (0 elements), shape: {0, -1} → non-zero product of input is 3*5=15, output: {0, 15}
+TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDimMultiDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {3, 0, 5}, std::vector<float>());
+  test.AddInput<int64_t>("shape", {2}, {0, -1});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {0, 15}, std::vector<float>());
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
   OpTester test("Reshape");
 

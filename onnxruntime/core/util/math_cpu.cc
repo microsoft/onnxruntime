@@ -190,6 +190,45 @@ void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const 
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool, mlas_backend_kernel_selector_config);
 }
 
+template <>
+void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A, const MLFloat16* B, MLFloat16* C, ThreadPool* threadpool,
+                       const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  // Guard against using generic half GEMM when no accelerated implementation is
+  // available. Native packing support currently also signals an accelerated
+  // backend path.
+  const bool has_accelerated_half_gemm =
+      MlasFp16AccelerationSupported() ||
+      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
+                                  static_cast<size_t>(N), static_cast<size_t>(K),
+                                  mlas_backend_kernel_selector_config) != 0;
+  if (has_accelerated_half_gemm) {
+    MLAS_HALF_GEMM_DATA_PARAMS data{};
+    data.A = A;
+    data.lda = static_cast<size_t>(K);
+    data.B = B;
+    data.ldb = static_cast<size_t>(N);
+    data.C = C;
+    data.ldc = static_cast<size_t>(N);
+    data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+    MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, threadpool);
+    return;
+  }
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+  auto C_mat = EigenMatrixMap<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M);
+  // Accumulate the fallback in fp32 and round only the result to fp16.
+  C_mat.noalias() =
+      (ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(B), N, K).cast<float>() *
+       ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(A), K, M).cast<float>())
+          .cast<Eigen::half>();
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+}
+
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool,
@@ -860,11 +899,31 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_hw = output_h * output_w;
   const int64_t hw = height * width;
   const int64_t hwc = hw * channels;
-  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
   if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 && pad_t == 0 && pad_b == 0) {
+    if (kernel_h == 2 && kernel_w == 2 && stride_h == 2 && stride_w == 2 &&
+        height % 2 == 0 && width % 2 == 0) {
+      // Each output has one input value. Write adjacent values together,
+      // without an output read or a separate zero fill.
+      for (int64_t c = 0; c < channels; ++c) {
+        for (int64_t h = 0; h < output_h; ++h) {
+          const float* src = data_col + c * 4 * output_hw + h * output_w;
+          float* dst = data_im + c * hw + h * 2 * width;
+          for (int64_t w = 0; w < output_w; ++w) {
+            // Keep the addition to positive zero for signed-zero behavior.
+            dst[2 * w] = 0.0f + src[w];
+            dst[2 * w + 1] = 0.0f + src[output_hw + w];
+            dst[width + 2 * w] = 0.0f + src[2 * output_hw + w];
+            dst[width + 2 * w + 1] = 0.0f + src[3 * output_hw + w];
+          }
+        }
+      }
+      return;
+    }
+
+    Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
     // Src (column) data cursor
     auto* src = data_col;
     // End of dst (image) data
@@ -902,6 +961,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   }
 
   // Fallback
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Src (col data) cursor
   auto* src = data_col;
@@ -917,6 +977,18 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
       int64_t w_offset = -pad_l;
       int64_t w_offset_end = w_offset + kernel_w * dilation_w;
       for (; w_offset < w_offset_end; w_offset += dilation_w) {
+        // The valid source columns are the same for each row of this kernel element.
+        const int64_t first_col = w_offset < 0 ? std::min(output_w, -(w_offset + 1) / stride_w + 1) : 0;
+        if (first_col == output_w) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t first_w = w_offset + first_col * stride_w;
+        if (first_w >= width) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t count = std::min(output_w - first_col, (width - 1 - first_w) / stride_w + 1);
         // End of src channel data
         auto* src_ce = src + output_hw;
         // Dst row offset
@@ -924,14 +996,11 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
           // End of src row data
           auto* src_we = src + output_w;
           if (is_a_ge_zero_and_a_lt_b(h, hw)) {
-            for (int64_t w = w_offset; src < src_we; src++, w += stride_w) {
-              if (is_a_ge_zero_and_a_lt_b(w, width)) {
-                dst[h + w] += *src;
-              }
+            for (int64_t col = 0; col < count; ++col) {
+              dst[h + first_w + col * stride_w] += src[first_col + col];
             }
-          } else {
-            src = src_we;
           }
+          src = src_we;
         }
       }
     }

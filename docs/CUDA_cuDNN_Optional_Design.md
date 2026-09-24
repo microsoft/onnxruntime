@@ -358,6 +358,40 @@ TensorRT / NV‑RTX EPs are untouched and continue to link cuDNN as before. (If 
 and the shimmed CUDA EP are in the same process, symbol collision must be avoided — see
 §8 Risks.)
 
+### 3.6 Applying the same pattern to cuFFT
+
+The identical shim + lazy‑loader technique is used to drop the hard dependency on **cuFFT**
+(`libcufft.so.*` / `cufft64_*.dll`). cuFFT is only needed by the FFT contrib operators
+(`Rfft` / `Irfft` in `contrib_ops/cuda/math`), which use a small, enumerable set of entry
+points: `cufftCreate`, `cufftDestroy`, `cufftSetStream`, `cufftXtMakePlanMany`, and
+`cufftXtExec`.
+
+Implementation:
+
+- **Loader** — `onnxruntime/core/providers/cuda/cufft_loader.{h,cc}` defines a
+  `CufftLibrary` singleton that mirrors `CudnnLibrary`: it lazily `dlopen`/`LoadLibrary`s the
+  cuFFT runtime, resolves symbols on demand, caches them, and exposes `Available()` / `Error()`.
+  It uses the same security‑conscious search behavior as the cuDNN loader (Windows
+  `LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` plus a PATH fallback that never loads from the current
+  working directory). The candidate library name is selected at **compile time** from the
+  `CUDA_VERSION` macro (cuFFT 12 for CUDA 13.x, cuFFT 11 for CUDA 12.x), because cuFFT's
+  SONAME/DLL version tracks the CUDA major version. Unsupported CUDA major versions fail at
+  compile time until their cuFFT library mapping is added explicitly.
+- **Shim** — `onnxruntime/core/providers/cuda/cufft_stub.cc` defines the five entry points
+  above as trampolines that forward to the resolved symbol (returning `CUFFT_INTERNAL_ERROR`
+  when the library is unavailable), so ORT's direct calls link against *our* definitions and
+  the final binary has **no import entry for libcufft**.
+- **Availability guard** — `CudaCall<cufftResult>` (in `cuda_call.cc`) and the plugin's
+  `CUFFT_RETURN_IF_ERROR` macro check `CufftLibrary::Available()` and return a clear
+  `NOT_IMPLEMENTED` status ("cuFFT is unavailable …") when cuFFT is missing, exactly like the
+  cuDNN path.
+
+Unlike cuDNN, cuFFT needs **no provider option** (there is no `enable_cufft`): it is always
+loaded lazily on first FFT‑op use, and there is no `cufft_frontend` equivalent to configure.
+cuFFT headers (part of the CUDA toolkit) are still required at build time, but `CUDA::cufft`
+is no longer linked in `onnxruntime_providers_cuda.cmake`,
+`onnxruntime_providers_cuda_plugin.cmake`, or the CUDA unit‑test target.
+
 ---
 
 ## 4. Phase 1 — Make cuDNN optional (no new kernels)

@@ -284,6 +284,56 @@ TEST(InferenceSessionTests, TestBindCpu) {
                  false /* don't preallocate output */);
 }
 
+TEST(InferenceSessionTests, TestBindCpuPreallocatedOutputUsesBoundBuffer) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestBindCpuPreallocatedOutputUsesBoundBuffer";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  std::unique_ptr<Model> p_model;
+  CreateMatMulModel(p_model, kCpuExecutionProvider);
+
+  std::string serialized_model;
+  p_model->ToProto().SerializeToString(&serialized_model);
+  std::stringstream model_stream(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(model_stream));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::unique_ptr<IOBinding> io_binding;
+  ASSERT_STATUS_OK(session_object.NewIOBinding(&io_binding));
+
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  const std::vector<int64_t> dims_mul_x_a = {3, 4};
+  const std::vector<int64_t> dims_mul_x_b = {4, 3};
+  const std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                                           6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+
+  OrtValue input_ml_value_a;
+  CreateMLValue<float>(cpu_alloc, dims_mul_x_a, values_mul_x, &input_ml_value_a);
+  ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_a));
+
+  OrtValue input_ml_value_b;
+  CreateMLValue<float>(cpu_alloc, dims_mul_x_b, values_mul_x, &input_ml_value_b);
+  ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_b));
+
+  const std::vector<int64_t> expected_output_dims = {3, 3};
+  OrtValue output_ml_value;
+  AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
+  const void* const bound_output_buffer = output_ml_value.Get<Tensor>().DataRaw();
+  ASSERT_STATUS_OK(io_binding->BindOutput("Y", output_ml_value));
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+
+  const auto& outputs = io_binding->GetOutputs();
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_EQ(outputs[0].Get<Tensor>().DataRaw(), bound_output_buffer)
+      << "Preallocated CPU output should be written in-place without allocating or copying to a new buffer.";
+
+  const std::vector<float> expected_values_mul_y = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+  VerifySingleOutput(outputs, expected_output_dims, expected_values_mul_y);
+}
+
 TEST(InferenceSessionTests, TestIOBindingReuse) {
   SessionOptions so;
   InferenceSession session_object(so, GetEnvironment());

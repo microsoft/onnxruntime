@@ -40,7 +40,23 @@ index 94bcad92e3..be7dfe95fd 100644
    SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -marm ")
 -  SET_PROPERTY(SOURCE ${ALL_ARMSIMD32_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv6 -mfpu=vfp -munaligned-access ")
 +  # set this to armv7-a to workaround build issue. we don't target armv6 so it shouldn't matter
-+  SET_PROPERTY(SOURCE ${ALL_ARMSIMD32_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=vfp -munaligned-access ") 
++  SET_PROPERTY(SOURCE ${ALL_ARMSIMD32_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=vfp -munaligned-access ")
    SET_PROPERTY(SOURCE ${ALL_NEON_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=neon ")
    SET_PROPERTY(SOURCE ${ALL_NEONFP16_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=neon-fp16 ")
    # GCC requires -mfp16-format=ieee to define __fp16 type, but Clang doesn't support this option at all.
+@@ -1038,7 +1047,14 @@ IF(XNNPACK_TARGET_PROCESSOR MATCHES "^x86(_64)?$")
+         SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -fomit-frame-pointer ")
+       ENDIF()
+     ENDIF()
+-    SET_PROPERTY(SOURCE ${ALL_SSE_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -msse -mno-sse2 ")
++    # ORT: x86_64 always has SSE2, and the iOS 18+/macOS 15+ SDK <math.h> declares
++    # _Float16 (which clang supports only with SSE2). Building the SSE microkernels with
++    # -mno-sse2 then breaks the system math module precompile on Apple x86_64; keep SSE2.
++    IF(APPLE AND XNNPACK_TARGET_PROCESSOR STREQUAL "x86_64")
++      SET_PROPERTY(SOURCE ${ALL_SSE_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -msse2 -mno-sse3 ")
++    ELSE()
++      SET_PROPERTY(SOURCE ${ALL_SSE_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -msse -mno-sse2 ")
++    ENDIF()
+     SET_PROPERTY(SOURCE ${ALL_SSE2_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -msse2 -mno-sse3 ")
+     SET_PROPERTY(SOURCE ${ALL_SSSE3_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -mssse3 -mno-sse4.1 ")
+     SET_PROPERTY(SOURCE ${ALL_SSE41_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -msse4.1 -mno-sse4.2 ")

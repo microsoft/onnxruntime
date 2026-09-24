@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 
@@ -57,6 +58,13 @@ class GraphPartitioner {
   }
 
   // Run partitioning.
+  //
+  // Output-model serialization (only when ep_context_gen_options is enabled, e.g. via the Compile API): if
+  // a compiling EP produced EPContext nodes, that model is serialized here at the end of partition.
+  // Otherwise, for a compile-only session (the Compile API with no compiled nodes), the plain optimized
+  // graph is emitted by InferenceSession (not here) at a point chosen by the optimization level - before
+  // the Level2+ loop for < Level2, or after all transforms for >= Level2 (to capture the L2-L4 fusions).
+  // Callers distinguish via AnyEpContextNodesProduced().
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
@@ -64,7 +72,13 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   WorkspaceReservationMap* workspace_reservations = nullptr) const;
+
+#ifndef ORT_MINIMAL_BUILD
+  // Returns true if any execution provider produced EPContext (compiled) nodes during partitioning.
+  bool AnyEpContextNodesProduced() const;
+#endif
 
   bool IsLoadCancellationFlagSet() const {
     return check_load_cancellation_fn_ && check_load_cancellation_fn_();

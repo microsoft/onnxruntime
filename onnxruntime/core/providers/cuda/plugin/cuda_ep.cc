@@ -7,6 +7,7 @@
 #include "cuda_stream_plugin.h"
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#include "cuda_allocator_plugin.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
@@ -145,6 +146,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
+  CreateAllocator = (config_.external_alloc != nullptr && config_.external_free != nullptr)
+                        ? CreateAllocatorImpl
+                        : nullptr;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
@@ -426,6 +430,42 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   *stream = cuda_stream.release();
   return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateAllocatorImpl(
+    OrtEp* this_ptr,
+    const OrtMemoryInfo* memory_info,
+    OrtAllocator** allocator) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto& ep = *static_cast<CudaEp*>(this_ptr);
+  *allocator = nullptr;
+
+  const OrtApi& ort_api = ep.factory_.GetOrtApi();
+  const char* name = "";
+  OrtStatus* status = ort_api.MemoryInfoGetName(memory_info, &name);
+  if (status != nullptr) {
+    return status;
+  }
+
+  int req_device_id = 0;
+  status = ort_api.MemoryInfoGetId(memory_info, &req_device_id);
+  if (status != nullptr) {
+    return status;
+  }
+
+  if (name != nullptr && strcmp(name, "Cuda") == 0) {
+    auto external_allocator = std::make_unique<CudaExternalDeviceAllocator>(
+        memory_info, req_device_id,
+        ep.config_.external_alloc, ep.config_.external_free, ep.config_.external_empty_cache);
+    *allocator = external_allocator.release();
+    return nullptr;
+  }
+
+  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, nullptr, allocator);
 
   EXCEPTION_TO_STATUS_END
 }

@@ -2,24 +2,41 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <random>
+#include <sstream>
 #include <string>
+#include <type_traits>
+#include <unordered_set>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/platform/env.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#ifdef USE_WEBGPU
+#include "test/util/include/scoped_env_vars.h"
+#ifdef USE_CUDA
+#include "test/common/cuda_op_test_utils.h"
+#endif
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "core/graph/model.h"
-#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
+#endif
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
+#include "core/framework/session_options.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -51,6 +68,95 @@ static std::unique_ptr<IExecutionProvider> MakeExecutionProviderForGqaTest(GqaTa
 // Helper to build a minimal GQA OpTester with given seqlens_k and total_seq_len.
 // Uses num_heads=1, kv_num_heads=1, and head_size=8; past may be provided via
 // provide_past/past_seq_len.
+template <typename T>
+static void RunGQASeqlensKTestTyped(
+    const std::vector<int32_t>& seqlens_k_data,
+    int32_t total_seq_len,
+    int batch_size,
+    int sequence_length,
+    OpTester::ExpectResult expect,
+    const std::string& expected_message,
+    bool provide_past = false,
+    int past_seq_len = 0,
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    GqaTargetEp target_ep = GqaTargetEp::kCpu,
+    const std::optional<std::vector<int64_t>>& total_seq_len_shape = std::nullopt,
+    const std::optional<std::vector<int32_t>>& total_seq_len_data = std::nullopt,
+    bool total_seq_len_is_initializer = false) {
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
+  if (!execution_provider) {
+    GTEST_SKIP() << "Requested execution provider is not available";
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  std::vector<T> query_data(batch_size * sequence_length * hidden_size, T(1.0f));
+  tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, query_data);
+
+  std::vector<T> key_data(batch_size * sequence_length * kv_hidden_size, T(1.0f));
+  tester.AddInput<T>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+
+  std::vector<T> value_data(batch_size * sequence_length * kv_hidden_size, T(1.0f));
+  tester.AddInput<T>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+
+  if (provide_past) {
+    std::vector<T> past_k(batch_size * kv_num_heads * past_seq_len * head_size, T(0.5f));
+    std::vector<T> past_v(batch_size * kv_num_heads * past_seq_len * head_size, T(0.5f));
+    tester.AddInput<T>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_k);
+    tester.AddInput<T>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_v);
+  } else {
+    tester.AddOptionalInputEdge<T>();  // past_key
+    tester.AddOptionalInputEdge<T>();  // past_value
+  }
+
+  std::vector<int64_t> shape = seqlens_k_shape.has_value()
+                                   ? *seqlens_k_shape
+                                   : std::vector<int64_t>{batch_size};
+  tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
+  const std::vector<int64_t> ts_shape = total_seq_len_shape.value_or(std::vector<int64_t>{1});
+  const std::vector<int32_t> ts_data = total_seq_len_data.value_or(std::vector<int32_t>{total_seq_len});
+  tester.AddInput<int32_t>("total_sequence_length", ts_shape, ts_data, total_seq_len_is_initializer);
+
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
+
+  // For failure tests with invalid total_seq_len, clamp declared output shape to avoid
+  // negative-sized vectors in test setup. The operator rejects these inputs before using outputs.
+  int declared_present_seqlen = provide_past ? past_seq_len : std::max(1, static_cast<int>(total_seq_len));
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
+                      std::vector<T>(batch_size * sequence_length * hidden_size, T(0.0f)));
+  tester.AddOutput<T>("present_key",
+                      {batch_size, kv_num_heads, declared_present_seqlen, head_size},
+                      std::vector<T>(batch_size * kv_num_heads * declared_present_seqlen * head_size, T(0.0f)));
+  tester.AddOutput<T>("present_value",
+                      {batch_size, kv_num_heads, declared_present_seqlen, head_size},
+                      std::vector<T>(batch_size * kv_num_heads * declared_present_seqlen * head_size, T(0.0f)));
+
+  // Tolerance is intentionally loose: these tests validate shape acceptance, not output values.
+  if (expect == OpTester::ExpectResult::kExpectSuccess) {
+    tester.SetOutputTolerance(1e6f);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  const std::unordered_set<std::string> excluded_provider_types =
+      target_ep == GqaTargetEp::kCuda
+          ? std::unordered_set<std::string>{onnxruntime::kCpuExecutionProvider}
+          : std::unordered_set<std::string>{};
+  tester.Run(expect, expected_message, excluded_provider_types, nullptr, &execution_providers);
+}
+
 static void RunGQASeqlensKTest(
     const std::vector<int32_t>& seqlens_k_data,
     int32_t total_seq_len,
@@ -60,69 +166,600 @@ static void RunGQASeqlensKTest(
     const std::string& expected_message,
     bool provide_past = false,
     int past_seq_len = 0,
-    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt,
+    const std::optional<std::vector<int64_t>>& total_seq_len_shape = std::nullopt,
+    const std::optional<std::vector<int32_t>>& total_seq_len_data = std::nullopt,
+    bool total_seq_len_is_initializer = false,
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
+  if (target_ep == GqaTargetEp::kCuda) {
+    RunGQASeqlensKTestTyped<MLFloat16>(
+        seqlens_k_data, total_seq_len, batch_size, sequence_length, expect, expected_message,
+        provide_past, past_seq_len, seqlens_k_shape, target_ep,
+        total_seq_len_shape, total_seq_len_data, total_seq_len_is_initializer);
+  } else {
+    RunGQASeqlensKTestTyped<float>(
+        seqlens_k_data, total_seq_len, batch_size, sequence_length, expect, expected_message,
+        provide_past, past_seq_len, seqlens_k_shape, target_ep,
+        total_seq_len_shape, total_seq_len_data, total_seq_len_is_initializer);
+  }
+}
+
+template <typename T>
+static void RunGQACausalMaskTest(
+    GqaTargetEp target_ep,
+    std::optional<int64_t> causal,
+    const std::vector<float>& expected_output,
+    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+    const std::string& expected_message = "",
+    std::optional<int64_t> local_window_size = std::nullopt) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
   constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
 
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-
-  std::vector<float> query_data(batch_size * sequence_length * hidden_size, 1.0f);
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-
-  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size, 1.0f);
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-
-  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size, 1.0f);
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
-
-  if (provide_past) {
-    std::vector<float> past_k(batch_size * kv_num_heads * past_seq_len * head_size, 0.5f);
-    std::vector<float> past_v(batch_size * kv_num_heads * past_seq_len * head_size, 0.5f);
-    tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_k);
-    tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_v);
-  } else {
-    tester.AddOptionalInputEdge<float>();  // past_key
-    tester.AddOptionalInputEdge<float>();  // past_value
+  auto execution_provider = MakeExecutionProviderForGqaTest(target_ep);
+  if (!execution_provider) {
+    GTEST_SKIP() << "Requested execution provider is not available";
   }
 
-  std::vector<int64_t> shape = seqlens_k_shape.has_value()
-                                   ? *seqlens_k_shape
-                                   : std::vector<int64_t>{batch_size};
-  tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
+  auto convert = [](const std::vector<float>& values) {
+    std::vector<T> converted;
+    converted.reserve(values.size());
+    for (float value : values) {
+      converted.emplace_back(value);
+    }
+    return converted;
+  };
 
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (causal.has_value()) {
+    tester.AddAttribute<int64_t>("causal", *causal);
+  }
+  if (local_window_size.has_value()) {
+    tester.AddAttribute<int64_t>("local_window_size", *local_window_size);
+  }
+
+  std::vector<float> query(sequence_length * hidden_size, 0.0f);
+  std::vector<float> key(sequence_length * hidden_size, 0.0f);
+  query[0] = 1.0f;
+  query[hidden_size] = 1.0f;
+  key[hidden_size] = std::sqrt(static_cast<float>(head_size)) * std::log(3.0f);
+  std::vector<float> value(sequence_length * hidden_size, 1.0f);
+  std::fill(value.begin() + hidden_size, value.end(), 3.0f);
+  tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, convert(query));
+  tester.AddInput<T>("key", {batch_size, sequence_length, hidden_size}, convert(key));
+  tester.AddInput<T>("value", {batch_size, sequence_length, hidden_size}, convert(value));
+  tester.AddOptionalInputEdge<T>();  // past_key
+  tester.AddOptionalInputEdge<T>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
+
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size}, convert(expected_output));
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                      convert(key));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                      convert(value));
+  tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CausalMaskDefaultsToEnabled_CPU) {
+  std::vector<float> expected_output(16, 2.5f);
+  std::fill(expected_output.begin(), expected_output.begin() + 8, 1.0f);
+  RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, std::nullopt, expected_output);
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheAttentionBiasWithPositionIds_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int cache_capacity = 2;
+  constexpr int total_sequence_length = 5;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+  tester.AddAttribute<int64_t>("local_window_size", cache_capacity);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 20.0f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+
+  std::vector<float> past_value(cache_capacity * head_size, 5.0f);
+  std::fill(past_value.begin() + head_size, past_value.end(), 10.0f);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size}, past_value);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  constexpr int rotary_dim = head_size / 2;
+  tester.AddInput<float>("cos_cache", {total_sequence_length, rotary_dim},
+                         std::vector<float>(total_sequence_length * rotary_dim, 1.0f));
+  tester.AddInput<float>("sin_cache", {total_sequence_length, rotary_dim},
+                         std::vector<float>(total_sequence_length * rotary_dim, 0.0f));
+  tester.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {total_sequence_length - 1});
+
+  // The two resident rows are absolute positions 3 and 4. Their bias weights are 1:3,
+  // so the expected value is 10 * 1/4 + 20 * 3/4 = 17.5 in every head dimension.
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         {-100.0f, -100.0f, -100.0f, 0.0f, std::log(3.0f)});
+  tester.AddOptionalInputEdge<float>();  // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 17.5f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+  std::vector<float> expected_present_value(cache_capacity * head_size, 10.0f);
+  std::fill(expected_present_value.begin() + head_size, expected_present_value.end(), 20.0f);
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          expected_present_value);
+  tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheAttentionBiasRejectsAbsoluteLengthBeyondBias_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int cache_capacity = 16;
+  constexpr int total_sequence_length = 10;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("local_window_size", 8);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                         std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_capacity});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         std::vector<float>(total_sequence_length, 0.0f));
+  tester.AddOptionalInputEdge<float>();  // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<float>(cache_capacity * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "exceeds the attention_bias sequence dimension 10", {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, QuantizedWindowedCacheRaggedBiasOffsetsDecode_CPU) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 256;
+  constexpr int hidden_size = num_heads * head_size;
+
+  const int l2_cache_size = std::max(Env::Default().GetL2CacheSize(), 1);
+  const int kv_block_size = std::max(l2_cache_size / (static_cast<int>(sizeof(float)) * 4 *
+                                                      (head_size + head_size)),
+                                     1);
+  const int cache_capacity = 2 * kv_block_size;
+  const int total_sequence_length = cache_capacity + 2;
+  const size_t cache_elements = static_cast<size_t>(batch_size) * kv_num_heads * cache_capacity * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddAttribute<int64_t>("kv_cache_bit_width", 8);
+  tester.AddAttribute<int64_t>("local_window_size", cache_capacity);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * hidden_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size},
+                         std::vector<float>(batch_size * head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size},
+                         std::vector<float>(batch_size * head_size, 0.25f));
+  tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<int8_t>(cache_elements, 0));
+  tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                          std::vector<int8_t>(cache_elements, 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_capacity, cache_capacity + 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<float>("attention_bias", {batch_size, num_heads, sequence_length, total_sequence_length},
+                         std::vector<float>(batch_size * total_sequence_length, 0.0f));
+  tester.AddOptionalInputEdge<float>();  // head_sink
+  tester.AddInput<float>("k_scale", {1}, {0.01f});
+  tester.AddInput<float>("v_scale", {1}, {0.01f});
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * hidden_size, 0.0f));
+  tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, cache_capacity, head_size},
+                           std::vector<int8_t>(cache_elements, 0));
+  tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, cache_capacity, head_size},
+                           std::vector<int8_t>(cache_elements, 0));
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                    const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+    for (int i = 0; i < batch_size * hidden_size; ++i) {
+      EXPECT_TRUE(std::isfinite(output[i])) << "Non-finite output at index " << i;
+    }
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------------------------
+// sliding_window_cache layout contract (docs/contrib_ops/cpu/gqa.md).
+//
+// The tests below drive a windowed cache across steps and lock the three properties external KV
+// manipulation depends on: the resident range is the published function of the absolute total
+// length, a multi-token (speculative) step leaves the same layout as the equivalent single-token
+// steps, and rejecting draft tokens needs no edit of the buffer.
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+constexpr int kWindowedHeadSize = 8;
+
+// Number of KV positions resident after a step, as published in the operator spec. The kernel is
+// deliberately not consulted here: this is the reference the tests hold it to.
+int WindowedResidentCount(int total_sequence_length, int capacity, int local_window_size) {
+  if (total_sequence_length <= capacity) {
+    return total_sequence_length;
+  }
+  const int gap = capacity - local_window_size + 1;
+  const int overflow = total_sequence_length - capacity;
+  return total_sequence_length - gap * ((overflow + gap - 1) / gap);
+}
+
+// Values encode their absolute position (position p holds p + 1 in every element) so the resident
+// range can be read straight out of present_value.
+std::vector<float> WindowedValueRows(int first_position, int count) {
+  std::vector<float> rows(static_cast<size_t>(count) * kWindowedHeadSize);
+  for (int i = 0; i < count; ++i) {
+    std::fill_n(rows.begin() + static_cast<size_t>(i) * kWindowedHeadSize, kWindowedHeadSize,
+                static_cast<float>(first_position + i + 1));
+  }
+  return rows;
+}
+
+// Keys encode their absolute position too, negated so that a key/value mix-up is visible. Queries
+// are zero, so the key contents do not affect the attention scores and the outputs stay uniform.
+std::vector<float> WindowedKeyRows(int first_position, int count) {
+  std::vector<float> rows = WindowedValueRows(first_position, count);
+  for (float& element : rows) {
+    element = -element;
+  }
+  return rows;
+}
+
+struct WindowedCacheState {
+  std::vector<float> key;
+  std::vector<float> value;
+  std::vector<float> output;  // output of the most recent step
+};
+
+// Runs one GroupQueryAttention step against a windowed cache of `capacity` positions and returns
+// the present buffers. Queries are zero, so attention is uniform over the unmasked positions and
+// the output of a query is the mean of the values it can see. The step's keys encode the absolute
+// positions `[past_length, past_length + S)`.
+WindowedCacheState RunWindowedCacheStep(int capacity,
+                                        int window,
+                                        int past_length,
+                                        const std::vector<float>& step_values,
+                                        const WindowedCacheState& past) {
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  const int step_length = static_cast<int>(step_values.size()) / kWindowedHeadSize;
+  const int total_length = past_length + step_length;
+  const size_t cache_elements = static_cast<size_t>(capacity) * kWindowedHeadSize;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("local_window_size", window);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  const std::vector<float> zeros(static_cast<size_t>(step_length) * kWindowedHeadSize, 0.0f);
+  tester.AddInput<float>("query", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddInput<float>("key", {batch_size, step_length, kWindowedHeadSize},
+                         WindowedKeyRows(past_length, step_length));
+  tester.AddInput<float>("value", {batch_size, step_length, kWindowedHeadSize}, step_values);
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.key);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.value);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length}, /*is_initializer=*/true);
   tester.AddOptionalInputEdge<float>();    // cos_cache
   tester.AddOptionalInputEdge<float>();    // sin_cache
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
 
-  // For failure tests with invalid total_seq_len, clamp declared output shape to avoid
-  // negative-sized vectors in test setup. The operator rejects these inputs before using outputs.
-  int declared_present_seqlen = provide_past ? past_seq_len : std::max(1, static_cast<int>(total_seq_len));
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
-  tester.AddOutput<float>("present_key",
-                          {batch_size, kv_num_heads, declared_present_seqlen, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * declared_present_seqlen * head_size, 0.0f));
-  tester.AddOutput<float>("present_value",
-                          {batch_size, kv_num_heads, declared_present_seqlen, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * declared_present_seqlen * head_size, 0.0f));
+  // Declared expected values are placeholders; the custom verifier below captures the fetches.
+  tester.AddOutput<float>("output", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize},
+                          std::vector<float>(cache_elements, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize},
+                          std::vector<float>(cache_elements, 0.0f));
 
-  // Tolerance is intentionally loose: these tests validate shape acceptance, not output values.
-  if (expect == OpTester::ExpectResult::kExpectSuccess) {
-    tester.SetOutputTolerance(1e6f);
-  }
+  WindowedCacheState result;
+  tester.SetCustomOutputVerifier([&result](const std::vector<OrtValue>& fetches,
+                                           const std::string& /*provider*/) {
+    ASSERT_EQ(fetches.size(), static_cast<size_t>(3));
+    auto capture = [](const OrtValue& fetch, std::vector<float>& dst) {
+      const Tensor& tensor = fetch.Get<Tensor>();
+      const float* data = tensor.Data<float>();
+      dst.assign(data, data + tensor.Shape().Size());
+    };
+    capture(fetches[0], result.output);
+    capture(fetches[1], result.key);
+    capture(fetches[2], result.value);
+  });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  return result;
 }
+
+WindowedCacheState EmptyWindowedCache(int capacity) {
+  const size_t cache_elements = static_cast<size_t>(capacity) * kWindowedHeadSize;
+  return WindowedCacheState{std::vector<float>(cache_elements, 0.0f),
+                            std::vector<float>(cache_elements, 0.0f),
+                            {}};
+}
+
+// Checks that rows [0, L) of present_key and present_value hold the L most recent positions in
+// order, with L taken from the published formula.
+void ExpectResidentRange(const WindowedCacheState& state, int total_length, int capacity, int window) {
+  const int resident = WindowedResidentCount(total_length, capacity, window);
+  ASSERT_GE(resident, std::min(total_length, window)) << "window must stay resident at T=" << total_length;
+  ASSERT_LE(resident, std::min(total_length, capacity));
+
+  const std::vector<float> expected_values = WindowedValueRows(total_length - resident, resident);
+  const std::vector<float> expected_keys = WindowedKeyRows(total_length - resident, resident);
+  for (size_t i = 0; i < expected_values.size(); ++i) {
+    EXPECT_EQ(state.value[i], expected_values[i])
+        << "present_value: T=" << total_length << " resident=" << resident << " element " << i;
+    EXPECT_EQ(state.key[i], expected_keys[i])
+        << "present_key: T=" << total_length << " resident=" << resident << " element " << i;
+  }
+}
+
+}  // namespace
+
+TEST(GroupQueryAttentionTest, WindowedCacheResidentRangeMatchesSpec_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;  // gap = capacity - window + 1 = 3
+
+  // Prefill 5 tokens, then decode one token at a time across two eviction boundaries.
+  WindowedCacheState state = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 5),
+                                                  EmptyWindowedCache(capacity));
+  ExpectResidentRange(state, 5, capacity, window);
+
+  for (int total_length = 6; total_length <= 12; ++total_length) {
+    const int position = total_length - 1;
+    state = RunWindowedCacheStep(capacity, window, position, WindowedValueRows(position, 1), state);
+    ExpectResidentRange(state, total_length, capacity, window);
+
+    // Uniform attention over the window: the mean of values (position - 3 + 1) .. (position + 1).
+    const float expected_output = static_cast<float>(position) - 0.5f;
+    for (int i = 0; i < kWindowedHeadSize; ++i) {
+      EXPECT_NEAR(state.output[i], expected_output, 1e-4f) << "position " << position;
+    }
+  }
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheMultiTokenStepMatchesSingleTokenSteps_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;
+  constexpr int draft_tokens = 4;
+
+  // Prefill is longer than the capacity, so this first step runs through the staging path.
+  const WindowedCacheState prefill = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 8),
+                                                          EmptyWindowedCache(capacity));
+
+  // One multi-token step, as a speculative verification pass would issue it.
+  const WindowedCacheState verified =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, draft_tokens), prefill);
+
+  // The same tokens appended one at a time.
+  WindowedCacheState sequential = prefill;
+  std::vector<float> sequential_outputs;
+  for (int i = 0; i < draft_tokens; ++i) {
+    sequential = RunWindowedCacheStep(capacity, window, 8 + i, WindowedValueRows(8 + i, 1), sequential);
+    sequential_outputs.insert(sequential_outputs.end(), sequential.output.begin(), sequential.output.end());
+  }
+
+  const int resident = WindowedResidentCount(8 + draft_tokens, capacity, window);
+  const size_t resident_elements = static_cast<size_t>(resident) * kWindowedHeadSize;
+  ASSERT_GE(verified.value.size(), resident_elements);
+  for (size_t i = 0; i < resident_elements; ++i) {
+    EXPECT_EQ(verified.value[i], sequential.value[i]) << "present_value element " << i;
+    EXPECT_EQ(verified.key[i], sequential.key[i]) << "present_key element " << i;
+  }
+
+  ASSERT_EQ(verified.output.size(), sequential_outputs.size());
+  for (size_t i = 0; i < sequential_outputs.size(); ++i) {
+    EXPECT_NEAR(verified.output[i], sequential_outputs[i], 1e-4f) << "output element " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheRejectedDraftTokensNeedNoCacheEdit_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;
+  constexpr int draft_tokens = 4;
+  constexpr int accepted_tokens = 2;
+
+  const WindowedCacheState prefill = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 8),
+                                                          EmptyWindowedCache(capacity));
+
+  // Rolling back `draft_tokens - accepted_tokens` is exact only when the resident count shrinks by
+  // exactly that many positions; the tests below rely on that precondition holding here.
+  constexpr int verified_length = 8 + draft_tokens;
+  constexpr int accepted_length = 8 + accepted_tokens;
+  ASSERT_EQ(WindowedResidentCount(accepted_length, capacity, window),
+            WindowedResidentCount(verified_length, capacity, window) - (draft_tokens - accepted_tokens));
+
+  // Speculative path: verify 4 drafts, accept 2, then continue from the untouched buffer. The
+  // rejected rows are still physically present and must be ignored.
+  const WindowedCacheState speculative =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, draft_tokens), prefill);
+  const std::vector<float> next_token(kWindowedHeadSize, 100.0f);
+  const WindowedCacheState resumed =
+      RunWindowedCacheStep(capacity, window, accepted_length, next_token, speculative);
+
+  // Reference path: only the accepted tokens were ever appended.
+  const WindowedCacheState accepted =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, accepted_tokens), prefill);
+  const WindowedCacheState reference =
+      RunWindowedCacheStep(capacity, window, accepted_length, next_token, accepted);
+
+  const int resident = WindowedResidentCount(accepted_length + 1, capacity, window);
+  const size_t resident_elements = static_cast<size_t>(resident) * kWindowedHeadSize;
+  ASSERT_GE(resumed.value.size(), resident_elements);
+  for (size_t i = 0; i < resident_elements; ++i) {
+    EXPECT_EQ(resumed.value[i], reference.value[i]) << "present_value element " << i;
+    EXPECT_EQ(resumed.key[i], reference.key[i]) << "present_key element " << i;
+  }
+
+  ASSERT_EQ(resumed.output.size(), reference.output.size());
+  for (size_t i = 0; i < reference.output.size(); ++i) {
+    EXPECT_NEAR(resumed.output[i], reference.output[i], 1e-4f) << "output element " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalMask_CPU) {
+  RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, 0, std::vector<float>(16, 2.5f));
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalMask_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(GqaTargetEp::kCuda, 0, std::vector<float>(16, 2.5f));
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "GroupQueryAttention (CPU): local_window_size must be -1 when causal is 0.", 1);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 0, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure,
+      "GroupQueryAttention (CUDA): local_window_size must be -1 when causal is 0.", 1);
+}
+
+TEST(GroupQueryAttentionTest, InvalidCausalValue_CPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kCpu, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
+  RunGQACausalMaskTest<MLFloat16>(
+      GqaTargetEp::kCuda, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+
+#ifdef USE_WEBGPU
+TEST(GroupQueryAttentionTest, LocalWindowMultiToken_WebGPU) {
+  std::vector<float> expected(16, 1.0f);
+  std::fill(expected.begin() + 8, expected.end(), 3.0f);
+  RunGQACausalMaskTest<float>(GqaTargetEp::kWebGpu, 1, expected,
+                              OpTester::ExpectResult::kExpectSuccess, "", 1);
+}
+
+TEST(GroupQueryAttentionTest, LocalWindowPrefill_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int sequence_length = 32;
+  constexpr int head_size = 8;
+  std::vector<float> value(sequence_length * head_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    std::fill_n(value.begin() + s * head_size, head_size, static_cast<float>(s + 1));
+  }
+
+  OpTester tester("GroupQueryAttention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("local_window_size", 1);
+  tester.AddInput<float>("query", {1, sequence_length, head_size},
+                         std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, head_size},
+                         std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, head_size}, value);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("seqlens_k", {1}, {sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int64_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, sequence_length, head_size}, value);
+  tester.AddOutput<float>("present_key", {1, 1, sequence_length, head_size},
+                          std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 1, sequence_length, head_size}, value);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalMaskNotImplemented_WebGPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kWebGpu, 0, std::vector<float>(16, 2.0f),
+      OpTester::ExpectResult::kExpectFailure, "GroupQueryAttention (WebGPU): causal=0 is not implemented.");
+}
+
+TEST(GroupQueryAttentionTest, InvalidCausalValue_WebGPU) {
+  RunGQACausalMaskTest<float>(
+      GqaTargetEp::kWebGpu, 2, std::vector<float>(16, 0.0f),
+      OpTester::ExpectResult::kExpectFailure, "causal must be 0 or 1.");
+}
+#endif
 
 // CPU GroupQueryAttention does not implement the CUDA/WebGPU fused Q/K RMS-norm prologue
 // inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure we reject these explicitly.
@@ -321,6 +958,25 @@ TEST(GroupQueryAttentionTest, MultiBatchOneBadSeqlensK_OOB) {
       "seqlens_k[1]");
 }
 
+#ifdef USE_CUDA
+TEST(GroupQueryAttentionTest, CudaOversizedSeqlensKIsSanitized) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{100},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::nullopt,
+      /*total_seq_len_shape=*/std::nullopt,
+      /*total_seq_len_data=*/std::nullopt,
+      /*total_seq_len_is_initializer=*/false,
+      GqaTargetEp::kCuda);
+}
+#endif
+
 // Boundary: seqlens_k == present_kv_seqlen - 1 is the maximum valid value.
 // First prompt with seq=1, total_seq=1, present=1 → seqlens_k=0 should succeed.
 TEST(GroupQueryAttentionTest, BoundaryValidSeqlensK) {
@@ -360,8 +1016,8 @@ TEST(GroupQueryAttentionTest, BoundaryValidSeqlensKWithLargerPast) {
       /*past_seq_len=*/4);
 }
 
-// Non-first-prompt: seqlens_k valid for KV cache but too small for sequence_length.
-// past_seqlen = total_seqlen - sequence_length underflows size_t, causing memcpy OOB.
+// Non-first-prompt: seqlens_k is valid for the KV cache but implies fewer total tokens
+// than sequence_length, which would underflow the derived past sequence length.
 TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{1},
@@ -371,34 +1027,30 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       OpTester::ExpectResult::kExpectFailure,
       "is too small for sequence_length",
       /*provide_past=*/true,
-      /*past_seq_len=*/4);
+      /*past_seq_len=*/2);
 }
 
-// Regression: present buffer large enough (total_seq_len passes the present-buffer check),
-// but the past buffer is much smaller. ConcatStateChunkGQA would copy
-// (seqlens_k + 1 - sequence_length) rows out of the small past buffer, reading past its end.
-TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
-  // present_kv_seqlen = max(total_seq_len=100, past_seq_len=2) = 100, so seqlens_k=50 passes the
-  // present-buffer check, but past_seqlen = 51 - 1 = 50 rows >> past buffer (2 rows) => OOB read.
+// Reject a total sequence length that describes neither a dynamic nor a static cache.
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayout) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/2);
 }
 
-TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+TEST(GroupQueryAttentionTest, InvalidDynamicCacheLayoutWithEmptyPast) {
   RunGQASeqlensKTest(
       /*seqlens_k_data=*/{50},
       /*total_seq_len=*/100,
       /*batch_size=*/1,
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
-      "exceeds the past buffer sequence length",
+      "must equal past_sequence_length + kv_sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/0);
 }
@@ -462,6 +1114,18 @@ TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
       /*sequence_length=*/1,
       OpTester::ExpectResult::kExpectFailure,
       "total_sequence_length must be positive");
+}
+
+TEST(GroupQueryAttentionTest, TotalSeqLenLessThanKvSequenceLength) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/2,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length must be at least kv_sequence_length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/4);
 }
 
 // Backward compat: seqlens_k shape {1, 1} accepted for batch_size=1.
@@ -563,6 +1227,27 @@ TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
       /*past_seq_len=*/0,
       /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
+
+// This test exercises shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so this test must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
+// total_sequence_length constant must have a single element.
+TEST(GroupQueryAttentionTest, EmptyTotalSequenceLengthInitializerRejected) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "total_sequence_length input must contain a single element",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::nullopt,
+      /*total_seq_len_shape=*/std::vector<int64_t>{0},
+      /*total_seq_len_data=*/std::vector<int32_t>{},
+      /*total_seq_len_is_initializer=*/true);
+}
+#endif  // !ORT_NO_EXCEPTIONS
 
 // Helper to compare two output vectors (non-zero check + element-wise tolerance).
 static void ExpectOutputsMatch(const std::vector<float>& a, const std::vector<float>& b,
@@ -1795,6 +2480,8 @@ struct QuantGQAConfig {
   int head_size;
   std::string quant_type;  // "PER_TENSOR" or "PER_CHANNEL"
   int bit_width;           // 4 or 8
+  bool use_fp16 = false;
+  bool disable_flash = false;
 };
 
 void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
@@ -1827,9 +2514,23 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.AddAttribute<std::string>("v_quant_type", cfg.quant_type);
   tester.AddAttribute<int64_t>("kv_cache_bit_width", static_cast<int64_t>(cfg.bit_width));
 
-  tester.AddInput<float>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, query_data);
-  tester.AddInput<float>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, value_data);
+  if (cfg.use_fp16) {
+    auto to_fp16 = [](const std::vector<float>& data) {
+      std::vector<MLFloat16> result;
+      result.reserve(data.size());
+      for (float value : data) {
+        result.emplace_back(value);
+      }
+      return result;
+    };
+    tester.AddInput<MLFloat16>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, to_fp16(query_data));
+    tester.AddInput<MLFloat16>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, to_fp16(key_data));
+    tester.AddInput<MLFloat16>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, to_fp16(value_data));
+  } else {
+    tester.AddInput<float>("query", {cfg.batch_size, cfg.seq_len, hidden_size}, query_data);
+    tester.AddInput<float>("key", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {cfg.batch_size, cfg.seq_len, kv_hidden_size}, value_data);
+  }
 
   // Past cache: zero-filled buffer (prompt phase, share_buffer mode).
   // Must be provided so the type constraint T_CACHE can be resolved.
@@ -1856,11 +2557,21 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.AddInput<int32_t>("seqlens_k", {cfg.batch_size}, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(cfg.seq_len)});
 
-  tester.AddOptionalInputEdge<float>();    // cos_cache
-  tester.AddOptionalInputEdge<float>();    // sin_cache
+  if (cfg.use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+    tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  } else {
+    tester.AddOptionalInputEdge<float>();  // cos_cache
+    tester.AddOptionalInputEdge<float>();  // sin_cache
+  }
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (cfg.use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   // Scale inputs: one scale per (kv_head, d) channel for PER_CHANNEL; one scalar for PER_TENSOR.
   const int scale_size = (cfg.quant_type == "PER_CHANNEL")
@@ -1908,8 +2619,13 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
 
   // Outputs - we use loose tolerance and verify non-zero
   const int output_size = cfg.batch_size * cfg.seq_len * hidden_size;
-  tester.AddOutput<float>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
+  if (cfg.use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
+                                std::vector<MLFloat16>(output_size, MLFloat16(0.0f)));
+  } else {
+    tester.AddOutput<float>("output", {cfg.batch_size, cfg.seq_len, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+  }
 
   const int present_size = cfg.batch_size * cfg.kv_num_heads * cfg.seq_len * packed_head_size;
 
@@ -1932,7 +2648,18 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches,
                                      const std::string& /*provider_type*/) {
     ASSERT_GE(fetches.size(), size_t{1});
-    const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+    const float* out_data = nullptr;
+    std::vector<float> fp16_output;
+    if (cfg.use_fp16) {
+      const MLFloat16* output_fp16 = fetches[0].Get<Tensor>().Data<MLFloat16>();
+      fp16_output.reserve(output_size);
+      for (int i = 0; i < output_size; ++i) {
+        fp16_output.push_back(static_cast<float>(output_fp16[i]));
+      }
+      out_data = fp16_output.data();
+    } else {
+      out_data = fetches[0].Get<Tensor>().Data<float>();
+    }
 
     // Verify output is non-zero and no NaN
     bool all_zero = true;
@@ -2046,6 +2773,81 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (cfg.disable_flash) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", "1"}}};
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+void RunQuantizedGQAFp16DecodeTest(int bit_width) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int cache_length = 2;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int packed_head_size = bit_width == 4 ? head_size / 2 : head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
+  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
+  tester.AddAttribute<int64_t>("kv_cache_bit_width", bit_width);
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(kv_hidden_size, MLFloat16(0.3f)));
+
+  if (bit_width == 4) {
+    tester.AddInput<uint8_t>("past_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             std::vector<uint8_t>(cache_length * packed_head_size, 0x88));
+    tester.AddInput<uint8_t>("past_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             {0xAA, 0xAA, 0xAA, 0xAA, 0x88, 0x88, 0x88, 0x88});
+  } else {
+    tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                            std::vector<int8_t>(cache_length * packed_head_size, 0));
+    std::vector<int8_t> past_value(cache_length * packed_head_size, 0);
+    std::fill_n(past_value.begin(), head_size, 10);
+    tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, cache_length, packed_head_size}, past_value);
+  }
+
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {cache_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {cache_length});
+  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();    // position_ids
+  tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  const float scale = bit_width == 4 ? 0.05f : 0.01f;
+  tester.AddInput<float>("k_scale", {1}, {scale});
+  tester.AddInput<float>("v_scale", {1}, {scale});
+
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(hidden_size, MLFloat16(0.2f)));
+  if (bit_width == 4) {
+    tester.AddOutput<uint8_t>("present_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                              std::vector<uint8_t>(cache_length * packed_head_size, 0x88));
+    tester.AddOutput<uint8_t>("present_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                              {0xAA, 0xAA, 0xAA, 0xAA, 0xEE, 0xEE, 0xEE, 0xEE});
+  } else {
+    tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             std::vector<int8_t>(cache_length * packed_head_size, 0));
+    std::vector<int8_t> present_value(cache_length * packed_head_size, 30);
+    std::fill_n(present_value.begin(), head_size, 10);
+    tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, cache_length, packed_head_size},
+                             present_value);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -2093,57 +2895,48 @@ TEST(GroupQueryAttentionTest, QuantizedKV_INT4_GQARatio4_Prompt) {
                              /*head_size=*/16, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4});
 }
 
-// Error: MLFloat16 Q with quantized KV should fail at model construction or runtime.
-TEST(GroupQueryAttentionTest, QuantizedKV_RejectMLFloat16) {
-  constexpr int batch_size = 1;
-  constexpr int seq_len = 4;
-  constexpr int num_heads = 2;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/8,
+                             /*use_fp16=*/true});
+}
 
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-  tester.AddAttribute<std::string>("k_quant_type", "PER_TENSOR");
-  tester.AddAttribute<std::string>("v_quant_type", "PER_TENSOR");
-  tester.AddAttribute<int64_t>("kv_cache_bit_width", 8);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4,
+                             /*use_fp16=*/true});
+}
 
-  std::vector<MLFloat16> query_data(batch_size * seq_len * hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("query", {batch_size, seq_len, hidden_size}, query_data);
-  std::vector<MLFloat16> key_data(batch_size * seq_len * kv_hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("key", {batch_size, seq_len, kv_hidden_size}, key_data);
-  std::vector<MLFloat16> value_data(batch_size * seq_len * kv_hidden_size, MLFloat16(0.1f));
-  tester.AddInput<MLFloat16>("value", {batch_size, seq_len, kv_hidden_size}, value_data);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/8,
+                             /*use_fp16=*/true});
+}
 
-  // Past with matching T_CACHE type (int8)
-  tester.AddInput<int8_t>("past_key", {batch_size, kv_num_heads, seq_len, head_size},
-                          std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddInput<int8_t>("past_value", {batch_size, kv_num_heads, seq_len, head_size},
-                          std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seq_len - 1});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {seq_len});
-  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
-  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
-  tester.AddOptionalInputEdge<int64_t>();    // position_ids
-  tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
-  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
-  tester.AddInput<float>("k_scale", {1}, {0.01f});
-  tester.AddInput<float>("v_scale", {1}, {0.01f});
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_PerChannel_Prompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_CHANNEL", /*bit_width=*/4,
+                             /*use_fp16=*/true});
+}
 
-  tester.AddOutput<MLFloat16>("output", {batch_size, seq_len, hidden_size},
-                              std::vector<MLFloat16>(batch_size * seq_len * hidden_size, MLFloat16(0.0f)));
-  tester.AddOutput<int8_t>("present_key", {batch_size, kv_num_heads, seq_len, head_size},
-                           std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
-  tester.AddOutput<int8_t>("present_value", {batch_size, kv_num_heads, seq_len, head_size},
-                           std::vector<int8_t>(batch_size * kv_num_heads * seq_len * head_size, 0));
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_NaivePrompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/8,
+                             /*use_fp16=*/true, /*disable_flash=*/true});
+}
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "only supports float Q dtype",
-             {}, nullptr, &execution_providers);
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_NaivePrompt) {
+  RunQuantizedGQAPromptTest({/*batch_size=*/1, /*seq_len=*/4, /*num_heads=*/2, /*kv_num_heads=*/1,
+                             /*head_size=*/8, /*quant_type=*/"PER_TENSOR", /*bit_width=*/4,
+                             /*use_fp16=*/true, /*disable_flash=*/true});
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT8_Decode) {
+  RunQuantizedGQAFp16DecodeTest(8);
+}
+
+TEST(GroupQueryAttentionTest, QuantizedKV_FP16_INT4_Decode) {
+  RunQuantizedGQAFp16DecodeTest(4);
 }
 
 // Error: Missing k_scale with quantized KV cache
@@ -2304,6 +3097,53 @@ TEST(GroupQueryAttentionTest, SeqlensKWithinCosCache_Rotary) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, MismatchedRotaryCacheShapes) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int half_rotary_dimension = head_size / 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddInput<float>("cos_cache", {2, half_rotary_dimension},
+                         std::vector<float>(2 * half_rotary_dimension, 1.0f));
+  tester.AddInput<float>("sin_cache", {1, half_rotary_dimension},
+                         std::vector<float>(half_rotary_dimension, 0.0f));
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "cos_cache and sin_cache must have the same shape",
              {}, nullptr, &execution_providers);
 }
 
@@ -2595,6 +3435,440 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+// ---------------------------------------------------------------------------
+// attention_bias parity (CUDA vs CPU).
+//
+// The CUDA GQA kernel routes attention_bias-carrying nodes to the unfused
+// fallback; the CPU EP implements attention_bias directly, so it is the
+// reference. This runs the SAME prompt case on CUDA (fp16, the only float type
+// the CUDA kernel registers) and on CPU (fp32) and compares the outputs,
+// covering the three bias shapes that drive broadcast_attn_bias_dim_0/1:
+//   [batch, 1,    S, S]  -> dim0=false, dim1=true  (the default)
+//   [1,     1,    S, S]  -> dim0=true              (batch broadcast)
+//   [batch, heads, S, S] -> dim1=false             (per-head)
+// These run on real GPU in PR CI (C++ ctest), unlike the Python parity tests
+// which need a CUDA-enabled torch the PR agents don't have.
+// ---------------------------------------------------------------------------
+template <typename T>
+static std::vector<float> RunGQAPromptWithBias(
+    int batch_size, int seq_len, int num_heads, int kv_num_heads, int head_size,
+    int bias_dim0, int bias_dim1,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& bias_data,
+    GqaTargetEp target_ep) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_seq_len = seq_len;  // prompt: no past
+
+  auto cvt = [](const std::vector<float>& v) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      return ToFloat16(v);
+    } else {
+      return v;
+    }
+  };
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<T>("query", {batch_size, seq_len, hidden_size}, cvt(query_data));
+  tester.AddInput<T>("key", {batch_size, seq_len, kv_hidden_size}, cvt(key_data));
+  tester.AddInput<T>("value", {batch_size, seq_len, kv_hidden_size}, cvt(value_data));
+
+  tester.AddOptionalInputEdge<T>();  // past_key
+  tester.AddOptionalInputEdge<T>();  // past_value
+  std::vector<int32_t> seqlens_k(batch_size, total_seq_len - 1);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len}, /*is_initializer=*/true);
+
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<T>("attention_bias", {bias_dim0, bias_dim1, seq_len, total_seq_len}, cvt(bias_data));
+
+  const int output_size = batch_size * seq_len * hidden_size;
+  tester.AddOutput<T>("output", {batch_size, seq_len, hidden_size}, std::vector<T>(output_size, T(0.0f)));
+  const int present_size = batch_size * kv_num_heads * total_seq_len * head_size;
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+
+  tester.SetOutputTolerance(1e6f);  // outputs are compared explicitly by the caller
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const T* out = fetches[0].Get<Tensor>().Data<T>();
+  std::vector<float> result(output_size);
+  for (int i = 0; i < output_size; ++i) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      result[i] = out[i].ToFloat();
+    } else {
+      result[i] = out[i];
+    }
+  }
+  return result;
+}
+
+TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int seq_len = 3;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query(batch_size * seq_len * hidden_size);
+  std::vector<float> key(batch_size * seq_len * kv_hidden_size);
+  std::vector<float> value(batch_size * seq_len * kv_hidden_size);
+  for (size_t i = 0; i < query.size(); ++i) query[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key.size(); ++i) key[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value.size(); ++i) value[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  struct BiasShape {
+    int dim0;
+    int dim1;
+    const char* label;
+  };
+  const std::vector<BiasShape> shapes = {
+      {batch_size, 1, "batch_head_broadcast"},  // dim0=false, dim1=true (default)
+      {1, 1, "batch_broadcast"},                // dim0=true
+      {batch_size, num_heads, "per_head"},      // dim1=false
+  };
+
+  for (const auto& shape : shapes) {
+    std::vector<float> bias(static_cast<size_t>(shape.dim0) * shape.dim1 * seq_len * seq_len);
+    for (size_t i = 0; i < bias.size(); ++i) {
+      bias[i] = 0.5f * std::sin(0.7f * static_cast<float>(i));
+    }
+
+    auto cuda_output = RunGQAPromptWithBias<MLFloat16>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCuda);
+    auto cpu_output = RunGQAPromptWithBias<float>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCpu);
+
+    ExpectOutputsMatch(cuda_output, cpu_output, 0.02f, shape.label);
+  }
+}
+
+#ifdef USE_CUDA
+static void RunGQACudaCacheAliasingTest(
+    bool use_flash,
+    bool sliding_window_cache = false,
+    int windowed_sequence_length = 0,
+    std::vector<float>* captured_output = nullptr,
+    std::optional<int32_t> decode_seqlens_k = std::nullopt,
+    bool shared_cache_only = false,
+    bool enable_flash_fast_decode = false) {
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_DISABLE_FLASH_ATTENTION", use_flash ? "0" : "1"},
+      {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"},
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+      {"ORT_ENABLE_XQA", "0"},
+      {"ORT_DISABLE_FLASH_DECODE", enable_flash_fast_decode ? "0" : "1"},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  if (use_flash && !HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires SM80 or later";
+  }
+
+  const int batch_size = windowed_sequence_length > 1 ? 1 : 2;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 128;
+  const int sequence_length = windowed_sequence_length > 0 ? windowed_sequence_length : 1;
+  constexpr int past_length = 3;
+  const bool valid_windowed_cache = windowed_sequence_length > 0;
+  const int total_length = valid_windowed_cache ? 257 : past_length + sequence_length;
+  constexpr int cache_capacity = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  Model model("gqa_cuda_cache_aliasing", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto fp16_type, int32_type;
+  fp16_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  int32_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  std::vector<NodeArg*> inputs;
+  for (const char* name : {"query", "key", "value", "past_key", "past_value"}) {
+    inputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
+  }
+  inputs.push_back(&graph.GetOrCreateNodeArg("seqlens_k", &int32_type));
+  inputs.push_back(&graph.GetOrCreateNodeArg("total_sequence_length", &int32_type));
+  std::vector<NodeArg*> outputs;
+  for (const char* name : {"output", "present_key", "present_value"}) {
+    outputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
+  }
+  auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
+  node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
+  node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  if (sliding_window_cache) {
+    node.AddAttribute("sliding_window_cache", int64_t{1});
+    node.AddAttribute("local_window_size", int64_t{cache_capacity});
+  }
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSession session(options, GetEnvironment());
+  IExecutionProvider* ep = cuda_ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_stream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto gpu_allocators = ep->CreatePreferredAllocators();
+  auto gpu_allocator = std::find_if(gpu_allocators.begin(), gpu_allocators.end(), [](const auto& allocator) {
+    return allocator->Info().device.Type() == OrtDevice::GPU &&
+           allocator->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(gpu_allocator, gpu_allocators.end());
+  auto allocator = session.GetAllocator((*gpu_allocator)->Info());
+  ASSERT_NE(allocator, nullptr);
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  auto make_gpu_value = [&](const auto& values, const TensorShape& shape) {
+    using Element = typename std::decay_t<decltype(values)>::value_type;
+    Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), shape,
+                      const_cast<Element*>(values.data()), cpu_allocator->Info());
+    Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, allocator);
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue result;
+    Tensor::InitOrtValue(std::move(gpu_tensor), result);
+    return result;
+  };
+  auto make_data = [](size_t count, int seed) {
+    std::vector<MLFloat16> values(count);
+    for (size_t index = 0; index < count; ++index) {
+      values[index] = MLFloat16(0.03125f * static_cast<float>((index + seed) % 17 + 1));
+    }
+    return values;
+  };
+  const TensorShape query_shape{batch_size, sequence_length, hidden_size};
+  const TensorShape kv_shape{batch_size, sequence_length, kv_hidden_size};
+  const TensorShape cache_shape{batch_size, kv_num_heads, cache_capacity, head_size};
+  const auto key_data = make_data(kv_shape.Size(), 3);
+  const auto value_data = make_data(kv_shape.Size(), 5);
+  const auto past_key_data = make_data(cache_shape.Size(), 7);
+  const auto past_value_data = make_data(cache_shape.Size(), 11);
+  auto query_value = make_gpu_value(make_data(query_shape.Size(), 1), query_shape);
+  auto key_value = make_gpu_value(key_data, kv_shape);
+  auto value_value = make_gpu_value(value_data, kv_shape);
+  const int32_t seqlens_k_value = decode_seqlens_k.value_or(total_length - sequence_length);
+  auto seqlens_value =
+      make_gpu_value(std::vector<int32_t>(batch_size, seqlens_k_value), {batch_size});
+  std::vector<int32_t> total_length_data{total_length};
+  OrtValue total_length_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{1}, total_length_data.data(),
+                       cpu_allocator->Info(), total_length_value);
+
+  std::vector<std::vector<float>> reference;
+  for (bool share_key : {false, true}) {
+    for (bool share_value : {false, true}) {
+      if (shared_cache_only && (!share_key || !share_value)) {
+        continue;
+      }
+      if (valid_windowed_cache && (!share_key || !share_value)) {
+        continue;
+      }
+      if (sliding_window_cache && !valid_windowed_cache && share_key == share_value) {
+        continue;
+      }
+      SCOPED_TRACE(MakeString("share_key=", share_key, " share_value=", share_value));
+      auto past_key_value = make_gpu_value(past_key_data, cache_shape);
+      auto past_value_value = make_gpu_value(past_value_data, cache_shape);
+      auto present_key_value = share_key ? past_key_value : make_gpu_value(past_key_data, cache_shape);
+      auto present_value_value = share_value ? past_value_value : make_gpu_value(past_value_data, cache_shape);
+      auto output_value = make_gpu_value(make_data(query_shape.Size(), 0), query_shape);
+      std::unique_ptr<IOBinding> binding;
+      ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+      ASSERT_STATUS_OK(binding->BindInput("query", query_value));
+      ASSERT_STATUS_OK(binding->BindInput("key", key_value));
+      ASSERT_STATUS_OK(binding->BindInput("value", value_value));
+      ASSERT_STATUS_OK(binding->BindInput("past_key", past_key_value));
+      ASSERT_STATUS_OK(binding->BindInput("past_value", past_value_value));
+      ASSERT_STATUS_OK(binding->BindInput("seqlens_k", seqlens_value));
+      ASSERT_STATUS_OK(binding->BindInput("total_sequence_length", total_length_value));
+      ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
+      ASSERT_STATUS_OK(binding->BindOutput("present_key", present_key_value));
+      ASSERT_STATUS_OK(binding->BindOutput("present_value", present_value_value));
+      ASSERT_STATUS_OK(binding->SynchronizeInputs());
+      testing::internal::CaptureStdout();
+      const auto status = session.Run(RunOptions{}, *binding);
+      const std::string kernel_log = testing::internal::GetCapturedStdout();
+      if (sliding_window_cache && !valid_windowed_cache) {
+        ASSERT_FALSE(status.IsOK());
+        EXPECT_NE(status.ErrorMessage().find("sliding_window_cache=1 requires past_key/present_key"), std::string::npos);
+        continue;
+      }
+      ASSERT_STATUS_OK(status);
+      EXPECT_NE(kernel_log.find(use_flash ? "SdpaKernel=FLASH_ATTENTION" : "SdpaKernel=MATH"), std::string::npos)
+          << kernel_log;
+      if (valid_windowed_cache) {
+        // Single-token decode uses resident capacity C; multi-token runs stage C+S.
+        const int expected_effective_kv_length = std::min(
+            total_length, cache_capacity + (sequence_length > 1 ? sequence_length : 0));
+        EXPECT_NE(kernel_log.find(MakeString(
+                      "EffectiveKvLengthBound=", expected_effective_kv_length)),
+                  std::string::npos)
+            << kernel_log;
+      }
+      if (use_flash && valid_windowed_cache) {
+        // The staged extent is C+S=11, which uses the runtime's zero encoding
+        // for no split-KV workspace. Using the raw total length 257 would cross
+        // the 128-token block boundary and select multiple splits.
+        EXPECT_NE(kernel_log.find("NumSplits=0"), std::string::npos) << kernel_log;
+      }
+      ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+      std::vector<std::vector<float>> actual;
+      for (const auto& result : binding->GetOutputs()) {
+        const auto& gpu_tensor = result.Get<Tensor>();
+        Tensor cpu_tensor(DataTypeImpl::GetType<MLFloat16>(), gpu_tensor.Shape(), cpu_allocator);
+        ASSERT_STATUS_OK(ep->GetDataTransfer()->CopyTensor(gpu_tensor, cpu_tensor));
+        std::vector<float> values;
+        for (MLFloat16 element : cpu_tensor.DataAsSpan<MLFloat16>()) {
+          values.push_back(element.ToFloat());
+        }
+        actual.push_back(std::move(values));
+      }
+      ASSERT_EQ(actual.size(), 3u);
+      for (int batch = 0; batch < batch_size; ++batch) {
+        for (int head = 0; head < kv_num_heads; ++head) {
+          const int expected_cache_length =
+              decode_seqlens_k.has_value() ? cache_capacity : (valid_windowed_cache ? cache_capacity : total_length);
+          const int append_offset = decode_seqlens_k.has_value()
+                                        ? std::clamp(seqlens_k_value, 0, cache_capacity - sequence_length)
+                                        : (valid_windowed_cache ? cache_capacity : past_length);
+          for (int token = 0; token < expected_cache_length; ++token) {
+            for (int channel = 0; channel < head_size; ++channel) {
+              const size_t cache_index = ((batch * kv_num_heads + head) * cache_capacity + token) * head_size + channel;
+              const int source_token = valid_windowed_cache && !decode_seqlens_k.has_value()
+                                           ? token + sequence_length
+                                           : token;
+              const bool from_new =
+                  source_token >= append_offset && source_token < append_offset + sequence_length;
+              const size_t past_index =
+                  ((batch * kv_num_heads + head) * cache_capacity + source_token) *
+                      head_size +
+                  channel;
+              const int new_token = from_new ? source_token - append_offset : 0;
+              const int new_index =
+                  ((batch * sequence_length + new_token) * kv_num_heads + head) * head_size +
+                  channel;
+              EXPECT_EQ(actual[1][cache_index],
+                        (from_new ? key_data[new_index] : past_key_data[past_index]).ToFloat());
+              EXPECT_EQ(actual[2][cache_index],
+                        (from_new ? value_data[new_index] : past_value_data[past_index]).ToFloat());
+            }
+          }
+        }
+      }
+      if (captured_output != nullptr) {
+        *captured_output = actual[0];
+      }
+      if (reference.empty()) {
+        reference = std::move(actual);
+      } else {
+        ExpectOutputsMatch(actual[0], reference[0], 0.002f, "aliased attention output");
+      }
+    }
+  }
+}
+
+TEST(GroupQueryAttentionTest, CudaCacheAliasingUnfused) {
+  RunGQACudaCacheAliasingTest(false);
+}
+
+TEST(GroupQueryAttentionTest, CudaCacheAliasingFlash) {
+#if USE_FLASH_ATTENTION
+  RunGQACudaCacheAliasingTest(true);
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaFlashFastDecodeClampsNegativeSeqlensK) {
+#if USE_FLASH_ATTENTION
+  std::vector<float> invalid_output;
+  std::vector<float> clamped_output;
+  RunGQACudaCacheAliasingTest(true, false, 0, &invalid_output, -5, true, true);
+  RunGQACudaCacheAliasingTest(true, false, 0, &clamped_output, 0, true, true);
+  ExpectOutputsMatch(invalid_output, clamped_output, 0.002f, "negative decode seqlens_k clamp");
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaFlashFastDecodeClampsOversizedSeqlensK) {
+#if USE_FLASH_ATTENTION
+  std::vector<float> invalid_output;
+  std::vector<float> clamped_output;
+  constexpr int cache_capacity = 8;
+  constexpr int sequence_length = 1;
+  RunGQACudaCacheAliasingTest(true, false, 0, &invalid_output, 100, true, true);
+  RunGQACudaCacheAliasingTest(
+      true, false, 0, &clamped_output, cache_capacity - sequence_length, true, true);
+  ExpectOutputsMatch(invalid_output, clamped_output, 0.002f, "oversized decode seqlens_k clamp");
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+
+TEST(GroupQueryAttentionTest, CudaCacheAliasingRejectsMixedSlidingWindow) {
+  RunGQACudaCacheAliasingTest(false, true);
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedUnfusedSupportsAbsoluteLengthBeyondCacheCapacity) {
+  RunGQACudaCacheAliasingTest(false, true, 1);
+}
+
+TEST(GroupQueryAttentionTest, CudaWindowedStagingFlashUsesEffectiveKvLength) {
+#if USE_FLASH_ATTENTION
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "FlashAttention requires SM80 or later";
+  }
+
+  std::vector<float> flash_output;
+  constexpr int sequence_length = 3;
+  RunGQACudaCacheAliasingTest(true, true, sequence_length, &flash_output);
+  ASSERT_FALSE(flash_output.empty());
+  EXPECT_TRUE(std::all_of(flash_output.begin(), flash_output.end(), [](float value) {
+    return std::isfinite(value);
+  }));
+  EXPECT_TRUE(std::any_of(flash_output.begin(), flash_output.end(), [](float value) {
+    return value != 0.0f;
+  }));
+#else
+  GTEST_SKIP() << "FlashAttention is not compiled";
+#endif
+}
+#endif
 
 #ifdef USE_WEBGPU
 // WebGPU graph capture test for kv_empty (Gemma4 shared-KV) layers.
@@ -3105,26 +4379,827 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillNonFlashAttention_W
 
 #ifdef USE_WEBGPU
 // ---------------------------------------------------------------------------
-// TurboQuant KV cache quantization tests.
-// Tests exercise the TQ4 code paths in GroupQueryAttention + FlashAttention.
+// WebGPU graph-capture and KV-cache quantization tests.
+// Tests exercise static-cache preprocessing, Q4 TurboQuant, and Q8 block quantization in
+// GroupQueryAttention + FlashAttention.
 // The helpers below reference webgpu::options::* constants, which are only
 // available when USE_WEBGPU is defined; guard the whole section so non-WebGPU
 // test builds (CPU/CUDA) still compile the rest of this file.
 // ---------------------------------------------------------------------------
 
-// Helper: creates a WebGPU EP with TurboQuant 4-bit enabled.
-static std::unique_ptr<IExecutionProvider> WebGpuEPWithTurboQuant4() {
+static void RunOnWebGpu(OpTester& tester, std::unique_ptr<IExecutionProvider> webgpu_ep) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  tester.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+struct WebGpuEpForGqaOptions {
+  bool enable_graph_capture = false;
+  uint32_t kv_cache_quant_bits = 0;
+  uint32_t multi_rotary_cache_concat_offset = 0;
+};
+
+static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options);
+
+struct SeparateQkvCacheBoundsTestOptions {
+  int32_t seqlens_k = 0;
+  uint32_t kv_cache_quant_bits = 0;
+  bool smooth_softmax = false;
+  int sequence_length = 2;
+  int past_seq_len = 4;
+  std::optional<int> present_seq_len = std::nullopt;
+  std::optional<int> total_sequence_length = std::nullopt;
+  std::optional<float> expected_output_value = std::nullopt;
+  OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess;
+  std::string expected_failure_string = {};
+};
+
+static void RunSeparateQkvCacheBoundsTest(const SeparateQkvCacheBoundsTestOptions& options) {
+  const auto& [seqlens_k, kv_cache_quant_bits, smooth_softmax,
+               sequence_length, past_seq_len, configured_present_seq_len,
+               configured_total_sequence_length,
+               expected_output_value, expected_result, expected_failure_string] = options;
+  const int present_seq_len = configured_present_seq_len.value_or(past_seq_len + sequence_length);
+  const int total_sequence_length = configured_total_sequence_length.value_or(present_seq_len);
+  auto webgpu_ep = CreateWebGpuEpForGqa({.kv_cache_quant_bits = kv_cache_quant_bits});
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int cache_head_size = kv_cache_quant_bits == 0
+                                  ? head_size
+                                  : (head_size * static_cast<int>(kv_cache_quant_bits) + 32) / 32;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (smooth_softmax) {
+    tester.AddAttribute<int64_t>("smooth_softmax", 1);
+  }
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.2f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.3f));
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.4f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, cache_head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_seq_len * cache_head_size, 0.5f));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {seqlens_k});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+  const int present_size = batch_size * kv_num_heads * present_seq_len * cache_head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
+                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, cache_head_size},
+                          std::vector<float>(present_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([output_size, expected_output_value](const std::vector<OrtValue>& fetches,
+                                                                      const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    ASSERT_TRUE(fetches[0].IsTensor());
+    EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), static_cast<int64_t>(output_size));
+    if (expected_output_value.has_value()) {
+      const auto* output_data = fetches[0].Get<Tensor>().Data<float>();
+      for (int i = 0; i < output_size; ++i) {
+        EXPECT_NEAR(output_data[i], *expected_output_value, 1e-5f);
+      }
+    }
+  });
+
+  tester.Config(expected_result, expected_failure_string);
+  RunOnWebGpu(tester, std::move(webgpu_ep));
+}
+
+struct PackedQkvRotaryCacheBoundsTestOptions {
+  int32_t seqlens_k = 2;
+  int cos_sin_cache_length = 2;
+  bool verify_first_present_row = false;
+};
+
+static void RunPackedQkvRotaryCacheBoundsTest(const PackedQkvRotaryCacheBoundsTestOptions& options) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 1;
+  constexpr int total_sequence_length = past_sequence_length + sequence_length;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int half_rotary_dimension = head_size / 2;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * packed_hidden_size, 0.1f));
+  tester.AddOptionalInputEdge<float>();  // key
+  tester.AddOptionalInputEdge<float>();  // value
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_sequence_length * head_size, 0.2f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * past_sequence_length * head_size, 0.3f));
+
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {options.seqlens_k});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+  tester.AddInput<float>("cos_cache", {options.cos_sin_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.cos_sin_cache_length * half_rotary_dimension, 1.0f));
+  tester.AddInput<float>("sin_cache", {options.cos_sin_cache_length, half_rotary_dimension},
+                         std::vector<float>(options.cos_sin_cache_length * half_rotary_dimension, 0.0f));
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);
+  if (options.verify_first_present_row) {
+    tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                      const std::string& /*provider*/) {
+      ASSERT_GE(fetches.size(), 3u);
+      const auto* present_key = fetches[1].Get<Tensor>().Data<float>();
+      const auto* present_value = fetches[2].Get<Tensor>().Data<float>();
+      for (int i = 0; i < head_size; ++i) {
+        EXPECT_NEAR(present_key[i], 0.1f, 1e-5f);
+        EXPECT_NEAR(present_value[i], 0.1f, 1e-5f);
+      }
+    });
+  }
+  RunOnWebGpu(tester, std::move(webgpu_ep));
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_FlashAttention_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -5,
+                                 .sequence_length = 1,
+                                 .expected_output_value = 0.3f});
+}
+
+TEST(GroupQueryAttentionTest, ShortPastLargeTotal_InvalidCacheLayout_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 50,
+                                 .sequence_length = 1,
+                                 .past_seq_len = 2,
+                                 .present_seq_len = 100,
+                                 .expected_result = OpTester::ExpectResult::kExpectFailure,
+                                 .expected_failure_string =
+                                     "must equal past_sequence_length + kv_sequence_length"});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_TurboQuant) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_WebGPU_BlockQuantInt8) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = -1, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_NoOOB_WebGPU) {
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = 106, .smooth_softmax = true});
+}
+
+TEST(GroupQueryAttentionTest, OversizedSeqlensK_NonFlashAttention_StaticCache_NoOOB_WebGPU) {
+  const float attention_score = 0.1f * 0.2f * std::sqrt(8.0f);
+  const float expected_output_value = 0.3f * std::exp(attention_score) / (std::exp(attention_score) + 1.0f);
+  RunSeparateQkvCacheBoundsTest({.seqlens_k = std::numeric_limits<int32_t>::max(),
+                                 .smooth_softmax = true,
+                                 .sequence_length = 1,
+                                 .past_seq_len = 128,
+                                 .present_seq_len = 128,
+                                 .total_sequence_length = 1,
+                                 .expected_output_value = expected_output_value});
+}
+
+TEST(GroupQueryAttentionTest, NegativeSeqlensKBelowMinusOne_PackedRotary_WebGPU) {
+  RunPackedQkvRotaryCacheBoundsTest({.seqlens_k = -5,
+                                     .cos_sin_cache_length = 2,
+                                     .verify_first_present_row = true});
+}
+
+static std::unique_ptr<IExecutionProvider> CreateWebGpuEpForGqa(const WebGpuEpForGqaOptions& options) {
+  const auto& [enable_graph_capture, kv_cache_quant_bits, multi_rotary_cache_concat_offset] = options;
+  ORT_ENFORCE(kv_cache_quant_bits == 0 || kv_cache_quant_bits == 4 || kv_cache_quant_bits == 8,
+              "KV cache quantization bit width must be 0, 4, or 8, got ", kv_cache_quant_bits);
   ConfigOptions config_options{};
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                                    webgpu::options::kBufferCacheMode_Disabled));
-  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
-                                                   webgpu::options::kKvCacheQuantizationBits_4Bit));
+  if (kv_cache_quant_bits != 0) {
+    const char* option_value = kv_cache_quant_bits == 8
+                                   ? webgpu::options::kKvCacheQuantizationBits_8Bit
+                                   : webgpu::options::kKvCacheQuantizationBits_4Bit;
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
+                                                     option_value));
+  }
+  if (enable_graph_capture) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                                     webgpu::options::kEnableGraphCapture_ON));
+  }
+  if (multi_rotary_cache_concat_offset > 0) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(
+        webgpu::options::kMultiRotaryCacheConcatOffset,
+        std::to_string(multi_rotary_cache_concat_offset).c_str()));
+  }
   return WebGpuExecutionProviderWithOptions(config_options);
+}
+
+static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
+    uint32_t bit_width,
+    bool enable_graph_capture = false) {
+  return CreateWebGpuEpForGqa({.enable_graph_capture = enable_graph_capture,
+                               .kv_cache_quant_bits = bit_width});
+}
+
+static std::vector<float> RunGQAReference(
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    bool do_rotary,
+    bool use_fp16 = false,
+    bool rotary_interleaved = false);
+
+static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
+                                      const std::vector<float>& actual,
+                                      float max_relative_rmse,
+                                      float max_absolute_error);
+
+// Graph capture requires the indirect-dispatch dimensions to be prepared on the GPU.
+// Verify that static-cache preprocessing uses the batch-wide total_sequence_length input
+// instead of deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
+// four-token input also makes batch 0's logical total shorter than kv_sequence_length,
+// covering the right-padding underflow clamp with true static-cache aliasing.
+struct IndirectDispatchGraphCaptureTestOptions {
+  bool do_rotary = false;
+  uint32_t kv_cache_quant_bits = 0;
+  bool enable_multi_rotary_cache = false;
+  bool rotary_interleaved = false;
+  int sequence_length = 4;
+  int local_window_size = -1;
+  bool enable_graph_capture = true;
+  std::vector<float>* replay_output = nullptr;
+  std::optional<int32_t> device_total_sequence_length = std::nullopt;
+};
+
+enum class IndirectDispatchGraphCaptureVerification {
+  kOutput,
+  kCompletionOnly,
+};
+
+static void RunIndirectDispatchGraphCaptureTestImpl(
+    const IndirectDispatchGraphCaptureTestOptions& options,
+    IndirectDispatchGraphCaptureVerification verification) {
+  const auto& [do_rotary, kv_cache_quant_bits, enable_multi_rotary_cache,
+               rotary_interleaved, sequence_length, local_window_size,
+               enable_graph_capture, replay_output, device_total_sequence_length] = options;
+  constexpr int batch_size = 2;
+  constexpr int short_total_sequence_length = 2;
+  constexpr int cache_sequence_length = 130;  // Three 64-token attention tiles.
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr uint32_t multi_rotary_cache_concat_offset = 4;
+  const int cache_head_size = kv_cache_quant_bits == 0
+                                  ? head_size
+                                  : (head_size * static_cast<int>(kv_cache_quant_bits) + 32) / 32;
+
+  std::unique_ptr<onnxruntime::Model> model;
+  {
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 17;
+    domain_to_version[kMSDomain] = 1;
+    model = std::make_unique<onnxruntime::Model>(
+        do_rotary ? "tq_gc_rotary_test" : "tq_gc_test", true, ModelMetaData(), PathString(),
+        IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+        std::vector<ONNX_NAMESPACE::FunctionProto>{},
+        DefaultLoggingManager().DefaultLogger(),
+        ModelOptions(true, true));
+    onnxruntime::Graph& graph = model->MainGraph();
+
+    ONNX_NAMESPACE::TypeProto tp_float, tp_int32;
+    tp_float.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tp_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+    auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+    std::vector<onnxruntime::NodeArg*> inputs = {
+        &graph.GetOrCreateNodeArg("query", &tp_float),
+        do_rotary ? &empty : &graph.GetOrCreateNodeArg("key", &tp_float),
+        do_rotary ? &empty : &graph.GetOrCreateNodeArg("value", &tp_float),
+        &graph.GetOrCreateNodeArg("past_key", &tp_float),
+        &graph.GetOrCreateNodeArg("past_value", &tp_float),
+        &graph.GetOrCreateNodeArg("seqlens_k", &tp_int32),
+        &graph.GetOrCreateNodeArg("total_sequence_length", &tp_int32),
+        do_rotary ? &graph.GetOrCreateNodeArg("cos_cache", &tp_float) : &empty,
+        do_rotary ? &graph.GetOrCreateNodeArg("sin_cache", &tp_float) : &empty,
+        &empty,  // position_ids
+        &empty,  // attention_bias
+        &empty,  // head_sink
+    };
+    std::vector<onnxruntime::NodeArg*> outputs = {
+        &graph.GetOrCreateNodeArg("output", &tp_float),
+        &graph.GetOrCreateNodeArg("present_key", &tp_float),
+        &graph.GetOrCreateNodeArg("present_value", &tp_float),
+    };
+
+    auto& node = graph.AddNode("gqa", "GroupQueryAttention", "GQA", inputs, outputs, nullptr, kMSDomain);
+    node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
+    node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+    if (do_rotary) {
+      node.AddAttribute("do_rotary", int64_t{1});
+      node.AddAttribute("rotary_interleaved", static_cast<int64_t>(rotary_interleaved));
+    }
+    if (local_window_size > 0) {
+      node.AddAttribute("local_window_size", static_cast<int64_t>(local_window_size));
+    }
+    ORT_THROW_IF_ERROR(graph.Resolve());
+  }
+
+  std::string model_data;
+  model->ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+  auto webgpu_ep = CreateWebGpuEpForGqa({
+      .enable_graph_capture = enable_graph_capture,
+      .kv_cache_quant_bits = kv_cache_quant_bits,
+      .multi_rotary_cache_concat_offset = enable_multi_rotary_cache ? multi_rotary_cache_concat_offset : 0,
+  });
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  IExecutionProvider* ep = webgpu_ep.get();
+  ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(std::move(webgpu_ep)));
+  std::istringstream model_stream(model_data);
+  ORT_THROW_IF_ERROR(session.Load(model_stream));
+  ORT_THROW_IF_ERROR(session.Initialize());
+
+  OrtMemoryInfo gpu_memory_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
+                                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                          OrtDevice::VendorIds::NONE, 0));
+  auto gpu_allocator = session.GetAllocator(gpu_memory_info);
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_data = [](size_t size, float scale, int period) {
+    std::vector<float> data(size);
+    for (size_t i = 0; i < size; ++i) {
+      data[i] = scale * static_cast<float>(i % static_cast<size_t>(period) + 1);
+    }
+    return data;
+  };
+  auto swap_batches = [](const std::vector<float>& input) {
+    const size_t elements_per_batch = input.size() / batch_size;
+    std::vector<float> output(input.size());
+    std::copy_n(input.data() + elements_per_batch, elements_per_batch, output.data());
+    std::copy_n(input.data(), elements_per_batch, output.data() + elements_per_batch);
+    return output;
+  };
+
+  const int query_width = do_rotary ? packed_hidden_size : hidden_size;
+  auto query_data = make_data(batch_size * sequence_length * query_width, 0.01f, 31);
+  auto key_data = make_data(batch_size * sequence_length * kv_hidden_size, 0.02f, 29);
+  auto value_data = make_data(batch_size * sequence_length * kv_hidden_size, 0.03f, 23);
+  auto past_key_data = make_data(batch_size * kv_num_heads * cache_sequence_length * cache_head_size,
+                                 0.001f, 19);
+  auto past_value_data = make_data(batch_size * kv_num_heads * cache_sequence_length * cache_head_size,
+                                   0.002f, 17);
+  auto query_data_swapped = swap_batches(query_data);
+  auto key_data_swapped = swap_batches(key_data);
+  auto value_data_swapped = swap_batches(value_data);
+  auto past_key_data_swapped = swap_batches(past_key_data);
+  auto past_value_data_swapped = swap_batches(past_value_data);
+
+  constexpr int half_rotary_dim = head_size / 2;
+  const int large_rotary_cache_length = cache_sequence_length + 1;
+  auto cos_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 37);
+  int cos_sin_cache_length = large_rotary_cache_length;
+  auto sin_cache_data = make_data(cos_sin_cache_length * half_rotary_dim, 0.001f, 41);
+  if (enable_multi_rotary_cache) {
+    const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
+    cos_cache_data.insert(cos_cache_data.begin(), small_cache_size,
+                          std::numeric_limits<float>::quiet_NaN());
+    sin_cache_data.insert(sin_cache_data.begin(), small_cache_size,
+                          std::numeric_limits<float>::quiet_NaN());
+    cos_sin_cache_length += multi_rotary_cache_concat_offset;
+  }
+
+  auto make_gpu_value = [&](const void* data, MLDataType data_type, const TensorShape& shape) {
+    Tensor gpu_tensor(data_type, shape, gpu_allocator);
+    Tensor cpu_tensor(data_type, shape, const_cast<void*>(data), cpu_allocator->Info());
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue value;
+    Tensor::InitOrtValue(std::move(gpu_tensor), value);
+    return value;
+  };
+  auto update_gpu_value = [&](const OrtValue& gpu_value, const void* data, MLDataType data_type,
+                              const TensorShape& shape) {
+    Tensor cpu_tensor(data_type, shape, const_cast<void*>(data), cpu_allocator->Info());
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(
+        cpu_tensor, const_cast<Tensor&>(gpu_value.Get<Tensor>())));
+  };
+
+  const TensorShape query_shape{batch_size, sequence_length, query_width};
+  const TensorShape kv_shape{batch_size, sequence_length, kv_hidden_size};
+  const TensorShape cache_shape{batch_size, kv_num_heads, cache_sequence_length, cache_head_size};
+  const TensorShape seqlens_shape{batch_size};
+  const TensorShape total_sequence_length_shape{1};
+  const TensorShape cos_cache_shape{cos_sin_cache_length, half_rotary_dim};
+  const TensorShape sin_cache_shape{cos_sin_cache_length, half_rotary_dim};
+  auto query_value = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(), query_shape);
+  auto key_value = make_gpu_value(key_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
+  auto value_value = make_gpu_value(value_data.data(), DataTypeImpl::GetType<float>(), kv_shape);
+  auto past_key_value = make_gpu_value(past_key_data.data(), DataTypeImpl::GetType<float>(), cache_shape);
+  auto past_value_value = make_gpu_value(past_value_data.data(), DataTypeImpl::GetType<float>(), cache_shape);
+  std::vector<int32_t> seqlens_data{short_total_sequence_length - 1, cache_sequence_length - 1};
+  auto seqlens_value = make_gpu_value(seqlens_data.data(), DataTypeImpl::GetType<int32_t>(), seqlens_shape);
+  std::vector<int32_t> total_sequence_length_data{
+      device_total_sequence_length.value_or(cache_sequence_length)};
+  OrtValue total_sequence_length_value;
+  if (enable_graph_capture) {
+    total_sequence_length_value = make_gpu_value(total_sequence_length_data.data(),
+                                                 DataTypeImpl::GetType<int32_t>(),
+                                                 total_sequence_length_shape);
+  } else {
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), total_sequence_length_shape,
+                         total_sequence_length_data.data(), cpu_allocator->Info(),
+                         total_sequence_length_value);
+  }
+  auto cos_cache_value = make_gpu_value(cos_cache_data.data(), DataTypeImpl::GetType<float>(), cos_cache_shape);
+  auto sin_cache_value = make_gpu_value(sin_cache_data.data(), DataTypeImpl::GetType<float>(), sin_cache_shape);
+
+  Tensor output_tensor(DataTypeImpl::GetType<float>(),
+                       TensorShape{batch_size, sequence_length, hidden_size}, gpu_allocator);
+  OrtValue output_value;
+  Tensor::InitOrtValue(std::move(output_tensor), output_value);
+
+  std::unique_ptr<IOBinding> io_binding;
+  ORT_THROW_IF_ERROR(session.NewIOBinding(&io_binding));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("query", query_value));
+  if (!do_rotary) {
+    ORT_THROW_IF_ERROR(io_binding->BindInput("key", key_value));
+    ORT_THROW_IF_ERROR(io_binding->BindInput("value", value_value));
+  }
+  ORT_THROW_IF_ERROR(io_binding->BindInput("past_key", past_key_value));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("past_value", past_value_value));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("seqlens_k", seqlens_value));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("total_sequence_length", total_sequence_length_value));
+  if (do_rotary) {
+    ORT_THROW_IF_ERROR(io_binding->BindInput("cos_cache", cos_cache_value));
+    ORT_THROW_IF_ERROR(io_binding->BindInput("sin_cache", sin_cache_value));
+  }
+  ORT_THROW_IF_ERROR(io_binding->BindOutput("output", output_value));
+  // Alias past and present buffers so packed rotary uses the static-cache fused path.
+  ORT_THROW_IF_ERROR(io_binding->BindOutput("present_key", past_key_value));
+  ORT_THROW_IF_ERROR(io_binding->BindOutput("present_value", past_value_value));
+  ORT_THROW_IF_ERROR(io_binding->SynchronizeInputs());
+
+  auto read_output = [&]() {
+    auto& gpu_output = io_binding->GetOutputs()[0].Get<Tensor>();
+    Tensor cpu_output(DataTypeImpl::GetType<float>(), gpu_output.Shape(), cpu_allocator);
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(gpu_output, cpu_output));
+    return std::vector<float>(cpu_output.Data<float>(), cpu_output.Data<float>() + cpu_output.Shape().Size());
+  };
+  auto read_gpu_bytes = [&](const OrtValue& gpu_value) {
+    const auto& gpu_tensor = gpu_value.Get<Tensor>();
+    Tensor cpu_tensor(gpu_tensor.DataType(), gpu_tensor.Shape(), cpu_allocator);
+    ORT_THROW_IF_ERROR(ep->GetDataTransfer()->CopyTensor(gpu_tensor, cpu_tensor));
+    const auto* begin = static_cast<const uint8_t*>(cpu_tensor.DataRaw());
+    return std::vector<uint8_t>(begin, begin + cpu_tensor.SizeInBytes());
+  };
+
+  RunOptions run_options;
+  ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+  if (verification == IndirectDispatchGraphCaptureVerification::kCompletionOnly) {
+    ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+    return;
+  }
+  auto first_output = read_output();
+  if (kv_cache_quant_bits == 8 && do_rotary && rotary_interleaved) {
+    constexpr int reference_sequence_length = short_total_sequence_length;
+    std::vector<float> reference_query(reference_sequence_length * hidden_size);
+    std::vector<float> reference_key(reference_sequence_length * kv_hidden_size);
+    std::vector<float> reference_value(reference_sequence_length * kv_hidden_size);
+    for (int seq = 0; seq < reference_sequence_length; ++seq) {
+      const size_t packed_base = seq * packed_hidden_size;
+      std::copy_n(query_data.data() + packed_base, hidden_size,
+                  reference_query.data() + seq * hidden_size);
+      std::copy_n(query_data.data() + packed_base + hidden_size, kv_hidden_size,
+                  reference_key.data() + seq * kv_hidden_size);
+      std::copy_n(query_data.data() + packed_base + hidden_size + kv_hidden_size, kv_hidden_size,
+                  reference_value.data() + seq * kv_hidden_size);
+    }
+    const auto reference = RunGQAReference(
+        /*batch_size=*/1, reference_sequence_length, num_heads, kv_num_heads, head_size,
+        reference_query, reference_key, reference_value, /*do_rotary=*/true,
+        /*use_fp16=*/false, /*rotary_interleaved=*/true);
+    const std::vector<float> actual(first_output.begin(),
+                                    first_output.begin() + reference_sequence_length * hidden_size);
+    ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
+                              /*max_absolute_error=*/0.03f);
+  }
+
+  // Batch 0 has only two logical tokens in a four-token input. TurboQuant static-cache
+  // slots for its two padded tokens must retain their original contents. The standard
+  // path currently writes padding slots, which is unrelated to cache-bank selection.
+  auto expect_padding_unchanged = [&](const std::vector<uint8_t>& actual,
+                                      const std::vector<float>& initial,
+                                      const char* cache_name) {
+    ASSERT_EQ(actual.size(), initial.size() * sizeof(float));
+    const size_t bytes_per_token = kv_num_heads * cache_head_size * sizeof(float);
+    const size_t padding_offset = short_total_sequence_length * bytes_per_token;
+    const size_t padding_size = (sequence_length - short_total_sequence_length) * bytes_per_token;
+    const auto* initial_bytes = reinterpret_cast<const uint8_t*>(initial.data());
+    EXPECT_TRUE(std::equal(actual.begin() + padding_offset,
+                           actual.begin() + padding_offset + padding_size,
+                           initial_bytes + padding_offset))
+        << cache_name << " padded static-cache slots were overwritten";
+  };
+  if (kv_cache_quant_bits != 0) {
+    expect_padding_unchanged(read_gpu_bytes(past_key_value), past_key_data, "key");
+    expect_padding_unchanged(read_gpu_bytes(past_value_value), past_value_data, "value");
+  }
+  if (kv_cache_quant_bits == 8 && do_rotary && !rotary_interleaved) {
+    const auto key_bytes = read_gpu_bytes(past_key_value);
+    const auto value_bytes = read_gpu_bytes(past_value_value);
+    std::vector<uint32_t> key_words(key_bytes.size() / sizeof(uint32_t));
+    std::vector<uint32_t> value_words(value_bytes.size() / sizeof(uint32_t));
+    std::memcpy(key_words.data(), key_bytes.data(), key_bytes.size());
+    std::memcpy(value_words.data(), value_bytes.data(), value_bytes.size());
+
+    constexpr int batch = 0;
+    constexpr int seq = 1;
+    const size_t cache_base =
+        ((batch * kv_num_heads) * cache_sequence_length + seq) * cache_head_size;
+    float key_scale;
+    float value_scale;
+    std::memcpy(&key_scale, &key_words[cache_base], sizeof(key_scale));
+    std::memcpy(&value_scale, &value_words[cache_base], sizeof(value_scale));
+    ASSERT_GT(key_scale, 0.0f);
+    ASSERT_GT(value_scale, 0.0f);
+
+    const size_t packed_token_base =
+        (batch * sequence_length + seq) * packed_hidden_size;
+    for (int dim = 0; dim < head_size; ++dim) {
+      const int rotary_dim = dim % half_rotary_dim;
+      const float cos_value = cos_cache_data[seq * half_rotary_dim + rotary_dim];
+      const float sin_value = sin_cache_data[seq * half_rotary_dim + rotary_dim];
+      const float first = query_data[packed_token_base + hidden_size + rotary_dim];
+      const float second =
+          query_data[packed_token_base + hidden_size + rotary_dim + half_rotary_dim];
+      const float expected_key = dim < half_rotary_dim
+                                     ? first * cos_value - second * sin_value
+                                     : first * sin_value + second * cos_value;
+      const float expected_value =
+          query_data[packed_token_base + hidden_size + kv_hidden_size + dim];
+      const int shift = (dim % 4) * 8;
+      const int key_quantized =
+          static_cast<int>((key_words[cache_base + 1 + dim / 4] >> shift) & 0xffu) - 128;
+      const int value_quantized =
+          static_cast<int>((value_words[cache_base + 1 + dim / 4] >> shift) & 0xffu) - 128;
+      EXPECT_NEAR(static_cast<float>(key_quantized) * key_scale, expected_key,
+                  key_scale * 0.51f + 1e-6f);
+      EXPECT_NEAR(static_cast<float>(value_quantized) * value_scale, expected_value,
+                  value_scale * 0.51f + 1e-6f);
+    }
+  }
+
+  update_gpu_value(query_value, query_data_swapped.data(), DataTypeImpl::GetType<float>(), query_shape);
+  if (!do_rotary) {
+    update_gpu_value(key_value, key_data_swapped.data(), DataTypeImpl::GetType<float>(), kv_shape);
+    update_gpu_value(value_value, value_data_swapped.data(), DataTypeImpl::GetType<float>(), kv_shape);
+  }
+  update_gpu_value(past_key_value, past_key_data_swapped.data(), DataTypeImpl::GetType<float>(), cache_shape);
+  update_gpu_value(past_value_value, past_value_data_swapped.data(), DataTypeImpl::GetType<float>(), cache_shape);
+  seqlens_data = {cache_sequence_length - 1, short_total_sequence_length - 1};
+  update_gpu_value(seqlens_value, seqlens_data.data(), DataTypeImpl::GetType<int32_t>(), seqlens_shape);
+  ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+  auto second_output = read_output();
+  if (replay_output != nullptr) {
+    *replay_output = second_output;
+  }
+
+  ASSERT_EQ(first_output.size(), second_output.size());
+  EXPECT_TRUE(std::all_of(first_output.begin(), first_output.end(),
+                          [](float value) { return std::isfinite(value); }))
+      << "first graph-capture output contains a non-finite value";
+  EXPECT_TRUE(std::all_of(second_output.begin(), second_output.end(),
+                          [](float value) { return std::isfinite(value); }))
+      << "second graph-capture output contains a non-finite value";
+  const size_t output_elements_per_batch = static_cast<size_t>(sequence_length) * hidden_size;
+  for (int second_batch = 0; second_batch < batch_size; ++second_batch) {
+    const int first_batch = batch_size - 1 - second_batch;
+    const auto* second_begin = second_output.data() + second_batch * output_elements_per_batch;
+    const auto* first_begin = first_output.data() + first_batch * output_elements_per_batch;
+    EXPECT_TRUE(std::equal(second_begin, second_begin + output_elements_per_batch, first_begin))
+        << "indirect-dispatch output mismatch after swapping batch " << first_batch
+        << " into slot " << second_batch;
+  }
+}
+
+static void RunIndirectDispatchGraphCaptureTest(const IndirectDispatchGraphCaptureTestOptions& options) {
+  RunIndirectDispatchGraphCaptureTestImpl(
+      options, IndirectDispatchGraphCaptureVerification::kOutput);
+}
+
+static void RunIndirectDispatchGraphCaptureCompletionOnlyTest(
+    const IndirectDispatchGraphCaptureTestOptions& options) {
+  RunIndirectDispatchGraphCaptureTestImpl(
+      options, IndirectDispatchGraphCaptureVerification::kCompletionOnly);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_NoRotary) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_UsesGlobalLength_Rotary) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true, .kv_cache_quant_bits = 4});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .enable_multi_rotary_cache = true});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_IndirectDispatch_MultiRotaryCache_UsesGlobalLength) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 4,
+                                       .enable_multi_rotary_cache = true});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_FusedRotary) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_InterleavedRotaryFallback) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 8,
+                                       .rotary_interleaved = true});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = false, .kv_cache_quant_bits = 8});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_IndirectDispatch_NegativeDeviceTotal) {
+  // A negative total produces a zero-sized QKV dispatch, so the reduction output is unspecified.
+  // Verify only that capture and replay complete without a wrapped or excessive dispatch.
+  RunIndirectDispatchGraphCaptureCompletionOnlyTest({.device_total_sequence_length = -100});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_IndirectDispatch_OversizedDeviceTotal) {
+  RunIndirectDispatchGraphCaptureTest({.device_total_sequence_length = 1'000'000});
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
+  std::vector<float> captured_output;
+  std::vector<float> eager_output;
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .sequence_length = 1,
+                                       .local_window_size = 64,
+                                       .replay_output = &captured_output});
+  RunIndirectDispatchGraphCaptureTest({.do_rotary = true,
+                                       .kv_cache_quant_bits = 0,
+                                       .sequence_length = 1,
+                                       .local_window_size = 64,
+                                       .enable_graph_capture = false,
+                                       .replay_output = &eager_output});
+  ExpectOutputsMatch(captured_output, eager_output, 2e-3f,
+                     "WebGPU_GraphCapture_PackedRotaryLocalWindow");
+}
+
+// The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
+// A batch-wide total above the concat offset must select the long RoPE cache for
+// every batch, including batches whose individual total remains below the offset.
+TEST(GroupQueryAttentionTest, WebGPU_MultiRotaryCache_UsesGlobalLength_NonStaticCache) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 4;
+  constexpr int total_sequence_length = past_sequence_length + sequence_length;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int half_rotary_dim = head_size / 2;
+  constexpr uint32_t multi_rotary_cache_concat_offset = 4;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+
+  std::vector<float> packed_qkv(batch_size * sequence_length * packed_hidden_size);
+  for (size_t i = 0; i < packed_qkv.size(); ++i) {
+    packed_qkv[i] = 0.01f * static_cast<float>(i % 17 + 1);
+  }
+  tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size}, packed_qkv);
+  tester.AddOptionalInputEdge<float>();  // key
+  tester.AddOptionalInputEdge<float>();  // value
+
+  const int past_cache_size = batch_size * kv_num_heads * past_sequence_length * head_size;
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(past_cache_size, 0.05f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(past_cache_size, 0.07f));
+
+  // Per-batch totals are {3, 5}; only the batch-global total crosses offset 4.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {2, 4});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  const int large_cache_length = total_sequence_length;
+  const size_t small_cache_size = multi_rotary_cache_concat_offset * half_rotary_dim;
+  std::vector<float> cos_cache(small_cache_size, std::numeric_limits<float>::quiet_NaN());
+  std::vector<float> sin_cache(small_cache_size, std::numeric_limits<float>::quiet_NaN());
+  cos_cache.insert(cos_cache.end(), large_cache_length * half_rotary_dim, 1.0f);
+  sin_cache.insert(sin_cache.end(), large_cache_length * half_rotary_dim, 0.0f);
+  tester.AddInput<float>("cos_cache", {multi_rotary_cache_concat_offset + large_cache_length, half_rotary_dim},
+                         cos_cache);
+  tester.AddInput<float>("sin_cache", {multi_rotary_cache_concat_offset + large_cache_length, half_rotary_dim},
+                         sin_cache);
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  const int present_cache_size = batch_size * kv_num_heads * total_sequence_length * head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(present_cache_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                          std::vector<float>(present_cache_size, 0.0f));
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    const auto& output = fetches[0].Get<Tensor>();
+    const float* output_data = output.Data<float>();
+    EXPECT_TRUE(std::all_of(output_data, output_data + output.Shape().Size(),
+                            [](float value) { return std::isfinite(value); }))
+        << "multi-RoPE output contains a non-finite value";
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(CreateWebGpuEpForGqa({
+      .multi_rotary_cache_concat_offset = multi_rotary_cache_concat_offset,
+  }));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Helper to run a GQA op with TurboQuant enabled and separate Q/K/V with rotary.
 // past_seq_len controls total KV cache depth; sequence_length controls prefill vs decode.
 // Returns the output tensor data on success.
+template <typename T = float>
 static std::vector<float> RunGQATurboQuant(
     int batch_size,
     int sequence_length,
@@ -3134,14 +5209,15 @@ static std::vector<float> RunGQATurboQuant(
     int head_size,
     bool do_rotary,
     bool is_packed_qkv,
+    uint32_t bit_width = 4,
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& expected_error = "") {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = past_seq_len + sequence_length;
 
-  // TQ4 compressed KV head dim: (head_size * 4 + 32) / 32 for float32
-  const int kv_head_dim = (head_size * 4 + 32) / 32;
+  const int kv_head_dim = ((head_size * static_cast<int>(bit_width) + 32) / 32) *
+                          static_cast<int>(sizeof(uint32_t) / sizeof(T));
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -3155,31 +5231,31 @@ static std::vector<float> RunGQATurboQuant(
 
   if (is_packed_qkv) {
     const int packed_dim = hidden_size + 2 * kv_hidden_size;
-    std::vector<float> packed_data(batch_size * sequence_length * packed_dim);
-    for (auto& v : packed_data) v = dist(rng);
-    tester.AddInput<float>("query", {batch_size, sequence_length, packed_dim}, packed_data);
-    tester.AddOptionalInputEdge<float>();  // key
-    tester.AddOptionalInputEdge<float>();  // value
+    std::vector<T> packed_data(batch_size * sequence_length * packed_dim);
+    for (auto& v : packed_data) v = T(dist(rng));
+    tester.AddInput<T>("query", {batch_size, sequence_length, packed_dim}, packed_data);
+    tester.AddOptionalInputEdge<T>();  // key
+    tester.AddOptionalInputEdge<T>();  // value
   } else {
-    std::vector<float> query_data(batch_size * sequence_length * hidden_size);
-    std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
-    std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
-    for (auto& v : query_data) v = dist(rng);
-    for (auto& v : key_data) v = dist(rng);
-    for (auto& v : value_data) v = dist(rng);
-    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    std::vector<T> query_data(batch_size * sequence_length * hidden_size);
+    std::vector<T> key_data(batch_size * sequence_length * kv_hidden_size);
+    std::vector<T> value_data(batch_size * sequence_length * kv_hidden_size);
+    for (auto& v : query_data) v = T(dist(rng));
+    for (auto& v : key_data) v = T(dist(rng));
+    for (auto& v : value_data) v = T(dist(rng));
+    tester.AddInput<T>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<T>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<T>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
   }
 
-  // Past KV in compressed TQ4 format (float payload whose raw bits are interpreted as u32-packed data).
+  // Past KV is an element-typed payload whose raw bits are interpreted as packed u32 data.
   const int past_kv_size = batch_size * kv_num_heads * past_seq_len * kv_head_dim;
-  std::vector<float> past_key_data(past_kv_size);
-  std::vector<float> past_value_data(past_kv_size);
-  for (auto& v : past_key_data) v = dist(rng);
-  for (auto& v : past_value_data) v = dist(rng);
-  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_key_data);
-  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_value_data);
+  std::vector<T> past_key_data(past_kv_size);
+  std::vector<T> past_value_data(past_kv_size);
+  for (auto& v : past_key_data) v = T(dist(rng));
+  for (auto& v : past_value_data) v = T(dist(rng));
+  tester.AddInput<T>("past_key", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_key_data);
+  tester.AddInput<T>("past_value", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, past_value_data);
 
   std::vector<int32_t> tq_seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, tq_seqlens_k);
@@ -3188,35 +5264,35 @@ static std::vector<float> RunGQATurboQuant(
   if (do_rotary) {
     const int max_seq_len = total_sequence_length + 8;
     const int half_rotary = head_size / 2;
-    std::vector<float> cos_cache(max_seq_len * half_rotary);
-    std::vector<float> sin_cache(max_seq_len * half_rotary);
+    std::vector<T> cos_cache(max_seq_len * half_rotary);
+    std::vector<T> sin_cache(max_seq_len * half_rotary);
     for (int pos = 0; pos < max_seq_len; ++pos) {
       for (int d = 0; d < half_rotary; ++d) {
         float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(head_size));
-        cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
-        sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+        cos_cache[pos * half_rotary + d] = T(std::cos(static_cast<float>(pos) * freq));
+        sin_cache[pos * half_rotary + d] = T(std::sin(static_cast<float>(pos) * freq));
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    tester.AddInput<T>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+    tester.AddInput<T>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    tester.AddOptionalInputEdge<T>();  // cos_cache
+    tester.AddOptionalInputEdge<T>();  // sin_cache
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
+                      std::vector<T>(output_size, T(0.0f)));
   const int present_seq_len = total_sequence_length;
   const int present_size = batch_size * kv_num_heads * present_seq_len * kv_head_dim;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
+                      std::vector<T>(present_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, present_seq_len, kv_head_dim},
+                      std::vector<T>(present_size, T(0.0f)));
 
   // TurboQuant present_key/present_value are u32-packed quantized data reinterpreted as float.
   // Values can be astronomically large, so skip value checks via custom verifier.
@@ -3251,7 +5327,7 @@ static std::vector<float> RunGQATurboQuant(
   });
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
     // GTEST_SKIP() cannot be used in a value-returning helper (it expands to a
     // void `return`). Callers already GTEST_SKIP() when the EP is unavailable, so
@@ -3263,15 +5339,30 @@ static std::vector<float> RunGQATurboQuant(
 
   if (expect == OpTester::ExpectResult::kExpectSuccess) {
     auto fetches = tester.GetFetches();
-    const float* out_data = fetches[0].Get<Tensor>().Data<float>();
-    return std::vector<float>(out_data, out_data + output_size);
+    const T* out_data = fetches[0].Get<Tensor>().Data<T>();
+    std::vector<float> output(output_size);
+    std::transform(out_data, out_data + output_size, output.begin(), [](T value) {
+      if constexpr (std::is_same_v<T, float>) {
+        return value;
+      } else {
+        return value.ToFloat();
+      }
+    });
+    return output;
   }
   return {};
 }
 
+static void ExpectFiniteNonzeroOutput(const std::vector<float>& output, const char* test_case) {
+  EXPECT_TRUE(std::all_of(output.begin(), output.end(), [](float value) { return std::isfinite(value); }))
+      << test_case << " output contains a non-finite value";
+  EXPECT_TRUE(std::any_of(output.begin(), output.end(), [](float value) { return value != 0.0f; }))
+      << test_case << " output should not be all zeros";
+}
+
 // --- Error path: TurboQuant with smooth_softmax (non-flash attention) ---
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonFlashAttention) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3330,7 +5421,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonFlashAttention) {
 
 // --- Error path: TurboQuant with invalid head_size (not power of 2) ---
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3388,6 +5479,18 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_RejectsHeadSizeNotDivisibleBy4) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  RunGQATurboQuant(/*batch_size=*/1, /*sequence_length=*/1, /*past_seq_len=*/8,
+                   /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/98,
+                   /*do_rotary=*/false, /*is_packed_qkv=*/false,
+                   /*bit_width=*/8, OpTester::ExpectResult::kExpectFailure,
+                   "Q8 block-quantized KV cache requires head_size to be divisible by 4");
+}
+
 // --- Success paths: TurboQuant with flash attention at various K sizes ---
 // K=1 (decode with minimal past), K=24 (moderate), K=128 (large)
 // These exercise the split-reduce decode path (QKV + VxReduce kernels) for seq_len=1,
@@ -3395,7 +5498,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
 
 // Decode (sequence_length=1) with separate K/V, no rotary. past_seq_len controls k_size.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K1) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3407,7 +5510,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K1) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3419,7 +5522,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K24) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K128) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3432,7 +5535,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_K128) {
 
 // Prefill (sequence_length > 1) with separate K/V, no rotary.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K1) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3444,7 +5547,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K1) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3456,7 +5559,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K24) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K128) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3469,7 +5572,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_K128) {
 
 // Decode with rotary embedding (separate K/V path).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_Rotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3482,7 +5585,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_Rotary_K24) {
 
 // Decode with packed QKV + rotary (fused split+rotary+Hadamard+quantize path).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_PackedRotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3495,7 +5598,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_PackedRotary_K24) {
 
 // Prefill with packed QKV + rotary (fused path, sequence_length > 1).
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_PackedRotary_K24) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3506,23 +5609,404 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_PackedRotary_K24) {
   EXPECT_FALSE(all_zero) << "TurboQuant prefill packed+rotary K=24 output should not be all zeros";
 }
 
-// --- Error path: multi-batch with per-batch seqlens_k is rejected with TurboQuant ---
-// The TurboQuant copy-to-quantized-KV-cache kernel reads seqlen_k[0] for every
-// batch on the graph-capture decode path, so it only supports batch_size == 1 and
-// explicitly rejects batch_size > 1 rather than silently corrupting batches 1..N-1.
-// (The non-quantized flash-attention copy path does support per-batch seqlens_k, so
-// this restriction is specific to KV cache quantization.) genai decode runs
-// batch_size==1, so multi-batch is not a supported production path.
-TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsMultiBatch) {
-  auto ep = WebGpuEPWithTurboQuant4();
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Regular_UsesQ8CacheShape) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
-  RunGQATurboQuant(/*batch_size=*/2, /*sequence_length=*/1, /*past_seq_len=*/24,
-                   /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
-                   /*do_rotary=*/false, /*is_packed_qkv=*/false,
-                   OpTester::ExpectResult::kExpectFailure,
-                   "supports batch_size == 1 only");
+  auto output = RunGQATurboQuant(/*batch_size=*/1, /*sequence_length=*/4, /*past_seq_len=*/24,
+                                 /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
+                                 /*do_rotary=*/false, /*is_packed_qkv=*/false,
+                                 /*bit_width=*/8);
+  ExpectFiniteNonzeroOutput(output, "Q8 regular prefill");
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Decode_PackedRotary_UsesQ8CacheShape) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  auto output = RunGQATurboQuant(/*batch_size=*/1, /*sequence_length=*/1, /*past_seq_len=*/24,
+                                 /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
+                                 /*do_rotary=*/true, /*is_packed_qkv=*/true,
+                                 /*bit_width=*/8);
+  ExpectFiniteNonzeroOutput(output, "Q8 packed rotary decode");
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_Prefill_Float16) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  auto output = RunGQATurboQuant<MLFloat16>(
+      /*batch_size=*/1, /*sequence_length=*/4, /*past_seq_len=*/24,
+      /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
+      /*do_rotary=*/false, /*is_packed_qkv=*/false,
+      /*bit_width=*/8);
+  ExpectFiniteNonzeroOutput(output, "Q8 float16 prefill");
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_UsesOffsetBinaryStorage) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int head_size = 128;
+  constexpr int compressed_head_size = 33;
+  std::vector<float> query(head_size, 0.0f);
+  std::vector<float> key(head_size);
+  std::vector<float> value(head_size);
+  std::array<uint32_t, compressed_head_size> expected_key{};
+  std::array<uint32_t, compressed_head_size> expected_value{};
+  const float expected_scale = 1.0f / 127.0f;
+  std::memcpy(&expected_key[0], &expected_scale, sizeof(expected_scale));
+  std::memcpy(&expected_value[0], &expected_scale, sizeof(expected_scale));
+  for (int i = 0; i < head_size; ++i) {
+    const int key_q = i - 127;
+    const int value_q = 127 - i;
+    key[i] = static_cast<float>(key_q) / 127.0f;
+    value[i] = static_cast<float>(value_q) / 127.0f;
+    const int word = 1 + i / 4;
+    const int shift = (i % 4) * 8;
+    expected_key[word] |= static_cast<uint32_t>(key_q + 128) << shift;
+    expected_value[word] |= static_cast<uint32_t>(value_q + 128) << shift;
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddInput<float>("query", {1, 1, head_size}, query);
+  tester.AddInput<float>("key", {1, 1, head_size}, key);
+  tester.AddInput<float>("value", {1, 1, head_size}, value);
+  tester.AddInput<float>("past_key", {1, 1, 0, compressed_head_size}, {});
+  tester.AddInput<float>("past_value", {1, 1, 0, compressed_head_size}, {});
+  tester.AddInput<int32_t>("seqlens_k", {1}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOutput<float>("output", {1, 1, head_size}, std::vector<float>(head_size));
+  tester.AddOutput<float>("present_key", {1, 1, 1, compressed_head_size},
+                          std::vector<float>(compressed_head_size));
+  tester.AddOutput<float>("present_value", {1, 1, 1, compressed_head_size},
+                          std::vector<float>(compressed_head_size));
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([expected_key, expected_value](const std::vector<OrtValue>& fetches,
+                                                                const std::string&) {
+    ASSERT_EQ(fetches.size(), 3u);
+    const auto* actual_key =
+        static_cast<const uint32_t*>(fetches[1].Get<Tensor>().DataRaw());
+    const auto* actual_value =
+        static_cast<const uint32_t*>(fetches[2].Get<Tensor>().DataRaw());
+    for (size_t i = 0; i < expected_key.size(); ++i) {
+      EXPECT_EQ(actual_key[i], expected_key[i]) << "key word " << i;
+      EXPECT_EQ(actual_value[i], expected_value[i]) << "value word " << i;
+    }
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// --- Decode test helper: multi-batch with per-batch seqlens_k using TurboQuant ---
+// Before the fix, the TurboQuant copy-to-quantized-KV-cache kernels read seqlen_k[0]
+// for EVERY batch, so batches 1..N-1 used the wrong past length. This helper proves the
+// kernels now read seqlen_k[batch] via "swap invariance":
+//
+//   Run 1: batch data [A, B], seqlens_k [sA, sB]
+//   Run 2: batch data [B, A], seqlens_k [sB, sA]   (both batches physically swapped)
+//
+// If each batch correctly uses its own seqlen, then the valid cache prefixes swap exactly
+// between runs. If the kernel wrongly used seqlen_k[0] for all batches, the two runs would
+// copy from or write to different cache positions for the same data and the swapped caches
+// would NOT match.
+//
+// Both variants exercise turbo_quant_hadamard. The rotary variant additionally covers
+// the separate Q/K rotary preprocessing used when past/present buffers are not aliased.
+static void RunTurboQuantMultiBatchSwapInvariance(bool do_rotary) {
+  if (!WebGpuEPWithKVCacheQuantization(4)) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_seq_len = 24;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int total_sequence_length = past_seq_len + sequence_length;
+  constexpr int kv_head_dim = (head_size * 4 + 32) / 32;  // TQ4 compressed dim
+  constexpr int output_size = batch_size * sequence_length * hidden_size;
+  constexpr int present_size = batch_size * kv_num_heads * total_sequence_length * kv_head_dim;
+
+  // Distinct per-batch past lengths (right-padded prompts of different lengths).
+  constexpr int32_t seqA = 20;  // batch slot 0 "A"
+  constexpr int32_t seqB = 24;  // batch slot 1 "B"
+
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+
+  // Per-batch Q/K/V and (already-packed) past-KV blocks for the two logical prompts A and B.
+  const int q_per_batch = sequence_length * hidden_size;
+  const int kv_per_batch = sequence_length * kv_hidden_size;
+  const int past_per_batch = kv_num_heads * past_seq_len * kv_head_dim;
+
+  auto make_vec = [&](int n) {
+    std::vector<float> v(n);
+    for (auto& e : v) e = dist(rng);
+    return v;
+  };
+  const std::vector<float> qA = make_vec(q_per_batch), qB = make_vec(q_per_batch);
+  const std::vector<float> kA = make_vec(kv_per_batch), kB = make_vec(kv_per_batch);
+  const std::vector<float> vA = make_vec(kv_per_batch), vB = make_vec(kv_per_batch);
+  const std::vector<float> pkA = make_vec(past_per_batch), pkB = make_vec(past_per_batch);
+  const std::vector<float> pvA = make_vec(past_per_batch), pvB = make_vec(past_per_batch);
+
+  const int max_seq_len = total_sequence_length + 8;
+  const int half_rotary = head_size / 2;
+  std::vector<float> cos_cache(max_seq_len * half_rotary);
+  std::vector<float> sin_cache(max_seq_len * half_rotary);
+  for (int pos = 0; pos < max_seq_len; ++pos) {
+    for (int d = 0; d < half_rotary; ++d) {
+      float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(head_size));
+      cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
+      sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+    }
+  }
+
+  auto concat = [](const std::vector<float>& a, const std::vector<float>& b) {
+    std::vector<float> out(a);
+    out.insert(out.end(), b.begin(), b.end());
+    return out;
+  };
+
+  struct PackedPresentCache {
+    std::vector<uint8_t> key;
+    std::vector<uint8_t> value;
+  };
+
+  auto copy_tensor_bytes = [](const Tensor& tensor) {
+    const auto* begin = static_cast<const uint8_t*>(tensor.DataRaw());
+    return std::vector<uint8_t>(begin, begin + tensor.SizeInBytes());
+  };
+
+  // Runs GQA with the two batch slots holding (first, second) prompts and the given seqlens.
+  // Returns owned copies of the packed present caches.
+  auto run = [&](const std::vector<float>& q0, const std::vector<float>& q1,
+                 const std::vector<float>& k0, const std::vector<float>& k1,
+                 const std::vector<float>& v0, const std::vector<float>& v1,
+                 const std::vector<float>& pk0, const std::vector<float>& pk1,
+                 const std::vector<float>& pv0, const std::vector<float>& pv1,
+                 int32_t s0, int32_t s1) {
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+    tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+    if (do_rotary) {
+      tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+    }
+
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, concat(q0, q1));
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, concat(k0, k1));
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, concat(v0, v1));
+    tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, concat(pk0, pk1));
+    tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, kv_head_dim}, concat(pv0, pv1));
+
+    std::vector<int32_t> seqlens_k{s0, s1};
+    tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+    if (do_rotary) {
+      tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    } else {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
+    tester.AddOptionalInputEdge<int64_t>();  // position_ids
+    tester.AddOptionalInputEdge<float>();    // attention_bias
+    tester.AddOptionalInputEdge<float>();    // head_sink
+
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+
+    // Only the attention output is numerically meaningful; present_key/value are packed
+    // quantized bytes reinterpreted as float, so skip their value checks.
+    tester.SetOutputTolerance(1e6f);
+    tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(WebGpuEPWithKVCacheQuantization(4));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+    auto fetches = tester.GetFetches();
+    return PackedPresentCache{copy_tensor_bytes(fetches[1].Get<Tensor>()),
+                              copy_tensor_bytes(fetches[2].Get<Tensor>())};
+  };
+
+  // Run 1: slot0=A (seqA), slot1=B (seqB).
+  auto out1 = run(qA, qB, kA, kB, vA, vB, pkA, pkB, pvA, pvB, seqA, seqB);
+  // Run 2: swap both the data AND the seqlens so slot0=B (seqB), slot1=A (seqA).
+  auto out2 = run(qB, qA, kB, kA, vB, vA, pkB, pkA, pvB, pvA, seqB, seqA);
+
+  auto expect_batches_swapped = [&](const std::vector<uint8_t>& first,
+                                    const std::vector<uint8_t>& second,
+                                    const char* cache_name) {
+    ASSERT_EQ(first.size(), second.size());
+    ASSERT_EQ(first.size(), static_cast<size_t>(present_size) * sizeof(float));
+    const size_t bytes_per_batch = first.size() / batch_size;
+    constexpr size_t bytes_per_token = kv_num_heads * kv_head_dim * sizeof(float);
+    for (int second_batch = 0; second_batch < batch_size; ++second_batch) {
+      const int first_batch = batch_size - 1 - second_batch;
+      const auto* second_begin = second.data() + second_batch * bytes_per_batch;
+      const auto* first_begin = first.data() + first_batch * bytes_per_batch;
+      const int32_t logical_sequence_length = first_batch == 0 ? seqA + 1 : seqB + 1;
+      const size_t valid_bytes = logical_sequence_length * bytes_per_token;
+      EXPECT_TRUE(std::equal(second_begin, second_begin + valid_bytes, first_begin))
+          << cache_name << " cache mismatch after swapping batch " << first_batch
+          << " into slot " << second_batch
+          << "; per-batch seqlens_k not honored in quantized KV cache path";
+    }
+  };
+
+  expect_batches_swapped(out1.key, out2.key, "key");
+  expect_batches_swapped(out1.value, out2.value, "value");
+}
+
+// Rotary variant: exercises the fused rotary+Hadamard copy kernel.
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_MultiBatch_UsesPerBatchSeqlensK) {
+  RunTurboQuantMultiBatchSwapInvariance(/*do_rotary=*/true);
+}
+
+// Non-rotary variant: exercises the plain Hadamard copy kernel (turbo_quant_hadamard).
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Decode_MultiBatch_NoRotary_UsesPerBatchSeqlensK) {
+  RunTurboQuantMultiBatchSwapInvariance(/*do_rotary=*/false);
+}
+
+// Right-padded first prompts can have a per-batch total sequence length smaller than the
+// padded K/V sequence length. Exercise the dynamic-cache path for turbo_quant_hadamard;
+// the graph-capture tests above cover the static-cache and fused rotary variants.
+static void RunTurboQuantRightPaddedPrefill(bool do_rotary) {
+  if (!WebGpuEPWithKVCacheQuantization(4)) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int packed_hidden_size = hidden_size + 2 * kv_hidden_size;
+  constexpr int kv_head_dim = (head_size * 4 + 32) / 32;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  if (do_rotary) {
+    tester.AddAttribute<int64_t>("do_rotary", 1);
+  }
+
+  std::mt19937 rng(2026);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  auto make_data = [&](int size) {
+    std::vector<float> data(size);
+    for (float& value : data) {
+      value = dist(rng);
+    }
+    return data;
+  };
+
+  if (do_rotary) {
+    tester.AddInput<float>("query", {batch_size, sequence_length, packed_hidden_size},
+                           make_data(batch_size * sequence_length * packed_hidden_size));
+    tester.AddOptionalInputEdge<float>();  // key
+    tester.AddOptionalInputEdge<float>();  // value
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                           make_data(batch_size * sequence_length * hidden_size));
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                           make_data(batch_size * sequence_length * kv_hidden_size));
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                           make_data(batch_size * sequence_length * kv_hidden_size));
+  }
+
+  const int cache_size = batch_size * kv_num_heads * sequence_length * kv_head_dim;
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                         std::vector<float>(cache_size, 0.0f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                         std::vector<float>(cache_size, 0.0f));
+
+  // seqlens_k is total_sequence_length - 1. Batch 0 therefore has only two valid
+  // tokens in the four-token padded prompt, while batch 1 uses the full prompt.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {1, 3});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, /*is_initializer=*/true);
+
+  if (do_rotary) {
+    constexpr int max_seq_len = sequence_length + 8;
+    constexpr int half_rotary = head_size / 2;
+    std::vector<float> cos_cache(max_seq_len * half_rotary);
+    std::vector<float> sin_cache(max_seq_len * half_rotary);
+    for (int pos = 0; pos < max_seq_len; ++pos) {
+      for (int dim = 0; dim < half_rotary; ++dim) {
+        const float frequency = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(dim) / head_size);
+        cos_cache[pos * half_rotary + dim] = std::cos(static_cast<float>(pos) * frequency);
+        sin_cache[pos * half_rotary + dim] = std::sin(static_cast<float>(pos) * frequency);
+      }
+    }
+    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+  } else {
+    tester.AddOptionalInputEdge<float>();  // cos_cache
+    tester.AddOptionalInputEdge<float>();  // sin_cache
+  }
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                          std::vector<float>(cache_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, kv_head_dim},
+                          std::vector<float>(cache_size, 0.0f));
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(WebGpuEPWithKVCacheQuantization(4));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const auto& output = fetches[0].Get<Tensor>();
+  const float* output_data = output.Data<float>();
+  const int output_per_batch = sequence_length * hidden_size;
+  for (int batch = 0; batch < batch_size; ++batch) {
+    const float* batch_begin = output_data + batch * output_per_batch;
+    const bool all_zero = std::all_of(batch_begin, batch_begin + output_per_batch,
+                                      [](float value) { return value == 0.0f; });
+    EXPECT_FALSE(all_zero) << "TurboQuant output is all zero for right-padded batch " << batch;
+  }
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_MultiBatch_RightPadding_NoRotary) {
+  RunTurboQuantRightPaddedPrefill(/*do_rotary=*/false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_MultiBatch_RightPadding_Rotary) {
+  RunTurboQuantRightPaddedPrefill(/*do_rotary=*/true);
 }
 
 // ---------------------------------------------------------------------------
@@ -3542,7 +6026,9 @@ static std::vector<float> RunGQAReference(
     const std::vector<float>& query_data,
     const std::vector<float>& key_data,
     const std::vector<float>& value_data,
-    bool do_rotary) {
+    bool do_rotary,
+    bool use_fp16,
+    bool rotary_interleaved) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = sequence_length;  // no past
@@ -3552,14 +6038,22 @@ static std::vector<float> RunGQAReference(
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   if (do_rotary) {
     tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+    tester.AddAttribute<int64_t>("rotary_interleaved", static_cast<int64_t>(rotary_interleaved));
   }
 
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
-
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, ToFloat16(query_data));
+    tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(key_data));
+    tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(value_data));
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_key
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_value
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    tester.AddOptionalInputEdge<float>();  // past_key
+    tester.AddOptionalInputEdge<float>();  // past_value
+  }
 
   std::vector<int32_t> seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
@@ -3577,25 +6071,49 @@ static std::vector<float> RunGQAReference(
         sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    if (use_fp16) {
+      tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+      tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+    } else {
+      tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    }
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    if (use_fp16) {
+      tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+      tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+    } else {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
   const int present_size = batch_size * kv_num_heads * total_sequence_length * head_size;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
+  if (use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                                std::vector<MLFloat16>(output_size));
+    tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size));
+    tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size));
+  } else {
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+  }
 
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
@@ -3605,11 +6123,21 @@ static std::vector<float> RunGQAReference(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
+  if (use_fp16) {
+    const MLFloat16* out_data = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    std::vector<float> output;
+    output.reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
+      output.push_back(out_data[i].ToFloat());
+    }
+    return output;
+  }
+
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
 }
 
-// Helper: runs GQA with TurboQuant4, past_seq_len=0, returns the output.
+// Helper: runs GQA with TurboQuant, past_seq_len=0, and returns the output.
 static std::vector<float> RunGQATurboQuantNoPast(
     int batch_size,
     int sequence_length,
@@ -3619,11 +6147,15 @@ static std::vector<float> RunGQATurboQuantNoPast(
     const std::vector<float>& query_data,
     const std::vector<float>& key_data,
     const std::vector<float>& value_data,
-    bool do_rotary) {
+    bool do_rotary,
+    uint32_t bit_width = 4,
+    bool use_fp16 = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = sequence_length;  // no past
-  const int kv_head_dim = (head_size * 4 + 32) / 32;
+  const size_t element_size = use_fp16 ? sizeof(MLFloat16) : sizeof(float);
+  const int kv_head_dim =
+      static_cast<int>(contrib::webgpu::KvCacheQuantizedHeadSize(head_size, bit_width, element_size));
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -3632,13 +6164,21 @@ static std::vector<float> RunGQATurboQuantNoPast(
     tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
   }
 
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
-
-  // Empty past with compressed head dim so shape inference derives correct present shape.
-  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
-  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, ToFloat16(query_data));
+    tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(key_data));
+    tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(value_data));
+    tester.AddInput<MLFloat16>("past_key",
+                               {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+    tester.AddInput<MLFloat16>("past_value",
+                               {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+    tester.AddInput<float>("past_key", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+    tester.AddInput<float>("past_value", {batch_size, kv_num_heads, static_cast<int64_t>(0), kv_head_dim}, {});
+  }
 
   std::vector<int32_t> seqlens_k(batch_size, total_sequence_length - 1);
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
@@ -3656,34 +6196,70 @@ static std::vector<float> RunGQATurboQuantNoPast(
         sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
       }
     }
-    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    if (use_fp16) {
+      tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+      tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+    } else {
+      tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+      tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+    }
   } else {
-    tester.AddOptionalInputEdge<float>();  // cos_cache
-    tester.AddOptionalInputEdge<float>();  // sin_cache
+    if (use_fp16) {
+      tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+      tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+    } else {
+      tester.AddOptionalInputEdge<float>();  // cos_cache
+      tester.AddOptionalInputEdge<float>();  // sin_cache
+    }
   }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
   const int present_size = batch_size * kv_num_heads * total_sequence_length * kv_head_dim;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
-                          std::vector<float>(present_size, 0.0f));
+  if (use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                                std::vector<MLFloat16>(output_size));
+    tester.AddOutput<MLFloat16>("present_key",
+                                {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                                std::vector<MLFloat16>(present_size));
+    tester.AddOutput<MLFloat16>("present_value",
+                                {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                                std::vector<MLFloat16>(present_size));
+  } else {
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, kv_head_dim},
+                            std::vector<float>(present_size, 0.0f));
+  }
 
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuEPWithTurboQuant4());
+  execution_providers.push_back(WebGpuEPWithKVCacheQuantization(bit_width));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
+  if (use_fp16) {
+    const MLFloat16* out_data = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    std::vector<float> output;
+    output.reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
+      output.push_back(out_data[i].ToFloat());
+    }
+    return output;
+  }
+
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
 }
@@ -3691,7 +6267,7 @@ static std::vector<float> RunGQATurboQuantNoPast(
 // Cross-validate TQ vs non-TQ: Prefill with 4 tokens, no past, no rotary.
 // With 4-bit quantization (16 centroids), expect bounded error.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_NoRotary) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3740,7 +6316,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_NoRotary) 
 
 // Cross-validate TQ vs non-TQ: Prefill with rotary embedding.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_Rotary) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3787,7 +6363,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill_Rotary) {
 // Cross-validate: single decode token (sequence_length=1, past_seq_len=0).
 // This exercises the split-reduce decode kernel path.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Decode) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3834,7 +6410,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Decode) {
 
 // Cross-validate: longer prefill (8 tokens) with multiple KV heads.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill8_MultiKVHead) {
-  auto ep = WebGpuEPWithTurboQuant4();
+  auto ep = WebGpuEPWithKVCacheQuantization(4);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3875,6 +6451,375 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_CrossValidate_Prefill8_MultiKVHe
 
   EXPECT_LT(relative_rmse, 0.2f) << "TurboQuant 8-token multi-head relative RMSE too large: " << relative_rmse;
   EXPECT_LT(max_abs_err, 0.3f) << "TurboQuant 8-token multi-head max absolute error too large: " << max_abs_err;
+}
+
+static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
+                                      const std::vector<float>& actual,
+                                      float max_relative_rmse,
+                                      float max_absolute_error) {
+  ASSERT_EQ(reference.size(), actual.size());
+  float max_abs_err = 0.0f;
+  float sum_sq_err = 0.0f;
+  float sum_sq_ref = 0.0f;
+  for (size_t i = 0; i < reference.size(); ++i) {
+    const float error = reference[i] - actual[i];
+    max_abs_err = std::max(max_abs_err, std::abs(error));
+    sum_sq_err += error * error;
+    sum_sq_ref += reference[i] * reference[i];
+  }
+  const float relative_rmse = sum_sq_ref > 0.0f ? std::sqrt(sum_sq_err / sum_sq_ref)
+                                                : std::sqrt(sum_sq_err);
+  EXPECT_LT(relative_rmse, max_relative_rmse);
+  EXPECT_LT(max_abs_err, max_absolute_error);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Prefill_Rotary) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::mt19937 rng(8008);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (float& value : query_data) value = dist(rng);
+  for (float& value : key_data) value = dist(rng);
+  for (float& value : value_data) value = dist(rng);
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/true);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                             query_data, key_data, value_data, /*do_rotary=*/true,
+                                             /*bit_width=*/8);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
+                            /*max_absolute_error=*/0.03f);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 40;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::mt19937 rng(8040);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (float& value : query_data) value = dist(rng);
+  for (float& value : key_data) value = dist(rng);
+  for (float& value : value_data) value = dist(rng);
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                             query_data, key_data, value_data, /*do_rotary=*/false,
+                                             /*bit_width=*/8);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
+                            /*max_absolute_error=*/0.03f);
+}
+
+static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width) {
+  auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithKVCacheQuantization(bit_width);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::mt19937 rng(1234);
+  std::bernoulli_distribution sign_dist(0.5);
+  std::vector<float> qk_signs(head_size);
+  std::vector<float> value_signs(head_size);
+  for (int d = 0; d < head_size; ++d) {
+    qk_signs[d] = sign_dist(rng) ? 1.0f : -1.0f;
+    value_signs[d] = sign_dist(rng) ? 1.0f : -1.0f;
+  }
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    const float key_value = s % 2 == 0 ? 90.0f : 100.0f;
+    const float value_value = s % 2 == 0 ? 0.25f : 0.75f;
+    for (int h = 0; h < num_heads; ++h) {
+      for (int d = 0; d < head_size; ++d) {
+        query_data[(s * num_heads + h) * head_size + d] = 100.0f * qk_signs[d];
+      }
+    }
+    for (int d = 0; d < head_size; ++d) {
+      key_data[s * kv_hidden_size + d] = key_value * qk_signs[d];
+      value_data[s * kv_hidden_size + d] = value_value * value_signs[d];
+    }
+  }
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual =
+      bit_width == 0
+          ? RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                            query_data, key_data, value_data, /*do_rotary=*/false, /*use_fp16=*/true)
+          : RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                   query_data, key_data, value_data, /*do_rotary=*/false,
+                                   bit_width, /*use_fp16=*/true);
+  const float relative_rmse_tolerance = bit_width == 4 ? 0.2f : 0.01f;
+  const float absolute_error_tolerance = bit_width == 4 ? 0.5f : 0.01f;
+  ExpectBlockQuantInt8Close(reference, actual, relative_rmse_tolerance, absolute_error_tolerance);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/4);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/4);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_FlashPrefill) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/8);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_SplitReduce) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/8);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_TinyScale) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size, 1.0f);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    for (int d = 0; d < head_size; ++d) {
+      const float sign = d % 2 == 0 ? 1.0f : -1.0f;
+      key_data[s * kv_hidden_size + d] = sign * (2.0e-6f + static_cast<float>(s) * 2.0e-7f);
+      value_data[s * kv_hidden_size + d] = sign * (1.5e-6f + static_cast<float>(s) * 2.0e-7f);
+    }
+  }
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                             query_data, key_data, value_data, /*do_rotary=*/false,
+                                             /*bit_width=*/8, /*use_fp16=*/true);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.1f,
+                            /*max_absolute_error=*/5.0e-7f);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Decode) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::mt19937 rng(808);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (float& value : query_data) value = dist(rng);
+  for (float& value : key_data) value = dist(rng);
+  for (float& value : value_data) value = dist(rng);
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                             query_data, key_data, value_data, /*do_rotary=*/false,
+                                             /*bit_width=*/8);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.01f,
+                            /*max_absolute_error=*/0.01f);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_PrefillThenDecode) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int prefill_length = 4;
+  constexpr int decode_length = 1;
+  constexpr int total_sequence_length = prefill_length + decode_length;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int compressed_head_size = (head_size * 8 + 32) / 32;
+
+  struct Q8RunResult {
+    std::vector<float> output;
+    std::vector<float> present_key;
+    std::vector<float> present_value;
+  };
+  auto run_q8 = [&](int sequence_length,
+                    int past_sequence_length,
+                    const std::vector<float>& query,
+                    const std::vector<float>& key,
+                    const std::vector<float>& value,
+                    const std::vector<float>& past_key,
+                    const std::vector<float>& past_value) {
+    const int present_sequence_length = past_sequence_length + sequence_length;
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", num_heads);
+    tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+    tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query);
+    tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key);
+    tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value);
+    tester.AddInput<float>("past_key",
+                           {batch_size, kv_num_heads, past_sequence_length, compressed_head_size},
+                           past_key);
+    tester.AddInput<float>("past_value",
+                           {batch_size, kv_num_heads, past_sequence_length, compressed_head_size},
+                           past_value);
+    tester.AddInput<int32_t>("seqlens_k", {batch_size}, {present_sequence_length - 1});
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {present_sequence_length},
+                             /*is_initializer=*/true);
+    tester.AddOptionalInputEdge<float>();    // cos_cache
+    tester.AddOptionalInputEdge<float>();    // sin_cache
+    tester.AddOptionalInputEdge<int64_t>();  // position_ids
+    tester.AddOptionalInputEdge<float>();    // attention_bias
+    tester.AddOptionalInputEdge<float>();    // head_sink
+
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(batch_size * sequence_length * hidden_size));
+    tester.AddOutput<float>(
+        "present_key", {batch_size, kv_num_heads, present_sequence_length, compressed_head_size},
+        std::vector<float>(batch_size * kv_num_heads * present_sequence_length * compressed_head_size));
+    tester.AddOutput<float>(
+        "present_value", {batch_size, kv_num_heads, present_sequence_length, compressed_head_size},
+        std::vector<float>(batch_size * kv_num_heads * present_sequence_length * compressed_head_size));
+    tester.SetOutputTolerance(1e6f);
+    tester.SetCustomOutputVerifier([](const std::vector<OrtValue>&, const std::string&) {});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(WebGpuEPWithKVCacheQuantization(8));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+    const auto fetches = tester.GetFetches();
+    const auto copy_float_tensor = [](const Tensor& tensor) {
+      return std::vector<float>(tensor.Data<float>(), tensor.Data<float>() + tensor.Shape().Size());
+    };
+    return Q8RunResult{copy_float_tensor(fetches[0].Get<Tensor>()),
+                       copy_float_tensor(fetches[1].Get<Tensor>()),
+                       copy_float_tensor(fetches[2].Get<Tensor>())};
+  };
+
+  std::mt19937 rng(8108);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  std::vector<float> all_query(total_sequence_length * hidden_size);
+  std::vector<float> all_key(total_sequence_length * kv_hidden_size);
+  std::vector<float> all_value(total_sequence_length * kv_hidden_size);
+  for (float& element : all_query) element = dist(rng);
+  for (float& element : all_key) element = dist(rng);
+  for (float& element : all_value) element = dist(rng);
+
+  const std::vector<float> prefill_query(all_query.begin(), all_query.begin() + prefill_length * hidden_size);
+  const std::vector<float> prefill_key(all_key.begin(), all_key.begin() + prefill_length * kv_hidden_size);
+  const std::vector<float> prefill_value(all_value.begin(), all_value.begin() + prefill_length * kv_hidden_size);
+  const std::vector<float> decode_query(all_query.begin() + prefill_length * hidden_size, all_query.end());
+  const std::vector<float> decode_key(all_key.begin() + prefill_length * kv_hidden_size, all_key.end());
+  const std::vector<float> decode_value(all_value.begin() + prefill_length * kv_hidden_size, all_value.end());
+
+  const auto prefill = run_q8(prefill_length, 0, prefill_query, prefill_key, prefill_value, {}, {});
+  const auto decode = run_q8(decode_length, prefill_length, decode_query, decode_key, decode_value,
+                             prefill.present_key, prefill.present_value);
+  const auto reference = RunGQAReference(batch_size, total_sequence_length, num_heads, kv_num_heads,
+                                         head_size, all_query, all_key, all_value, /*do_rotary=*/false);
+  const std::vector<float> reference_decode(reference.end() - hidden_size, reference.end());
+  ExpectBlockQuantInt8Close(reference_decode, decode.output, /*max_relative_rmse=*/0.01f,
+                            /*max_absolute_error=*/0.01f);
+
+  ASSERT_EQ(decode.present_key.size(),
+            static_cast<size_t>(total_sequence_length * compressed_head_size));
+  ASSERT_EQ(decode.present_value.size(),
+            static_cast<size_t>(total_sequence_length * compressed_head_size));
+  EXPECT_EQ(std::memcmp(prefill.present_key.data(), decode.present_key.data(),
+                        prefill.present_key.size() * sizeof(float)),
+            0);
+  EXPECT_EQ(std::memcmp(prefill.present_value.data(), decode.present_value.data(),
+                        prefill.present_value.size() * sizeof(float)),
+            0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_NonPowerOfTwoHeadSize) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 96;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  std::mt19937 rng(8096);
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (float& value : query_data) value = dist(rng);
+  for (float& value : key_data) value = dist(rng);
+  for (float& value : value_data) value = dist(rng);
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads,
+                                         head_size, query_data, key_data, value_data,
+                                         /*do_rotary=*/false);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads,
+                                             kv_num_heads, head_size, query_data, key_data,
+                                             value_data, /*do_rotary=*/false,
+                                             /*bit_width=*/8);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
+                            /*max_absolute_error=*/0.03f);
 }
 
 #endif  // USE_WEBGPU

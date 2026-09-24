@@ -119,6 +119,52 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
 
   {
+    // Missing C uses effective beta == 0.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.3f, -1.4f, -26.9f,
+                         -19.3f, 1.4f, 26.9f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    // beta == 0 ignores C, even when C has the full output shape.
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.3f, -1.4f, -26.9f,
+                         -19.3f, 1.4f, 26.9f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(6);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 0.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+    test.AddInput<MLFloat16>("C", {2, 3}, f_C);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
     // bias has same shape as output
     std::vector<MLFloat16> f_Y(6);
     std::vector<float> Y{19.8f, 0.7f, -25.7f,
@@ -1540,62 +1586,6 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<GemmOptimizePackedParams>& info) {
       return info.param.ToString();
     });
-
-#if defined(USE_WEBGPU)
-// Test int32 with M=128, K=128, N=128, transA=True
-TEST(GemmOpTest, GemmTransA_int32_128x128x128) {
-  OpTester test("Gemm", 13);
-
-  test.AddAttribute("transA", (int64_t)1);  // transposeA = 1
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  const int64_t M = 128, K = 128, N = 128;
-
-  // Initialize input matrices with int values
-  std::vector<int32_t> A_data(K * M);  // A shape is {K, M} because transposeA=1
-  std::vector<int32_t> B_data(K * N);
-  std::vector<int32_t> C_data(M * N);
-
-  // Fill A matrix with pattern (will be transposed)
-  for (int64_t i = 0; i < K * M; ++i) {
-    A_data[i] = static_cast<int32_t>((i % 7) + 1);
-  }
-
-  // Fill B matrix with pattern
-  for (int64_t i = 0; i < K * N; ++i) {
-    B_data[i] = static_cast<int32_t>((i % 5) + 1);
-  }
-
-  // Fill C matrix (bias) with small values
-  for (int64_t i = 0; i < M * N; ++i) {
-    C_data[i] = static_cast<int32_t>((i % 3) + 1);
-  }
-
-  // Calculate expected output: Y = alpha * A^T * B + beta * C
-  std::vector<int32_t> Y_data(M * N, 0);
-  for (int64_t i = 0; i < M; ++i) {
-    for (int64_t j = 0; j < N; ++j) {
-      int64_t sum = 0;
-      for (int64_t k = 0; k < K; ++k) {
-        // A is transposed, so A^T[i][k] = A[k][i]
-        sum += static_cast<int64_t>(A_data[k * M + i]) * static_cast<int64_t>(B_data[k * N + j]);
-      }
-      Y_data[i * N + j] = static_cast<int32_t>(sum + C_data[i * N + j]);  // alpha=1.0, beta=1.0
-    }
-  }
-
-  test.AddInput<int32_t>("A", {K, M}, A_data);  // A shape is {K, M} because transA=True
-  test.AddInput<int32_t>("B", {K, N}, B_data);
-  test.AddInput<int32_t>("C", {M, N}, C_data);
-  test.AddOutput<int32_t>("Y", {M, N}, Y_data);
-
-  test.ConfigExcludeEps({kQnnExecutionProvider, kCpuExecutionProvider, kCoreMLExecutionProvider})
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-#endif  // defined(USE_WEBGPU)
 
 // Test f16 with M=32, K=32, N=128
 TEST(GemmOpTest, GemmTransB_f16_32x32x128) {

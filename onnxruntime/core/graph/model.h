@@ -251,6 +251,16 @@ class Model {
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
+  // Reads the model bytes from file_path but stores graph_model_path as the graph's model path.
+  // graph_model_path is used as the base directory for resolving external initializers, so this
+  // overload lets callers load a model file while resolving its external data from a different folder.
+  static common::Status Load(const PathString& file_path,
+                             const PathString& graph_model_path,
+                             /*out*/ std::shared_ptr<Model>& p_model,
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
+
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,

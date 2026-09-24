@@ -64,10 +64,16 @@ template <typename T>
 T GsReflect(T x, T x_min, T x_max) {
   T dx = {};
   T fx = static_cast<T>(x);
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!std::isfinite(fx)) {
+    return x_min;
+  }
   T range = x_max - x_min;
-  // Guard against NaN, Inf, or non-positive range (e.g. dim==1 with align_corners=true)
-  // which would otherwise produce wild indices via division by zero or UB float->int casts.
-  if (!std::isfinite(fx) || !(range > T{0})) {
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > T{0})) {
     return x_min;
   }
   if (fx < x_min) {
@@ -372,6 +378,14 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
               "Last dimension of grid: ", grid_dims[grid_dims.NumDimensions() - 1], ", expect ", data_dims);
 
   ORT_ENFORCE(input_dims.NumDimensions() == 4 || input_dims.NumDimensions() == 5, "Only 4-D or 5-D tensor is supported");
+
+  // Spatial dimensions must be non-empty for sampling: the output is sized by the grid, so a zero-size
+  // input spatial dimension would otherwise lead to invalid index computations during interpolation.
+  for (size_t i = 2; i < input_dims.NumDimensions(); ++i) {
+    ORT_RETURN_IF_NOT(input_dims[i] > 0,
+                      "Input spatial dimensions must be non-empty for sampling. Dimension ", i,
+                      " has size ", input_dims[i]);
+  }
 
   auto N = input_dims[0];
   auto C = input_dims[1];

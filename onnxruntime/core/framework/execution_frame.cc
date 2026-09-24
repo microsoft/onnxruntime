@@ -469,23 +469,15 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #endif
               // the memory pattern buffer will leave in the whole execution.
 #ifdef ORT_ENABLE_STREAM
+              // Allocate the memory-pattern buffer on the stream that will actually use it for this
+              // device (the user-provided override stream if present, otherwise the device's stream).
+              Stream* mem_pattern_stream = nullptr;
               if (alloc->IsStreamAware() && device_streams_) {
-                Stream* mem_pattern_stream = device_streams_->GetRootStream();
+                mem_pattern_stream = device_streams_->GetStreamForDevice(location);
+              }
 
+              if (mem_pattern_stream != nullptr) {
                 buffer = alloc->AllocOnStream(peak_size, mem_pattern_stream);
-
-                // this seems unnecessary. any memory pattern buffer would be in use for the entire inference, so
-                // there's no point at which another stream (as streams are per-inference) would be able to use it.
-                // given that, it's unclear why we need to update the sync id in all other streams to allow them
-                // to take this buffer if it was free.
-                //
-                // device_stream_collection calls ReleaseStreamBuffers for all streams including the root stream in
-                // CleanUp, so the chunk will become available to other streams at that point.
-                //
-                // Commenting out to verify.
-                // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j));
-                //}
               } else {
                 buffer = alloc->Alloc(peak_size);
               }
@@ -696,6 +688,22 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
       }
+    }
+
+    // Defense in depth: equal logical element counts do not guarantee equal physical storage. Packed sub-byte
+    // types (e.g. uint4[N] needs ceil(N/2) bytes) share the same carrier size as full-byte types (uint8[N] needs
+    // N bytes), so a reused buffer sized for the packed type is too small for the full-byte tensor and a later
+    // write would overflow it. Reject the reuse whenever the buffer cannot physically hold the requested tensor.
+    size_t required_storage_bytes = 0;
+    ORT_RETURN_IF_ERROR(
+        Tensor::CalculateTensorStorageSize(element_type, shape, /*alignment*/ 0, required_storage_bytes));
+    const size_t buffer_storage_bytes = reuse_tensor->SizeInBytes();
+    if (required_storage_bytes > buffer_storage_bytes) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL, "Cannot re-use buffer: requested tensor needs ", required_storage_bytes,
+          " bytes of storage but the buffer being reused only has ", buffer_storage_bytes,
+          " bytes (buffer shape ", reuse_tensor->Shape(), ", requested shape ", shape,
+          "). This can happen when a packed sub-byte tensor is reused for a full-byte tensor of the same shape.");
     }
   }
 
