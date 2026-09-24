@@ -126,6 +126,8 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<float>(),       \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T>);
 
@@ -138,7 +140,21 @@ static void PrepareForQDQ(const TensorShape& input_shape,
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<float>(),       \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}), \
+      DequantizeLinear<T>);
+
+#define REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(T, start_version, end_version) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                       \
+      DequantizeLinear,                                                           \
+      start_version,                                                              \
+      end_version,                                                                \
+      T,                                                                          \
+      KernelDefBuilder()                                                          \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())                 \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),            \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}),      \
       DequantizeLinear<T>);
 
 #define REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_19(T)             \
@@ -210,29 +226,29 @@ REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
 
 // Opset 21 added 16-bit and 4-bit int to DQ.
 // TODO(adrianlizarraga): Also support 4-bit int types and 'block' quantization.
-REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(int16_t, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(uint16_t, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Int4x2, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(UInt4x2, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(int8_t, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(uint8_t, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(int16_t, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(uint16_t, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(int32_t, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Int4x2, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(UInt4x2, 21, 22)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FN, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2, 21, 22)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FN, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FNUZ, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2, 21, 22)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2FNUZ, 21, 22)
 #endif
 
 // Opset 19 added 8-bit float inputs and 16-bit float outputs to DQ.
-REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t, 19, 20)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t, 19, 20)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(int8_t, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(uint8_t, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(int32_t, 19, 20)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FN, 19, 20)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 19, 20)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2, 19, 20)
-REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FN, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FNUZ, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2, 19, 20)
+REGISTER_DEQUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2FNUZ, 19, 20)
 #endif
 
 // Before opset 19, DQ only supported int8, uint8 and int32.
