@@ -488,17 +488,21 @@ TEST(MoETest, QMoETest_WebGPU_EmptyInputAboveExpertLimit) {
   RunWebGpuExpertLimitTest(true, true);
 }
 
-TEST(MoETest, QMoETest_WebGPU_ZeroPointsAndFC3) {
+TEST(MoETest, QMoETest_WebGPU_WideTileExpertZeroPointsAndFC3) {
   GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
 
-  constexpr int num_rows = 2;
+  constexpr int num_rows = 4;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 64;
   constexpr int inter_size = 64;
   constexpr int pack_size = 2;
 
   const std::vector<float> input(num_rows * hidden_size, 0.25f);
-  const std::vector<float> router_probs = {10.0f, 0.0f, 0.0f, 10.0f};
+  const std::vector<float> router_probs = {
+      0.0f, 10.0f,
+      0.0f, 10.0f,
+      0.0f, 10.0f,
+      0.0f, 10.0f};
   const std::vector<uint8_t> fc1_weights(num_experts * inter_size * hidden_size / pack_size, 0x99);
   const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / pack_size, 0x99);
   const std::vector<uint8_t> fc3_weights(num_experts * inter_size * hidden_size / pack_size, 0x99);
@@ -512,10 +516,7 @@ TEST(MoETest, QMoETest_WebGPU_ZeroPointsAndFC3) {
   std::fill(fc2_zero_points.begin() + hidden_size, fc2_zero_points.end(), 0x99);
   std::fill(fc3_zero_points.begin() + inter_size, fc3_zero_points.end(), 0x99);
   const std::vector<float> fc2_bias(num_experts * hidden_size, 0.0f);
-  const float projection = hidden_size * 0.25f * 0.1f;
-  const float activated = projection / (1.0f + std::exp(-projection)) * projection;
-  std::vector<float> expected(hidden_size, inter_size * activated * 0.1f);
-  expected.insert(expected.end(), hidden_size, 0.0f);
+  const std::vector<float> expected(num_rows * hidden_size, 0.0f);
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", 1);

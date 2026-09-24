@@ -795,7 +795,8 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   file(GLOB_RECURSE onnxruntime_test_providers_webgpu_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/webgpu/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/*.h")
-  list(APPEND onnxruntime_test_framework_src_patterns ${onnxruntime_test_providers_webgpu_src})
+
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
