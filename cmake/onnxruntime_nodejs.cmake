@@ -79,6 +79,9 @@ endif()
 if (onnxruntime_USE_QNN)
     set(NODEJS_BINDING_USE_QNN "--use_qnn")
 endif()
+if (onnxruntime_USE_OPENVINO)
+    set(NODEJS_BINDING_USE_OPENVINO "--use_openvino")
+endif()
 
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
@@ -100,6 +103,7 @@ add_custom_target(nodejs_binding_wrapper ALL
         "--dll_deps=${NODEJS_DLL_DEPS}"
         --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_WEBGPU}
         ${NODEJS_BINDING_USE_TENSORRT} ${NODEJS_BINDING_USE_COREML} ${NODEJS_BINDING_USE_QNN}
+        ${NODEJS_BINDING_USE_OPENVINO}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 
