@@ -60,9 +60,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = enable_moe_expert_statistics_ ? context->GetRunInstrumentationContext() : nullptr;
-  if (instrumentation != nullptr) {
-    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  const auto* logging_context = enable_moe_expert_statistics_ ? context->GetMoeLoggingContext() : nullptr;
+  if (logging_context != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(logging_context, input->Shape()));
   }
 #endif
 
@@ -235,11 +235,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   CudaMoeRoutingRecord* routing_record = nullptr;
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(expanded_rows)) {
-    instrumentation = nullptr;
+  if (logging_context != nullptr &&
+      !logging_context->TryReserveMoeRoutingRecord(expanded_rows)) {
+    logging_context = nullptr;
   }
-  if (instrumentation != nullptr) {
+  if (logging_context != nullptr) {
     ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
                   "MoE expert statistics is not supported during CUDA graph capture.");
     auto host_expert_ids = AllocateBufferOnCPUPinned<int>(expanded_rows);
@@ -247,14 +247,14 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
                       "Failed to allocate pinned host memory for CUDA MoE routing statistics.");
 
-    const TimePoint instrumentation_start = instrumentation->StartProfiling();
+    const TimePoint logging_context_start = logging_context->StartProfiling();
     auto record = std::make_unique<CudaMoeRoutingRecord>(
-        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
+        *logging_context, Node().Name(), Node().Index(), Node().OpType(),
         std::move(host_expert_ids), std::move(host_router_weights),
-        expanded_rows, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
+        expanded_rows, moe_params.num_rows, k_, GetDeviceId(), logging_context_start);
     ORT_RETURN_IF_ERROR(record->Start(stream));
     routing_record = record.get();
-    instrumentation->AddDeferredRecord(std::move(record));
+    logging_context->AddDeferredRecord(std::move(record));
   }
 #endif
 

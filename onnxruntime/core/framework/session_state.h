@@ -340,6 +340,9 @@ class SessionState {
   KernelPilot* GetKernelPilot(const OpKernel* kernel) const {
     return moe_expert_state_ ? moe_expert_state_->GetKernelPilot(kernel) : nullptr;
   }
+  const IKernelPilotMoeLoggingContext* GetMoeLoggingContext() const {
+    return moe_expert_state_ ? moe_expert_state_->GetLoggingContext() : nullptr;
+  }
 #endif
 
   SessionState* Parent() {

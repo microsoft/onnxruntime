@@ -5,7 +5,7 @@ namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
 class KernelPilot;
-class RunInstrumentationContext;
+class IKernelPilotMoeLoggingContext;
 #endif
 class Stream;
 namespace concurrency {
@@ -18,21 +18,9 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger
-#if !defined(ORT_MINIMAL_BUILD)
-                  ,
-                  _In_opt_ const RunInstrumentationContext* run_instrumentation_context = nullptr);
-#else
-  );
-#endif
+                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {
-    return run_instrumentation_context_;
-  }
-#endif
 
   /**
   Return the number of inputs for a variadic argument.
@@ -229,6 +217,8 @@ class OpKernelContext {
   // Keep new virtuals after existing declarations to preserve their vtable slots.
   // Session-owned pilot for this kernel; nullptr when unavailable.
   virtual KernelPilot* GetKernelPilot() const { return nullptr; }
+  // Session-owned context for the currently active MoE logging Run.
+  virtual const IKernelPilotMoeLoggingContext* GetMoeLoggingContext() const { return nullptr; }
 #endif
 
  private:
@@ -248,9 +238,6 @@ class OpKernelContext {
   int node_output_start_index_{-1};
 
   Stream* stream_;
-#if !defined(ORT_MINIMAL_BUILD)
-  const RunInstrumentationContext* run_instrumentation_context_{};
-#endif
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

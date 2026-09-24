@@ -189,10 +189,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                   this->ort_stream_,
                                   /*sync_subgraph_fetches*/ false,
                                   this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                      ,
-                                  this->context_.GetRunInstrumentationContext()
-#endif
   );
   ORT_RETURN_IF_ERROR(status);
 
@@ -394,10 +390,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                     this->ort_stream_,
                                     /*sync_subgraph_fetches*/ false,
                                     this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                        ,
-                                    this->context_.GetRunInstrumentationContext()
-#endif
     );
 
     ORT_RETURN_IF_ERROR(status);

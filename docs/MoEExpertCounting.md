@@ -34,6 +34,9 @@ expert computations were still in flight when their counters were updated. Updat
 entire model invocation.
 
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
+The state owns a `KernelPilotMoeExpertState::LoggingContext` while routing logging is active. It contains the request ID,
+logging limits, and deferred CUDA records. Because there is a single active logging context per session, a concurrent
+Run is rejected while MoE routing logging is active; concurrent Runs remain allowed when only expert counting is enabled.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
 for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
@@ -106,7 +109,7 @@ current invocation's selected-expert set while reusing its storage. The CUDA ada
 buffer and copy event. Buffer capacity grows only when needed for a larger invocation.
 
 Both counting and routing-logging options are cached at kernel construction. With their default values (`0`), the
-kernel skips collector and instrumentation-context lookups, collector construction, collection calls, and
+kernel skips collector and MoE run-context lookups, collector construction, collection calls, and
 statistics-only size calculations.
 There are no statistics allocations, host transfers, or stream synchronizations on that path; only cached flag checks
 remain. Enabling these diagnostics adds overhead.

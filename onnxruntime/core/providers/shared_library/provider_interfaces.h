@@ -10,7 +10,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
-#include "core/framework/run_instrumentation.h"
+#include "core/framework/kernel_pilot_moe_logging_context.h"
 #include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
 
@@ -45,7 +45,6 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
-class RunInstrumentationContext;
 class KernelPilot;
 
 struct ModelSavingOptions;
@@ -1427,30 +1426,8 @@ struct ProviderHost {
 #endif
 
   // Run instrumentation support — appended at end to preserve vtable ABI compatibility.
-  virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+  virtual const IKernelPilotMoeLoggingContext* OpKernelContext__GetMoeLoggingContext(
       const OpKernelContext* p) = 0;
-  virtual const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) = 0;
-  virtual TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) = 0;
-  virtual uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) = 0;
-  virtual void RunInstrumentationContext__AddDeferredRecord(
-      const RunInstrumentationContext* p,
-      std::unique_ptr<DeferredRunInstrumentationRecord> record) = 0;
-  virtual bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
-      const RunInstrumentationContext* p, size_t element_count) = 0;
-  virtual void RunInstrumentationContext__RecordMoeRoutingEvent(
-      const RunInstrumentationContext* p,
-      const TimePoint& start_time,
-      const TimePoint& end_time,
-      const std::string& node_name,
-      NodeIndex node_index,
-      const std::string& node_type,
-      std::string expert_ids_json,
-      std::string router_weights_json,
-      int64_t num_rows,
-      int64_t top_k,
-      int execution_device_id,
-      int64_t completion_ns,
-      const std::string& completion_timestamp_source) = 0;
 
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };

@@ -21,6 +21,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/node_unit.h"
@@ -1620,46 +1621,9 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
-  const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+  const IKernelPilotMoeLoggingContext* OpKernelContext__GetMoeLoggingContext(
       const OpKernelContext* p) override {
-    return p->GetRunInstrumentationContext();
-  }
-  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) override {
-    return p->RequestId();
-  }
-  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) override {
-    return p->StartProfiling();
-  }
-  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) override {
-    return p->ProfilerStartTimeNs();
-  }
-  void RunInstrumentationContext__AddDeferredRecord(
-      const RunInstrumentationContext* p,
-      std::unique_ptr<DeferredRunInstrumentationRecord> record) override {
-    p->AddDeferredRecord(std::move(record));
-  }
-  bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
-      const RunInstrumentationContext* p, size_t element_count) override {
-    return p->TryReserveMoeRoutingRecord(element_count);
-  }
-  void RunInstrumentationContext__RecordMoeRoutingEvent(
-      const RunInstrumentationContext* p,
-      const TimePoint& start_time,
-      const TimePoint& end_time,
-      const std::string& node_name,
-      NodeIndex node_index,
-      const std::string& node_type,
-      std::string expert_ids_json,
-      std::string router_weights_json,
-      int64_t num_rows,
-      int64_t top_k,
-      int execution_device_id,
-      int64_t completion_ns,
-      const std::string& completion_timestamp_source) override {
-    p->RecordMoeRoutingEvent(
-        start_time, end_time, node_name, node_index, node_type,
-        std::move(expert_ids_json), std::move(router_weights_json),
-        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+    return p->GetMoeLoggingContext();
   }
 
   // OpKernelInfo (wrapped)

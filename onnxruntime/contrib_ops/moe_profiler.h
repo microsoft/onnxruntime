@@ -12,20 +12,21 @@
 #include <sstream>
 #include <type_traits>
 
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-inline const RunInstrumentationContext* GetMoeRunInstrumentationContext(const OpKernelContext* context) {
-  return context->GetRunInstrumentationContext();
+inline const IKernelPilotMoeLoggingContext* GetMoeLoggingContext(const OpKernelContext* context) {
+  return context->GetMoeLoggingContext();
 }
 
-inline Status ValidateMoeLoggingBatchSize(const RunInstrumentationContext* instrumentation,
+inline Status ValidateMoeLoggingBatchSize(const IKernelPilotMoeLoggingContext* logging_context,
                                           const TensorShape& input_shape) {
   // A 2D input is an unbatched token matrix. Only a 3D input carries an explicit batch dimension.
-  ORT_RETURN_IF(instrumentation != nullptr && input_shape.NumDimensions() == 3 && input_shape[0] != 1,
+  ORT_RETURN_IF(logging_context != nullptr && input_shape.NumDimensions() == 3 && input_shape[0] != 1,
                 "MoE expert statistics logging only supports batch size 1; got batch size ", input_shape[0], ".");
   return Status::OK();
 }
@@ -53,7 +54,7 @@ std::string MoeJsonArray(gsl::span<const T> values) {
   return stream.str();
 }
 
-inline void RecordMoeRoutingEvent(const RunInstrumentationContext& instrumentation,
+inline void RecordMoeRoutingEvent(const IKernelPilotMoeLoggingContext& logging_context,
                                   const Node& node,
                                   gsl::span<const int> expert_ids,
                                   gsl::span<const float> router_weights,
@@ -64,9 +65,9 @@ inline void RecordMoeRoutingEvent(const RunInstrumentationContext& instrumentati
   const auto completion_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                  completion_time.time_since_epoch())
                                  .count() -
-                             static_cast<int64_t>(instrumentation.ProfilerStartTimeNs());
+                             static_cast<int64_t>(logging_context.ProfilerStartTimeNs());
 
-  instrumentation.RecordMoeRoutingEvent(
+  logging_context.RecordMoeRoutingEvent(
       start_time, completion_time, node.Name(), node.Index(), node.OpType(),
       MoeJsonArray(expert_ids), MoeJsonArray(router_weights),
       num_rows, top_k, -1, completion_ns, "host_clock");

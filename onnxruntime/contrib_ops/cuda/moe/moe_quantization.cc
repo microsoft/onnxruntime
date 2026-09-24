@@ -650,9 +650,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = enable_moe_expert_statistics_ ? context->GetRunInstrumentationContext() : nullptr;
-  if (instrumentation != nullptr) {
-    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+  const auto* logging_context = enable_moe_expert_statistics_ ? context->GetMoeLoggingContext() : nullptr;
+  if (logging_context != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(logging_context, input->Shape()));
   }
 #endif
   // When PrePack consumed the int4/int8 expert-weight initializers
@@ -1604,14 +1604,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(pilot, "MoE expert counting is enabled but its collector is unavailable.");
     ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
   }
-  const size_t routing_element_count = instrumentation != nullptr
+  const size_t routing_element_count = logging_context != nullptr
                                            ? static_cast<size_t>(SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_))
                                            : 0;
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-    instrumentation = nullptr;
+  if (logging_context != nullptr &&
+      !logging_context->TryReserveMoeRoutingRecord(routing_element_count)) {
+    logging_context = nullptr;
   }
-  if (instrumentation != nullptr) {
+  if (logging_context != nullptr) {
     ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
                   "MoE expert statistics is not supported during CUDA graph capture.");
     auto host_expert_ids = AllocateBufferOnCPUPinned<int>(routing_element_count);
@@ -1619,14 +1619,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
                       "Failed to allocate pinned host memory for CUDA QMoE routing statistics.");
 
-    const TimePoint instrumentation_start = instrumentation->StartProfiling();
+    const TimePoint logging_context_start = logging_context->StartProfiling();
     auto record = std::make_unique<CudaMoeRoutingRecord>(
-        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
+        *logging_context, Node().Name(), Node().Index(), Node().OpType(),
         std::move(host_expert_ids), std::move(host_router_weights),
-        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
+        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), logging_context_start);
     ORT_RETURN_IF_ERROR(record->Start(stream));
     routing_record = record.get();
-    instrumentation->AddDeferredRecord(std::move(record));
+    logging_context->AddDeferredRecord(std::move(record));
   }
 #endif
 

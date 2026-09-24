@@ -3727,7 +3727,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  std::optional<RunInstrumentationContext> run_instrumentation_context;
+  KernelPilotMoeExpertState* moe_expert_state =
+      collect_moe_statistics ? session_state_->GetMoeExpertState() : nullptr;
+  bool moe_logging_active = false;
+  auto end_moe_logging = gsl::finally([&]() {
+    if (moe_logging_active) {
+      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndLogging());
+    }
+  });
   InlinedVector<AllocatorPtr> arenas_to_shrink;
   if (collect_moe_statistics) {
     ORT_RETURN_IF_NOT(is_inited_, "Session not initialized.");
@@ -3873,7 +3880,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (retval.IsOK() && collect_moe_statistics) {
-        run_instrumentation_context.emplace(run_options.run_tag, run_logger);
+        ORT_CHECK_AND_SET_RETVAL(moe_expert_state->BeginLogging(run_options.run_tag, run_logger));
+        moe_logging_active = retval.IsOK();
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3912,12 +3920,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr
-#if !defined(ORT_MINIMAL_BUILD)
-                                     ,
-                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr
-#endif
-        );
+                                     run_profiler ? &*run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3928,11 +3931,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 
 #if !defined(ORT_MINIMAL_BUILD)
-      if (run_instrumentation_context) {
-        const Status instrumentation_status = run_instrumentation_context->FlushDeferredRecords();
-        run_instrumentation_context->LogMoeStatisticsTruncation();
-        if (retval.IsOK() && !instrumentation_status.IsOK()) {
-          retval = instrumentation_status;
+      if (moe_logging_active) {
+        const Status logging_status = moe_expert_state->EndLogging();
+        moe_logging_active = false;
+        if (retval.IsOK() && !logging_status.IsOK()) {
+          retval = logging_status;
         }
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)

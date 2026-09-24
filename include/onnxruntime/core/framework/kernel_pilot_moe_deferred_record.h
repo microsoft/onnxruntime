@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 
-class DeferredRunInstrumentationRecord {
+class KernelPilotMoeDeferredRecord {
  public:
-  virtual ~DeferredRunInstrumentationRecord() = default;
+  virtual ~KernelPilotMoeDeferredRecord() = default;
 
   // Returns an empty string on success or an error message on failure.
   virtual std::string Emit() = 0;

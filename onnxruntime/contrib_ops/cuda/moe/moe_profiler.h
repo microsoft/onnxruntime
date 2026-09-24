@@ -18,10 +18,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-inline Status ValidateCudaMoeLoggingBatchSize(const RunInstrumentationContext* instrumentation,
+inline Status ValidateCudaMoeLoggingBatchSize(const IKernelPilotMoeLoggingContext* logging_context,
                                               const TensorShape& input_shape) {
   // A 2D input is an unbatched token matrix. Only a 3D input carries an explicit batch dimension.
-  ORT_RETURN_IF(instrumentation != nullptr && input_shape.NumDimensions() == 3 && input_shape[0] != 1,
+  ORT_RETURN_IF(logging_context != nullptr && input_shape.NumDimensions() == 3 && input_shape[0] != 1,
                 "MoE expert statistics logging only supports batch size 1; got batch size ", input_shape[0], ".");
   return Status::OK();
 }
@@ -49,9 +49,9 @@ std::string CudaMoeJsonArray(gsl::span<const T> values) {
   return stream.str();
 }
 
-class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
+class CudaMoeRoutingRecord final : public KernelPilotMoeDeferredRecord {
  public:
-  CudaMoeRoutingRecord(const RunInstrumentationContext& instrumentation,
+  CudaMoeRoutingRecord(const IKernelPilotMoeLoggingContext& logging_context,
                        std::string node_name,
                        NodeIndex node_index,
                        std::string node_type,
@@ -62,7 +62,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
                        int64_t top_k,
                        int device_id,
                        TimePoint start_time)
-      : instrumentation_(instrumentation),
+      : logging_context_(logging_context),
         node_name_(std::move(node_name)),
         node_index_(node_index),
         node_type_(std::move(node_type)),
@@ -153,9 +153,9 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
     const TimePoint completion_time = start_time_ + elapsed_duration;
     const int64_t completion_ns =
         std::chrono::duration_cast<std::chrono::nanoseconds>(completion_time.time_since_epoch()).count() -
-        static_cast<int64_t>(instrumentation_.ProfilerStartTimeNs());
+        static_cast<int64_t>(logging_context_.ProfilerStartTimeNs());
 
-    instrumentation_.RecordMoeRoutingEvent(
+    logging_context_.RecordMoeRoutingEvent(
         start_time_, completion_time, node_name_, node_index_, node_type_,
         CudaMoeJsonArray(gsl::make_span(static_cast<const int*>(expert_ids_.get()), element_count_)),
         CudaMoeJsonArray(gsl::make_span(static_cast<const float*>(router_weights_.get()), element_count_)),
@@ -182,7 +182,7 @@ class CudaMoeRoutingRecord final : public DeferredRunInstrumentationRecord {
     }
   }
 
-  const RunInstrumentationContext& instrumentation_;
+  const IKernelPilotMoeLoggingContext& logging_context_;
   std::string node_name_;
   NodeIndex node_index_;
   std::string node_type_;

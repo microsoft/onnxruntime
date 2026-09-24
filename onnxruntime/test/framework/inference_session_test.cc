@@ -28,6 +28,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
@@ -983,24 +984,47 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
   EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
 }
 
-TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
+TEST(InferenceSessionTests, MoeLoggingLimitsRoutingVolume) {
   auto capturing_sink = std::make_unique<CapturingSink>();
   auto* capturing_sink_ptr = capturing_sink.get();
   logging::LoggingManager logging_manager(
       std::move(capturing_sink), logging::Severity::kINFO, false,
       logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
-  RunInstrumentationContext instrumentation{"request", *logger};
+  auto logger = logging_manager.CreateLogger("moe_logging_limit");
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.BeginLogging("request", *logger));
+  const auto* logging_context = state.GetLoggingContext();
+  ASSERT_NE(logging_context, nullptr);
 
-  EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
-      RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
-  EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
+  EXPECT_TRUE(logging_context->TryReserveMoeRoutingRecord(
+      KernelPilotMoeExpertState::LoggingContext::kMaxMoeRoutingElementsPerRun));
+  EXPECT_FALSE(logging_context->TryReserveMoeRoutingRecord(1));
 
-  instrumentation.LogMoeStatisticsTruncation();
+  ASSERT_STATUS_OK(state.EndLogging());
   ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
   EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
   EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
   EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
+}
+
+TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_logging_concurrency");
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginLogging("first", *logger));
+  const Status concurrent_status = state.BeginLogging("second", *logger);
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+  ASSERT_NE(state.GetLoggingContext(), nullptr);
+  EXPECT_EQ(state.GetLoggingContext()->RequestId(), "first");
+
+  ASSERT_STATUS_OK(state.EndLogging());
+  ASSERT_STATUS_OK(state.BeginLogging("second", *logger));
+  ASSERT_STATUS_OK(state.EndLogging());
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
@@ -1079,11 +1103,15 @@ TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
       std::move(capturing_sink), logging::Severity::kINFO, false,
       logging::LoggingManager::InstanceType::Temporal);
   auto logger = logging_manager.CreateLogger("moe_routing_json");
-  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.BeginLogging("request \"one\"", *logger));
+  const auto* logging_context = state.GetLoggingContext();
+  ASSERT_NE(logging_context, nullptr);
   const TimePoint now = std::chrono::high_resolution_clock::now();
 
-  instrumentation.RecordMoeRoutingEvent(
+  logging_context->RecordMoeRoutingEvent(
       now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
+  ASSERT_STATUS_OK(state.EndLogging());
 
   ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
   const std::string& message = capturing_sink_ptr->Messages()[0];

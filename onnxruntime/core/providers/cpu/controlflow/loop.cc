@@ -559,10 +559,6 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
                                     // have to perofrm a stream sync to make sure the data arrived.
                                     true,
                                     context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                        ,
-                                    context_.GetRunInstrumentationContext()
-#endif
     );
     ORT_RETURN_IF_ERROR(status);
 

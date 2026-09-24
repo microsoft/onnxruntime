@@ -305,10 +305,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
                                       this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                          ,
-                                      this->context_.GetRunInstrumentationContext()
-#endif
       );
     } else {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -325,10 +321,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
                                       this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                          ,
-                                      this->context_.GetRunInstrumentationContext()
-#endif
       );
     }
 

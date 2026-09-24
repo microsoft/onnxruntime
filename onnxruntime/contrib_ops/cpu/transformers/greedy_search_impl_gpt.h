@@ -297,10 +297,6 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
                                       this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                          ,
-                                      this->context_.GetRunInstrumentationContext()
-#endif
       );
     } else {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -317,10 +313,6 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                                       this->ort_stream_,
                                       /*sync_subgraph_fetches*/ false,
                                       this->context_.GetRunProfiler()
-#if !defined(ORT_MINIMAL_BUILD)
-                                          ,
-                                      this->context_.GetRunInstrumentationContext()
-#endif
       );
     }
 

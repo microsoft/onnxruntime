@@ -14,8 +14,8 @@ namespace onnxruntime {
 // each kernel family gets a separate type holding the information it actually needs.
 class KernelPilot {
  public:
-  IKernelPilotMoeExpertSelection& Moe() noexcept;
-  const IKernelPilotMoeExpertSelection& Moe() const noexcept;
+  IKernelPilotMoeExpertSelection& Moe() noexcept { return moe_; }
+  const IKernelPilotMoeExpertSelection& Moe() const noexcept { return moe_; }
 
  private:
   KernelPilotMoeExpertSelection moe_;

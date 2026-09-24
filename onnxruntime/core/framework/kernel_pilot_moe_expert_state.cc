@@ -12,11 +12,141 @@
 #include <sstream>
 #include <tuple>
 
+#include "core/common/json_utils.h"
+#include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
+
+KernelPilotMoeExpertState::LoggingContext::LoggingContext(std::string request_id, const logging::Logger& logger)
+    : request_id_(std::move(request_id)),
+      logger_(logger),
+      start_time_ns_(static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::high_resolution_clock::now().time_since_epoch())
+              .count())) {}
+
+const std::string& KernelPilotMoeExpertState::LoggingContext::RequestId() const noexcept {
+  return request_id_;
+}
+
+TimePoint KernelPilotMoeExpertState::LoggingContext::StartProfiling() const {
+  return std::chrono::high_resolution_clock::now();
+}
+
+uint64_t KernelPilotMoeExpertState::LoggingContext::ProfilerStartTimeNs() const noexcept {
+  return start_time_ns_;
+}
+
+void KernelPilotMoeExpertState::LoggingContext::RecordMoeRoutingEvent(
+    const TimePoint&,
+    const TimePoint&,
+    std::string_view node_name,
+    NodeIndex node_index,
+    std::string_view node_type,
+    std::string expert_ids_json,
+    std::string router_weights_json,
+    int64_t num_rows,
+    int64_t top_k,
+    int execution_device_id,
+    int64_t,
+    std::string_view) const {
+  std::ostringstream event;
+  event << "{\"request_id\":";
+  common::WriteJsonString(event, request_id_);
+  event << ",\"node_name\":";
+  common::WriteJsonString(event, node_name);
+  event << ",\"node_index\":" << node_index
+        << ",\"node_type\":";
+  common::WriteJsonString(event, node_type);
+  event << ",\"expert_ids\":" << expert_ids_json
+        << ",\"router_weights\":" << router_weights_json
+        << ",\"num_rows\":" << num_rows
+        << ",\"top_k\":" << top_k
+        << ",\"execution_device_id\":" << execution_device_id
+        << "}";
+  LOGS(logger_, INFO) << "moe_routing " << event.str();
+}
+
+void KernelPilotMoeExpertState::LoggingContext::AddDeferredRecord(
+    std::unique_ptr<KernelPilotMoeDeferredRecord> record) const {
+  std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+  deferred_records_.push_back(std::move(record));
+}
+
+bool KernelPilotMoeExpertState::LoggingContext::TryReserveMoeRoutingRecord(size_t element_count) const {
+  std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+  if (moe_routing_record_count_ >= kMaxMoeRoutingRecordsPerRun ||
+      element_count > kMaxMoeRoutingElementsPerRun - moe_routing_element_count_) {
+    ++dropped_moe_routing_record_count_;
+    dropped_moe_routing_element_count_ += element_count;
+    return false;
+  }
+
+  ++moe_routing_record_count_;
+  moe_routing_element_count_ += element_count;
+  return true;
+}
+
+void KernelPilotMoeExpertState::LoggingContext::LogMoeStatisticsTruncation() const {
+  std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+  if (dropped_moe_routing_record_count_ == 0) {
+    return;
+  }
+
+  LOGS(logger_, WARNING)
+      << "moe_routing_truncated {\"dropped_records\":"
+      << dropped_moe_routing_record_count_
+      << ",\"dropped_routing_elements\":" << dropped_moe_routing_element_count_
+      << ",\"max_records_per_run\":" << kMaxMoeRoutingRecordsPerRun
+      << ",\"max_routing_elements_per_run\":" << kMaxMoeRoutingElementsPerRun
+      << "}";
+}
+
+Status KernelPilotMoeExpertState::LoggingContext::FlushDeferredRecords() {
+  InlinedVector<std::unique_ptr<KernelPilotMoeDeferredRecord>> records;
+  {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    records = std::move(deferred_records_);
+  }
+
+  Status status = Status::OK();
+  for (auto& record : records) {
+    const std::string error_message = record->Emit();
+    if (status.IsOK() && !error_message.empty()) {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message);
+    }
+  }
+  return status;
+}
+
+Status KernelPilotMoeExpertState::BeginLogging(std::string request_id, const logging::Logger& logger) {
+  std::lock_guard<std::mutex> lock(logging_context_mutex_);
+  ORT_RETURN_IF(logging_context_ != nullptr,
+                "Concurrent Runs are not supported while MoE expert statistics logging is enabled.");
+  logging_context_ = std::make_unique<LoggingContext>(std::move(request_id), logger);
+  return Status::OK();
+}
+
+const IKernelPilotMoeLoggingContext* KernelPilotMoeExpertState::GetLoggingContext() const {
+  std::lock_guard<std::mutex> lock(logging_context_mutex_);
+  return logging_context_.get();
+}
+
+Status KernelPilotMoeExpertState::EndLogging() {
+  std::unique_ptr<LoggingContext> logging_context;
+  {
+    std::lock_guard<std::mutex> lock(logging_context_mutex_);
+    ORT_RETURN_IF_NOT(logging_context_, "MoE expert statistics logging is not active.");
+    logging_context = std::move(logging_context_);
+  }
+
+  const Status status = logging_context->FlushDeferredRecords();
+  logging_context->LogMoeStatisticsTruncation();
+  return status;
+}
 
 Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta) {
   ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0,

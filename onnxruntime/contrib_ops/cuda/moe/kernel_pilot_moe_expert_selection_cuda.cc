@@ -51,7 +51,7 @@ Status KernelPilotMoeExpertSelectionCuda::GetSelectedExperts(gsl::span<const int
 }
 
 Status KernelPilotMoeExpertSelectionCuda::Capture(const int* expert_ids, size_t count, cudaStream_t stream) {
-  ORT_RETURN_IF_NOT(usage_, "Kernel usage collection was not initialized.");
+  ORT_RETURN_IF_NOT(IsInitialized(), "Kernel usage collection was not initialized.");
   ORT_RETURN_IF(copy_pending_, "The previous MoE routing snapshot has not been consumed.");
   cudaStreamCaptureStatus capture_status;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));

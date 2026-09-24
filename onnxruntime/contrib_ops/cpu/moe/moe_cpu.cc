@@ -84,16 +84,16 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const size_t routing_element_count = enable_moe_expert_counting_ || enable_moe_expert_statistics_
                                            ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
                                            : 0;
-  const auto* instrumentation =
-      enable_moe_expert_statistics_ ? GetMoeRunInstrumentationContext(context) : nullptr;
-  if (instrumentation != nullptr) {
-    ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
-    if (!instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-      instrumentation = nullptr;
+  const auto* logging_context =
+      enable_moe_expert_statistics_ ? GetMoeLoggingContext(context) : nullptr;
+  if (logging_context != nullptr) {
+    ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(logging_context, input_shape));
+    if (!logging_context->TryReserveMoeRoutingRecord(routing_element_count)) {
+      logging_context = nullptr;
     }
   }
-  const TimePoint instrumentation_start =
-      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+  const TimePoint logging_context_start =
+      logging_context != nullptr ? logging_context->StartProfiling() : TimePoint{};
 #endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
@@ -455,11 +455,11 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
     ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
   }
-  if (instrumentation != nullptr) {
-    RecordMoeRoutingEvent(*instrumentation, Node(),
+  if (logging_context != nullptr) {
+    RecordMoeRoutingEvent(*logging_context, Node(),
                           gsl::make_span(route_expert, routing_element_count),
                           gsl::make_span(route_scale, routing_element_count),
-                          num_tokens, k_, instrumentation_start);
+                          num_tokens, k_, logging_context_start);
   }
 #endif
   return Status::OK();
