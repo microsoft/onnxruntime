@@ -2189,7 +2189,9 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 #endif
 
   Status status = Status::OK();
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
+#endif
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -2325,7 +2327,9 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   ORT_TELEMETRY_CAPTURE_STATUS_END();
+#endif
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
