@@ -12,8 +12,10 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
 #include <string>
+#include <system_error>
 
 namespace fs = std::filesystem;
 
@@ -564,6 +566,69 @@ bool test_unicode_paths() {
   return true;
 }
 
+bool test_shared_asset_root_must_exist() {
+  Sandbox s;
+  const char* uri = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  s.Write("manifest.json", R"({
+    "schema_version": "1.0",
+    "shared_assets": {
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "asset"
+    },
+    "components": {}
+  })");
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+  std::unique_ptr<ModelPackage, decltype(&ModelPackage_Close)> pkg(raw, ModelPackage_Close);
+  const char* resolved = nullptr;
+  CHECK_OK(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, false, &resolved));
+  CHECK(resolved != nullptr);
+  CHECK(!fs::exists(fs::u8path(resolved)));
+  CHECK_ERR(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, true, &resolved),
+            MODEL_PACKAGE_ERR_NOT_FOUND);
+
+  fs::create_directory(s.root() / "asset");
+  CHECK_OK(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, true, &resolved));
+  CHECK(fs::canonical(fs::u8path(resolved)) == fs::canonical(s.root() / "asset"));
+  fs::remove(s.root() / "asset");
+  CHECK_ERR(ModelPackage_ResolveStringRef(pkg.get(), nullptr, uri, true, &resolved),
+            MODEL_PACKAGE_ERR_NOT_FOUND);
+  return true;
+}
+
+#ifdef _WIN32
+bool test_invalid_utf8_paths_return_status() {
+  Sandbox s;
+  s.Write("manifest.json", R"({
+    "schema_version": "1.0",
+    "components": {"model": {"variants": {"cpu": {"variant_directory": "."}}}}
+  })");
+  try {
+    const char invalid[] = {static_cast<char>(0xff), '\0'};
+    ModelPackage* raw = nullptr;
+    CHECK_ERR(ModelPackage_Open(invalid, nullptr, &raw), MODEL_PACKAGE_ERR_IO);
+    CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &raw));
+    std::unique_ptr<ModelPackage, decltype(&ModelPackage_Close)> pkg(raw, ModelPackage_Close);
+
+    const char* result = nullptr;
+    CHECK_ERR(ModelPackage_ResolveStringRef(pkg.get(), nullptr, invalid, false, &result),
+              MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_ResolveStringRef(pkg.get(), invalid, "model.onnx", false, &result),
+              MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_ComputeDirectoryHash(invalid, &result), MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_AddSharedAsset(pkg.get(), invalid, nullptr, true, &result),
+              MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_Commit(pkg.get(), invalid, MODEL_PACKAGE_WRITE_PRESERVE), MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_SetComponentExternal(pkg.get(), "external", invalid), MODEL_PACKAGE_ERR_IO);
+    CHECK_ERR(ModelPackage_SetVariantExecutorInfoExternal(pkg.get(), "model", "cpu", "ort", invalid),
+              MODEL_PACKAGE_ERR_IO);
+  } catch (const std::system_error& error) {
+    std::fprintf(stderr, "[FAIL] %s: filesystem exception escaped C API: %s\n", g_current, error.what());
+    return false;
+  }
+  return true;
+}
+#endif
+
 struct Test {
   const char* name;
   bool (*fn)();
@@ -591,6 +656,10 @@ const Test kTests[] = {
     {"invalid_sha256_uri_rejected", test_invalid_sha256_uri_rejected},
     {"find_returns_null_on_missing", test_find_returns_null_on_missing},
     {"unicode_paths", test_unicode_paths},
+    {"shared_asset_root_must_exist", test_shared_asset_root_must_exist},
+#ifdef _WIN32
+    {"invalid_utf8_paths_return_status", test_invalid_utf8_paths_return_status},
+#endif
 };
 
 }  // namespace

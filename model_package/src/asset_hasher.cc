@@ -20,7 +20,8 @@ using model_package::MakeStatus;
 namespace {
 
 std::string ToPosix(const fs::path& rel) {
-  std::string s = rel.generic_u8string();
+  // Preserve the existing hash input bytes so published asset URIs do not change.
+  std::string s = rel.generic_string();
   // Strip leading "./" if any (lexical normalization edge case).
   if (s.size() >= 2 && s[0] == '.' && s[1] == '/') s.erase(0, 2);
   return s;

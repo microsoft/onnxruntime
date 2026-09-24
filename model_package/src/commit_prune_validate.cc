@@ -609,15 +609,17 @@ extern "C" {
 
 ModelPackageStatus* ModelPackage_Commit(ModelPackage* pkg,
                                         const char* dest_root_or_null,
-                                        ModelPackageWriteMode mode) {
+                                        ModelPackageWriteMode mode) try {
   if (!pkg) return NullArg("pkg");
   if (dest_root_or_null) {
     return CommitToDestRoot(pkg, fs::u8path(dest_root_or_null), mode);
   }
   return CommitInPlace(pkg, mode);
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
-ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
+ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
 
@@ -650,6 +652,8 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);
 
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -668,7 +672,7 @@ void AddFinding(ordered_json* arr, const std::string& code, const std::string& m
 }  // namespace
 
 ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
-                                          const char** out_report_json) {
+                                          const char** out_report_json) try {
   if (!pkg) return NullArg("pkg");
   if (!out_report_json) return NullArg("out_report_json");
   *out_report_json = nullptr;
@@ -764,6 +768,8 @@ ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
                           " error(s) found. See out_report_json for details.");
   }
   return nullptr;
+} catch (const std::system_error& error) {
+  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
 
 }  // extern "C"
