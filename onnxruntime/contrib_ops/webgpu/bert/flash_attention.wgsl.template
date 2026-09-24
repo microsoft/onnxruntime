@@ -38,7 +38,7 @@ fn kv_cache_dequant_vec4(
 #if use_seqlen_k
 // When seqlens_k is provided, total_sequence_length is read per batch from the GPU buffer.
 fn get_total_sequence_length(batch_idx: u32) -> u32 {
-  return u32(seqlens_k[batch_idx]) + 1u;
+  return min(u32(max(seqlens_k[batch_idx], 0)) + 1u, uniforms.present_sequence_length);
 }
 #else
 // Without seqlens_k, total_sequence_length comes from uniforms (max across batches).

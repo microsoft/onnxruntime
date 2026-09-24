@@ -149,6 +149,12 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
     ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
+    // The op schema and matmul_nbits_helper::CheckInputs accept bits in {2, 4, 8}. Keep this in
+    // lockstep with the widths the CUDA kernels actually implement: without it a node with an
+    // unimplemented width is accepted and then read with the wrong stride, silently producing
+    // garbage instead of failing.
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
+                "MatMulNBits on the CUDA execution provider supports bits = 2, 4 or 8, but got bits = ", nbits_);
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
@@ -231,9 +237,13 @@ class MatMulNBits final : public CudaKernel {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type;
         if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::FP16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::FP16Int4Groupwise
+                                             : KernelType::FP16Int2Groupwise;
         } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          cuda_kernel_type = (nbits_ == 8)   ? KernelType::BF16Int8Groupwise
+                             : (nbits_ == 4) ? KernelType::BF16Int4Groupwise
+                                             : KernelType::BF16Int2Groupwise;
         }
         if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
                 sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
@@ -258,9 +268,11 @@ class MatMulNBits final : public CudaKernel {
       if (prepacked) {
 #if USE_COMPACT_FPA_INTB_GEMM
         ORT_ENFORCE(has_fpA_intB_gemm_,
-                    "This compact fpA_intB build supports prepacked weights only for FP16 activations, "
-                    "INT4 or INT8 weights, block_size=32, scale-only quantization without zero points, bias, or g_idx, "
-                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later. Got bits=",
+                    "This compact fpA_intB build supports prepacked weights for FP16/BF16 activations with "
+                    "INT2 (block_size=64), INT4 or INT8 (block_size=32) weights; it requires scale-only "
+                    "quantization without zero points, bias, or g_idx, the SM80 weight layout "
+                    "(weight_prepacked=1), and compute capability "
+                    "7.5 or later for FP16 (8.0 or later for BF16). Got bits=",
                     nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
                     ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
                     ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);

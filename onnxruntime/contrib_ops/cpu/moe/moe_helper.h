@@ -197,7 +197,7 @@ Status CheckInputs(MoEParameters& parameters,
   bool is_row_wise_quantization = true;
   if (fc1_experts_scales != nullptr) {
     const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
-    if (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1) {
+    if (fc1_scales_dims.size() == 3) {
       is_row_wise_quantization = false;
     }
   }

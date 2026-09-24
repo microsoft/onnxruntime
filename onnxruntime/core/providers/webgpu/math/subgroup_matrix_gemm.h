@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "core/providers/webgpu/math/gemm.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -21,21 +22,20 @@ std::unique_ptr<Gemm::GemmOptImpl> CreateSubgroupMatrixGemmImpl(
     const Gemm& parent, const ComputeContextBase& context);
 
 // Computes Y = alpha * op(A) @ op(B) + beta * C using subgroupMatrixMultiplyAccumulate.
-// config_index selects the device subgroup-matrix config (into
-// supported_subgroup_matrix_configs); sg_mat_count_m/n select how many subgroup
-// matrices the tile spans along M/N; split_k is the number of subgroups that
+// config selects the device-supported subgroup-matrix configuration; sg_mat_count_m/n select how
+// many subgroup matrices the tile spans along M/N; split_k is the number of subgroups that
 // cooperatively reduce the K dimension. trans_a / trans_b select the A / B load
 // majorness; has_c enables the beta * C epilogue (C broadcast to [M, N] via the
 // c_stride_m / c_stride_n uniforms).
 class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram> {
  public:
-  SubgroupMatrixGemmProgram(bool has_c, bool trans_a, bool trans_b, int32_t config_index,
+  SubgroupMatrixGemmProgram(bool has_c, bool trans_a, bool trans_b, SubgroupMatrixConfig config,
                             uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
       : Program{"SubgroupMatrixGemm"},
         has_c_(has_c),
         trans_a_(trans_a),
         trans_b_(trans_b),
-        config_index_(config_index),
+        config_(config),
         sg_mat_count_m_(sg_mat_count_m),
         sg_mat_count_n_(sg_mat_count_n),
         split_k_(split_k) {}
@@ -52,7 +52,7 @@ class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram
   const bool has_c_;
   const bool trans_a_;
   const bool trans_b_;
-  const int32_t config_index_;
+  const SubgroupMatrixConfig config_;
   const uint32_t sg_mat_count_m_;
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
