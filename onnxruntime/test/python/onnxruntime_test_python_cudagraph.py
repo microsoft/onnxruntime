@@ -60,6 +60,113 @@ class CudaGraphHelper:
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
+    def test_concat_unequal_sizes_cuda_graph_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        # Inputs of unequal size along the axis must not need pinned host staging, which capture rejects.
+        graph = helper.make_graph(
+            [
+                helper.make_node("Concat", ["a", "b"], ["output_0"], axis=0),
+                helper.make_node("Concat", ["c", "d", "e"], ["output_1"], axis=1),
+            ],
+            "concat_unequal_cuda_graph",
+            [
+                helper.make_tensor_value_info("a", TensorProto.FLOAT, [1, 4]),
+                helper.make_tensor_value_info("b", TensorProto.FLOAT, [3, 4]),
+                helper.make_tensor_value_info("c", TensorProto.FLOAT, [2, 1, 3]),
+                helper.make_tensor_value_info("d", TensorProto.FLOAT, [2, 3, 3]),
+                helper.make_tensor_value_info("e", TensorProto.FLOAT, [2, 2, 3]),
+            ],
+            [
+                helper.make_tensor_value_info("output_0", TensorProto.FLOAT, [4, 4]),
+                helper.make_tensor_value_info("output_1", TensorProto.FLOAT, [2, 6, 3]),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), providers=providers)
+        shapes = {
+            "a": [1, 4],
+            "b": [3, 4],
+            "c": [2, 1, 3],
+            "d": [2, 3, 3],
+            "e": [2, 2, 3],
+            "output_0": [4, 4],
+            "output_1": [2, 6, 3],
+        }
+        cuda_graph_helper = CudaGraphHelper(session, shapes)
+        rng = np.random.default_rng(0)
+        for _ in range(4):  # Warmup, capture, then replays that must read the updated inputs.
+            inputs = {name: rng.random(shapes[name], dtype=np.float32) for name in ("a", "b", "c", "d", "e")}
+            cuda_graph_helper.update_inputs(inputs)
+            cuda_graph_helper.io_binding.synchronize_inputs()
+            session.run_with_iobinding(cuda_graph_helper.io_binding)
+            cuda_graph_helper.io_binding.synchronize_outputs()
+
+            np.testing.assert_array_equal(
+                cuda_graph_helper.get_output("output_0"), np.concatenate([inputs["a"], inputs["b"]], axis=0)
+            )
+            np.testing.assert_array_equal(
+                cuda_graph_helper.get_output("output_1"),
+                np.concatenate([inputs["c"], inputs["d"], inputs["e"]], axis=1),
+            )
+
+    def test_concat_32_unequal_inputs_cuda_graph_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        # 32 is the most inputs passed by value. Short rows use the output-major kernel; rows of at
+        # least 256 elements use the input-major kernel.
+        input_count = 32
+        short_names = [f"s{i}" for i in range(input_count)]
+        long_names = [f"l{i}" for i in range(input_count)]
+        shapes = {}
+        for i in range(input_count):
+            shapes[short_names[i]] = [2, i % 3 + 1, 3]
+            shapes[long_names[i]] = [i % 3 + 1, 256]
+        short_axis = sum(shapes[name][1] for name in short_names)
+        long_axis = sum(shapes[name][0] for name in long_names)
+        shapes["output_short"] = [2, short_axis, 3]
+        shapes["output_long"] = [long_axis, 256]
+
+        graph = helper.make_graph(
+            [
+                helper.make_node("Concat", short_names, ["output_short"], axis=1),
+                helper.make_node("Concat", long_names, ["output_long"], axis=0),
+            ],
+            "concat_32_unequal_cuda_graph",
+            [helper.make_tensor_value_info(name, TensorProto.FLOAT, shapes[name]) for name in short_names + long_names],
+            [
+                helper.make_tensor_value_info("output_short", TensorProto.FLOAT, shapes["output_short"]),
+                helper.make_tensor_value_info("output_long", TensorProto.FLOAT, shapes["output_long"]),
+            ],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7
+
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), providers=providers)
+        cuda_graph_helper = CudaGraphHelper(session, shapes)
+        rng = np.random.default_rng(0)
+        for _ in range(4):  # Warmup, capture, then replays that must read the updated inputs.
+            inputs = {name: rng.random(shapes[name], dtype=np.float32) for name in short_names + long_names}
+            cuda_graph_helper.update_inputs(inputs)
+            cuda_graph_helper.io_binding.synchronize_inputs()
+            session.run_with_iobinding(cuda_graph_helper.io_binding)
+            cuda_graph_helper.io_binding.synchronize_outputs()
+
+            np.testing.assert_array_equal(
+                cuda_graph_helper.get_output("output_short"),
+                np.concatenate([inputs[name] for name in short_names], axis=1),
+            )
+            np.testing.assert_array_equal(
+                cuda_graph_helper.get_output("output_long"),
+                np.concatenate([inputs[name] for name in long_names], axis=0),
+            )
+
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)
