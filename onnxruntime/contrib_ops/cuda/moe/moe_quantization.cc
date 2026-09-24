@@ -1148,7 +1148,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   std::array<RunnerTileConfig, 2> runner_tile_configs{};
   size_t runner_tile_config_count = 0;
   size_t workspace_size = 0;
-  {
+  // The packed INT GEMV path allocates its own scratch below and returns before reaching the
+  // dense grouped-GEMM tile loop, so profiling/sizing the dense runner here would be pure
+  // overhead (mutex, two dense-tactic profiling launches, and an unused large workspace
+  // allocation). Skip it entirely for that path; workspace_size stays 0.
+  if (!use_packed_int_gemv) {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
     // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
