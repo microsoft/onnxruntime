@@ -455,7 +455,10 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
+  const int64_t is_causal = info.GetAttrOrDefault<int64_t>("is_causal", 1);
+  ORT_ENFORCE(is_causal == 0 || is_causal == 1,
+              "PagedAttention (WebGPU): is_causal must be 0 or 1.");
+  is_causal_ = is_causal == 1;
   ORT_ENFORCE(is_causal_ || local_window_size_ <= 0,
               "PagedAttention (WebGPU): is_causal=0 with local_window_size > 0 is not supported yet.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
