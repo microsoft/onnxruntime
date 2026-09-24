@@ -1976,6 +1976,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    install(TARGETS onnxruntime_perf_test
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 endif()
 
   # Build ep_weight_sharing_ctx_gen for all supported EPs (QNN, TensorRT, OpenVINO, VitisAI)
