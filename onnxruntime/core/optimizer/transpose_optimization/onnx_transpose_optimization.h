@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
 #include <gsl/gsl>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -44,6 +47,33 @@ struct HandlerInfo {
 
 using NodeIdToInputIdxsMap = std::unordered_map<int64_t, std::vector<size_t>>;
 
+// Identifies one query of the shared push-walk: the value a pushed Transpose would sit on, the permutation it
+// carries, and the query variant. See onnx_transpose_optimization.cc for the meaning of the variant fields.
+struct CancelWalkKey {
+  std::string value;
+  std::vector<int64_t> pushed_perm;
+  bool tolerate_stranded_branches = false;
+  uint8_t mode = 0;
+
+  bool operator==(const CancelWalkKey& other) const {
+    return tolerate_stranded_branches == other.tolerate_stranded_branches && mode == other.mode &&
+           value == other.value && pushed_perm == other.pushed_perm;
+  }
+};
+
+struct CancelWalkKeyHasher {
+  size_t operator()(const CancelWalkKey& key) const {
+    size_t hash = std::hash<std::string>{}(key.value);
+    const auto combine = [&hash](size_t value) { hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
+    combine(static_cast<size_t>(key.tolerate_stranded_branches));
+    combine(static_cast<size_t>(key.mode));
+    for (int64_t axis : key.pushed_perm) {
+      combine(std::hash<int64_t>{}(axis));
+    }
+    return hash;
+  }
+};
+
 struct OptimizerCtx {
   int64_t opset;
   api::GraphRef& graph;
@@ -54,6 +84,12 @@ struct OptimizerCtx {
   // Handlers for ops that are not in the ONNX opset, or for ONNX ops where special handling is required.
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
+
+  // Memo of the shared push-walk (cancel, coverage, fanout) for the current OptimizeImpl invocation.
+  // After a successful rewrite, entries whose value was rewired are dropped; downstream keys stay so a chain
+  // is linear, not quadratic. Values: -1 in-progress; cancel/coverage 0 fail / 1 no cancel / 2 cancel;
+  // fanout is a bitmask of 1 (reaches a Transpose) and 2 (reaches a stranded terminal).
+  std::unordered_map<CancelWalkKey, int8_t, CancelWalkKeyHasher> pushed_walk_cache;
 };
 
 /// <summary>
