@@ -263,7 +263,8 @@ class Environment {
 
   Status RegisterExecutionProviderLibrary(const std::string& registration_name,
                                           std::unique_ptr<EpLibrary> ep_library,
-                                          const std::vector<EpFactoryInternal*>& internal_factories = {});
+                                          const std::vector<EpFactoryInternal*>& internal_factories = {},
+                                          const ORTCHAR_T* lib_path = nullptr);
 
   struct EpInfo {
     // calls EpLibrary::Load
