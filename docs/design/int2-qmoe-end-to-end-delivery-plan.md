@@ -190,6 +190,10 @@ Exit gate: deterministic mixed-width CPU QMoE tests pass, CPU and CUDA agree wit
 
 ### Workstream 5: Olive and Mobius
 
+Downstream ownership is tracked in [Olive#2638](https://github.com/microsoft/Olive/issues/2638) for the fused-expert recipe and checkpoint qualification, and [Mobius#735](https://github.com/onnxruntime/mobius/issues/735) for checkpoint ingestion, projection-specific packing, graph emission, initializer binding, and ORT parity. The dense `MatMulNBits` work in [Olive#2671](https://github.com/microsoft/Olive/pull/2671) and [Mobius#740](https://github.com/onnxruntime/mobius/pull/740) does not imply fused mixed-width QMoE support.
+
+Native Mobius QMoE construction is sufficient for the first exporter milestone. Dense-graph-to-QMoE fusion is a separate follow-up; it must not block the first deterministic fused-QMoE fixture and export path.
+
 Deliverables:
 
 - Add or qualify selective mixed-precision QMoE quantization.
