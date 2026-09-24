@@ -313,13 +313,16 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
-      - name: Build and Test
+      - name: Build
         shell: pwsh
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `
             --config RelWithDebInfo `
             --build_dir ${{ github.workspace }} `
             --skip_submodule_sync `
+            --update `
+            --build `
+            --skip_tests `
             --parallel `
             --use_binskim_compliant_compile_flags `
             --cmake_generator "Visual Studio 17 2022" `
@@ -334,6 +337,20 @@ jobs:
             exit $lastExitCode
           }
 
+          $outputDir = "${{ github.workspace }}\RelWithDebInfo"
+          $depsDir = "$outputDir\_deps"
+          if (Test-Path -LiteralPath $depsDir) {
+            Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
+          }
+          Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webgpu-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
+          if-no-files-found: error
+
       - name: Publish artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -343,6 +360,73 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.pdb
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
+
+  webgpu_plugin_test_x64_RelWithDebInfo:
+    needs: webgpu_plugin_build_x64_RelWithDebInfo
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_plugin_test_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 300
+    env:
+      OnnxRuntimeBuildDirectory: ${{ github.workspace }}
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      DocUpdateNeeded: false
+      NVIDIA_TF32_OVERRIDE: "0"
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          submodules: none
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
+      - name: Download test artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: webgpu-plugin-test-artifacts
+          path: ${{ github.workspace }}/RelWithDebInfo
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py `
+            "${{ github.workspace }}\RelWithDebInfo\CTestTestfile.cmake" `
+            "${{ github.workspace }}\RelWithDebInfo"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --test `
+            --enable_onnx_tests
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [
