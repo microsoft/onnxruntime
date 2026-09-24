@@ -17,7 +17,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include <optional>
-#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 #include <limits>
@@ -101,7 +101,7 @@ class MoEBase {
   int sm_;
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   // Only constructed when counting is enabled; overlapping runs are rejected by the session.
-  mutable std::optional<CudaRoutingSnapshot> routing_snapshot_;
+  mutable std::optional<KernelPilotMoeExpertSelectionCuda> routing_snapshot_;
   bool enable_moe_expert_statistics_{false};
 #endif
 };

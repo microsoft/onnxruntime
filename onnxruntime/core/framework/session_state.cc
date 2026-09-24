@@ -1604,7 +1604,8 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status SessionState::InitializeMoeExpertState(std::shared_ptr<MoeExpertState> state, std::string graph_scope) {
+Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state,
+                                             std::string graph_scope) {
   moe_expert_state_ = std::move(state);
   for (const auto& node : graph_.Nodes()) {
     if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
@@ -1680,7 +1681,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
-    auto state = std::make_shared<MoeExpertState>();
+    auto state = std::make_shared<KernelPilotMoeExpertState>();
     ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
     const auto state_file =

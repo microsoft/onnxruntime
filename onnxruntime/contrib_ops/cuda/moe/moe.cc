@@ -6,8 +6,9 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "contrib_ops/cuda/moe/moe_profiler.h"
+#include "core/framework/kernel_pilot.h"
 #endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"

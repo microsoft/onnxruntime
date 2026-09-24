@@ -38,8 +38,11 @@ endif()
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/kernel_usage.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/moe_expert_state.h"
-    "${ONNXRUNTIME_ROOT}/core/framework/moe_expert_state.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_state.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_state.cc"
   )
 
   # custom ops support must be explicitly enabled in a minimal build. exclude if not.

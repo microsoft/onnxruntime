@@ -4,21 +4,21 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include <numeric>
 
-#include "core/framework/kernel_pilot.h"
+#include "core/framework/kernel_pilot_moe_expert_selection.h"
 #include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime::test {
 namespace {
 
-void ExpectSelectedExperts(const KernelPilot::MoeExpertSelection& usage, const InlinedVector<int>& expected) {
+void ExpectSelectedExperts(const KernelPilotMoeExpertSelection& usage, const InlinedVector<int>& expected) {
   gsl::span<const int> selected;
   ASSERT_STATUS_OK(usage.GetSelectedExperts(selected));
   EXPECT_EQ((InlinedVector<int>{selected.begin(), selected.end()}), expected);
 }
 
-TEST(MoeExpertSelectionTest, RejectsUninitializedCollection) {
-  KernelPilot::MoeExpertSelection usage;
+TEST(KernelPilotMoeExpertSelectionTest, RejectsUninitializedCollection) {
+  KernelPilotMoeExpertSelection usage;
   EXPECT_FALSE(usage.IsInitialized());
   EXPECT_FALSE(usage.Collect({}).IsOK());
   const int sentinel[] = {7};
@@ -29,8 +29,8 @@ TEST(MoeExpertSelectionTest, RejectsUninitializedCollection) {
   EXPECT_FALSE(usage.IsInitialized());
 }
 
-TEST(MoeExpertSelectionTest, UnionsSelectedExpertsAcrossBatches) {
-  KernelPilot::MoeExpertSelection usage;
+TEST(KernelPilotMoeExpertSelectionTest, UnionsSelectedExpertsAcrossBatches) {
+  KernelPilotMoeExpertSelection usage;
   ASSERT_STATUS_OK(usage.BeginInvocation(4));
   EXPECT_TRUE(usage.IsInitialized());
   ExpectSelectedExperts(usage, {});
@@ -42,8 +42,8 @@ TEST(MoeExpertSelectionTest, UnionsSelectedExpertsAcrossBatches) {
   ExpectSelectedExperts(usage, {0, 2, 3});
 }
 
-TEST(MoeExpertSelectionTest, ResetsSelectionAndReusesStorage) {
-  KernelPilot::MoeExpertSelection usage;
+TEST(KernelPilotMoeExpertSelectionTest, ResetsSelectionAndReusesStorage) {
+  KernelPilotMoeExpertSelection usage;
   ASSERT_STATUS_OK(usage.BeginInvocation(64));
   InlinedVector<int> all(64);
   std::iota(all.begin(), all.end(), 0);
@@ -63,8 +63,8 @@ TEST(MoeExpertSelectionTest, ResetsSelectionAndReusesStorage) {
   }
 }
 
-TEST(MoeExpertSelectionTest, InvalidBatchDoesNotPartiallyChangeSelection) {
-  KernelPilot::MoeExpertSelection usage;
+TEST(KernelPilotMoeExpertSelectionTest, InvalidBatchDoesNotPartiallyChangeSelection) {
+  KernelPilotMoeExpertSelection usage;
   ASSERT_STATUS_OK(usage.BeginInvocation(4));
   const int first[] = {2};
   ASSERT_STATUS_OK(usage.Collect(first));
@@ -80,8 +80,8 @@ TEST(MoeExpertSelectionTest, InvalidBatchDoesNotPartiallyChangeSelection) {
   ExpectSelectedExperts(usage, {2, 0, 1});
 }
 
-TEST(MoeExpertSelectionTest, KeepsInstancesIndependent) {
-  KernelPilot::MoeExpertSelection first, second;
+TEST(KernelPilotMoeExpertSelectionTest, KeepsInstancesIndependent) {
+  KernelPilotMoeExpertSelection first, second;
   ASSERT_STATUS_OK(first.BeginInvocation(2));
   ASSERT_STATUS_OK(second.BeginInvocation(4));
   const int first_ids[] = {0, 0};

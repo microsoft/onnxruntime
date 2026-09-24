@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <istream>
 #include <string>
 #include <string_view>
@@ -19,10 +18,10 @@ namespace onnxruntime {
 class OpKernel;
 
 // Host-side state only. CUDA allocations and placement policy do not belong here.
-class MoeExpertState {
+class KernelPilotMoeExpertState {
  public:
-  MoeExpertState() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MoeExpertState);
+  KernelPilotMoeExpertState() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertState);
 
   Status SetCounterParameters(double alpha, double beta);
   Status RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
@@ -51,8 +50,6 @@ class MoeExpertState {
   Status Load(std::istream& input);
 
   Status FinalizeInitialization();
-  Status BeginRun() const;
-  void EndRun() const;
   KernelPilot* GetKernelPilot(const OpKernel* kernel);
   // Commit the kernel's collected usage after a successful invocation.
   Status RecordUsage(const OpKernel* kernel);
@@ -90,8 +87,6 @@ class MoeExpertState {
   double alpha_{0.9};
   double beta_{0.1};
   bool initialized_{false};
-  // Reject overlapping runs once per Run, not once per kernel or expert.
-  mutable std::atomic_flag run_active_ = ATOMIC_FLAG_INIT;
 };
 
 }  // namespace onnxruntime

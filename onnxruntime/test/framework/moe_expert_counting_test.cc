@@ -167,7 +167,7 @@ SessionOptions CountingOptions() {
 
 // Groups the flat ExpertStat list by kernel, ordered by expert_id, for tests that don't
 // care about graph identity and just want each registered node's counters.
-std::map<const OpKernel*, InlinedVector<double>> CountersByKernel(const MoeExpertState& state) {
+std::map<const OpKernel*, InlinedVector<double>> CountersByKernel(const KernelPilotMoeExpertState& state) {
   std::map<const OpKernel*, std::map<size_t, double>> by_kernel;
   for (const auto& stat : state.GetExpertStats()) {
     by_kernel[stat.kernel][stat.expert_id] = stat.popularity;
@@ -465,38 +465,6 @@ TEST(MoeExpertCountingTest, AppliesConfiguredExponentialCounters) {
       EXPECT_EQ(counters, (InlinedVector<double>{expected, 0, expected, 0}));
     }
   }
-}
-
-TEST(MoeExpertCountingTest, RejectsOverlappingRuns) {
-  const auto model = MakeCountingModel();
-  InferenceSessionWrapper session(CountingOptions(), GetEnvironment());
-  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
-  ASSERT_STATUS_OK(session.Initialize());
-  const auto* state = session.GetSessionState().GetMoeExpertState();
-  {
-    ASSERT_STATUS_OK(state->BeginRun());
-    auto end_run = gsl::finally([state]() { state->EndRun(); });
-    std::vector<OrtValue> outputs;
-    const auto status = ExecuteCountingModel(session, outputs);
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_NE(status.ErrorMessage().find("simultaneous Run"), std::string::npos);
-    EXPECT_TRUE(outputs.empty());
-  }
-  RunCountingModel(session);
-  for (const auto& [kernel, counters] : CountersByKernel(*state)) {
-    EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
-  }
-}
-
-TEST(MoeExpertCountingTest, FailedRunReleasesCounterAccess) {
-  InferenceSessionWrapper session(CountingOptions(), GetEnvironment());
-  const auto model = MakeCountingModel();
-  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
-  ASSERT_STATUS_OK(session.Initialize());
-  std::vector<OrtValue> outputs;
-  const std::array<std::string, 1> output_names{"output"};
-  EXPECT_FALSE(session.Run(RunOptions{}, NameMLValMap{}, output_names, &outputs).IsOK());
-  RunCountingModel(session);
 }
 
 TEST(MoeExpertCountingTest, LoadsInitialStateFile) {

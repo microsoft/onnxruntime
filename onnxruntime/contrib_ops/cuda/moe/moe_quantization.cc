@@ -10,7 +10,8 @@
 #include "contrib_ops/cuda/moe/moe_quantization.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 #include "contrib_ops/cuda/moe/moe_profiler.h"
-#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
 #endif
 #include <charconv>
 #include <type_traits>
@@ -2039,7 +2040,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
       if (fused_routing.router_logits != nullptr) {
-        fused_routing.on_routing_ready = CudaRoutingSnapshot::CaptureRouting;
+        fused_routing.on_routing_ready = KernelPilotMoeExpertSelectionCuda::CaptureRouting;
         fused_routing.routing_context = &*routing_snapshot_;
       } else {
         ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(

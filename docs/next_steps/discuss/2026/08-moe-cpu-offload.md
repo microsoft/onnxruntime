@@ -183,16 +183,18 @@ When `session.moe_cpu_offload_experts` is absent, CPU and CUDA `MoE`/`QMoE` beha
 
 ## State ownership and concurrency
 
-The root `SessionState` owns a dedicated `MoeExpertState` shared with its subgraph session states. It contains:
+The root `SessionState` owns a dedicated `KernelPilotMoeExpertState` shared with its subgraph session states. It contains:
 
 - policy parameters;
 - per-node expert counters;
 - the global expert budget and per-node allocation targets.
 
 CPU and CUDA kernels obtain their session-owned `KernelPilot` through `OpKernelContext::GetKernelPilot()`.
-The generic pilot in `core/framework` carries no kernel-specific logic; its nested `MoeExpertSelection` class
-deduplicates selected expert IDs. CUDA-specific copies and events stay in a provider-side adapter. After successful
-kernel execution, the executor commits the collected usage through `MoeExpertState::RecordUsage()`, which owns the
+The generic pilot in `core/framework` carries no kernel-specific logic; `KernelPilotMoeExpertSelection`, defined in
+`kernel_pilot_moe_expert_selection.h`, deduplicates selected expert IDs. CUDA-specific copies and events stay in a
+provider-side adapter.
+After successful kernel execution, the executor commits the collected usage through
+`KernelPilotMoeExpertState::RecordUsage()`, which owns the
 counter-update logic. These are internal C++ calls, not a public C API.
 Expert identity includes graph scope as well as node and expert IDs, so nodes in different
 subgraphs cannot collide. The state persists across `Run()` calls and is isolated from other sessions.
@@ -235,13 +237,13 @@ Provide independently tested cache and policy components without activating offl
 
 Depends on PR 1.
 
-- Add `MoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
+- Add `KernelPilotMoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
 - Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
 - Build the immutable kernel-pointer/expert-ID dictionary after kernel creation and before any run.
 - Own one `KernelPilot` per registered kernel in the session state and expose it through the
   kernel-context getter, forwarded through the internal C++ provider bridge. Keep CUDA transfers and events in a
-  provider adapter, and keep the pilot's `MoeExpertSelection` member as the only MoE-specific piloting data.
-- Keep counter updates and reads in `MoeExpertState`, keyed by kernel pointer. Commit collected usage after each
+  provider adapter, and keep the pilot's `KernelPilotMoeExpertSelection` member as the only MoE-specific piloting data.
+- Keep counter updates and reads in `KernelPilotMoeExpertState`, keyed by kernel pointer. Commit collected usage after each
   successful kernel invocation, without extending the public C API.
 - Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
 - Wire CPU and CUDA MoE/QMoE routing results into per-invocation updates:

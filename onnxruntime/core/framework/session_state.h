@@ -39,7 +39,7 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/moe_expert_state.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/resource_accountant.h"
 #endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -334,7 +334,7 @@ class SessionState {
                               bool saving_ort_format = false);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  MoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
+  KernelPilotMoeExpertState* GetMoeExpertState() const noexcept { return moe_expert_state_.get(); }
   // Generic accessor used by kernel contexts to obtain their per-kernel piloting object.
   // Callers do not need to know which kernel family (if any) currently owns pilots.
   KernelPilot* GetKernelPilot(const OpKernel* kernel) const {
@@ -451,7 +451,7 @@ class SessionState {
   Status CreateSubgraphSessionState();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status InitializeMoeExpertState(std::shared_ptr<MoeExpertState> state, std::string graph_scope);
+  Status InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state, std::string graph_scope);
 #endif
 
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
@@ -530,7 +530,7 @@ class SessionState {
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::shared_ptr<MoeExpertState> moe_expert_state_;
+  std::shared_ptr<KernelPilotMoeExpertState> moe_expert_state_;
 #endif
 
   // initialized tensors

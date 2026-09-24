@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/moe_expert_state.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 
 #include <cmath>
 #include <iomanip>
@@ -18,7 +18,7 @@
 
 namespace onnxruntime {
 
-Status MoeExpertState::SetCounterParameters(double alpha, double beta) {
+Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta) {
   ORT_RETURN_IF_NOT(std::isfinite(alpha) && alpha >= 0.0,
                     "MoE expert counter alpha must be finite and non-negative.");
   ORT_RETURN_IF_NOT(std::isfinite(beta) && beta >= 0.0,
@@ -31,8 +31,8 @@ Status MoeExpertState::SetCounterParameters(double alpha, double beta) {
   return Status::OK();
 }
 
-Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
-                                    std::string_view node_type, size_t expert_count) {
+Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view graph_scope, size_t node_index,
+                                               std::string_view node_type, size_t expert_count) {
   ORT_RETURN_IF(initialized_, "MoE expert registration is closed.");
   ORT_RETURN_IF_NOT(kernel, "MoE expert registration requires a kernel.");
   ORT_RETURN_IF_NOT(node_type == "MoE" || node_type == "QMoE", "Unsupported expert counter node type: ", node_type);
@@ -57,7 +57,7 @@ Status MoeExpertState::RegisterNode(const OpKernel* kernel, std::string_view gra
   return Status::OK();
 }
 
-Status MoeExpertState::Load(std::istream& input) {
+Status KernelPilotMoeExpertState::Load(std::istream& input) {
   ORT_RETURN_IF(initialized_, "MoE expert initial state cannot change after initialization.");
   std::string line;
   ORT_RETURN_IF_NOT(std::getline(input, line), "Missing initial expert counter state header.");
@@ -69,7 +69,7 @@ Status MoeExpertState::Load(std::istream& input) {
 
   // Validate into a flat copy so a malformed file cannot partially overwrite the state.
   // Build a local graph-identity index from kernels_'s stored keys, just for resolving this
-  // file's records; MoeExpertState itself only ever looks kernels up by pointer.
+  // file's records; KernelPilotMoeExpertState itself only ever looks kernels up by pointer.
   std::map<Key, const OpKernel*> nodes;
   for (const auto& [kernel, state] : kernels_) {
     nodes.emplace(state.key, kernel);
@@ -107,29 +107,18 @@ Status MoeExpertState::Load(std::istream& input) {
   return Status::OK();
 }
 
-Status MoeExpertState::FinalizeInitialization() {
+Status KernelPilotMoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
   initialized_ = true;
   return Status::OK();
 }
 
-Status MoeExpertState::BeginRun() const {
-  ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
-  ORT_RETURN_IF(run_active_.test_and_set(std::memory_order_acquire),
-                "MoE expert counting does not support simultaneous Run calls on the same session.");
-  return Status::OK();
-}
-
-void MoeExpertState::EndRun() const {
-  run_active_.clear(std::memory_order_release);
-}
-
-KernelPilot* MoeExpertState::GetKernelPilot(const OpKernel* kernel) {
+KernelPilot* KernelPilotMoeExpertState::GetKernelPilot(const OpKernel* kernel) {
   const auto node = kernels_.find(kernel);
   return node != kernels_.end() ? &node->second.pilot : nullptr;
 }
 
-Status MoeExpertState::RecordUsage(const OpKernel* kernel) {
+Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
   ORT_RETURN_IF_NOT(initialized_, "MoE expert state is not initialized.");
   const auto node = kernels_.find(kernel);
   ORT_RETURN_IF(node == kernels_.end(), "Unknown MoE counter kernel.");
@@ -148,7 +137,7 @@ Status MoeExpertState::RecordUsage(const OpKernel* kernel) {
   return Status::OK();
 }
 
-Status MoeExpertState::GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const {
+Status KernelPilotMoeExpertState::GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const {
   const auto node = kernels_.find(kernel);
   ORT_RETURN_IF(node == kernels_.end(), "Unknown MoE counter kernel.");
   const auto range = node->second.experts;
@@ -160,14 +149,14 @@ Status MoeExpertState::GetCounters(const OpKernel* kernel, InlinedVector<double>
   return Status::OK();
 }
 
-Status MoeExpertState::GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const {
+Status KernelPilotMoeExpertState::GetExpertId(const OpKernel* kernel, int expert_id, size_t& global_expert_id) const {
   const auto expert = expert_ids_.find({kernel, expert_id});
   ORT_RETURN_IF(expert == expert_ids_.end(), "Unknown MoE kernel/expert pair: ", expert_id);
   global_expert_id = expert->second;
   return Status::OK();
 }
 
-InlinedVector<MoeExpertState::ExpertStat> MoeExpertState::GetExpertStats() const {
+InlinedVector<KernelPilotMoeExpertState::ExpertStat> KernelPilotMoeExpertState::GetExpertStats() const {
   InlinedVector<ExpertStat> stats;
   stats.reserve(counters_.size());
   for (const auto& [kernel, state] : kernels_) {

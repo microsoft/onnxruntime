@@ -6,7 +6,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#include "contrib_ops/cuda/moe/cuda_routing_snapshot.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
@@ -39,7 +39,7 @@ class StreamGate {
   bool released_{false};
 };
 
-class CudaRoutingSnapshotTest : public ::testing::Test {
+class KernelPilotMoeExpertSelectionCudaTest : public ::testing::Test {
  protected:
   void SetUp() override {
     int device_count = 0;
@@ -61,7 +61,7 @@ class CudaRoutingSnapshotTest : public ::testing::Test {
     }
   }
 
-  Status Capture(contrib::cuda::CudaRoutingSnapshot& snapshot, gsl::span<const int> ids) {
+  Status Capture(contrib::cuda::KernelPilotMoeExpertSelectionCuda& snapshot, gsl::span<const int> ids) {
     ORT_RETURN_IF(ids.size() > 8, "Test routing buffer is too small.");
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(device_ids_, ids.data(), ids.size_bytes(),
                                          cudaMemcpyHostToDevice, stream_));
@@ -74,7 +74,7 @@ class CudaRoutingSnapshotTest : public ::testing::Test {
     return std::make_shared<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(device), CUDA_PINNED);
   }
 
-  void ExpectSelectedExperts(const KernelPilot::MoeExpertSelection& usage,
+  void ExpectSelectedExperts(const IKernelPilotMoeExpertSelection& usage,
                              const InlinedVector<int>& expected) {
     gsl::span<const int> selected;
     ASSERT_STATUS_OK(usage.GetSelectedExperts(selected));
@@ -85,10 +85,12 @@ class CudaRoutingSnapshotTest : public ::testing::Test {
   int* device_ids_{nullptr};
 };
 
-TEST_F(CudaRoutingSnapshotTest, CollectsWhileLaterDeviceWorkIsPending) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, CollectsWhileLaterDeviceWorkIsPending) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
+  EXPECT_TRUE(snapshot.IsInitialized());
+  EXPECT_EQ(snapshot.ExpertCount(), 4U);
   const InlinedVector<int> ids{0, 0, 2};
   ASSERT_STATUS_OK(Capture(snapshot, ids));
 
@@ -105,14 +107,14 @@ TEST_F(CudaRoutingSnapshotTest, CollectsWhileLaterDeviceWorkIsPending) {
   ASSERT_EQ(cudaEventRecord(expert_done, stream_), cudaSuccess);
 
   ASSERT_STATUS_OK(snapshot.Consume());
-  ExpectSelectedExperts(usage, {0, 2});
+  ExpectSelectedExperts(snapshot, {0, 2});
   EXPECT_FALSE(gate.timed_out);
   EXPECT_EQ(cudaEventQuery(expert_done), cudaErrorNotReady);
 }
 
-TEST_F(CudaRoutingSnapshotTest, EnqueuesWithoutWaitingForRouting) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, EnqueuesWithoutWaitingForRouting) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
   const InlinedVector<int> ids{1, 3};
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   ASSERT_STATUS_OK(Capture(snapshot, ids));
@@ -133,9 +135,9 @@ TEST_F(CudaRoutingSnapshotTest, EnqueuesWithoutWaitingForRouting) {
   ExpectSelectedExperts(usage, ids);
 }
 
-TEST_F(CudaRoutingSnapshotTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   for (const InlinedVector<int>& ids : {InlinedVector<int>{0, 0, 2}, InlinedVector<int>{2, 3}}) {
     ASSERT_STATUS_OK(Capture(snapshot, ids));
@@ -152,9 +154,9 @@ TEST_F(CudaRoutingSnapshotTest, UnionsTilesAndReusesBuffersAcrossInvocations) {
   }
 }
 
-TEST_F(CudaRoutingSnapshotTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvocation) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
   ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
   const InlinedVector<int> previous{0, 2};
   ASSERT_STATUS_OK(Capture(snapshot, previous));
@@ -167,9 +169,9 @@ TEST_F(CudaRoutingSnapshotTest, DiscardsAnUnconsumedSnapshotAfterAnAbortedInvoca
   ExpectSelectedExperts(usage, {1, 3});
 }
 
-TEST_F(CudaRoutingSnapshotTest, RejectsInvalidRoutingAndRecovers) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, RejectsInvalidRoutingAndRecovers) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
   for (const int invalid : {-1, 4}) {
     ASSERT_STATUS_OK(snapshot.BeginInvocation(usage, 4));
     const InlinedVector<int> ids{0, invalid};
@@ -184,9 +186,12 @@ TEST_F(CudaRoutingSnapshotTest, RejectsInvalidRoutingAndRecovers) {
   ExpectSelectedExperts(usage, ids);
 }
 
-TEST_F(CudaRoutingSnapshotTest, RejectsUninitializedCollection) {
-  KernelPilot::MoeExpertSelection usage;
-  contrib::cuda::CudaRoutingSnapshot snapshot(PinnedAllocator());
+TEST_F(KernelPilotMoeExpertSelectionCudaTest, RejectsUninitializedCollection) {
+  KernelPilotMoeExpertSelection usage;
+  contrib::cuda::KernelPilotMoeExpertSelectionCuda snapshot(PinnedAllocator());
+  EXPECT_FALSE(snapshot.BeginInvocation(4).IsOK());
+  EXPECT_FALSE(snapshot.IsInitialized());
+  EXPECT_EQ(snapshot.ExpertCount(), 0U);
   EXPECT_FALSE(snapshot.BeginInvocation(usage, 0).IsOK());
   EXPECT_FALSE(snapshot.Capture(device_ids_, 1, stream_).IsOK());
   EXPECT_FALSE(snapshot.Consume().IsOK());
