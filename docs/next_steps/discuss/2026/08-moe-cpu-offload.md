@@ -157,6 +157,9 @@ The allocation objective is lexicographic:
 Within each node, keep the experts with the highest counters. Redistribution may transfer slot ownership between
 nodes, whereas a per-node exchange changes the expert stored in a slot without changing that node's slot count.
 
+Before computing or scheduling redistribution, drain every pending per-node exchange: wait for each transfer-completion
+event and publish its completed mapping. Redistribution therefore starts from a stable placement in which no transfer
+can still publish an owner for a slot. Only after this drain may redistribution reassign slot ownership.
 Redistribution copies are asynchronous. Every affected node must finish its pending redistribution before its next
 invocation. Slot metadata is published only after all weights for that slot are ready.
 
@@ -305,8 +308,9 @@ the following strategy.
 - Reevaluate the number of experts kept on CUDA for each `MoE` and `QMoE` while preserving the global offload target.
 - Prioritize the largest possible number of nodes whose experts all reside on CUDA, then maximize retained counter
   mass. Within each node, select experts by descending counter.
-- Schedule the resulting transfers safely with any pending per-node exchanges. Every affected node must finish its
-  placement update before its next execution.
+- First wait for every pending per-node exchange and publish its completed mapping. Then compute redistribution from
+  that stable placement and schedule its transfers. Every affected node must finish its redistribution before its next
+  execution.
 
 **Integration tests**
 
@@ -315,6 +319,8 @@ the following strategy.
 - Verify the exponential update for used and unused experts, the strict epsilon threshold, asynchronous exchange
   timing, and required completion before the next invocation.
 - Verify global budget preservation and redistribution toward complete CUDA-resident nodes after inference.
+- Delay a per-node exchange until redistribution begins, then verify redistribution waits for that exchange and no
+  slot is ever published with conflicting owners.
 - Cover rejected overlapping runs, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
 
 ### PR 4: end-to-end evaluation
@@ -342,6 +348,7 @@ Tests cover:
 - safe slot reuse after CUDA completion;
 - asynchronous copy submission and required completion before the next invocation;
 - atomic mapping publication;
+- draining pending per-node exchanges before redistribution can reassign their slots;
 - global budget preservation during redistribution;
 - maximizing complete CUDA-resident nodes before retained counter mass;
 - immutable per-invocation snapshots and rejection of overlapping runs;
