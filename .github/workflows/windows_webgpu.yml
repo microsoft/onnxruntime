@@ -220,9 +220,9 @@ jobs:
       - name: Install Node.js dependencies
         shell: cmd
         run: |
-          cd js && npm ci
-          cd common && npm ci
-          cd ..\node && npm ci
+          cd js && call npm ci
+          cd common && call npm ci
+          cd ..\node && call npm ci
 
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: onnx-node-tests-cache
