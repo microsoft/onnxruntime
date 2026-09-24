@@ -67,6 +67,7 @@ jobs:
         run: |
           python tools\ci_build\build.py `
             --config Release `
+            --compile_no_warning_as_error `
             --build_dir "${{ github.workspace }}\build" `
             --skip_submodule_sync `
             --update `
