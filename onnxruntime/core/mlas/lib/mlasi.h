@@ -1668,7 +1668,6 @@ extern const MLAS_ROPE_DISPATCH MlasRopeDispatchRvv;
 //
 // half gemm dispatch structure
 //
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(MLAS_TARGET_ARM64)
 struct MLAS_HGEMM_DISPATCH {
     typedef void(HPackBKernel_TransposedB_Fn)(const MLAS_FP16*, MLAS_FP16*, size_t, size_t, size_t);
     typedef void(HPackBKernel_B_Fn)(const MLAS_FP16*, MLAS_FP16*, size_t, size_t, size_t);
@@ -1678,18 +1677,12 @@ struct MLAS_HGEMM_DISPATCH {
         size_t, size_t, size_t, size_t, size_t, size_t, _mlas_fp16_, _mlas_fp16_);
     typedef void(HGemmKernel_PackedB_Fn)(const MLAS_FP16*, const MLAS_FP16*, MLAS_FP16*,
         size_t, size_t, size_t, size_t, size_t, _mlas_fp16_, _mlas_fp16_);
-    // (D, A, lda, CountM, CountK): transposes a K x M block of A into the row-major M x K panel D.
-    typedef void(HTransposeA_Fn)(MLAS_FP16*, const MLAS_FP16*, size_t, size_t, size_t);
     HPackBKernel_TransposedB_Fn* HPackBKernel_TransposedB = nullptr;
     HPackBKernel_B_Fn* HPackBKernel_B = nullptr;
     HGemmKernel_TransposedB_Fn* HGemmKernel_TransposedB = nullptr;
     HGemmKernel_B_Fn* HGemmKernel_B = nullptr;
     HGemmKernel_PackedB_Fn* HGemmKernel_PackedB = nullptr;
-    HTransposeA_Fn* HTransposeA = nullptr;
-    // Max M rows per HGemmKernel_PackedB call in the TransA path.
-    size_t TransAStrideM = 2;
 };
-#endif
 extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 
 // softmax dispatch structure

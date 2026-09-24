@@ -93,6 +93,52 @@ class MlasSveHGemmTransposeATest : public MlasTestBase {
   }
 };
 
+class MlasSveHGemmEdgeTest : public MlasTestBase {
+ private:
+  MatrixGuardBuffer<MLAS_FP16> BufferB;
+  MatrixGuardBuffer<MLAS_FP16> BufferC;
+
+  void TestZeroK(float beta) {
+    constexpr size_t M = 5, N = 19, ldc = N + 3;
+    const MLAS_FP16 nan = MLAS_FP16::FromBits(0x7E00);
+    MLAS_FP16* C = BufferC.GetFilledBuffer(M * ldc, [&](MLAS_FP16* p, size_t n) {
+      for (size_t i = 0; i < n; ++i) p[i] = (beta == 0.0f) ? nan : MLAS_FP16(float(i % 7));
+    });
+    std::vector<MLAS_FP16> expected(C, C + M * ldc);
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        expected[i * ldc + j] = MLAS_FP16(beta == 0.0f ? 0.0f : expected[i * ldc + j].ToFloat() * beta);
+      }
+    }
+
+    MlasGemm(CblasNoTrans, CblasNoTrans, M, N, 0, nullptr, 1, nullptr, N, C, ldc,
+             MLAS_FP16(1.0f).val, MLAS_FP16(beta).val, nullptr);
+
+    for (size_t i = 0; i < M * ldc; ++i) {
+      ASSERT_EQ(C[i].val, expected[i].val) << "K == 0 mismatch at " << i << " beta=" << beta;
+    }
+  }
+
+ public:
+  static const char* GetTestSuiteName() { return "SveHGemmEdge"; }
+
+  void ExecuteShort(void) override {
+    if (!SveAvailable()) {
+      GTEST_SKIP() << "SVE not available on this CPU.";
+    }
+
+    TestZeroK(0.0f);
+    TestZeroK(0.5f);
+
+    // Packing an empty B must not write to PackedB.
+    const MLAS_FP16* B = BufferB.GetBuffer(64, /*ZeroFill*/ true);
+    for (CBLAS_TRANSPOSE TransB : {CblasNoTrans, CblasTrans}) {
+      MlasHGemmPackB(TransB, 0, 8, B, 8, nullptr);
+      MlasHGemmPackB(TransB, 8, 0, B, 8, nullptr);
+    }
+  }
+};
+
 class MlasSveHalfGemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<MLAS_FP16> BufferA;
@@ -246,6 +292,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   }
   size_t count = 0;
   count += MlasDirectShortExecuteTests<MlasSveHGemmTransposeATest>::RegisterShortExecute();
+  count += MlasDirectShortExecuteTests<MlasSveHGemmEdgeTest>::RegisterShortExecute();
   count += SveHalfGemmShortExecuteTest::RegisterShortExecuteTests();
   return count > 0;
 });

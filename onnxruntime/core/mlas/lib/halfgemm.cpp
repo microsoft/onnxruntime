@@ -161,7 +161,9 @@ MlasHalfGemmBatch(
 
 #if defined(MLAS_USE_SVE)
     // The SVE HGEMM driver is faster than the NEON halfgemm kernels, so use it when it can take the call.
-    if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
+    // Check SVE directly: MlasHGemmSupported is also true for the NEON HGEMM dispatch, and CPUs without
+    // SVE keep using the halfgemm kernels below.
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
         bool forward = true;
         for (size_t gemm_i = 0; gemm_i < BatchN && forward; gemm_i++) {
             const auto& data = DataParams[gemm_i];
