@@ -375,13 +375,33 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   if (use_webgpu && o.state_update_capacity > 0 && state_update_enabled) {
     test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& actual_outputs, const std::string&) {
-      const Tensor& actual = actual_outputs.back().Get<Tensor>();
-      const float* actual_data = actual.Data<float>();
+      ASSERT_EQ(actual_outputs.size(), 3u);
+      const Tensor& actual_output = actual_outputs[0].Get<Tensor>();
+      const Tensor& actual_final_state = actual_outputs[1].Get<Tensor>();
+      const Tensor& actual_state_update = actual_outputs[2].Get<Tensor>();
       const int64_t decay_elements = static_cast<int64_t>(o.state_update_capacity) * g.hv;
       const int64_t key_elements = static_cast<int64_t>(o.state_update_capacity) * g.hq * g.dk;
       const int64_t width = decay_elements + key_elements +
                             static_cast<int64_t>(o.state_update_capacity) * g.hv * g.dv;
-      EXPECT_EQ(actual.Shape(), TensorShape({g.batch, width}));
+      ASSERT_EQ(actual_output.Shape(), TensorShape(shaped({out_heads, g.dv})));
+      ASSERT_EQ(actual_final_state.Shape(), TensorShape({g.batch, g.hv, g.dv, g.dk}));
+      ASSERT_EQ(actual_state_update.Shape(), TensorShape({g.batch, width}));
+
+      const T* actual_output_data = actual_output.Data<T>();
+      const std::vector<T> expected_output = ToTensorType<T>(ref_out);
+      for (size_t i = 0; i < expected_output.size(); ++i) {
+        if constexpr (std::is_same_v<T, float>) {
+          EXPECT_NEAR(actual_output_data[i], expected_output[i], out_tol);
+        } else {
+          EXPECT_NEAR(actual_output_data[i].ToFloat(), expected_output[i].ToFloat(), out_tol);
+        }
+      }
+      const float* actual_final_state_data = actual_final_state.Data<float>();
+      for (size_t i = 0; i < ref_state.size(); ++i) {
+        EXPECT_NEAR(actual_final_state_data[i], ref_state[i], state_tol);
+      }
+
+      const float* actual_data = actual_state_update.Data<float>();
       for (int b = 0; b < g.batch; ++b) {
         const int sequence_length = in.cu_seqlens.empty()
                                         ? g.total_tokens / g.batch
