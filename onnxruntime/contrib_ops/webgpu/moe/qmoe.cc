@@ -9,8 +9,13 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#if !defined(DISABLE_FLOAT8_TYPES)
+#include "core/common/float8.h"
+#endif
 
+#include <cstring>
 #include <optional>
+#include <sstream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,6 +23,159 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
+
+namespace {
+
+std::string BuildFp8E4M3DequantLutWgsl() {
+  std::ostringstream oss;
+  oss << "const kFp8DequantLutBits = array<u32, 256>(";
+#if !defined(DISABLE_FLOAT8_TYPES)
+  for (int i = 0; i < 256; ++i) {
+    if (i > 0) {
+      oss << ", ";
+    }
+    const float value = Float8E4M3FN(static_cast<uint8_t>(i), Float8E4M3FN::FromBits()).ToFloat();
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+    oss << bits << "u";
+  }
+#endif
+  oss << ");\n";
+  return oss.str();
+}
+
+class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulProgram> {
+ public:
+  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input)
+      : Program<BlockFp8ExpertMatMulProgram>{"QMoEBlockFp8ExpertMatMul"},
+        has_bias_{has_bias},
+        has_indirect_experts_{has_indirect_experts},
+        broadcast_input_{broadcast_input} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+    if (!has_indirect_experts_) {
+      shader.AddInput("weights_backing", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& weights = shader.AddInput("weights", ShaderUsage::UseElementTypeAlias);
+    if (!has_indirect_experts_) {
+      shader.AddInput("scales_backing", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& scales = shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* bias = &input;
+    if (has_bias_) {
+      if (!has_indirect_experts_) {
+        shader.AddInput("bias_backing", ShaderUsage::UseElementTypeAlias);
+      }
+      bias = &shader.AddInput("bias", ShaderUsage::UseElementTypeAlias);
+    }
+    const ShaderVariableHelper* indirect_experts = &weights;
+    if (has_indirect_experts_) {
+      indirect_experts = &shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    shader.AdditionalImplementation() << BuildFp8E4M3DequantLutWgsl();
+    return WGSL_TEMPLATE_APPLY(shader, "moe/block_fp8_expert_matmul.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(broadcast_input, broadcast_input_),
+                               WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                               WGSL_TEMPLATE_PARAMETER(has_indirect_experts, has_indirect_experts_),
+                               WGSL_TEMPLATE_VARIABLE(bias, *bias),
+                               WGSL_TEMPLATE_VARIABLE(indirect_experts, *indirect_experts),
+                               WGSL_TEMPLATE_VARIABLE(input, input),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(scales, scales),
+                               WGSL_TEMPLATE_VARIABLE(weights, weights));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"rows", ProgramUniformVariableDataType::Uint32},
+      {"cols", ProgramUniformVariableDataType::Uint32},
+      {"inner", ProgramUniformVariableDataType::Uint32},
+      {"expert_idx", ProgramUniformVariableDataType::Uint32},
+      {"scale_n_blocks", ProgramUniformVariableDataType::Uint32},
+      {"scale_k_blocks", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_bias_;
+  bool has_indirect_experts_;
+  bool broadcast_input_;
+};
+
+Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
+                                 const Tensor* input,
+                                 const Tensor* weights,
+                                 const Tensor* scales,
+                                 const Tensor* bias,
+                                 Tensor* output,
+                                 uint32_t rows,
+                                 uint32_t cols,
+                                 uint32_t inner,
+                                 uint32_t expert_idx,
+                                 const Tensor* indirect_experts = nullptr,
+                                 bool broadcast_input = false) {
+  auto memory_info = OrtMemoryInfo{
+      WEBGPU_BUFFER,
+      OrtDeviceAllocator,
+      OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
+  Tensor raw_weights(DataTypeImpl::GetType<uint8_t>(), weights->Shape(),
+                     const_cast<void*>(weights->DataRaw()), memory_info);
+
+  const uint32_t scale_n_blocks = (cols + 127) / 128;
+  const uint32_t scale_k_blocks = (inner + 127) / 128;
+  BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input};
+  program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
+  if (indirect_experts) {
+    program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddInputs({{scales, ProgramTensorMetadataDependency::Type}});
+    if (bias) {
+      program.AddInputs({{bias, ProgramTensorMetadataDependency::Type}});
+    }
+    program.AddInputs({{indirect_experts, ProgramTensorMetadataDependency::Type}});
+  } else {
+    const uint32_t weight_elements = cols * inner;
+    ORT_RETURN_IF_NOT(weight_elements % 4 == 0,
+                      "Block-scaled FP8 expert weight slices must be divisible by four elements.");
+    program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddInputs({ProgramInput::BufferView(&raw_weights,
+                                             ProgramTensorMetadataDependency::Type,
+                                             TensorShape({weight_elements / 4}),
+                                             expert_idx * weight_elements / 4,
+                                             4)})
+        .AddInputs({{scales, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({ProgramInput::BufferView(scales,
+                                             ProgramTensorMetadataDependency::Type,
+                                             TensorShape({scale_n_blocks * scale_k_blocks}),
+                                             expert_idx * scale_n_blocks * scale_k_blocks)});
+    if (bias) {
+      program.AddInputs({{bias, ProgramTensorMetadataDependency::Type}})
+          .AddInputs({ProgramInput::BufferView(bias,
+                                               ProgramTensorMetadataDependency::Type,
+                                               TensorShape({cols}),
+                                               expert_idx * cols)});
+    }
+  }
+  constexpr uint32_t workgroup_size = 64;
+  program.AddOutput({output, ProgramTensorMetadataDependency::None})
+      .SetWorkgroupSize(workgroup_size)
+      .SetDispatchGroupSize((cols + workgroup_size - 1) / workgroup_size, rows)
+      .AddUniformVariables({rows, cols, inner, indirect_experts ? expert_idx : 0,
+                            scale_n_blocks, scale_k_blocks})
+      .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
+  return context.RunProgram(program);
+}
+
+Status ValidateBlockFp8Scales(const Tensor* scales, const char* name,
+                              int64_t experts, int64_t output_size, int64_t input_size) {
+  ORT_RETURN_IF_NOT(scales != nullptr, name, " is required for block-scaled FP8 QMoE.");
+  ORT_RETURN_IF_NOT(scales->DataType() == DataTypeImpl::GetType<float>(),
+                    name, " must have float32 elements for block-scaled FP8 QMoE.");
+  const TensorShape expected({experts, (output_size + 127) / 128, (input_size + 127) / 128});
+  ORT_RETURN_IF_NOT(scales->Shape() == expected, name, " must have shape ", expected,
+                    " for block-scaled FP8 QMoE, got ", scales->Shape(), ".");
+  return Status::OK();
+}
+
+}  // namespace
 
 class GateProgram final : public Program<GateProgram> {
  public:
@@ -257,6 +415,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* fc2_zero_points = context.Input<Tensor>(12);
   const Tensor* fc3_zero_points = context.Input<Tensor>(13);
   const Tensor* router_weights = context.Input<Tensor>(14);
+  const Tensor* fc1_global_scale = context.Input<Tensor>(15);
+  const Tensor* fc2_global_scale = context.Input<Tensor>(16);
 
   MoEParameters moe_params;
 
@@ -269,9 +429,9 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const bool is_fused_swiglu = is_swiglu && swiglu_fusion != 0 && fc3_experts_weights_optional == nullptr;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, hidden_state, router_logits,
-      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
+      fc1_experts_weights, fc1_experts_bias_optional, is_block_fp8_ ? nullptr : fc1_scales, fc1_zero_points,
+      fc2_experts_weights, fc2_experts_bias_optional, is_block_fp8_ ? nullptr : fc2_scales, fc2_zero_points,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, is_block_fp8_ ? nullptr : fc3_scales_optional, fc3_zero_points,
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
                                 fc2_expert_weight_bits_,
                                 fc3_expert_weight_bits_},
@@ -289,6 +449,27 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_NOT(moe_params.num_rows != 1 ||
                         (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
                     "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
+
+  if (is_block_fp8_) {
+    ORT_RETURN_IF_NOT(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
+                      "Block-scaled FP8 QMoE does not support zero points.");
+    ORT_RETURN_IF_NOT(fc1_global_scale == nullptr && fc2_global_scale == nullptr,
+                      "Block-scaled FP8 QMoE uses fc1_scales/fc2_scales directly; global scales must be omitted.");
+    ORT_RETURN_IF_NOT(fc1_experts_weights->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
+                          fc2_experts_weights->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN &&
+                          (fc3_experts_weights_optional == nullptr ||
+                           fc3_experts_weights_optional->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN),
+                      "Block-scaled FP8 QMoE weights must use float8e4m3fn elements.");
+    const int64_t fc1_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
+    ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc1_scales, "fc1_scales", moe_params.num_experts,
+                                               fc1_size, moe_params.hidden_size));
+    ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc2_scales, "fc2_scales", moe_params.num_experts,
+                                               moe_params.hidden_size, moe_params.inter_size));
+    if (fc3_experts_weights_optional) {
+      ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc3_scales_optional, "fc3_scales", moe_params.num_experts,
+                                                 moe_params.inter_size, moe_params.hidden_size));
+    }
+  }
 
   if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
       fc2_expert_weight_bits_ != expert_weight_bits_ ||
@@ -362,9 +543,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // A is (1, hidden_size) but dispatched with override_M=k; shader broadcasts A row 0.
     TensorShape fc1_output_shape({static_cast<int64_t>(k), fc1_output_size});
     Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
-    status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
-                              K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
-                              &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
+    status = is_block_fp8_
+                 ? ApplyBlockFp8ExpertMatMul(context, hidden_state, fc1_experts_weights, fc1_scales,
+                                             fc1_experts_bias_optional, &fc1_outputs, k,
+                                             static_cast<uint32_t>(N_fc1), static_cast<uint32_t>(K_fc1), 0,
+                                             &indirect_experts, true)
+                 : ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, fc1_zero_points,
+                                    fc1_experts_bias_optional, K_fc1, N_fc1, block_size_fc1, accuracy_level,
+                                    expert_weight_bits_, context, &fc1_outputs, 0, &indirect_experts,
+                                    /*override_M=*/k);
     ORT_RETURN_IF_ERROR(status);
 
     // Step 3: Apply the activation, optionally combining FC1 with a separate FC3 projection.
@@ -373,11 +560,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     std::optional<Tensor> fc3_outputs;
     if (fc3_experts_weights_optional) {
       fc3_outputs.emplace(context.CreateGPUTensor(dtype, fc1_activated_shape));
-      ORT_RETURN_IF_ERROR(ApplyMatMulNBits(hidden_state, fc3_experts_weights_optional, fc3_scales_optional,
-                                           fc3_zero_points, fc3_experts_bias_optional,
-                                           K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
-                                           expert_weight_bits_, context, &*fc3_outputs, 0, &indirect_experts,
-                                           /*override_M=*/k));
+      ORT_RETURN_IF_ERROR(is_block_fp8_
+                              ? ApplyBlockFp8ExpertMatMul(context, hidden_state, fc3_experts_weights_optional,
+                                                          fc3_scales_optional, fc3_experts_bias_optional,
+                                                          &*fc3_outputs, k, static_cast<uint32_t>(moe_params.inter_size),
+                                                          static_cast<uint32_t>(K_fc1), 0, &indirect_experts, true)
+                              : ApplyMatMulNBits(hidden_state, fc3_experts_weights_optional, fc3_scales_optional,
+                                                 fc3_zero_points, fc3_experts_bias_optional,
+                                                 K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
+                                                 expert_weight_bits_, context, &*fc3_outputs, 0, &indirect_experts,
+                                                 /*override_M=*/k));
     }
     MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
     activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
@@ -397,9 +589,15 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     // fc1_activated already has k rows (one per expert), no override_M needed.
     TensorShape fc2_output_shape({static_cast<int64_t>(k), N_fc2});
     Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
-    status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
-                              K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
-                              &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
+    status = is_block_fp8_
+                 ? ApplyBlockFp8ExpertMatMul(context, &fc1_activated, fc2_experts_weights, fc2_scales,
+                                             fc2_experts_bias_optional, &fc2_outputs, k,
+                                             static_cast<uint32_t>(N_fc2), static_cast<uint32_t>(K_fc2), 0,
+                                             &indirect_experts)
+                 : ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points,
+                                    fc2_experts_bias_optional, K_fc2, N_fc2, block_size_fc2, accuracy_level,
+                                    expert_weight_bits_, context, &fc2_outputs, 0, &indirect_experts,
+                                    /*override_M=*/0);
     ORT_RETURN_IF_ERROR(status);
 
     // Step 5: Fused FinalMix — accumulate all k expert results weighted by router_values
@@ -514,9 +712,13 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       //
       // Step 3: matmul the hidden_state with fc1 (gate_up) of the selected experts
       //
-      status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
-                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
-                                &fc1_outputs, expert_idx);
+      status = is_block_fp8_
+                   ? ApplyBlockFp8ExpertMatMul(context, &expert_hidden, fc1_experts_weights, fc1_scales,
+                                               fc1_experts_bias_optional, &fc1_outputs, used_by,
+                                               static_cast<uint32_t>(N_fc1), static_cast<uint32_t>(K_fc1), expert_idx)
+                   : ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, fc1_zero_points,
+                                      fc1_experts_bias_optional, K_fc1, N_fc1, block_size_fc1, accuracy_level,
+                                      expert_weight_bits_, context, &fc1_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
       //
@@ -525,10 +727,16 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       std::optional<Tensor> fc3_outputs;
       if (fc3_experts_weights_optional) {
         fc3_outputs.emplace(context.CreateGPUTensor(dtype, fc1_activated_shape));
-        ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&expert_hidden, fc3_experts_weights_optional, fc3_scales_optional,
-                                             fc3_zero_points, fc3_experts_bias_optional,
-                                             K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
-                                             expert_weight_bits_, context, &*fc3_outputs, expert_idx));
+        ORT_RETURN_IF_ERROR(is_block_fp8_
+                                ? ApplyBlockFp8ExpertMatMul(context, &expert_hidden, fc3_experts_weights_optional,
+                                                            fc3_scales_optional, fc3_experts_bias_optional,
+                                                            &*fc3_outputs, used_by,
+                                                            static_cast<uint32_t>(moe_params.inter_size),
+                                                            static_cast<uint32_t>(K_fc1), expert_idx)
+                                : ApplyMatMulNBits(&expert_hidden, fc3_experts_weights_optional, fc3_scales_optional,
+                                                   fc3_zero_points, fc3_experts_bias_optional,
+                                                   K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
+                                                   expert_weight_bits_, context, &*fc3_outputs, expert_idx));
       }
       MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
       activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
@@ -547,9 +755,13 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       //
       // Step 5: multiply fc1_activated with fc2 (gate_down) of the selected experts
       //
-      status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
-                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
-                                &fc2_outputs, expert_idx);
+      status = is_block_fp8_
+                   ? ApplyBlockFp8ExpertMatMul(context, &fc1_activated, fc2_experts_weights, fc2_scales,
+                                               fc2_experts_bias_optional, &fc2_outputs, used_by,
+                                               static_cast<uint32_t>(N_fc2), static_cast<uint32_t>(K_fc2), expert_idx)
+                   : ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points,
+                                      fc2_experts_bias_optional, K_fc2, N_fc2, block_size_fc2, accuracy_level,
+                                      expert_weight_bits_, context, &fc2_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
       //
@@ -578,7 +790,11 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 namespace {
 const std::vector<MLDataType>& QMoET1Constraint() {
   static std::vector<MLDataType> types{
-      DataTypeImpl::GetTensorType<uint8_t>()};
+      DataTypeImpl::GetTensorType<uint8_t>(),
+#if !defined(DISABLE_FLOAT8_TYPES)
+      DataTypeImpl::GetTensorType<Float8E4M3FN>(),
+#endif
+  };
   return types;
 }
 }  // namespace
