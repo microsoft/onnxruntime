@@ -343,8 +343,6 @@ $MAIN {
 #endif
   let total_sequence_length = get_total_sequence_length(batch_idx);
 
-#if is_unidirectional
-  // Causal masking loop bound.
 #if use_seqlens_q
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
   let q_len_b = u32(seqlens_q[batch_idx]);
@@ -358,6 +356,7 @@ $MAIN {
                                     0u,
                                     total_sequence_length <= uniforms.new_sequence_length);
 #endif
+#if is_unidirectional
   let max_causal_len_for_workgroup = past_sequence_length +
                                      (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
   let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
@@ -368,14 +367,11 @@ $MAIN {
 #endif
 
 #if has_local_window
-#if is_unidirectional
-  let first_query_causal_length = past_sequence_length + query_tile_start + 1u;
-#else
-  let first_query_causal_length = total_sequence_length;
-#endif
-  let first_query_window_start = first_query_causal_length -
-                                 min(first_query_causal_length, uniforms.local_window_size);
-  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+  // Removing the causal right bound must not move the query-relative left bound.
+  let first_query_end = past_sequence_length + query_tile_start + 1u;
+  let query_end = past_sequence_length + q_idx_global + 1u;
+  let first_query_window_start = first_query_end - min(first_query_end, uniforms.local_window_size);
+  let local_window_start = query_end - min(query_end, uniforms.local_window_size);
 #else
   let first_query_window_start = 0u;
   let local_window_start = 0u;

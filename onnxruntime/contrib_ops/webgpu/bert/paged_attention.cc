@@ -459,8 +459,6 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   ORT_ENFORCE(is_causal == 0 || is_causal == 1,
               "PagedAttention (WebGPU): is_causal must be 0 or 1.");
   is_causal_ = is_causal == 1;
-  ORT_ENFORCE(is_causal_ || local_window_size_ <= 0,
-              "PagedAttention (WebGPU): is_causal=0 with local_window_size > 0 is not supported yet.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   has_explicit_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
