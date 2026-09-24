@@ -204,7 +204,7 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
   }
 
   auto pkg = std::make_unique<ModelPackage>();
-  if (auto* s = mp::ParsePackage(std::filesystem::path(package_root), effective, pkg.get())) {
+  if (auto* s = mp::ParsePackage(std::filesystem::u8path(package_root), effective, pkg.get())) {
     return s;
   }
   *out = pkg.release();
@@ -310,22 +310,23 @@ ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
     tail_opts.allow_external_paths = false;
     tail_opts.follow_symlinks = pkg->follow_symlinks;
     std::filesystem::path resolved;
-    if (auto* s = mp::ResolvePath(asset_folder, asset_folder, tail_part, tail_opts,
+    const auto asset_path = std::filesystem::u8path(asset_folder);
+    if (auto* s = mp::ResolvePath(asset_path, asset_path, tail_part, tail_opts,
                                   must_exist, &resolved)) {
       return s;
     }
-    slot = resolved.string();
+    slot = resolved.u8string();
     *out_path = slot.c_str();
     return nullptr;
   }
 
-  std::filesystem::path base = base_dir ? std::filesystem::path(base_dir) : pkg->package_root;
+  std::filesystem::path base = base_dir ? std::filesystem::u8path(base_dir) : pkg->package_root;
   std::filesystem::path resolved;
   if (auto* s = mp::ResolvePath(base, pkg->package_root, std::string(input),
                                 mp::PathOptionsFor(pkg), must_exist, &resolved)) {
     return s;
   }
-  slot = resolved.string();
+  slot = resolved.u8string();
   *out_path = slot.c_str();
   return nullptr;
 }
@@ -393,7 +394,7 @@ ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
   if (!out_uri) return NullArg("out_uri");
   *out_uri = nullptr;
   static thread_local std::string slot;
-  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::path(source_dir), &slot)) {
+  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::u8path(source_dir), &slot)) {
     return s;
   }
   *out_uri = slot.c_str();

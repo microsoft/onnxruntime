@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -14,6 +15,9 @@
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 
+#include "core/common/path_string.h"
+#include "core/framework/compute_capability.h"
+#include "core/providers/providers.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -39,7 +43,7 @@ struct ModelPackageFns {
       CreateModelPackageContext{nullptr};
   OrtExperimental_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn
       ReleaseModelPackageContext{nullptr};
-  OrtExperimental_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_Fn
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV31_Fn
       ModelPackage_GetSchemaVersion{nullptr};
   OrtExperimental_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_Fn
       ModelPackage_GetComponentCount{nullptr};
@@ -79,7 +83,7 @@ inline const ModelPackageFns& GetModelPackageFns() {
     f.ReleaseModelPackageContext =
         Exp::Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_FnOrThrow(api);
     f.ModelPackage_GetSchemaVersion =
-        Exp::Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_FnOrThrow(api);
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV31_FnOrThrow(api);
     f.ModelPackage_GetComponentCount =
         Exp::Get_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_FnOrThrow(api);
     f.ModelPackage_GetComponentNames =
@@ -128,7 +132,8 @@ struct VariantSpec {
 // `package_root` is wiped before writing.
 std::filesystem::path BuildPackage(const std::filesystem::path& package_root,
                                    const std::string& component_name,
-                                   const std::vector<VariantSpec>& variants) {
+                                   const std::vector<VariantSpec>& variants,
+                                   std::string_view schema_version = "1.0") {
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
   std::filesystem::create_directories(package_root);
@@ -137,7 +142,7 @@ std::filesystem::path BuildPackage(const std::filesystem::path& package_root,
   ojson variants_obj = ojson::object();
   for (const auto& v : variants) {
     const std::string variant_dir_rel = component_name + "/" + v.variant_name;
-    const auto variant_dir_abs = package_root / component_name / v.variant_name;
+    const auto variant_dir_abs = package_root / ToPathString(component_name) / ToPathString(v.variant_name);
     std::filesystem::create_directories(variant_dir_abs);
 
     ojson variant_obj = ojson::object();
@@ -147,8 +152,8 @@ std::filesystem::path BuildPackage(const std::filesystem::path& package_root,
     if (!v.compatibility_string.empty()) variant_obj["compatibility_string"] = v.compatibility_string;
 
     if (!v.source_model.empty()) {
-      const std::string model_filename = v.source_model.filename().string();
-      std::filesystem::copy_file(v.source_model, variant_dir_abs / model_filename,
+      const std::string model_filename = ToUTF8String(v.source_model.filename().native());
+      std::filesystem::copy_file(v.source_model, variant_dir_abs / ToPathString(model_filename),
                                  std::filesystem::copy_options::overwrite_existing, ec);
 
       ojson ort_info = ojson::object();
@@ -178,7 +183,7 @@ std::filesystem::path BuildPackage(const std::filesystem::path& package_root,
   components_obj[component_name] = std::move(component_obj);
 
   ojson manifest = ojson::object();
-  manifest["schema_version"] = "1.0";
+  manifest["schema_version"] = schema_version;
   manifest["components"] = std::move(components_obj);
 
   std::ofstream os(package_root / "manifest.json", std::ios::binary);
@@ -204,40 +209,385 @@ std::filesystem::path BuildTwoVariantPackage(const std::filesystem::path& packag
   return BuildPackage(package_root, "model_1", variants);
 }
 
-// Runs the full experimental OrtModelPackageApi flow for a single-component package and returns the
-// created session: CreateModelPackageOptionsFromSessionOptions -> CreateModelPackageContext ->
-// SelectComponent -> CreateSession. `session_options` drives both variant/EP selection and session
-// creation (advanced path), mirroring how a caller loads a package. Throws on any error.
+struct PackageHandles {
+  explicit PackageHandles(const std::filesystem::path& package_root,
+                          const std::string& component_name,
+                          const Ort::SessionOptions& session_options)
+      : options(nullptr, GetModelPackageFns().ReleaseModelPackageOptions),
+        context(nullptr, GetModelPackageFns().ReleaseModelPackageContext),
+        component(nullptr, GetModelPackageFns().ReleaseModelPackageComponentContext) {
+    const auto& api = GetModelPackageFns();
+    OrtModelPackageOptions* raw_options = nullptr;
+    Ort::ThrowOnError(api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
+    options.reset(raw_options);
+
+    OrtModelPackageContext* raw_context = nullptr;
+    Ort::ThrowOnError(api.CreateModelPackageContext(package_root.c_str(), &raw_context));
+    context.reset(raw_context);
+
+    OrtModelPackageComponentContext* raw_component = nullptr;
+    Ort::ThrowOnError(api.SelectComponent(context.get(), component_name.c_str(), options.get(), &raw_component));
+    component.reset(raw_component);
+  }
+
+  std::unique_ptr<OrtModelPackageOptions, decltype(ModelPackageFns::ReleaseModelPackageOptions)> options;
+  std::unique_ptr<OrtModelPackageContext, decltype(ModelPackageFns::ReleaseModelPackageContext)> context;
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(ModelPackageFns::ReleaseModelPackageComponentContext)> component;
+};
+
 Ort::Session CreateSessionFromModelPackage(const std::filesystem::path& package_root,
                                            const std::string& component_name,
-                                           Ort::SessionOptions& session_options) {
-  const auto& pkg_api = GetModelPackageFns();
-
-  OrtModelPackageOptions* raw_mp_opts = nullptr;
-  Ort::ThrowOnError(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
-  std::unique_ptr<OrtModelPackageOptions, decltype(pkg_api.ReleaseModelPackageOptions)>
-      mp_opts(raw_mp_opts, pkg_api.ReleaseModelPackageOptions);
-
-  OrtModelPackageContext* raw_ctx = nullptr;
-  Ort::ThrowOnError(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
-  std::unique_ptr<OrtModelPackageContext, decltype(pkg_api.ReleaseModelPackageContext)>
-      ctx(raw_ctx, pkg_api.ReleaseModelPackageContext);
-
-  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
-  Ort::ThrowOnError(pkg_api.SelectComponent(ctx.get(), component_name.c_str(), mp_opts.get(), &raw_comp_ctx));
-  std::unique_ptr<OrtModelPackageComponentContext, decltype(pkg_api.ReleaseModelPackageComponentContext)>
-      comp_ctx(raw_comp_ctx, pkg_api.ReleaseModelPackageComponentContext);
-
+                                           Ort::SessionOptions& session_options,
+                                           bool use_default_options = false) {
+  PackageHandles handles(package_root, component_name, session_options);
   OrtSession* raw_session = nullptr;
-  Ort::ThrowOnError(pkg_api.CreateSession(*ort_env, comp_ctx.get(), session_options, &raw_session));
+  Ort::ThrowOnError(GetModelPackageFns().CreateSession(
+      *ort_env, handles.component.get(),
+      use_default_options ? nullptr : static_cast<OrtSessionOptions*>(session_options), &raw_session));
   return Ort::Session{raw_session};
 }
+
+void CheckSquareModel(Ort::Session& session) {
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 2> shape{3, 2};
+  std::array<float, 6> data{1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  auto input = Ort::Value::CreateTensor<float>(memory_info, data.data(), data.size(), shape.data(), shape.size());
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y"};
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  EXPECT_THAT(gsl::span<const float>(outputs[0].GetTensorData<float>(), data.size()),
+              ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
+}
+
+struct ProviderObservations {
+  size_t created = 0;
+  size_t initialized = 0;
+  bool return_null = false;
+  std::unordered_map<std::string, std::string> config;
+};
+
+class RecordingExecutionProvider : public IExecutionProvider {
+ public:
+  RecordingExecutionProvider(const std::string& name, std::shared_ptr<ProviderObservations> observations)
+      : IExecutionProvider(name), observations_(std::move(observations)) {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&, IResourceAccountant*) const override {
+    return {};
+  }
+
+  Status OnSessionInitializationEnd() override {
+    ++observations_->initialized;
+    return Status::OK();
+  }
+
+ private:
+  std::shared_ptr<ProviderObservations> observations_;
+};
+
+class RecordingProviderFactory : public IExecutionProviderFactory {
+ public:
+  RecordingProviderFactory(std::string name, std::shared_ptr<ProviderObservations> observations,
+                           std::shared_ptr<IExecutionProviderFactory> wrapped = nullptr)
+      : name_(std::move(name)), observations_(std::move(observations)), wrapped_(std::move(wrapped)) {}
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    return wrapped_ ? wrapped_->CreateProvider() : std::make_unique<RecordingExecutionProvider>(name_, observations_);
+  }
+
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& options,
+                                                     const OrtLogger& logger) override {
+    ++observations_->created;
+    const auto& config = options.value.config_options.GetConfigOptionsMap();
+    observations_->config.clear();
+    observations_->config.insert(config.begin(), config.end());
+    if (observations_->return_null) {
+      return nullptr;
+    }
+    return wrapped_ ? wrapped_->CreateProvider(options, logger) : CreateProvider();
+  }
+
+ private:
+  std::string name_;
+  std::shared_ptr<ProviderObservations> observations_;
+  std::shared_ptr<IExecutionProviderFactory> wrapped_;
+};
 
 }  // namespace
 
 // ────────────────────────────────────────────────────────────────────────────
 // Model Package API tests
 // ────────────────────────────────────────────────────────────────────────────
+TEST(ModelPackageApiTest, SchemaVersionReturnsMajorAndMinor) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_schema_version";
+  BuildPackage(root, "model", {{"cpu", "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}}, "1.7");
+  Ort::SessionOptions options;
+  PackageHandles handles(root, "model", options);
+  const auto& api = GetModelPackageFns();
+  int64_t major = -1;
+  int64_t minor = -1;
+  ASSERT_ORTSTATUS_OK(api.ModelPackage_GetSchemaVersion(handles.context.get(), &major, &minor));
+  EXPECT_EQ(major, 1);
+  EXPECT_EQ(minor, 7);
+
+  major = 123;
+  minor = 456;
+  Ort::Status status(api.ModelPackage_GetSchemaVersion(handles.context.get(), &major, nullptr));
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(major, 123);
+  Ort::Status missing_major(api.ModelPackage_GetSchemaVersion(handles.context.get(), nullptr, &minor));
+  EXPECT_EQ(missing_major.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(minor, 456);
+  EXPECT_EQ(Ort::GetApi().GetExperimentalFunction("OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28"), nullptr);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, CpuSelectionAndRepeatedSessionCreation) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_cpu_selection";
+  BuildPackage(root, "model", {{"cpu", "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+  Ort::SessionOptions options;
+  PackageHandles handles(root, "model", options);
+  const auto& api = GetModelPackageFns();
+  const ORTCHAR_T* folder = nullptr;
+  ASSERT_ORTSTATUS_OK(api.ModelPackageComponent_GetSelectedVariantFolderPath(handles.component.get(), &folder));
+  const std::filesystem::path expected(folder);
+  handles.options.reset();
+  handles.context.reset();
+
+  for (int i = 0; i < 2; ++i) {
+    OrtSession* raw_session = nullptr;
+    ASSERT_ORTSTATUS_OK(api.CreateSession(*ort_env, handles.component.get(), nullptr, &raw_session));
+    Ort::Session session(raw_session);
+    CheckSquareModel(session);
+    const ORTCHAR_T* folder_again = nullptr;
+    ASSERT_ORTSTATUS_OK(api.ModelPackageComponent_GetSelectedVariantFolderPath(handles.component.get(), &folder_again));
+    EXPECT_EQ(folder_again, folder);
+    EXPECT_EQ(std::filesystem::path(folder), expected);
+  }
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, LegacyProviderFactoryIsRetained) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_legacy_factory";
+  const char* ep_name = "ModelPackageLegacyEP";
+  BuildPackage(root, "model", {{"legacy", ep_name, "", "", "testdata/mul_1.onnx", {}, {}}});
+  auto observations = std::make_shared<ProviderObservations>();
+  std::optional<PackageHandles> handles;
+  {
+    Ort::SessionOptions options;
+    static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
+        std::make_shared<RecordingProviderFactory>(ep_name, observations));
+    handles.emplace(root, "model", options);
+  }
+  handles->options.reset();
+  handles->context.reset();
+  ASSERT_EQ(observations->created, 1u);
+
+  OrtSession* raw_session = nullptr;
+  ASSERT_ORTSTATUS_OK(GetModelPackageFns().CreateSession(*ort_env, handles->component.get(), nullptr, &raw_session));
+  Ort::Session session(raw_session);
+  EXPECT_EQ(observations->created, 2u);
+  EXPECT_EQ(observations->initialized, 1u);
+  CheckSquareModel(session);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, SelectedProviderCannotSilentlyFallBackToCpu) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_failed_factory";
+  const char* ep_name = "ModelPackageLegacyEP";
+  BuildPackage(root, "model", {{"legacy", ep_name, "", "", "testdata/mul_1.onnx", {}, {}}});
+  auto observations = std::make_shared<ProviderObservations>();
+  Ort::SessionOptions options;
+  static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
+      std::make_shared<RecordingProviderFactory>(ep_name, observations));
+  PackageHandles handles(root, "model", options);
+  observations->return_null = true;
+  OrtSession* session = nullptr;
+  Ort::Status status(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &session));
+  EXPECT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
+  EXPECT_EQ(session, nullptr);
+  EXPECT_EQ(observations->created, 2u);
+  EXPECT_EQ(observations->initialized, 0u);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, LegacyProviderOptionsAreNotSilentlyIgnored) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_legacy_options";
+  const char* ep_name = "ModelPackageLegacyEP";
+  VariantSpec variant{"legacy", ep_name, "", "", "testdata/mul_1.onnx", {}, {}};
+  variant.provider_options = std::unordered_map<std::string, std::string>{{"device_id", "1"}};
+  BuildPackage(root, "model", {variant});
+  auto observations = std::make_shared<ProviderObservations>();
+  Ort::SessionOptions options;
+  static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
+      std::make_shared<RecordingProviderFactory>(ep_name, observations));
+  PackageHandles handles(root, "model", options);
+  OrtSession* session = nullptr;
+  Ort::Status status(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &session));
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(session, nullptr);
+  EXPECT_EQ(observations->created, 1u);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, AdvancedOptionsKeepFallbackFactories) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_advanced_factories";
+  BuildPackage(root, "model", {{"plugin", "example_ep", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+  Ort::SessionOptions options;
+  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {});
+  options.AddConfigEntry("model_package.test_option", "caller");
+  auto observations = std::make_shared<ProviderObservations>();
+  static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
+      std::make_shared<RecordingProviderFactory>("ModelPackageFallbackEP", observations));
+  auto session = CreateSessionFromModelPackage(root, "model", options);
+  EXPECT_EQ(observations->created, 2u);
+  EXPECT_EQ(observations->initialized, 1u);
+  EXPECT_EQ(observations->config.at("model_package.test_option"), "caller");
+  CheckSquareModel(session);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, DefaultOptionsIncludeDeviceDefaultsAndPackageOverrides) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_device_defaults";
+  const std::string key = OrtSessionOptions::GetProviderOptionPrefix("example_ep") + "run_really_fast";
+  for (bool override_default : {false, true}) {
+    SCOPED_TRACE(override_default);
+    VariantSpec variant{"plugin", "example_ep", "cpu", "", "testdata/mul_1.onnx", {}, {}};
+    if (override_default) {
+      variant.provider_options = std::unordered_map<std::string, std::string>{{"run_really_fast", "package"}};
+    }
+    BuildPackage(root, "model", {variant});
+    Ort::SessionOptions options;
+    options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {{"run_really_fast", "caller"}});
+    options.AddConfigEntry("model_package.test_option", "caller");
+    auto observations = std::make_shared<ProviderObservations>();
+    auto& factory = static_cast<OrtSessionOptions*>(options)->provider_factories.front();
+    factory = std::make_shared<RecordingProviderFactory>("example_ep", observations, factory);
+    auto session = CreateSessionFromModelPackage(root, "model", options, true);
+    EXPECT_EQ(observations->created, 2u);
+    ASSERT_EQ(observations->config.count(key), 1u);
+    EXPECT_EQ(observations->config.at(key), override_default ? "package" : "true");
+    EXPECT_EQ(observations->config.count("model_package.test_option"), 0u);
+    EXPECT_EQ(options.GetConfigEntry(key.c_str()), "caller");
+    CheckSquareModel(session);
+  }
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, DefaultOptionsRegisterPluginCustomDomainsBeforeLoad) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_custom_domains";
+  BuildPackage(root, "model", {{"plugin", "example_ep", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+  const auto model_path = root / "model" / "plugin" / "mul_1.onnx";
+  ONNX_NAMESPACE::ModelProto model;
+  {
+    std::ifstream input(model_path, std::ios::binary);
+    ASSERT_TRUE(model.ParseFromIstream(&input));
+  }
+  ASSERT_EQ(model.graph().node_size(), 1);
+  model.mutable_graph()->mutable_node(0)->set_domain("test");
+  model.mutable_graph()->mutable_node(0)->set_op_type("Custom_Mul");
+  auto* opset = model.add_opset_import();
+  opset->set_domain("test");
+  opset->set_version(1);
+  {
+    std::ofstream output(model_path, std::ios::binary);
+    ASSERT_TRUE(model.SerializeToOstream(&output));
+  }
+  Ort::SessionOptions options;
+  options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(example_ep.get())}, {});
+  auto session = CreateSessionFromModelPackage(root, "model", options, true);
+  CheckSquareModel(session);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, QueryPointersRemainValidAndErrorsPreserveOutputs) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_query_contract";
+  const std::string first_name(96, 'a');
+  const std::string second_name(96, 'b');
+  BuildPackage(root, "model", {
+                                  {first_name, "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}},
+                                  {second_name, "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}},
+                              });
+  Ort::SessionOptions options;
+  PackageHandles handles(root, "model", options);
+  const auto& api = GetModelPackageFns();
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ASSERT_ORTSTATUS_OK(api.ModelPackage_GetVariantNames(handles.context.get(), "model", &names, &count));
+  ASSERT_EQ(count, 2u);
+  const char* saved_first = names[0];
+  const char* saved_second = names[1];
+  for (int i = 0; i < 10; ++i) {
+    const char* const* again = nullptr;
+    ASSERT_ORTSTATUS_OK(api.ModelPackage_GetVariantNames(handles.context.get(), "model", &again, &count));
+    EXPECT_EQ(again, names);
+    EXPECT_EQ(again[0], saved_first);
+    EXPECT_EQ(again[1], saved_second);
+    EXPECT_STREQ(saved_first, first_name.c_str());
+    EXPECT_STREQ(saved_second, second_name.c_str());
+  }
+
+  count = 123;
+  Ort::Status count_status(api.ModelPackage_GetVariantCount(handles.context.get(), "missing", &count));
+  EXPECT_EQ(count_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(count, 123u);
+  const char* sentinel = "unchanged";
+  const char* result = sentinel;
+  Ort::Status ep_status(api.ModelPackage_GetVariantEpName(handles.context.get(), "model", "missing", &result));
+  EXPECT_EQ(ep_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(result, sentinel);
+  Ort::Status path_status(api.ModelPackage_ResolveStringRef(
+      handles.context.get(), nullptr, "missing.onnx", 1, &result));
+  EXPECT_FALSE(path_status.IsOK());
+  EXPECT_EQ(result, sentinel);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, UnicodePathsRoundTripThroughLibraryAndSession) {
+  const auto root = std::filesystem::temp_directory_path() / ORT_TSTR("ort_mp_\u6a21\u578b_\U0001F9EA");
+  const std::string component = "\u7ec4\u4ef6";
+  const std::string variant = "\u53d8\u4f53";
+  const std::string model_name = "\u6a21\u578b.onnx";
+  BuildPackage(root, component, {{variant, "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+  const auto folder = root / ToPathString(component) / ToPathString(variant);
+  std::filesystem::rename(folder / "mul_1.onnx", folder / ToPathString(model_name));
+  nlohmann::ordered_json manifest;
+  {
+    std::ifstream input(root / "manifest.json");
+    input >> manifest;
+  }
+  manifest["components"][component]["variants"][variant]["executor_info"]["ort"]["model_file"] = model_name;
+  {
+    std::ofstream output(root / "manifest.json");
+    output << manifest.dump();
+  }
+
+  Ort::SessionOptions options;
+  PackageHandles handles(root, component, options);
+  const char* resolved = nullptr;
+  const auto reference = component + "/" + variant + "/" + model_name;
+  ASSERT_ORTSTATUS_OK(GetModelPackageFns().ModelPackage_ResolveStringRef(
+      handles.context.get(), nullptr, reference.c_str(), 1, &resolved));
+  EXPECT_EQ(std::filesystem::canonical(ToPathString(resolved)),
+            std::filesystem::canonical(folder / ToPathString(model_name)));
+  const ORTCHAR_T* selected_folder = nullptr;
+  ASSERT_ORTSTATUS_OK(GetModelPackageFns().ModelPackageComponent_GetSelectedVariantFolderPath(
+      handles.component.get(), &selected_folder));
+  EXPECT_EQ(std::filesystem::canonical(selected_folder), std::filesystem::canonical(folder));
+  OrtSession* raw_session = nullptr;
+  ASSERT_ORTSTATUS_OK(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &raw_session));
+  Ort::Session session(raw_session);
+  CheckSquareModel(session);
+  std::filesystem::remove_all(root);
+}
+
 TEST(ModelPackageApiTest, PackageContextQueries) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_api_test";
   BuildTwoVariantPackage(package_root,
