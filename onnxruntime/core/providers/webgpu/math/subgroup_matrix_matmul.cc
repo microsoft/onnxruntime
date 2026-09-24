@@ -25,12 +25,12 @@ namespace webgpu {
 // Computes Y = activation(A @ B + optional bias) using subgroupMatrixMultiplyAccumulate.
 class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulProgram> {
  public:
-  SubgroupMatrixMatMulProgram(const Activation& activation, bool has_bias, int32_t config_index,
+  SubgroupMatrixMatMulProgram(const Activation& activation, bool has_bias, SubgroupMatrixConfig config,
                               uint32_t sg_mat_count_m, uint32_t sg_mat_count_n, uint32_t split_k)
       : Program{"SubgroupMatrixMatMul"},
         activation_(activation),
         has_bias_(has_bias),
-        config_index_(config_index),
+        config_(config),
         sg_mat_count_m_(sg_mat_count_m),
         sg_mat_count_n_(sg_mat_count_n),
         split_k_(split_k) {}
@@ -45,7 +45,7 @@ class SubgroupMatrixMatMulProgram final : public Program<SubgroupMatrixMatMulPro
  private:
   const Activation activation_;
   const bool has_bias_;
-  const int32_t config_index_;
+  const SubgroupMatrixConfig config_;
   const uint32_t sg_mat_count_m_;
   const uint32_t sg_mat_count_n_;
   const uint32_t split_k_;
@@ -78,8 +78,8 @@ class SubgroupMatrixMatMulPadBProgram final : public Program<SubgroupMatrixMatMu
 // selector kept internal to this impl.
 class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
  public:
-  SubgroupMatrixMatMulImpl(int32_t config_index, SubgroupMatrixTilingSelector tiling_selector)
-      : config_index_(config_index),
+  SubgroupMatrixMatMulImpl(SubgroupMatrixConfig config, SubgroupMatrixTilingSelector tiling_selector)
+      : config_(config),
         tiling_selector_(std::move(tiling_selector)) {}
 
   Status Compute(ComputeContext& context,
@@ -141,7 +141,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       return Status::OK();
     }
 
-    const auto& config = supported_subgroup_matrix_configs[config_index_];
+    const auto& config = config_;
     const bool needs_padded_b = N % 2 != 0;
     // Require whole subgroup-matrix K blocks. An odd-width B must be constant
     // because its padded copy is cached by this implementation.
@@ -185,14 +185,17 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
     const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
 
-    SubgroupMatrixMatMulProgram program{activation, has_bias, config_index_,
+    SubgroupMatrixMatMulProgram program{activation, has_bias, config,
                                         sg_mat_count_m, sg_mat_count_n, split_k};
     program.SetWorkgroupSize(config.subgroupSize * split_k);
     if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
       program.SetSubgroupSize(config.subgroupSize);
     }
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
-    program.CacheHint(activation.CacheKey(), has_bias, config_index_,
+    program.CacheHint(activation.CacheKey(), has_bias,
+                      static_cast<uint32_t>(config.componentType),
+                      static_cast<uint32_t>(config.resultComponentType),
+                      config.M, config.N, config.K, config.subgroupSize,
                       sg_mat_count_m, sg_mat_count_n, split_k)
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                     {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
@@ -258,7 +261,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
                      : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pad odd-N B for subgroup-matrix MatMul.");
   }
 
-  const int32_t config_index_;
+  const SubgroupMatrixConfig config_;
   SubgroupMatrixTilingSelector tiling_selector_;
 
   // Cached even-strided B for odd N; built once by EnsurePaddedB.
@@ -310,8 +313,7 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  " << output.SetByOffset("output_offset", "value") << "\n"
       << "}\n";
 
-  const auto& config = supported_subgroup_matrix_configs[config_index_];
-  if (config.Is(8, 16, 16)) {
+  if (config_.Is(8, 16, 16)) {
     return GenerateShaderCode8x16x16(shader, sg_mat_count_m_, sg_mat_count_n_, split_k_);
   }
   return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
@@ -321,8 +323,9 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
 std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context) {
   // Only run on devices that report the 8x16x16 F16 subgroup-matrix config this
   // kernel is implemented for and can provide its required subgroup size.
-  const auto config_index = SelectSubgroupMatrixConfig(context, /*is_fp16=*/true, {{8, 16, 16, 32}});
-  if (!config_index) {
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  const auto config = SelectSubgroupMatrixConfig(context, {{kF16, kF16, 8, 16, 16, 32, false}});
+  if (!config) {
     return nullptr;
   }
   // Intel GPUs use a tuned/heuristic tiling policy; every other vendor falls back
@@ -333,7 +336,7 @@ std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeConte
   if (!tiling_selector) {
     return nullptr;
   }
-  return std::make_unique<SubgroupMatrixMatMulImpl>(*config_index, std::move(tiling_selector));
+  return std::make_unique<SubgroupMatrixMatMulImpl>(*config, std::move(tiling_selector));
 }
 
 }  // namespace webgpu
