@@ -88,7 +88,7 @@ ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
   if (!f) {
     const std::error_code error_code(errno, std::generic_category());
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Cannot open file: '" + path.string() + "': " + error_code.message());
+                      "Cannot open file: '" + path.u8string() + "': " + error_code.message());
   }
   std::ostringstream buf;
   buf << f.rdbuf();
@@ -103,7 +103,7 @@ ModelPackageStatus* ParseJsonFile(const fs::path& path, ordered_json* out) {
     *out = ordered_json::parse(contents);
   } catch (const ordered_json::parse_error& e) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "Failed to parse JSON at '" + path.string() + "': " + e.what());
+                      "Failed to parse JSON at '" + path.u8string() + "': " + e.what());
   }
   return nullptr;
 }
@@ -248,7 +248,7 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
   out->resolved_directory = resolved_dir;
   out->resolved_directory_attempted = true;
   if (resolved_dir.has_value()) {
-    out->resolved_directory_cache = resolved_dir->string();
+    out->resolved_directory_cache = resolved_dir->u8string();
   }
 
   return nullptr;
@@ -388,7 +388,7 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
       if (ec) break;
       if (!entry.is_directory(ec)) continue;
-      std::string name = entry.path().filename().string();
+      std::string name = entry.path().filename().u8string();
       std::string uri = SharedAssetUriFromDirName(name);
       if (uri.empty()) continue;  // not a sha256-<hex> dir; ignore (.tmp staging, etc.)
       if (!seen.insert(uri).second) continue;
@@ -425,7 +425,7 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
       resolved = assets_root / DefaultSharedAssetDirName(uri);
     }
     rec->resolved_path = resolved;
-    rec->resolved_path_cache = resolved.string();
+    rec->resolved_path_cache = resolved.u8string();
     pkg->shared_asset_index_by_uri.emplace(uri, pkg->shared_assets.size());
     pkg->shared_assets.push_back(std::move(rec));
   }
@@ -623,7 +623,7 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
         return nullptr;
       }
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot open executor_info file: '" + resolved.string() + "'.");
+                        "Cannot open executor_info file: '" + resolved.u8string() + "'.");
     }
     std::ostringstream buf;
     buf << f.rdbuf();
@@ -634,7 +634,7 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
     } catch (const std::exception& e) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "': " + e.what());
+                            resolved.u8string() + "': " + e.what());
     }
     *dst_json = std::move(contents);
     return nullptr;
@@ -673,7 +673,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   std::error_code ec;
   if (!fs::exists(package_root, ec) || !fs::is_directory(package_root, ec)) {
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "package_root '" + package_root.string() + "' is not a directory.");
+                      "package_root '" + package_root.u8string() + "' is not a directory.");
   }
   pkg->package_root = fs::canonical(package_root, ec);
   if (ec) pkg->package_root = package_root;

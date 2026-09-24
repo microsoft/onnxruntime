@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -214,7 +215,7 @@ std::string Sha256::HashStringHex(const std::string& s) {
 }
 
 std::string Sha256::HashFileHex(const std::string& path) {
-  std::ifstream f(path, std::ios::binary);
+  std::ifstream f(std::filesystem::u8path(path), std::ios::binary);
   if (!f) return std::string();
   Sha256 h;
   char buf[8192];

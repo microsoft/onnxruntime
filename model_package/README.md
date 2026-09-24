@@ -6,6 +6,11 @@ itself, so any consumer (ORT, publisher tools, ...) can compile it in
 without dragging in a session runtime. It is distributed and consumed as
 **source** (see [Versioning and compatibility](#versioning-and-compatibility)).
 
+All C API strings, including filesystem paths, are UTF-8. On Windows, convert
+native UTF-16 paths before calling the library; returned paths are also UTF-8.
+Directory hashes encode relative filenames as UTF-8 with `/` separators on
+every platform.
+
 The library owns three things:
 
 1. The **on-disk layout** of a model package (directory + manifest + shared

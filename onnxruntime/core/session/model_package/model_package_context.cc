@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
@@ -149,8 +150,7 @@ Status ModelPackageComponentContext::GetSelectedVariantFolderPath(const std::fil
 
   const auto& selected_variant = component_model_info_.variants[selected_idx];
 
-  folder_path_cache_ = selected_variant.folder_path;
-  out_folder_path = &folder_path_cache_;
+  out_folder_path = &selected_variant.folder_path;
   return Status::OK();
 }
 
@@ -300,29 +300,31 @@ Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptionPtrs(
   return Status::OK();
 }
 
-Status ModelPackageComponentContext::RebuildProviderListForSession(
-    const Environment& env, const OrtSessionOptions& effective_options) {
-  provider_list_.clear();
-
-  if (owned_ep_infos_.empty()) {
+Status ModelPackageComponentContext::ConfigureSessionOptions(
+    const Environment& env, OrtSessionOptions& options) const {
+  if (!options.provider_factories.empty()) {
     return Status::OK();
   }
 
-  const auto& ep_info = owned_ep_infos_[0];
-  if (ep_info.ep_name == kCpuExecutionProvider || ep_info.ep_devices.empty()) {
-    // CPU is built-in; no provider to register.
-    return Status::OK();
+  ORT_RETURN_IF(ep_infos_.empty(), "No execution provider was selected for the model package.");
+  const auto& ep_info = ep_infos_[0];
+  ProviderPolicyContext policy_context;
+  ORT_RETURN_IF_ERROR(policy_context.AddEpDefaultOptionsToSession(options.value, ep_info.ep_devices));
+  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_info.ep_devices, options));
+
+  if (ep_info.provider_factory) {
+    options.provider_factories.push_back(ep_info.provider_factory);
+  } else if (!ep_info.ep_devices.empty()) {
+    std::unique_ptr<IExecutionProviderFactory> provider_factory;
+    ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env, ep_info.ep_devices, provider_factory));
+    options.provider_factories.push_back(std::move(provider_factory));
+  } else {
+    ORT_RETURN_IF(ep_info.ep_name != kCpuExecutionProvider,
+                  "Cannot recreate the selected execution provider: ", ep_info.ep_name);
   }
 
-  std::unique_ptr<IExecutionProviderFactory> provider_factory;
-  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
-      env,
-      gsl::span<const OrtEpDevice* const>(ep_info.ep_devices.data(), ep_info.ep_devices.size()),
-      provider_factory));
-
-  const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
-  provider_list_.push_back(provider_factory->CreateProvider(effective_options, logger));
-
+  // Variant selection has already resolved the policy. Do not select a different EP at session creation.
+  options.value.ep_selection_policy.enable = false;
   return Status::OK();
 }
 
@@ -365,15 +367,17 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   // lifetime (owned by package_handle_) so path references can be resolved later without
   // reopening. The unique_ptr releases the handle even on exception paths during conversion.
   ::ModelPackage* pkg = nullptr;
-  if (::ModelPackageStatus* st = ::ModelPackage_Open(package_root.string().c_str(), nullptr, &pkg)) {
+  const std::string package_root_utf8 = ToUTF8String(package_root.native());
+  if (::ModelPackageStatus* st = ::ModelPackage_Open(package_root_utf8.c_str(), nullptr, &pkg)) {
     std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st) : "unknown error";
     ::ModelPackageStatus_Release(st);
-    ORT_THROW("Failed to open model package at '", package_root.string(), "': ", msg);
+    ORT_THROW("Failed to open model package at '", package_root_utf8, "': ", msg);
   }
   package_handle_.reset(pkg);
 
   const ::ModelPackageInfo* pkg_info = ::ModelPackage_Info(pkg);
-  model_package_info_.schema_version = pkg_info ? pkg_info->schema_version_major : 0;
+  model_package_info_.schema_version_major = pkg_info ? pkg_info->schema_version_major : 0;
+  model_package_info_.schema_version_minor = pkg_info ? pkg_info->schema_version_minor : 0;
   model_package_info_.components.clear();
   component_name_to_index_.clear();
 
@@ -401,7 +405,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       // downstream callers that require a directory surface a clearer error
       // at the point of use.
       if (variant->variant_directory != nullptr) {
-        ort_variant.folder_path = std::filesystem::path(variant->variant_directory);
+        ort_variant.folder_path = std::filesystem::path(ToPathString(variant->variant_directory));
       }
 
       // EP compatibility (single entry per variant).
@@ -438,7 +442,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
         // Delegates to ModelPackage_ResolveStringRef so accepted forms (relative,
         // absolute, '..', sha256: URI, sha256: URI + subpath) and portable/installed
         // confinement match the rest of the model_package library.
-        const std::string base_dir_str = ort_variant.folder_path.string();
+        const std::string base_dir_str = ToUTF8String(ort_variant.folder_path.native());
         const char* base_dir = base_dir_str.empty() ? nullptr : base_dir_str.c_str();
         auto resolve_string_ref = [&](const char* field, const std::string& input,
                                       bool must_exist) -> std::string {
@@ -461,8 +465,8 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           }
           const std::string model_file = it->get<std::string>();
           ort_file.identifier = model_file;
-          ort_file.model_file_path = resolve_string_ref("model_file", model_file,
-                                                        /*must_exist=*/false);
+          ort_file.model_file_path = ToPathString(resolve_string_ref("model_file", model_file,
+                                                                     /*must_exist=*/false));
         }
 
         auto fill_string_map = [&](const char* key,
@@ -525,6 +529,20 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   component_names_cache_.reserve(model_package_info_.components.size());
   for (const auto& component : model_package_info_.components) {
     component_names_cache_.push_back(component.component_name);
+    auto& names = component_to_variant_names_cache_[component.component_name];
+    names.reserve(component.variants.size());
+    for (const auto& variant : component.variants) {
+      names.push_back(variant.variant_name);
+    }
+    auto& ptrs = variant_name_ptrs_cache_[component.component_name];
+    ptrs.reserve(names.size());
+    for (const auto& name : names) {
+      ptrs.push_back(name.c_str());
+    }
+  }
+  component_name_ptrs_cache_.reserve(component_names_cache_.size());
+  for (const auto& name : component_names_cache_) {
+    component_name_ptrs_cache_.push_back(name.c_str());
   }
 }
 
@@ -562,35 +580,23 @@ Status ModelPackageContext::GetComponentNames(gsl::span<const std::string>& out_
 }
 
 void ModelPackageContext::GetComponentNamePtrs(const char* const*& out_ptrs, size_t& out_count) const {
-  if (component_name_ptrs_cache_.empty() && !component_names_cache_.empty()) {
-    component_name_ptrs_cache_.reserve(component_names_cache_.size());
-    for (const auto& s : component_names_cache_) {
-      component_name_ptrs_cache_.push_back(s.c_str());
-    }
-  }
   out_count = component_name_ptrs_cache_.size();
   out_ptrs = component_name_ptrs_cache_.empty() ? nullptr : component_name_ptrs_cache_.data();
 }
 
-void ModelPackageContext::GetVariantNamePtrs(const std::string& component_name,
-                                             const char* const*& out_ptrs, size_t& out_count) const {
-  // Ensure variant name strings are cached first.
-  gsl::span<const std::string> variant_names;
-  (void)GetVariantNames(component_name, variant_names);
-
-  auto& ptrs = variant_name_ptrs_cache_[component_name];
-  ptrs.clear();
-  ptrs.reserve(variant_names.size());
-  for (const auto& s : variant_names) {
-    ptrs.push_back(s.c_str());
+Status ModelPackageContext::GetVariantNamePtrs(const std::string& component_name,
+                                               const char* const*& out_ptrs, size_t& out_count) const {
+  auto it = variant_name_ptrs_cache_.find(component_name);
+  if (it == variant_name_ptrs_cache_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
   }
+  const auto& ptrs = it->second;
   out_count = ptrs.size();
   out_ptrs = ptrs.empty() ? nullptr : ptrs.data();
+  return Status::OK();
 }
 
 Status ModelPackageContext::GetVariantCount(const std::string& component_name, size_t& out_count) const {
-  out_count = 0;
-
   auto it = component_name_to_index_.find(component_name);
   if (it == component_name_to_index_.end()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
@@ -602,23 +608,12 @@ Status ModelPackageContext::GetVariantCount(const std::string& component_name, s
 
 Status ModelPackageContext::GetVariantNames(const std::string& component_name,
                                             gsl::span<const std::string>& out_variant_names) const {
-  out_variant_names = gsl::span<const std::string>{};
-
-  auto it = component_name_to_index_.find(component_name);
-  if (it == component_name_to_index_.end()) {
+  auto it = component_to_variant_names_cache_.find(component_name);
+  if (it == component_to_variant_names_cache_.end()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
   }
 
-  const auto& variants = model_package_info_.components[it->second].variants;
-  component_to_variant_names_cache_[component_name].clear();
-  component_to_variant_names_cache_[component_name].reserve(variants.size());
-
-  for (const auto& variant : variants) {
-    component_to_variant_names_cache_[component_name].push_back(variant.variant_name);
-  }
-
-  out_variant_names = gsl::span<const std::string>(component_to_variant_names_cache_[component_name].data(),
-                                                   component_to_variant_names_cache_[component_name].size());
+  out_variant_names = gsl::span<const std::string>(it->second);
   return Status::OK();
 }
 

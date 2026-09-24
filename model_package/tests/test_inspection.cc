@@ -81,7 +81,7 @@ class Sandbox {
   const fs::path& root() const { return root_; }
 
   void Write(const std::string& relpath, const std::string& contents) {
-    fs::path full = root_ / relpath;
+    fs::path full = root_ / fs::u8path(relpath);
     fs::create_directories(full.parent_path());
     std::ofstream f(full, std::ios::binary);
     f << contents;
@@ -108,7 +108,7 @@ bool test_open_minimal_inline() {
   })");
 
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   CHECK(pkg != nullptr);
 
   const ModelPackageInfo* info = ModelPackage_Info(pkg);
@@ -164,7 +164,7 @@ bool test_open_full_inline_with_metadata() {
   fs::create_directories(s.root() / "decoder" / "cuda_fp16");
 
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   const ModelPackageInfo* info = ModelPackage_Info(pkg);
   CHECK(std::string(info->package_name) == "phi-4");
   CHECK(std::string(info->package_version) == "1.2.3");
@@ -189,7 +189,7 @@ bool test_open_full_inline_with_metadata() {
 
   const char* resolved = v->variant_directory;
   CHECK(resolved != nullptr);
-  CHECK(std::string(resolved).find("decoder/cuda_fp16") != std::string::npos);
+  CHECK(fs::u8path(resolved) == fs::canonical(s.root() / "decoder" / "cuda_fp16"));
 
   ModelPackage_Close(pkg);
   return true;
@@ -205,7 +205,7 @@ bool test_external_component_file() {
     "variants": { "cpu": {} }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(pkg), "decoder");
   CHECK(c != nullptr);
   CHECK((c)->num_variants == 1);
@@ -223,7 +223,7 @@ bool test_external_component_directory() {
     "variants": { "cpu": {} }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   CHECK((ModelPackage_Info(pkg))->num_components == 1);
   ModelPackage_Close(pkg);
   return true;
@@ -251,7 +251,7 @@ bool test_executor_info_inline_and_external() {
   s.Write("v/ort_info.json", R"({"model_file":"model.onnx"})");
 
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   const ModelPackageInfo* info = ModelPackage_Info(pkg);
   const ModelVariantInfo* v =
       ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "decoder"), "cuda");
@@ -293,7 +293,7 @@ bool test_inline_executor_info_without_directory_accepted() {
     }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   ModelPackage_Close(pkg);
   return true;
 }
@@ -305,7 +305,7 @@ bool test_path_confinement_rejects_external_paths() {
     "components": { "x": "../escape.json" }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
   return true;
 }
 
@@ -315,8 +315,7 @@ bool test_installed_layout_allows_absolute() {
   external.Write("decoder.json", R"({"variants": {"cpu": {}}})");
 
   Sandbox s;
-  std::string abs_comp = (external.root() / "decoder.json").string();
-  // Escape backslashes for any platform that uses them — POSIX is fine as-is.
+  std::string abs_comp = (external.root() / "decoder.json").generic_u8string();
   s.Write("manifest.json", std::string(R"({
     "schema_version": 1,
     "layout": "installed",
@@ -325,7 +324,7 @@ bool test_installed_layout_allows_absolute() {
   })");
 
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   CHECK((ModelPackage_Info(pkg))->num_components == 1);
   ModelPackage_Close(pkg);
   return true;
@@ -354,26 +353,27 @@ bool test_shared_assets_resolve() {
       "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   CHECK((ModelPackage_Info(pkg))->num_shared_assets == 2);
 
   const ModelSharedAssetInfo* a = &(ModelPackage_Info(pkg))->shared_assets[0];
   CHECK(a != nullptr);
   CHECK(std::string(a->uri).find("aaaa") != std::string::npos);
-  CHECK(std::string(a->resolved_path).find("assets/a") != std::string::npos);
+  CHECK(fs::u8path(a->resolved_path) == fs::canonical(s.root() / "assets" / "a"));
 
   const ModelSharedAssetInfo* b = &(ModelPackage_Info(pkg))->shared_assets[1];
   CHECK(b != nullptr);
   CHECK(std::string(b->uri).find("bbbb") != std::string::npos);
   // Default convention path: shared_assets/sha256-<hex>
-  CHECK(std::string(b->resolved_path).find("shared_assets/sha256-bb") != std::string::npos);
+  CHECK(fs::u8path(b->resolved_path).parent_path() == fs::canonical(s.root() / "shared_assets"));
+  CHECK(fs::u8path(b->resolved_path).filename().u8string().find("sha256-bb") == 0);
 
   // Resolve via API.
   const char* path = nullptr;
   CHECK_OK(ModelPackage_ResolveAssetUri(pkg,
                                         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                                         &path));
-  CHECK(std::string(path).find("assets/a") != std::string::npos);
+  CHECK(fs::u8path(path) == fs::canonical(s.root() / "assets" / "a"));
 
   CHECK_ERR(ModelPackage_ResolveAssetUri(pkg, "sha256:not_a_known_one", &path),
             MODEL_PACKAGE_ERR_ASSET_MISSING);
@@ -389,7 +389,7 @@ bool test_unknown_field_rejected_strict() {
     "components": { "x": {"variants": {"cpu": {"typo_field": 1}}} }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   return true;
 }
 
@@ -403,7 +403,7 @@ bool test_unknown_field_tolerated_lenient() {
   opts.strict_unknown_fields = false;
   opts.follow_symlinks = true;
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), &opts, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), &opts, &pkg));
   ModelPackage_Close(pkg);
   return true;
 }
@@ -415,7 +415,7 @@ bool test_round_trip_getters_preserve_order() {
     "components": { "decoder": {"variants": {"cuda": {"ep":"CUDAExecutionProvider","device":"gpu"}}} }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   const char* comp_json = nullptr;
   CHECK_OK(ModelPackage_GetComponentJson(pkg, "decoder", &comp_json));
   CHECK(comp_json != nullptr);
@@ -442,7 +442,7 @@ bool test_round_trip_preserves_unknown_fields_lenient() {
   opts.strict_unknown_fields = false;
   opts.follow_symlinks = true;
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), &opts, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), &opts, &pkg));
   const char* var_json = nullptr;
   CHECK_OK(ModelPackage_GetVariantJson(pkg, "x", "cpu", &var_json));
   CHECK(std::string(var_json).find("future_field") != std::string::npos);
@@ -453,7 +453,7 @@ bool test_round_trip_preserves_unknown_fields_lenient() {
 bool test_missing_manifest() {
   Sandbox s;
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_IO);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_IO);
   return true;
 }
 
@@ -461,7 +461,7 @@ bool test_unsupported_schema_version() {
   Sandbox s;
   s.Write("manifest.json", R"({"schema_version": 99, "components": {}})");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_VERSION);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_VERSION);
   return true;
 }
 
@@ -472,7 +472,7 @@ bool test_schema_version_string_and_minor() {
     s.Write("manifest.json",
             R"({"schema_version": "1.0", "components": {"a": {"variants": {"cpu": {}}}}})");
     ModelPackage* pkg = nullptr;
-    CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+    CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
     const ModelPackageInfo* info = ModelPackage_Info(pkg);
     CHECK(info->schema_version_major == 1);
     CHECK(info->schema_version_minor == 0);
@@ -487,7 +487,7 @@ bool test_schema_version_string_and_minor() {
             R"({"schema_version": "1.7", "some_future_field": true,
                 "components": {"a": {"variants": {"cpu": {}}}}})");
     ModelPackage* pkg = nullptr;
-    CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+    CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
     const ModelPackageInfo* info = ModelPackage_Info(pkg);
     CHECK(info->schema_version_major == 1);
     CHECK(info->schema_version_minor == 7);
@@ -499,7 +499,7 @@ bool test_schema_version_string_and_minor() {
     Sandbox s;
     s.Write("manifest.json", R"({"schema_version": "2.0", "components": {}})");
     ModelPackage* pkg = nullptr;
-    CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_VERSION);
+    CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_VERSION);
   }
 
   // A malformed schema_version string is a schema error.
@@ -507,7 +507,7 @@ bool test_schema_version_string_and_minor() {
     Sandbox s;
     s.Write("manifest.json", R"({"schema_version": "1.x", "components": {}})");
     ModelPackage* pkg = nullptr;
-    CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+    CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   }
   return true;
 }
@@ -520,7 +520,7 @@ bool test_invalid_sha256_uri_rejected() {
     "components": {"x": {"variants": {"cpu": {}}}}
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
+  CHECK_ERR(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_SCHEMA);
   return true;
 }
 
@@ -528,10 +528,38 @@ bool test_find_returns_null_on_missing() {
   Sandbox s;
   s.Write("manifest.json", R"({"schema_version":1,"components":{"a":{"variants":{"cpu":{}}}}})");
   ModelPackage* pkg = nullptr;
-  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  CHECK_OK(ModelPackage_Open(s.root().u8string().c_str(), nullptr, &pkg));
   const ModelPackageInfo* info = ModelPackage_Info(pkg);
   CHECK(ModelPackage_FindComponent(info, "missing") == nullptr);
   CHECK(ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "a"), "missing") == nullptr);
+  ModelPackage_Close(pkg);
+  return true;
+}
+
+bool test_unicode_paths() {
+  Sandbox s;
+  const std::string directory = u8"\u6a21\u578b_\U0001F9EA";
+  const std::string filename = u8"\u914d\u7f6e.json";
+  s.Write(directory + "/manifest.json", R"({
+    "schema_version": "1.0",
+    "components": {"model": {"variants": {"cpu": {
+      "variant_directory": ".",
+      "executor_info": {"ort": "\u914d\u7f6e.json"}
+    }}}}
+  })");
+  s.Write(directory + "/" + filename, R"({"model_file": "model.onnx"})");
+  const fs::path root = s.root() / fs::u8path(directory);
+  ModelPackage* pkg = nullptr;
+  CHECK_OK(ModelPackage_Open(root.u8string().c_str(), nullptr, &pkg));
+  const auto* variant = &ModelPackage_Info(pkg)->components[0].variants[0];
+  CHECK(fs::u8path(variant->variant_directory) == fs::canonical(root));
+  CHECK(ModelVariantInfo_FindExecutorInfo(variant, "ort") != nullptr);
+  const char* resolved = nullptr;
+  CHECK_OK(ModelPackage_ResolveStringRef(pkg, nullptr, filename.c_str(), true, &resolved));
+  CHECK(fs::u8path(resolved) == fs::canonical(root / fs::u8path(filename)));
+  const std::string base = root.u8string();
+  CHECK_OK(ModelPackage_ResolveStringRef(pkg, base.c_str(), filename.c_str(), true, &resolved));
+  CHECK(fs::u8path(resolved) == fs::canonical(root / fs::u8path(filename)));
   ModelPackage_Close(pkg);
   return true;
 }
@@ -562,6 +590,7 @@ const Test kTests[] = {
     {"schema_version_string_and_minor", test_schema_version_string_and_minor},
     {"invalid_sha256_uri_rejected", test_invalid_sha256_uri_rejected},
     {"find_returns_null_on_missing", test_find_returns_null_on_missing},
+    {"unicode_paths", test_unicode_paths},
 };
 
 }  // namespace

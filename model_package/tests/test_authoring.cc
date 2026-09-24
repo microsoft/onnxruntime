@@ -77,9 +77,9 @@ class Sandbox {
   Sandbox(const Sandbox&) = delete;
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
-  fs::path path(const std::string& rel) const { return root_ / rel; }
+  fs::path path(const std::string& rel) const { return root_ / fs::u8path(rel); }
   void Write(const std::string& rel, const std::string& contents) {
-    fs::path full = root_ / rel;
+    fs::path full = root_ / fs::u8path(rel);
     fs::create_directories(full.parent_path());
     std::ofstream f(full, std::ios::binary);
     f << contents;
@@ -364,7 +364,7 @@ bool test_add_shared_asset_copy_in_true_portable_ok() {
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   CHECK(uri != nullptr);
   CHECK(std::string(uri).substr(0, 7) == "sha256:");
@@ -379,7 +379,7 @@ bool test_add_shared_asset_copy_in_false_portable_rejected() {
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
   const char* uri = nullptr;
-  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                         nullptr, /*copy_in=*/false, &uri),
             MODEL_PACKAGE_ERR_STATE);
   return true;
@@ -394,7 +394,7 @@ bool test_add_shared_asset_copy_in_false_installed_ok() {
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetLayout(p.get(), "installed"));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                        nullptr, /*copy_in=*/false, &uri));
   CHECK(uri != nullptr);
   // Surfaced as a manifest override -> shared_assets count should be 1.
@@ -412,7 +412,7 @@ bool test_add_shared_asset_expected_uri_mismatch_errors() {
   CHECK_OK(ModelPackage_SetLayout(p.get(), "installed"));
   const char* uri = nullptr;
   std::string bogus = "sha256:" + std::string(64, '0');
-  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                         bogus.c_str(), /*copy_in=*/false, &uri),
             MODEL_PACKAGE_ERR_STATE);
   return true;
@@ -427,7 +427,7 @@ bool test_remove_shared_asset() {
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetLayout(p.get(), "installed"));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").u8string().c_str(),
                                        nullptr, /*copy_in=*/false, &uri));
   std::string uri_copy(uri);
   CHECK((ModelPackage_Info(p.get()))->num_shared_assets == 1);

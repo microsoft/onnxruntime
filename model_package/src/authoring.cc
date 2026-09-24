@@ -423,7 +423,7 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   }
 
   std::string computed_uri;
-  if (auto* s = mp::ComputeDirectoryAssetUri(fs::path(source_dir), &computed_uri)) return s;
+  if (auto* s = mp::ComputeDirectoryAssetUri(fs::u8path(source_dir), &computed_uri)) return s;
   if (expected_uri_or_null) {
     if (computed_uri != expected_uri_or_null) {
       return MakeStatus(MODEL_PACKAGE_ERR_STATE,
@@ -439,7 +439,7 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
     // No manifest entry needed — the asset will be materialized at the default
     // convention path on commit. LoadSharedAssets surfaces the staged source
     // immediately so the URI shows up in ModelPackage_Info() before commit.
-    pkg->pending_shared_asset_copies[computed_uri] = fs::path(source_dir);
+    pkg->pending_shared_asset_copies[computed_uri] = fs::u8path(source_dir);
   } else {
     pkg->manifest["shared_assets"][computed_uri] = std::string(source_dir);
   }

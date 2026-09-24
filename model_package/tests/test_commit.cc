@@ -80,9 +80,9 @@ class Sandbox {
   Sandbox(const Sandbox&) = delete;
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
-  fs::path path(const std::string& rel) const { return root_ / rel; }
+  fs::path path(const std::string& rel) const { return root_ / fs::u8path(rel); }
   void Write(const std::string& rel, const std::string& contents) {
-    fs::path full = root_ / rel;
+    fs::path full = root_ / fs::u8path(rel);
     fs::create_directories(full.parent_path());
     std::ofstream f(full, std::ios::binary);
     f << contents;
@@ -124,13 +124,13 @@ PkgHandle MakeAuthoredPkgAt(const fs::path& /*root*/,
 bool test_commit_inplace_basic_roundtrip() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
   // manifest.json exists.
   CHECK(fs::is_regular_file(s.path("pkg") / "manifest.json"));
 
   // Reopen and confirm.
   ModelPackage* re = nullptr;
-  CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re));
+  CHECK_OK(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &re));
   PkgHandle rep(re);
   CHECK((ModelPackage_Info(rep.get()))->num_components == 1);
   const ModelPackageInfo* info = ModelPackage_Info(rep.get());
@@ -155,11 +155,11 @@ bool test_commit_external_component_writes_file() {
   Sandbox s;
   // Author an inline package committed to disk first.
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
 
   // Reopen, add an external component pointing at a file that doesn't exist yet.
   ModelPackage* re = nullptr;
-  CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re));
+  CHECK_OK(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &re));
   PkgHandle rep(re);
   CHECK_OK(ModelPackage_SetComponentExternal(rep.get(), "decoder", "decoder.json"));
   CHECK_OK(ModelPackage_Commit(rep.get(), nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
@@ -168,7 +168,7 @@ bool test_commit_external_component_writes_file() {
 
   // Reopen yet again and verify external component round-trips.
   ModelPackage* re2 = nullptr;
-  CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re2));
+  CHECK_OK(ModelPackage_Open(s.path("pkg").u8string().c_str(), nullptr, &re2));
   PkgHandle rep2(re2);
   CHECK(ModelPackage_FindComponent(ModelPackage_Info(rep2.get()), "decoder") != nullptr);
   return true;
@@ -180,10 +180,10 @@ bool test_commit_pending_shared_asset_copy_in() {
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
 
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   std::string hex = uri_copy.substr(7);
   fs::path landed = s.path("pkg") / "shared_assets" / ("sha256-" + hex);
@@ -195,7 +195,7 @@ bool test_commit_pending_shared_asset_copy_in() {
 bool test_commit_dense_inlines_external_component() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
   CHECK_OK(ModelPackage_Commit(p.get(), nullptr, MODEL_PACKAGE_WRITE_DENSE));
   // The dense commit should NOT have written decoder.json (component became inline).
@@ -215,7 +215,7 @@ bool test_commit_dense_rejects_external_executor_info() {
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_SetVariantExecutorInfoExternal(
       p.get(), "encoder", "v1", "ort", "encoder/ort.json"));
-  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("pkg").c_str(), MODEL_PACKAGE_WRITE_DENSE),
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(), MODEL_PACKAGE_WRITE_DENSE),
             MODEL_PACKAGE_ERR_STATE);
   return true;
 }
@@ -228,16 +228,16 @@ bool test_commit_dest_root_self_contained() {
   Sandbox s;
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("orig"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
   // Add an asset and commit as.
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
   fs::path saved = s.path("saved");
-  CHECK_OK(ModelPackage_Commit(p.get(), saved.c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_Commit(p.get(), saved.u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK(fs::is_regular_file(saved / "manifest.json"));
   std::string hex = uri_copy.substr(7);
   CHECK(fs::is_directory(saved / "shared_assets" / ("sha256-" + hex)));
@@ -257,11 +257,11 @@ bool test_commit_dest_root_self_contained() {
 bool test_commit_dest_root_must_be_empty() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   s.Write("dest/something", "x");
   // Try to commit to non-empty dest.
-  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("dest").c_str(),
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("dest").u8string().c_str(),
                                 MODEL_PACKAGE_WRITE_PRESERVE),
             MODEL_PACKAGE_ERR_STATE);
   return true;
@@ -276,10 +276,10 @@ bool test_commit_dest_root_rehashes_existing_asset() {
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("orig"));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
   // Tamper with the landed sha256-<hex>/ dir under the existing package root.
@@ -291,7 +291,7 @@ bool test_commit_dest_root_rehashes_existing_asset() {
   }
 
   // CommitToDestRoot must rehash the source and refuse the mismatch.
-  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").u8string().c_str(),
                                 MODEL_PACKAGE_WRITE_PRESERVE),
             MODEL_PACKAGE_ERR_STATE);
   return true;
@@ -303,7 +303,7 @@ bool test_prune_never_touches_shared_assets() {
   // matches no manifest entry must survive Prune.
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
   fs::path planted = s.path("pkg") / "shared_assets" /
@@ -321,7 +321,7 @@ bool test_prune_never_touches_shared_assets() {
 bool test_prune_reclaims_tracked_orphan_variant_dirs() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   // Now that package_root is anchored, materialize an on-disk variant dir and
   // register it so subsequent removal records a tracked orphan.
@@ -341,7 +341,7 @@ bool test_prune_reclaims_tracked_orphan_variant_dirs() {
 bool test_prune_removes_stale_staging_dirs() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
   fs::path stage = s.path("pkg") / "shared_assets" /
@@ -362,7 +362,7 @@ bool test_prune_removes_stale_staging_dirs() {
 bool test_validate_all_clean_package() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   const char* report = nullptr;
   CHECK_OK(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_ALL, &report));
@@ -374,7 +374,7 @@ bool test_validate_all_clean_package() {
 bool test_validate_paths_flags_missing_external() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   // Register an external component then delete the file behind the library's back.
   CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
@@ -392,10 +392,10 @@ bool test_validate_asset_rehash_detects_mutation() {
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   // Mutate the on-disk shared asset directly.
   std::string hex = uri_copy.substr(7);
@@ -420,15 +420,15 @@ bool test_commit_accepts_unreferenced_shared_asset() {
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   std::string hex = uri_copy.substr(7);
   CHECK(fs::is_directory(s.path("pkg") / "shared_assets" / ("sha256-" + hex)));
   // Same on dest_root path.
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("saved").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK(fs::is_directory(s.path("saved") / "shared_assets" / ("sha256-" + hex)));
   return true;
@@ -442,10 +442,10 @@ bool test_commit_leaves_no_temp_files() {
   Sandbox s;
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
                                        nullptr, true, &uri));
   (void)uri;
   CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
@@ -453,11 +453,39 @@ bool test_commit_leaves_no_temp_files() {
                                MODEL_PACKAGE_WRITE_PRESERVE));
   std::error_code ec;
   for (auto& e : fs::recursive_directory_iterator(s.path("pkg"), ec)) {
-    if (e.path().filename().string().find(".tmp.") != std::string::npos) {
-      std::fprintf(stderr, "  stray temp file: %s\n", e.path().c_str());
+    if (e.path().filename().u8string().find(".tmp.") != std::string::npos) {
+      std::fprintf(stderr, "  stray temp file: %s\n", e.path().u8string().c_str());
       return false;
     }
   }
+  return true;
+}
+
+bool test_commit_unicode_paths_and_assets() {
+  Sandbox s;
+  const std::string directory = u8"\u6a21\u578b_\U0001F9EA";
+  const std::string asset_directory = u8"\u6743\u91cd";
+  const std::string filename = u8"\u53c2\u6570.bin";
+  s.Write(asset_directory + "/" + filename, "weights");
+  const auto root = s.path(directory);
+  PkgHandle package = MakeAuthoredPkgAt(root);
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(package.get(), s.path(asset_directory).u8string().c_str(),
+                                       nullptr, true, &uri));
+  const std::string asset_uri(uri);
+  CHECK_OK(ModelPackage_Commit(package.get(), root.u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  ModelPackage* reopened = nullptr;
+  CHECK_OK(ModelPackage_Open(root.u8string().c_str(), nullptr, &reopened));
+  PkgHandle loaded(reopened);
+  const char* resolved = nullptr;
+  const std::string reference = asset_uri + "/" + filename;
+  CHECK_OK(ModelPackage_ResolveStringRef(loaded.get(), nullptr, reference.c_str(), true, &resolved));
+  CHECK(fs::is_regular_file(fs::u8path(resolved)));
+  const auto* info = ModelPackage_Info(loaded.get());
+  CHECK(info->num_shared_assets == 1);
+  const char* rehashed = nullptr;
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(info->shared_assets[0].resolved_path, &rehashed));
+  CHECK(std::string(rehashed) == asset_uri);
   return true;
 }
 
@@ -484,6 +512,7 @@ const Test kTests[] = {
     {"validate_asset_rehash_detects_mutation", test_validate_asset_rehash_detects_mutation},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
+    {"commit_unicode_paths_and_assets", test_commit_unicode_paths_and_assets},
 };
 
 }  // namespace
