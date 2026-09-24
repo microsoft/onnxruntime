@@ -818,6 +818,11 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemmFixed<1, 127, 512, false, false>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<127, 513, 1023, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<2, 1, 1, false, true>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+
+    // Transposed A is only supported by the SVE driver.
+    if (!MlasHGemmSupported(CblasTrans, CblasNoTrans) || !MlasHGemmSupported(CblasTrans, CblasTrans)) {
+      return;
+    }
     // TransA=Trans, TransB=Trans
     TestHGemm<2, 1, 1, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
