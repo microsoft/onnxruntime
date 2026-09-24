@@ -3154,11 +3154,6 @@ static bool TryFoldTransposeIntoInitializer(OptimizerCtx& ctx, api::NodeRef& tra
     return false;
   }
 
-  // TransposeInitializer memcpys fixed-size elements; string tensors are not safe to transpose this way.
-  if (constant->DType() == api::DataType::STRING) {
-    return false;
-  }
-
   // Sole-consumer chain on both sides. comprehensive==false covers graph outputs and subgraph uses,
   // so no separate graph-output check is needed.
   auto init_consumers = ctx.graph.GetValueConsumers(init_name);

@@ -6765,5 +6765,47 @@ TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerIdentityPermDeclines) 
   EXPECT_THAT(data, testing::ElementsAre(0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f));
 }
 
+TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerString) {
+  // const {2,3}: [[a,b,c],[d,e,f]] -- perm {1,0} --> {3,2}: [[a,d],[b,e],[c,f]]
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("FoldTransposeIntoInitializerString", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::string init_name = graph.GenerateNodeArgName("constant");
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name(init_name);
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  tensor_proto.add_dims(2);
+  tensor_proto.add_dims(3);
+  for (const char* str : {"a", "b", "c", "d", "e", "f"}) {
+    tensor_proto.add_string_data(str);
+  }
+  graph.AddInitializedTensor(tensor_proto);
+  NodeArg* const_init = &graph.GetOrCreateNodeArg(init_name, nullptr);
+  auto* transpose_out = builder.MakeIntermediate();
+  auto* identity_out = builder.MakeOutput();
+
+  auto& transpose = builder.AddNode("Transpose", {const_init}, {transpose_out});
+  transpose.AddAttribute("perm", std::vector<int64_t>{1, 0});
+  builder.AddNode("Identity", {transpose_out}, {identity_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(RunTransposeOptimizerWithAggressiveCostCheck(graph));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0) << "Transpose on string constant should be folded.";
+
+  const ONNX_NAMESPACE::TensorProto* folded = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(init_name, folded));
+  ASSERT_NE(folded, nullptr);
+  EXPECT_THAT(folded->dims(), testing::ElementsAre(3, 2));
+  EXPECT_THAT(folded->string_data(), testing::ElementsAre("a", "d", "b", "e", "c", "f"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
