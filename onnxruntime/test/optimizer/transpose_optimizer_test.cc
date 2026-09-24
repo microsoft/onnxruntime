@@ -2316,6 +2316,95 @@ TEST(TransposeOptimizerTests, TestUnsharedTransposeMergeThroughUnaryThenFanout) 
                     /*opset_version*/ 15);
 }
 
+// Unshared Transpose -> Relu -> Split, with a same-perm Transpose on one Split output and a graph-output branch on
+// the other. The two Split outputs are visited separately, so per-value fanout is invisible; the Relu output must
+// still not be treated as a free merge because Split will not drop a Transpose.
+TEST(TransposeOptimizerTests, TestUnsharedTransposeMergeThroughReluThenSplitFanout) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto* relu_out = builder.MakeIntermediate();
+    auto* split_out_0 = builder.MakeIntermediate();
+    auto* split_out_1 = builder.MakeIntermediate();
+
+    builder.AddNode("Sigmoid", {input0_arg}, {sigmoid_out});
+    auto& transpose_1 = builder.AddNode("Transpose", {sigmoid_out}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {transpose_1_out}, {relu_out});
+    auto& split_1 = builder.AddNode("Split", {relu_out}, {split_out_0, split_out_1});
+    split_1.AddAttribute("axis", static_cast<int64_t>(1));
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+      split_1.AddAttribute("num_outputs", static_cast<int64_t>(2));
+    }
+    auto& transpose_2 = builder.AddNode("Transpose", {split_out_0}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {split_out_1}, {builder.MakeOutput()});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 2) << "neither Transpose should have moved";
+
+    int transposes_after_sigmoid = 0;
+    int transposes_after_split = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() != "Transpose") {
+        continue;
+      }
+      const Node* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+      ASSERT_NE(producer, nullptr);
+      if (producer->OpType() == "Sigmoid") {
+        ++transposes_after_sigmoid;
+      } else if (producer->OpType() == "Split") {
+        ++transposes_after_split;
+      }
+    }
+    EXPECT_EQ(transposes_after_sigmoid, 1);
+    EXPECT_EQ(transposes_after_split, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ {15, 18});
+}
+
+// Inverse Transposes around a unary chain. Each successful push must keep downstream cancellation memos so the
+// suffix is not re-walked from scratch; both Transposes should still cancel.
+TEST(TransposeOptimizerTests, TestUnaryChainInverseTransposesCancel) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* cur = builder.MakeIntermediate();
+    builder.AddNode("Sigmoid", {input0_arg}, {cur});
+    auto* transpose_1_out = builder.MakeIntermediate();
+    auto& transpose_1 = builder.AddNode("Transpose", {cur}, {transpose_1_out});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    cur = transpose_1_out;
+    for (int i = 0; i < 8; ++i) {
+      auto* next = builder.MakeIntermediate();
+      builder.AddNode("Relu", {cur}, {next});
+      cur = next;
+    }
+    auto& transpose_2 = builder.AddNode("Transpose", {cur}, {builder.MakeOutput()});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 0, 1});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 0) << "inverse Transposes around the Relu chain should cancel";
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
 // Unshared Transpose into Split whose two outputs each have a non-cancelling Transpose. Pushing removes the incoming
 // node and merges on both outputs, so three Transposes become two.
 TEST(TransposeOptimizerTests, TestSplitUnsharedTransposeTwoMerges) {

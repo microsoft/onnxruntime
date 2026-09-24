@@ -85,7 +85,8 @@ struct OptimizerCtx {
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
 
-  // Memo of cancellation walks for the current OptimizeImpl invocation. Cleared after a successful rewrite.
+  // Memo of cancellation walks for the current OptimizeImpl invocation. After a successful rewrite, entries whose
+  // value was rewired are dropped; downstream keys are kept so a unary chain stays linear rather than quadratic.
   // Values: -1 in-progress, 0 fail, 1 no cancel, 2 cancel.
   std::unordered_map<CancelWalkKey, int8_t, CancelWalkKeyHasher> pushed_transpose_cancels_cache;
 };

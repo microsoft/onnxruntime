@@ -3450,9 +3450,10 @@ static bool IncomingTransposeIsSolelyConsumedByNode(const api::GraphRef& graph, 
   return saw_matching_transpose;
 }
 
-// True if a pushed Transpose on `start_value` would sit on a value that is consumed both by a Transpose and by
-// something else (another node, a graph output, or an implicit use). Walks through handlers the optimizer would
-// actually push, so Transpose -> A -> B with B fanning out to a merge Transpose plus a dead-end is detected on A.
+// True if a pushed Transpose on `start_value` would both meet a later Transpose and remain for a stranded terminal
+// (graph output, implicit use, or an unpushable consumer). Multi-output nodes are one unit: Transpose -> Relu -> Split
+// with a merge Transpose on one Split output and a graph output on the other is fanout, even though neither Split
+// output is consumed by both. Intermediate handlers that would actually be pushed are not stranded terminals.
 static bool PushedOutputFansOutToTransposeAndOthers(OptimizerCtx& ctx, std::string_view start_value,
                                                     const std::vector<int64_t>& start_perm) {
   struct Item {
@@ -3462,6 +3463,9 @@ static bool PushedOutputFansOutToTransposeAndOthers(OptimizerCtx& ctx, std::stri
   std::vector<Item> stack;
   std::unordered_set<CancelWalkKey, CancelWalkKeyHasher> seen;
   stack.push_back(Item{std::string(start_value), start_perm});
+
+  bool found_transpose = false;
+  bool found_stranded = false;
 
   while (!stack.empty()) {
     Item item = std::move(stack.back());
@@ -3473,19 +3477,21 @@ static bool PushedOutputFansOutToTransposeAndOthers(OptimizerCtx& ctx, std::stri
     }
 
     const auto consumers = ctx.graph.GetValueConsumers(item.value);
-    bool has_transpose = false;
-    bool has_other = !consumers->comprehensive;
+    if (!consumers->comprehensive || consumers->nodes.empty()) {
+      found_stranded = true;
+    }
     for (auto& consumer : consumers->nodes) {
       if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer).has_value()) {
-        has_transpose = true;
+        found_transpose = true;
         continue;
       }
-      has_other = true;
       if (!CanModifyNode(ctx, *consumer) || !ValueIsOnTransposableInput(ctx, *consumer, item.value)) {
+        found_stranded = true;
         continue;
       }
       const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, item.perm);
       if (!output_perm.has_value() || !ConsumerInputCostAllowsPush(ctx, *consumer, item.value, item.perm)) {
+        found_stranded = true;
         continue;
       }
       for (auto out : consumer->Outputs()) {
@@ -3494,11 +3500,26 @@ static bool PushedOutputFansOutToTransposeAndOthers(OptimizerCtx& ctx, std::stri
         }
       }
     }
-    if (has_transpose && has_other) {
+    if (found_transpose && found_stranded) {
       return true;
     }
   }
   return false;
+}
+
+// Drop memo entries for values whose producers or consumers were rewired. Downstream keys stay valid, so a chain
+// Transpose -> op1 -> ... -> opN -> inverse Transpose does not re-walk the suffix after each hop.
+static void InvalidateCancelWalkCache(OptimizerCtx& ctx, const std::unordered_set<std::string>& rewired_values) {
+  if (rewired_values.empty()) {
+    return;
+  }
+  for (auto it = ctx.pushed_transpose_cancels_cache.begin(); it != ctx.pushed_transpose_cancels_cache.end();) {
+    if (rewired_values.find(it->first.value) != rewired_values.end()) {
+      it = ctx.pushed_transpose_cancels_cache.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
@@ -3514,11 +3535,13 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
 
   if (cost < 0 && info.transposes_outputs) {
     // If the output will be transposed and won't ultimately cancel, factor in that cost.
-    // An inserted output Transpose is free when a downstream Transpose cancels the pushed perm. A merge pays off when
-    // the incoming Transpose disappears into this node and either every nonempty output is fully covered by later
-    // Transposes, or a single kept output does not fan out to a Transpose plus another consumer.
+    // An inserted output Transpose is free when a downstream Transpose cancels the pushed perm. Unique incoming
+    // Transposes may still cancel when other descendant branches are stranded (QDQ node units, Split + graph output).
+    // A merge pays off when the incoming Transpose disappears into this node and every nonempty output is fully
+    // covered, or a single kept output does not fan out across later multi-output nodes.
     bool any_output_leads_to_transpose = false;
     bool all_pushed_outputs_cancel = true;
+    bool unique_cancel_allows_stranded = false;
     int kept_output_transposes = 0;
     bool kept_merge_output_fans_out = false;
     bool all_kept_outputs_fully_covered = true;
@@ -3536,6 +3559,10 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
           outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end();
       if (leads_to_transpose) {
         any_output_leads_to_transpose = true;
+      }
+      if (pushed_output_perm.has_value() &&
+          PushedTransposeCancels(ctx, out, *pushed_output_perm, /*tolerate_stranded_branches*/ true)) {
+        unique_cancel_allows_stranded = true;
       }
       if (pushed_output_perm.has_value() && leads_to_transpose &&
           PushedTransposeCancels(ctx, out, *pushed_output_perm, /*tolerate_stranded_branches*/ false)) {
@@ -3557,6 +3584,7 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
     const bool waive_output_cost =
         any_output_leads_to_transpose &&
         (all_pushed_outputs_cancel ||
+         (incoming_unique && unique_cancel_allows_stranded) ||
          (incoming_unique && all_kept_outputs_fully_covered && kept_output_transposes > 0) ||
          (incoming_unique && kept_output_transposes <= 1 && !kept_merge_output_fans_out));
     if (!waive_output_cost) {
@@ -3650,10 +3678,21 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   std::vector<int64_t> perm_inv = InvertPerm(perm);
+  std::unordered_set<std::string> rewired_values;
+  for (std::string_view out : node.Outputs()) {
+    if (!out.empty()) {
+      rewired_values.emplace(out);
+    }
+  }
+  for (std::string_view out : transpose.Outputs()) {
+    if (!out.empty()) {
+      rewired_values.emplace(out);
+    }
+  }
   HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, outputs_leading_to_transpose};
   const bool modified = info->handler_fn(args);
   if (modified) {
-    ctx.pushed_transpose_cancels_cache.clear();
+    InvalidateCancelWalkCache(ctx, rewired_values);
   }
   return modified;
 }
