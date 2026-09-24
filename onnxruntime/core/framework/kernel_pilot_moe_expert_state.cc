@@ -155,12 +155,13 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     counters_[expert_ids_.at({kernel, expert})] += beta_;
   }
 
-  std::lock_guard<std::mutex> lock(run_mutex_);
   if (logging_logger_ != nullptr) {
     std::ostringstream event;
     event.imbue(std::locale::classic());
     event << "{\"request_id\":";
     common::WriteJsonString(event, logging_request_id_);
+    event << ",\"graph_scope\":";
+    common::WriteJsonString(event, node->second.key.first);
     event << ",\"node_name\":";
     common::WriteJsonString(event, kernel->Node().Name());
     event << ",\"node_index\":" << node->second.key.second

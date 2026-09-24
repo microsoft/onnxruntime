@@ -157,10 +157,38 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
   ASSERT_NE(marker_position, std::string::npos);
   const auto event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
   EXPECT_EQ(event["request_id"], "request \"one\"");
+  EXPECT_EQ(event["graph_scope"], "main");
   EXPECT_EQ(event["node_index"], 7);
   EXPECT_EQ(event["node_type"], "Identity");
   EXPECT_EQ(event["selected_experts"], nlohmann::json({2, 0}));
   EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.0, 0.1}));
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main/4/11:then_branch", 0, "MoE", 3));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_subgraph_counter_update");
+  ASSERT_STATUS_OK(state.BeginRun("request", logger.get()));
+
+  const int selected[] = {1};
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  ASSERT_STATUS_OK(state.EndRun());
+
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  const std::string& message = capturing_sink_ptr->Messages()[0];
+  constexpr std::string_view marker{"moe_expert_counters "};
+  const size_t marker_position = message.find(marker);
+  ASSERT_NE(marker_position, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker_position + marker.size()));
+  EXPECT_EQ(event["graph_scope"], "main/4/11:then_branch");
+  EXPECT_EQ(event["node_index"], 0);
 }
 
 TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {

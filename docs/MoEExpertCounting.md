@@ -47,7 +47,8 @@ After kernel creation, initialization builds an immutable dictionary
 Counters are ordinary `double` values in a session-wide array. `RecordUsage()` uses the kernel pointer and this
 dictionary directly, without atomic counters, graph-name lookup, or per-invocation allocation. When logging is enabled,
 the same method emits one `moe_expert_counters` JSON record containing the request ID, node identity, deduplicated
-selected experts, and the updated counters.
+selected experts, and the updated counters. The node identity includes its graph scope so equal node indices in
+different subgraphs remain distinguishable.
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
