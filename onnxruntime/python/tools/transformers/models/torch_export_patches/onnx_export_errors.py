@@ -357,13 +357,13 @@ def bypass_export_some_errors(
                 print("[bypass_export_some_errors] modifies shape constraints")
             f_produce_guards_and_solve_constraints = torch._export.non_strict_utils.produce_guards_and_solve_constraints
             f__check_input_constraints_for_graph = torch._export.utils._check_input_constraints_for_graph
-            torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
-                lambda *args, **kwargs: _catch_produce_guards_and_solve_constraints(
+            torch._export.non_strict_utils.produce_guards_and_solve_constraints = lambda *args, **kwargs: (
+                _catch_produce_guards_and_solve_constraints(
                     f_produce_guards_and_solve_constraints, *args, verbose=verbose, **kwargs
                 )
             )
-            torch._export.utils._check_input_constraints_for_graph = (
-                lambda *args, **kwargs: patch__check_input_constraints_for_graph(
+            torch._export.utils._check_input_constraints_for_graph = lambda *args, **kwargs: (
+                patch__check_input_constraints_for_graph(
                     f__check_input_constraints_for_graph, *args, verbose=verbose, **kwargs
                 )
             )

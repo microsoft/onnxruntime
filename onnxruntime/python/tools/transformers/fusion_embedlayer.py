@@ -787,6 +787,11 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         else:
             mask_int32 = self.cross_attention.input[4]
 
+        if not mask_int32:
+            logger.debug("EmbedLayerNormalization will not have mask since attention has no mask input")
+            self.increase_counter("EmbedLayerNormalization(no mask)")
+            return
+
         children_nodes = input_name_to_nodes[mask_int32]
         if self.model.find_graph_input(mask_int32):
             attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "MultiHeadAttention"]]

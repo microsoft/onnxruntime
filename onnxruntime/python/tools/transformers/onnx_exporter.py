@@ -44,6 +44,7 @@ class _ModelWithNamedInputs(torch.nn.Module):
     def forward(self, *args):
         return self.model(**dict(zip(self.input_names, args, strict=True)))
 
+
 # Workaround by replacing torch.triu using self-defined op
 # Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
 torch_func = {"triu": torch.triu}

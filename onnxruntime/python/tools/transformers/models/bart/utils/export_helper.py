@@ -162,9 +162,7 @@ def initialize_model(config: BartConfig, tokenizer: BartTokenizer, args):
 
     lang = "__en__"
     features = [tokenizer.convert_tokens_to_ids(lang)]
-    features.extend(
-        tokenizer(input_text, add_special_tokens=False, max_length=510, truncation=True)["input_ids"]
-    )
+    features.extend(tokenizer(input_text, add_special_tokens=False, max_length=510, truncation=True)["input_ids"])
     features.append(tokenizer.eos_token_id)
     input_data = torch.LongTensor(features).unsqueeze(0).to(device)
 

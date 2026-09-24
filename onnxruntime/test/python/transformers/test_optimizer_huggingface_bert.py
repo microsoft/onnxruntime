@@ -14,9 +14,7 @@ from pathlib import Path
 
 import torch
 from huggingface_hub.constants import HF_HUB_CACHE
-from packaging.version import Version
 from parity_utilities import find_transformers_source
-from transformers import __version__ as transformers_version
 
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
@@ -127,30 +125,26 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
 
     def test_bert(self):
         model_name = "hf-internal-testing/tiny-random-bert"
-        expected = [0, 0, 0, 0, 5, 1, 10] if Version(transformers_version) >= Version("5.0") else [1, 5, 0, 0, 5, 0, 10]
-        self.run_optimizer_on_model(model_name, expected, inputs_count=1)
-        self.run_optimizer_on_model(model_name, expected, inputs_count=2)
-        self.run_optimizer_on_model(model_name, expected, inputs_count=3)
+        self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=1)
+        self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=2)
+        self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=3)
 
     def test_roberta(self):
         model_name = "hf-internal-testing/tiny-random-roberta"
         # TODO: EmbedLayerNormalization fusion.
-        expected = [0, 0, 0, 0, 5, 1, 10] if Version(transformers_version) >= Version("5.0") else [0, 5, 0, 0, 5, 1, 10]
-        self.run_optimizer_on_model(model_name, expected, inputs_count=1)
-        self.run_optimizer_on_model(model_name, expected, inputs_count=2)
+        self.run_optimizer_on_model(model_name, [0, 5, 0, 0, 5, 1, 10], inputs_count=1)
+        self.run_optimizer_on_model(model_name, [0, 5, 0, 0, 5, 1, 10], inputs_count=2)
 
     def test_distillbert(self):
         model_name = "hf-internal-testing/tiny-random-distilbert"
-        expected = [0, 0, 0, 0, 5, 1, 10] if Version(transformers_version) >= Version("5.0") else [1, 5, 0, 0, 5, 0, 10]
-        self.run_optimizer_on_model(model_name, expected, inputs_count=1)
-        self.run_optimizer_on_model(model_name, expected, inputs_count=2)
+        self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=1)
+        self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=2)
 
     def test_xlm_roberta(self):
         model_name = "hf-internal-testing/tiny-xlm-roberta"
         # TODO: EmbedLayerNormalization fusion.
-        expected = [0, 0, 0, 0, 2, 1, 4] if Version(transformers_version) >= Version("5.0") else [0, 2, 0, 0, 2, 1, 4]
-        self.run_optimizer_on_model(model_name, expected, inputs_count=1)
-        self.run_optimizer_on_model(model_name, expected, inputs_count=2)
+        self.run_optimizer_on_model(model_name, [0, 2, 0, 0, 2, 1, 4], inputs_count=1)
+        self.run_optimizer_on_model(model_name, [0, 2, 0, 0, 2, 1, 4], inputs_count=2)
 
 
 if __name__ == "__main__":

@@ -3537,7 +3537,9 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
                 tokens.append(token_id)
             return tokens
 
-        torch_content = [generated_content(sequence) for sequence in torch_sequences.reshape(-1, torch_sequences.shape[-1])]
+        torch_content = [
+            generated_content(sequence) for sequence in torch_sequences.reshape(-1, torch_sequences.shape[-1])
+        ]
         ort_content = [generated_content(sequence) for sequence in ort_sequences.reshape(-1, ort_sequences.shape[-1])]
         is_same = torch_content == ort_content
         print("Torch and ORT result is ", "same" if is_same else "different")
