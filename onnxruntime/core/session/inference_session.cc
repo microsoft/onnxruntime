@@ -18,6 +18,9 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/json_utils.h"
+#endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_utils.h"
@@ -1372,8 +1375,9 @@ Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layou
 
   if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid value for session option 'session.gqa_value_layout': '", layout,
-                           "'. Expected 'BNSH' or 'BNHS'.");
+                           "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout,
+                           "': '", layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS,
+                           "'.");
   }
 
   return Status::OK();
@@ -2555,8 +2559,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                         gqa_value_layout_explicitly_set));
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Session option 'session.gqa_value_layout' is not supported for ORT format models. "
-                           "Apply the Value layout transform when "
+                           "Session option '", kOrtSessionOptionsGqaValueLayout,
+                           "' is not supported for ORT format models. Apply the Value layout transform when "
                            "converting the model to ORT format and load it without setting this option, or load the "
                            "ONNX model instead.");
   }
@@ -2577,8 +2581,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
         "This ORT format model already carries the BNHS GroupQueryAttention Value layout. "
-        "It cannot be loaded with 'session.gqa_value_layout' set to 'BNSH', because the application "
-        "would bind BNSH buffers to a BNHS boundary. "
+        "It cannot be loaded with '",
+        kOrtSessionOptionsGqaValueLayout, "' set to '", kGqaValueLayoutBNSH,
+        "', because the application would bind BNSH buffers to a BNHS boundary. "
         "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
   }
 #endif
@@ -2765,6 +2770,37 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+    const std::string& enable_moe_statistics =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
+    if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
+    }
+    const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
+#if defined(ORT_MINIMAL_BUILD)
+    if (enable_moe_expert_statistics) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          "=1 is not supported in a minimal build.");
+    }
+#else
+    if (enable_moe_expert_statistics) {
+      for (const auto& execution_provider : execution_providers_) {
+        if (execution_provider->Type() == kCudaExecutionProvider &&
+            execution_provider->GetOrtEp() != nullptr) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported by the CUDA plugin execution provider.");
+        }
+        if (execution_provider->IsGraphCaptureEnabled()) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported when graph capture is enabled by ", execution_provider->Type(), ".");
+        }
+      }
+    }
+#endif
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
@@ -2852,13 +2888,15 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
-    // now that we have all the execution providers, create the session state
+#if !defined(ORT_MINIMAL_BUILD)
     const bool enable_static_workspace_preallocation =
         session_options_.config_options.GetConfigOrDefault(
             kOrtSessionOptionsEnableStaticWorkspacePreallocation, "0") == "1";
     ORT_RETURN_IF(enable_static_workspace_preallocation &&
                       session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL,
                   "Static workspace preallocation requires sequential execution mode.");
+#endif
+    // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
@@ -3659,6 +3697,31 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     run_profiler->StartProfiling(profile_file);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const bool collect_moe_statistics =
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+  std::optional<RunInstrumentationContext> run_instrumentation_context;
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
+  if (collect_moe_statistics) {
+    ORT_RETURN_IF_NOT(is_inited_, "Session not initialized.");
+    ORT_RETURN_IF_NOT(
+        run_options.config_options.GetConfigOrDefault(
+            kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0",
+        "MoE expert statistics requires execution-provider synchronization at the end of each run.");
+    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+
+    const std::string& shrink_memory_arenas =
+        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
+    if (!shrink_memory_arenas.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
+    }
+  }
+#else
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
@@ -3711,8 +3774,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-    InlinedVector<AllocatorPtr> arenas_to_shrink;
-
     ORT_TRY {
       if (!is_inited_) {
         LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -3722,14 +3783,25 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       // log evaluation start to trace logging provider
       env.GetTelemetryProvider().LogEvaluationStart(session_id_);
 
+#if !defined(ORT_MINIMAL_BUILD)
+      if (!collect_moe_statistics) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+      }
+#else
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
       ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
+#endif
 
       // shrink certain default memory arenas if the user has requested for it
       const std::string& shrink_memory_arenas =
           run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
+#if !defined(ORT_MINIMAL_BUILD)
+      if (!collect_moe_statistics && !shrink_memory_arenas.empty()) {
+#else
       if (!shrink_memory_arenas.empty()) {
+#endif
         ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
       }
 
@@ -3775,6 +3847,12 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
 
+#if !defined(ORT_MINIMAL_BUILD)
+      if (retval.IsOK() && collect_moe_statistics) {
+        run_instrumentation_context.emplace(run_options.run_tag, run_logger);
+      }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 #ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
         // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
@@ -3810,7 +3888,12 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                      device_stream_collection_holder,
 #endif
                                      run_logger,
-                                     run_profiler ? &*run_profiler : nullptr);
+                                     run_profiler ? &*run_profiler : nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                                     ,
+                                     run_instrumentation_context ? &*run_instrumentation_context : nullptr
+#endif
+        );
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3818,6 +3901,16 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
+
+#if !defined(ORT_MINIMAL_BUILD)
+      if (run_instrumentation_context) {
+        const Status instrumentation_status = run_instrumentation_context->FlushDeferredRecords();
+        run_instrumentation_context->LogMoeStatisticsTruncation();
+        if (retval.IsOK() && !instrumentation_status.IsOK()) {
+          retval = instrumentation_status;
+        }
+      }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
       if (run_profiler) {
         run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);

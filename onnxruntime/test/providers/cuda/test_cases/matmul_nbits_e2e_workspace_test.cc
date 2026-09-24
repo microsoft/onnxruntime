@@ -26,8 +26,8 @@
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
 // provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
-// slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
-// place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
+// slim, bridge-free declarations. On Windows it runs in the provider-test executable and reaches
+// provider internals through a deferred test-only interface. Requires a real CUDA device; skips otherwise.
 
 #include "gtest/gtest.h"
 
@@ -63,6 +63,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 
+#include "test/providers/cuda/internal_testing/cuda_internal_test_helpers.h"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -134,15 +135,6 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
   }
   *scales->mutable_raw_data() = std::move(scale_raw);
 
-#if !USE_COMPACT_FPA_INTB_GEMM
-  const std::string bias_name = node_name + "_bias";
-  auto* bias = graph->add_initializer();
-  bias->set_name(bias_name);
-  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  bias->add_dims(n);
-  bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
-#endif
-
   auto* node = graph->add_node();
   node->set_op_type("MatMulNBits");
   node->set_domain("com.microsoft");
@@ -150,13 +142,6 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
   node->add_input(input_name);
   node->add_input(weight_name);
   node->add_input(scales_name);
-  node->add_input("");
-  node->add_input("");
-#if USE_COMPACT_FPA_INTB_GEMM
-  node->add_input("");
-#else
-  node->add_input(bias_name);
-#endif
   node->add_output(output_name);
   auto add_int_attr = [node](const char* name, int64_t value) {
     auto* attr = node->add_attribute();
@@ -253,7 +238,6 @@ std::string BuildMatMulNBitsChainModelBytes(size_t node_count) {
       value_info->set_name(output_name);
       SetFp16MatrixShape(value_info, nullptr, kE2eM, kE2eN);
     }
-
     input_name = output_name;
     input_width = kE2eN;
   }
@@ -462,7 +446,7 @@ ArenaMeasurement MeasureArenaAllocation(const std::string& model_bytes,
       enable_workspace_preallocation ? "1" : "0"));
 
   InferenceSessionWrapper session(so, GetEnvironment());
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(cuda_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(cuda_info);
   ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(cuda_ep));
   ORT_THROW_IF_ERROR(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ORT_THROW_IF_ERROR(session.Initialize());
@@ -555,7 +539,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "2048,"));
     InferenceSessionWrapper session(so, GetEnvironment());
-    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
@@ -593,7 +577,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
         kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+        CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{})));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -628,7 +612,7 @@ TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "1024,"));
     InferenceSessionWrapper session(so, GetEnvironment());
-    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
@@ -673,7 +657,7 @@ TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
         kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+        CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{})));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -709,7 +693,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
       kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
   InferenceSessionWrapper session(so, GetEnvironment());
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-      std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+      CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{})));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
 
@@ -787,7 +771,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
   InferenceSessionWrapper session(so, GetEnvironment());
 
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
 
@@ -997,6 +981,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
             << " bytes, Level2=empty, runtime(request)=" << zero_m_runtime << " bytes" << std::endl;
   EXPECT_EQ(zero_m_runtime, 0u)
       << "The same kernel must replace its prior positive capture with zero for an m == 0 run.";
+  EXPECT_FALSE(GetMatMulNBitsLastComputeUsedPreallocatedWorkspace(op_kernel))
+      << "An empty-output run must clear the preceding run's planned-workspace usage.";
 }
 
 TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
@@ -1020,7 +1006,7 @@ TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
   so.session_logid = "MatMulNBitsWorkspaceSmallM";
   InferenceSessionWrapper session(so, GetEnvironment());
 
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1032,10 +1018,9 @@ TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr);
 
-  const std::array<WorkspaceInputShape, 1> input_shapes{
-      WorkspaceInputShape::PresentWithShape(TensorShape({kSmallM, kE2eK}))};
+  const auto input_shapes = ResolveNodeInputShapes(*mm_node, &session.GetGraph(), MaxShapeInferenceResult{});
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
 
   std::vector<MLFloat16> a_data(static_cast<size_t>(kSmallM * kE2eK), MLFloat16(0.25f));
   OrtValue a_value;
@@ -1080,7 +1065,7 @@ TEST(MatMulNBitsWorkspace, UnprofiledSmallMDeclaresWorkspaceConservatively) {
   so.session_logid = "MatMulNBitsWorkspaceUnprofiledSmallM";
   InferenceSessionWrapper session(so, GetEnvironment());
 
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1092,16 +1077,15 @@ TEST(MatMulNBitsWorkspace, UnprofiledSmallMDeclaresWorkspaceConservatively) {
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr);
 
-  const std::array<WorkspaceInputShape, 1> input_shapes{
-      WorkspaceInputShape::PresentWithShape(TensorShape({kUnprofiledM, kE2eK}))};
+  const auto input_shapes = ResolveNodeInputShapes(*mm_node, &session.GetGraph(), MaxShapeInferenceResult{});
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
   ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
       << "A missing tactic must retain CUTLASS capacity because runtime profiling may select GEMM.";
   EXPECT_GT(requirements[0].size_bytes, static_cast<size_t>(0));
 }
 
-TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
+TEST(MatMulNBitsWorkspace, ProviderInternalSequentialChainUsesSharedPlannedWorkspace) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping multi-node workspace test.";
@@ -1120,7 +1104,7 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
   InferenceSessionWrapper session(so, GetEnvironment());
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1319,7 +1303,7 @@ TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
       FreeDimensionOverride{kSeqDim, FreeDimensionOverrideType::Name, kOverrideM});
 
   InferenceSessionWrapper session(so, GetEnvironment());
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1421,7 +1405,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   SessionOptions so;
   so.session_logid = "MatMulNBitsWorkspaceDynamicFallback";
   InferenceSessionWrapper session(so, GetEnvironment());
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1521,7 +1505,7 @@ TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
   SessionOptions so;
   so.session_logid = "AddWorkspaceControl";
   InferenceSessionWrapper session(so, GetEnvironment());
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());

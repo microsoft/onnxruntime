@@ -87,6 +87,7 @@ using NotificationIndex = size_t;
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
+#if !defined(ORT_MINIMAL_BUILD)
   struct WorkspaceAllocationPlan {
     int pattern_id;
     int slot_id;
@@ -99,6 +100,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Synthetic allocations traced around kernel execution. Negative pattern IDs keep these entries
   // disjoint from OrtValue indices in MemoryPattern.
   InlinedHashMap<NodeIndex, InlinedVector<WorkspaceAllocationPlan>> workspace_allocation_plan;
+#endif
 
   // Allocation plan:
   // ExecutionFrame::GetOrCreateTensor() should use the following information

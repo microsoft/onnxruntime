@@ -73,3 +73,51 @@ TEST_F(ExperimentalCApiTest, ConsistentLookup) {
       api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName);
   EXPECT_EQ(fn1, fn2);
 }
+
+TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsUsesIntroductionVersion) {
+  EXPECT_NE(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV31"), nullptr);
+  EXPECT_EQ(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV29"), nullptr);
+  EXPECT_EQ(api_->GetExperimentalFunction("OrtApi_DebugLogAndShrinkGpuArenas_SinceV30"), nullptr);
+}
+
+TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsPreserveOutputsOnInvalidArguments) {
+  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV31_FnOrThrow(api_);
+#if !defined(ORT_MINIMAL_BUILD)
+  constexpr auto expected_error = ORT_INVALID_ARGUMENT;
+#else
+  constexpr auto expected_error = ORT_NOT_IMPLEMENTED;
+#endif
+  int64_t reclaimed_bytes = 123;
+  size_t arena_count = 456;
+  {
+    Ort::Status status{fn(nullptr, false, &reclaimed_bytes, &arena_count)};
+    EXPECT_EQ(status.GetErrorCode(), expected_error);
+    EXPECT_EQ(reclaimed_bytes, 123);
+    EXPECT_EQ(arena_count, 456u);
+  }
+  {
+    Ort::Status status{fn("test", false, nullptr, &arena_count)};
+    EXPECT_EQ(status.GetErrorCode(), expected_error);
+    EXPECT_EQ(arena_count, 456u);
+  }
+  {
+    Ort::Status status{fn("test", false, &reclaimed_bytes, nullptr)};
+    EXPECT_EQ(status.GetErrorCode(), expected_error);
+    EXPECT_EQ(reclaimed_bytes, 123);
+  }
+}
+
+TEST_F(ExperimentalCApiTest, GpuArenaDiagnosticsReportStatsOrUnsupported) {
+  auto* fn = Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV31_FnOrThrow(api_);
+  int64_t reclaimed_bytes = 123;
+  size_t arena_count = 456;
+  Ort::Status status{fn("test", false, &reclaimed_bytes, &arena_count)};
+#if !defined(ORT_MINIMAL_BUILD)
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(reclaimed_bytes, 0);
+#else
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(reclaimed_bytes, 123);
+  EXPECT_EQ(arena_count, 456u);
+#endif
+}

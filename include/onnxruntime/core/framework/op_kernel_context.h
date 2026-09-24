@@ -3,6 +3,9 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+#if !defined(ORT_MINIMAL_BUILD)
+class RunInstrumentationContext;
+#endif
 class Stream;
 namespace concurrency {
 class ThreadPool;
@@ -14,13 +17,29 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
+                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger
+#if !defined(ORT_MINIMAL_BUILD)
+                  ,
+                  _In_opt_ const RunInstrumentationContext* run_instrumentation_context = nullptr);
+#else
+  );
+#endif
 
   virtual ~OpKernelContext() = default;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {
+    return run_instrumentation_context_;
+  }
+#endif
+
   // Returns a run-scoped planned workspace buffer when one is available. A nullptr result means
   // the kernel must use its normal dynamic allocation path.
-  virtual Status GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual
+#endif
+      Status
+      GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
     *workspace = nullptr;
     return Status::OK();
   }
@@ -231,6 +250,9 @@ class OpKernelContext {
   int node_output_start_index_{-1};
 
   Stream* stream_;
+#if !defined(ORT_MINIMAL_BUILD)
+  const RunInstrumentationContext* run_instrumentation_context_{};
+#endif
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

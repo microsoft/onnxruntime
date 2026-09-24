@@ -1922,6 +1922,24 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
 
+            if not args.disable_contrib_ops:
+                log.info("Testing QMoE expert distribution analysis")
+                run_subprocess(
+                    [
+                        sys.executable,
+                        os.path.join(
+                            source_dir,
+                            "onnxruntime",
+                            "test",
+                            "python",
+                            "test_qmoe_expert_distribution.py",
+                        ),
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
+
             log.info("Testing Global Thread Pool feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
 

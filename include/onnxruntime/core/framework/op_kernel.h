@@ -55,6 +55,13 @@ class OpKernel {
     return false;
   }
 
+  // Only control flow kernels (If/Loop/Scan) legitimately carry subgraphs. SessionState
+  // finalization uses this to gate the downcast to controlflow::IControlFlowKernel without
+  // RTTI (onnxruntime_DISABLE_RTTI is ON by default, so dynamic_cast is unavailable).
+  [[nodiscard]] virtual bool IsControlFlowKernel() const {
+    return false;
+  }
+
   [[nodiscard]] virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
@@ -96,6 +103,15 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Indicates whether SessionState is concurrently dispatching this kernel's PrePack() with other kernels.
+  void SetOuterPrePackParallelism(bool enabled) noexcept {
+    outer_prepack_parallelism_enabled_ = enabled;
+  }
+
+  bool IsOuterPrePackParallelismEnabled() const noexcept {
+    return outer_prepack_parallelism_enabled_;
+  }
+
   // Override this function to return a list of attributes the session can safely remove
   // after it is initialized and saved. This option is useful to reduce memory usage
   // when the kernel does not reuse the operator attributes but copies them.
@@ -126,8 +142,10 @@ class OpKernel {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Returns true when the kernel can consume workspace supplied by the execution frame.
   virtual bool SupportsPreallocatedWorkspace() const noexcept { return false; }
+#endif
 
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
@@ -165,6 +183,7 @@ class OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   std::unique_ptr<OpKernelInfo> op_kernel_info_;
+  bool outer_prepack_parallelism_enabled_{false};
 };
 class FuncManager;
 using KernelCreateFn = std::function<Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>;

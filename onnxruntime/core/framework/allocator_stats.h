@@ -18,6 +18,7 @@ struct AllocatorStats {
   int64_t bytes_in_use;            // Number of bytes in use (includes padding).
   int64_t bytes_requested_in_use;  // Number of bytes actually requested by user code (excludes padding).
   int64_t total_allocated_bytes;   // The total number of allocated bytes by the allocator.
+  int64_t reserved_bytes;          // Bytes currently allocated through Reserve().
   int64_t max_bytes_in_use;        // The maximum bytes in use.
   int64_t max_alloc_size;          // The max single allocation seen.
                                    // The upper limit what the allocator can allocate, if such a limit
@@ -38,6 +39,7 @@ struct AllocatorStats {
     this->max_alloc_size = 0;
     this->bytes_limit = 0;
     this->total_allocated_bytes = 0;
+    this->reserved_bytes = 0;
   }
 
   // Assign a stat field by its key name. Returns true if the key was recognized.
@@ -50,6 +52,8 @@ struct AllocatorStats {
       bytes_requested_in_use = val;
     } else if (std::strcmp(key, "TotalAllocated") == 0) {
       total_allocated_bytes = val;
+    } else if (std::strcmp(key, "ReservedBytes") == 0) {
+      reserved_bytes = val;
     } else if (std::strcmp(key, "MaxInUse") == 0) {
       max_bytes_in_use = val;
     } else if (std::strcmp(key, "NumAllocs") == 0) {
@@ -74,6 +78,7 @@ struct AllocatorStats {
        << "InUse:                    " << this->bytes_in_use << "\n"
        << "RequestedInUse:           " << this->bytes_requested_in_use << "\n"
        << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
+       << "ReservedBytes:            " << this->reserved_bytes << "\n"
        << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
        << "NumAllocs:                " << this->num_allocs << "\n"
        << "NumReserves:              " << this->num_reserves << "\n"

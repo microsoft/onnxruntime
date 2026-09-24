@@ -2,17 +2,23 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -46,6 +52,19 @@ KVQuantizationType StringToKVQuantizationType(std::string s) {
     return KVQuantizationType::PER_CHANNEL;
   }
   return KVQuantizationType::NONE;
+}
+
+int64_t ParsePositiveInt64Config(const OpKernelInfo& info, const char* key) {
+  const std::string value = info.GetConfigOptions().GetConfigOrDefault(key, "");
+  if (value.empty()) {
+    return 0;
+  }
+
+  int64_t parsed = 0;
+  const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+  ORT_ENFORCE(error == std::errc{} && end == value.data() + value.size() && parsed > 0,
+              key, " must be a positive int64 value, but got: ", value);
+  return parsed;
 }
 }  // namespace
 
@@ -128,6 +147,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+  max_total_sequence_length_ =
+      ParsePositiveInt64Config(info, kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
@@ -200,6 +221,56 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
 
   return Status::OK();
 }
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+template <typename T, typename U>
+Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
+  declared_workspace_bytes_.store(0, std::memory_order_relaxed);
+  GQAWorkspaceEstimateConfig config;
+  config.qkv_element_size = sizeof(T);
+  config.cache_element_size = sizeof(U);
+  config.num_heads = num_heads_;
+  config.kv_num_heads = kv_num_heads_;
+  config.causal = is_unidirectional_ ? 1 : 0;
+  config.local_window_size = local_window_size_;
+  config.sliding_window_cache = sliding_window_cache_;
+  config.max_total_sequence_length = max_total_sequence_length_;
+  config.do_rotary = do_rotary_;
+  config.smooth_softmax = use_smooth_softmax_;
+  config.softcap = softcap_;
+  config.k_quantization =
+      k_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (k_quant_type_ == KVQuantizationType::PER_CHANNEL
+                 ? GQAKvQuantizationType::PerChannel
+                 : GQAKvQuantizationType::None);
+  config.v_quantization =
+      v_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (v_quant_type_ == KVQuantizationType::PER_CHANNEL
+                 ? GQAKvQuantizationType::PerChannel
+                 : GQAKvQuantizationType::None);
+  config.kv_cache_bit_width = kv_cache_bit_width_;
+  config.is_bf16 = std::is_same_v<T, BFloat16>;
+  config.cache_is_fp8 = std::is_same_v<U, Float8E4M3FN>;
+  config.enable_xqa = enable_xqa_;
+  config.disable_flash_decode = disable_flash_decode_;
+  config.head_sink_is_prepacked = xqa_head_sink_count_ == num_heads_;
+
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, input_shapes, GetDeviceProp(), *kernel_options_);
+  if (estimate.has_value()) {
+    SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
+    if (!requirements.empty()) {
+      declared_workspace_bytes_.store(requirements.front().size_bytes, std::memory_order_relaxed);
+    }
+  }
+  return Status::OK();
+}
+#endif
 
 // ComputeInternal executes the GQA kernel.
 //
@@ -326,6 +397,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
                                                                 local_window_size_));
+
+  // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
+  // is always full at min(T, C). That equals the resident range the operator specifies only when
+  // the capacity has no slack above the window (C == W, i.e. G == 1). Reject a larger capacity
+  // instead of silently returning a layout that neither matches the spec nor the CPU kernel.
+  if (parameters.is_windowed_kv_cache && parameters.kv_cache_real_capacity != local_window_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CUDA): sliding_window_cache=1 requires the KV cache capacity (",
+                           parameters.kv_cache_real_capacity, ") to equal local_window_size (", local_window_size_,
+                           ").");
+  }
+
 #ifndef USE_INT4_KV_CACHE
   if (kv_cache_bit_width_ == 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
@@ -408,12 +491,66 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> rotary_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
   IAllocatorUniquePtr<void> unpacked_qkv_buffer;
-  IAllocatorUniquePtr<int> seq_lens_buffer;
+  IAllocatorUniquePtr<void> seq_lens_buffer;
 
   // Flash Attention buffers
   IAllocatorUniquePtr<void> softmax_lse_buffer;
   IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
   IAllocatorUniquePtr<void> out_accum_buffer;
+
+  void* preallocated_workspace = nullptr;
+  const size_t declared_workspace_bytes =
+      declared_workspace_bytes_.load(std::memory_order_relaxed);
+  static const bool trace_preallocated_workspace =
+      ParseEnvironmentVariableWithDefault<int>(
+          "ORT_CUDA_TRACE_PREALLOCATED_WORKSPACE", 0) != 0;
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+  const bool workspace_bound_satisfied =
+      sliding_window_cache_ ||
+      (parameters.total_sequence_length > 0 &&
+       parameters.total_sequence_length <= max_total_sequence_length_);
+  if (declared_workspace_bytes != 0) {
+    // Trace the declared slot even when this run's scalar bound requires scratch.
+    // Memory-pattern keys contain input shapes, not total_sequence_length's value.
+    ORT_RETURN_IF_ERROR(context->GetPreallocatedWorkspace(
+        /*slot_id=*/0, declared_workspace_bytes, &preallocated_workspace));
+    if (!workspace_bound_satisfied) {
+      preallocated_workspace = nullptr;
+    }
+  }
+#endif
+  size_t preallocated_workspace_offset = 0;
+  size_t preallocated_workspace_region_count = 0;
+  size_t preallocated_workspace_region_bytes = 0;
+  size_t scratch_fallback_region_count = 0;
+  size_t scratch_fallback_region_bytes = 0;
+  auto allocate_workspace = [&](size_t bytes, IAllocatorUniquePtr<void>& fallback) -> void* {
+    if (bytes == 0) {
+      return nullptr;
+    }
+
+    if (preallocated_workspace != nullptr) {
+      const size_t aligned_offset =
+          (SafeInt<size_t>(preallocated_workspace_offset) + kGQAWorkspaceAlignment - 1) /
+          kGQAWorkspaceAlignment * kGQAWorkspaceAlignment;
+      if (aligned_offset <= declared_workspace_bytes &&
+          bytes <= declared_workspace_bytes - aligned_offset) {
+        preallocated_workspace_offset = SafeInt<size_t>(aligned_offset) + bytes;
+        if (trace_preallocated_workspace) {
+          ++preallocated_workspace_region_count;
+          preallocated_workspace_region_bytes += bytes;
+        }
+        return reinterpret_cast<uint8_t*>(preallocated_workspace) + aligned_offset;
+      }
+    }
+
+    if (trace_preallocated_workspace) {
+      ++scratch_fallback_region_count;
+      scratch_fallback_region_bytes += bytes;
+    }
+    fallback = GetScratchBuffer<void>(bytes, GetComputeStream(context));
+    return fallback.get();
+  };
 
   data.position_ids = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
 
@@ -440,20 +577,21 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                 "sliding_window_cache=1 requires past_key/present_key and past_value/present_value "
                 "to share the same buffer.");
 
-  IAllocatorUniquePtr<CudaU> separate_past_buffer;
+  IAllocatorUniquePtr<void> separate_past_buffer;
   if (past_key_shared != past_value_shared) {
     // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
     const Tensor* shared_past = past_key_shared ? past_key : past_value;
     const size_t past_bytes = shared_past->SizeInBytes();
-    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
+    auto* separate_past = reinterpret_cast<CudaU*>(
+        allocate_workspace(past_bytes, separate_past_buffer));
     if (past_bytes != 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past, shared_past->DataRaw(), past_bytes,
                                            cudaMemcpyDeviceToDevice, Stream(context)));
     }
     if (past_key_shared) {
-      data.past_key = separate_past_buffer.get();
+      data.past_key = separate_past;
     } else {
-      data.past_value = separate_past_buffer.get();
+      data.past_value = separate_past;
     }
   }
 
@@ -485,26 +623,31 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     const size_t staged_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
                                 staged_cache_capacity * dense_head_size * sizeof(U);
-    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
-    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+    void* staged_key = allocate_workspace(staged_bytes, staged_key_buffer);
+    void* staged_value = allocate_workspace(staged_bytes, staged_value_buffer);
 
     ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
-        staged_key_buffer.get(), staged_value_buffer.get(),
+        staged_key, staged_value,
         windowed_present_key, windowed_present_value,
         parameters.batch_size, parameters.kv_num_heads,
         /*src_capacity=*/windowed_cache_capacity, /*dst_capacity=*/staged_cache_capacity,
         /*rows=*/windowed_cache_capacity, /*src_offsets=*/nullptr,
         static_cast<int>(dense_head_size * sizeof(U)), Stream(context)));
 
-    data.past_key = reinterpret_cast<const CudaU*>(staged_key_buffer.get());
-    data.past_value = reinterpret_cast<const CudaU*>(staged_value_buffer.get());
-    data.present_key = reinterpret_cast<CudaU*>(staged_key_buffer.get());
-    data.present_value = reinterpret_cast<CudaU*>(staged_value_buffer.get());
+    data.past_key = reinterpret_cast<const CudaU*>(staged_key);
+    data.past_value = reinterpret_cast<const CudaU*>(staged_value);
+    data.present_key = reinterpret_cast<CudaU*>(staged_key);
+    data.present_value = reinterpret_cast<CudaU*>(staged_value);
 
     parameters.kv_cache_capacity = staged_cache_capacity;
     parameters.seqlen_past_kv_cache = staged_cache_capacity;
     parameters.seqlen_present_kv_cache = staged_cache_capacity;
   }
+
+  const int effective_workspace_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
+      parameters.total_sequence_length,
+      parameters.seqlen_present_kv_cache,
+      parameters.is_windowed_kv_cache));
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -650,8 +793,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         xqa_total_bytes += xqa_head_sink_bytes;
       }
 
-      xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, GetComputeStream(context));
-      data.xqa_buffer = xqa_scratch_buffer.get();
+      data.xqa_buffer = allocate_workspace(xqa_total_bytes, xqa_scratch_buffer);
       data.xqa_buffer_bytes = xqa_internal_bytes;
 
       char* xqa_extra_buffer = reinterpret_cast<char*>(data.xqa_buffer) + xqa_internal_bytes;
@@ -721,7 +863,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
 
     int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
-    size_t sequence_length_for_split = static_cast<size_t>(parameters.total_sequence_length);
+    size_t sequence_length_for_split = static_cast<size_t>(effective_workspace_kv_length);
     if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
       sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
     }
@@ -740,23 +882,24 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       out_accum_bytes = onnxruntime::flash::get_out_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, round_multiple(parameters.head_size, 32));
     }
 
-    softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
-    softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
-    out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
+    void* softmax_lse = allocate_workspace(softmax_lse_bytes, softmax_lse_buffer);
+    void* softmax_lse_accum =
+        allocate_workspace(softmax_lse_accum_bytes, softmax_lse_accum_buffer);
+    void* out_accum = allocate_workspace(out_accum_bytes, out_accum_buffer);
 
     auto cuda_stream = Stream(context);
     if (softmax_lse_accum_bytes > 0) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum, 0, softmax_lse_accum_bytes, cuda_stream));
     }
     if (out_accum_bytes > 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum, 0, out_accum_bytes, cuda_stream));
     }
 
-    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
-    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
-    data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse);
+    data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum);
+    data.out_accum = reinterpret_cast<CudaT*>(out_accum);
   }
 #endif
 
@@ -771,10 +914,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Allocate buffer for both: first half is past_seq_lens, second half is total_seq_lens.
     // A windowed cache needs three more per-batch vectors expressed in cache-relative coordinates.
     const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
-    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
+    auto* sequence_lengths = reinterpret_cast<int*>(
+        allocate_workspace(sizeof(int) * seq_lens_vectors * parameters.batch_size,
+                           seq_lens_buffer));
     auto cuda_stream = Stream(context);
-    data.past_seq_lens = seq_lens_buffer.get();
-    data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
+    data.past_seq_lens = sequence_lengths;
+    data.total_seq_lens = sequence_lengths + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
     if (parameters.is_windowed_kv_cache) {
       data.cache_past_seq_lens = data.padded_seq_lens + parameters.batch_size;
@@ -811,8 +956,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                  : static_cast<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
     const size_t compaction_bytes = 2 * static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
                                     parameters.kv_cache_real_capacity * row_bytes;
-    compaction_buffer = GetScratchBuffer<void>(compaction_bytes, GetComputeStream(context));
-    data.compaction_scratch = compaction_buffer.get();
+    data.compaction_scratch = allocate_workspace(compaction_bytes, compaction_buffer);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -839,13 +983,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                    ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
                                    : 0;
 
-    k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
-    v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
-    fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, GetComputeStream(context));
-
-    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
-    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
-    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+    data.k = reinterpret_cast<CudaT*>(allocate_workspace(kv_buffer_bytes, k_buffer));
+    data.v = reinterpret_cast<CudaT*>(allocate_workspace(kv_buffer_bytes, v_buffer));
+    data.fmha_buffer = reinterpret_cast<CudaT*>(allocate_workspace(fmha_buffer_bytes, fmha_buffer));
   }
 #endif
 
@@ -860,8 +1000,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       data.use_memory_efficient_attention);
 
   if (buffer_req.qkv_buffer_bytes > 0) {
-    unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, GetComputeStream(context));
-    data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+    data.qkv_buffer = reinterpret_cast<CudaT*>(
+        allocate_workspace(buffer_req.qkv_buffer_bytes, unpacked_qkv_buffer));
   }
 
   // ---------------------------------------------------------------------
@@ -885,7 +1025,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t H_v = (parameters.v_head_size > 0)
                            ? static_cast<size_t>(parameters.v_head_size)
                            : H;
-    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+    // This is the same resident/staged cache bound passed to the unfused kernel.
+    const size_t S_kv = static_cast<size_t>(effective_workspace_kv_length);
 
     auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
       return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
@@ -897,12 +1038,32 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
             static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
     const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
 
-    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
-                                             GetComputeStream(context));
-    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    auto* base = reinterpret_cast<uint8_t*>(
+        allocate_workspace(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
+                           unfused_scratch));
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
     data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+  }
+
+  if (trace_preallocated_workspace) {
+    std::cerr << "[cuda_workspace_check] op=GroupQueryAttention"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+              << " node_index=" << this->Node().Index()
+#endif
+              << " node_name=" << this->Node().Name()
+              << " phase=" << (parameters.sequence_length == 1 ? "decode" : "prefill")
+              << " root="
+              << (declared_workspace_bytes == 0
+                      ? "unplanned"
+                      : (preallocated_workspace == nullptr ? "scratch_fallback" : "preallocated"))
+              << " declared_bytes=" << declared_workspace_bytes
+              << " consumed_bytes=" << preallocated_workspace_offset
+              << " preallocated_regions=" << preallocated_workspace_region_count
+              << " preallocated_region_bytes=" << preallocated_workspace_region_bytes
+              << " scratch_fallback_regions=" << scratch_fallback_region_count
+              << " scratch_fallback_region_bytes=" << scratch_fallback_region_bytes
+              << std::endl;
   }
 
   if (kernel_options_->AllowDebugInfo()) {
@@ -911,6 +1072,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
+    if (data.use_flash_attention) {
+      debug_info.num_splits = parameters.num_splits;
+    }
+    debug_info.effective_kv_length_bound = effective_workspace_kv_length;
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),
