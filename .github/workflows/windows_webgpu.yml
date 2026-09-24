@@ -142,6 +142,8 @@ jobs:
             Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
           }
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+          Remove-Item -Path $outputDir -Include "*.pch" -Recurse
+          Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -351,6 +353,8 @@ jobs:
             Remove-Item -LiteralPath $depsDir -Recurse -Force -ErrorAction Stop
           }
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+          Remove-Item -Path $outputDir -Include "*.pch" -Recurse
+          Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
