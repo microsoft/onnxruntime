@@ -139,6 +139,8 @@ Exit gate: one raw mixed FC1 INT2 / FC2 INT4 model validates identically on all 
 
 ### Workstream 2: CUDA Correctness
 
+Status: Complete. The bounded FP16/BF16 dense dequantization fallback for INT2 and mixed-width QMoE merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743). It includes canonical raw-weight validation, blockwise scales and zero points, a configurable scratch-memory limit, and CUDA correctness coverage for uniform INT2 and mixed FC widths.
+
 The correctness path must not reuse an INT4 type or layout for INT2.
 
 Deliverables:
@@ -155,6 +157,8 @@ Persistent full-model INT2-to-FP16 dequantization expands the affected payload b
 Exit gate: CUDA executes synthetic and reduced Qwen mixed-width models correctly without interpreting INT2 as INT4 or allocating unbounded scratch.
 
 ### Workstream 3: CUDA Packed Decode
+
+Status: In review. [#32761](https://github.com/microsoft/onnxruntime/pull/32761) adds direct packed CUDA decode for uniform INT2 and mixed INT2/INT4 widths. As of September 24, 2026, it is rebased on `main`, is mergeable, and has no completed failing checks. Model-level performance and quality gates remain open.
 
 The first performance milestone is fused packed execution for decode and low expanded-row counts, where expanded rows are approximately `num_tokens * top_k`.
 
@@ -233,13 +237,17 @@ Merged as [#32697](https://github.com/microsoft/onnxruntime/pull/32697). Mixed-w
 - Shared shape and packing helpers.
 - Backward-compatibility and validation tests.
 
-### PR 2: CUDA Correctness
+### PR 2: CUDA Correctness - Merged
+
+Merged as [#32743](https://github.com/microsoft/onnxruntime/pull/32743).
 
 - INT2 validation and dequantization.
 - Bounded fallback.
 - Scalar-reference and quantized-PyTorch parity tests.
 
-### PR 3: CUDA Packed Decode
+### PR 3: CUDA Packed Decode - In Review
+
+Open as [#32761](https://github.com/microsoft/onnxruntime/pull/32761), rebased on `main` after PR 2 merged.
 
 - Runtime prepack.
 - Fused FC1 INT2 decode.
