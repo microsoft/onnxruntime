@@ -83,13 +83,13 @@ INT2 QMoE is a meaningful follow-up because expert weights dominate the storage 
 
 | Area | Current state | Required work |
 | --- | --- | --- |
-| QMoE schema | Declares `expert_weight_bits` values 2, 4, and 8 | Define a versioned mixed-width contract before targeting the published Qwen recipe |
+| QMoE schema | Independent FC1, FC2, and FC3 widths merged in [#32697](https://github.com/microsoft/onnxruntime/pull/32697) | Maintain backward compatibility and add model-level conformance coverage |
 | CPU QMoE | Accepts blockwise INT2 and has an optimized LUT path | Add mixed-width semantics and model-level conformance coverage |
-| CUDA QMoE | Constructor, packing, runner selection, and weight preprocessing assume INT4 or INT8 | Add explicit INT2 fallback and packed kernels without mapping INT2 to an INT4 CUTLASS type |
+| CUDA QMoE | Bounded INT2/mixed-width correctness fallback merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743); packed decode is in review in [#32761](https://github.com/microsoft/onnxruntime/pull/32761) | Complete review, benchmark packed decode, and add a bounded or native prefill path |
 | WebGPU QMoE | Rejects INT2 and uses a 4/8-bit-specific pack-size calculation | Use `8 / bits`, complete reachable INT2 shader support, and add QMoE tests |
 | Model production | Dense mixed-bit export is the initial Olive/Mobius target | Define and qualify a distinct fused QMoE graph and weight-binding contract |
 
-The largest model-contract blocker is that QMoE currently exposes one `expert_weight_bits` attribute for FC1 and FC2. This cannot represent the relevant Qwen3.8-Flash-Next placement, where expert gate/up tensors use an approximately 2-bit tier while expert down tensors use an approximately 4-bit tier. A production-oriented extension therefore needs independent FC1 and FC2 bit-width semantics, for example `fc1_expert_weight_bits=2` and `fc2_expert_weight_bits=4`, together with corresponding shape, scale, zero-point, prepacking, and backward-compatibility rules. The exact schema design requires review; these names are illustrative rather than a committed interface.
+The mixed-width model contract is no longer the primary blocker. QMoE now supports independent FC-specific width attributes with inheritance from `expert_weight_bits`, including the target `fc1_expert_weight_bits=2` and `fc2_expert_weight_bits=4` recipe. The remaining product blockers are fused Olive/Mobius model production, CPU and CUDA model-level parity, packed-decode performance evidence, bounded or native prefill, and quality qualification on the target Qwen model.
 
 CUDA dequantization to persistent FP16/BF16 expert weights is useful only as a correctness oracle because it expands INT2 payloads by approximately 8x and removes the deployment memory benefit. The first performance-relevant QMoE target should be packed INT2 fused decode for small expanded-row counts. Long-context prefill ultimately requires a native or equivalently bounded W2A16 grouped GEMM; full expert dequantization is not a production milestone.
 
