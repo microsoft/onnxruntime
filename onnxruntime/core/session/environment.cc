@@ -570,6 +570,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
 #endif
+  // Keep the Start/End calls without ORT_USE_TELEMETRY: Windows ETW still uses them.
+  // Only duration measurement is gated by ORT_USE_TELEMETRY.
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
 
   if (ep_libraries_.count(registration_name) > 0) {
@@ -586,9 +588,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   auto status = Status::OK();
 
   ORT_TRY {
-#if defined(ORT_USE_TELEMETRY)
+    // Contain early Status returns so every started registration reaches the End event.
     status = [&]() -> Status {
-#endif
       // create the EpInfo which loads the library if required
       std::unique_ptr<EpInfo> ep_info = nullptr;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
@@ -627,10 +628,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       }
 
       ep_libraries_[registration_name] = std::move(ep_info);
-#if defined(ORT_USE_TELEMETRY)
       return Status::OK();
     }();
-#endif
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
