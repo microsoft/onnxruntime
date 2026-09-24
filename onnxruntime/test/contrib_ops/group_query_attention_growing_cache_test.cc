@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 // GroupQueryAttention with a growing KV cache whose past_key/past_value are planner-owned values.
-// Shape inference used to copy a symbolic past length onto present; the allocation planner compares
-// dim_params by name, so it gave present a past-sized buffer (MayInplace alias or free list) and
-// every growing step failed with "Shape mismatch attempting to re-use buffer".
+// Shape inference used to copy the past length onto present, symbolic or fixed, although present
+// grows with the runtime total_sequence_length. The allocation planner then gave present a
+// past-sized buffer (MayInplace alias or free list) and every growing step failed with
+// "Shape mismatch attempting to re-use buffer".
 
 #include <algorithm>
 #include <array>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -39,13 +41,6 @@ constexpr int64_t kLayers = 2;
 
 using Dim = std::variant<int64_t, std::string>;
 
-struct KvCacheModel {
-  std::string data;
-  // query, key, value, past_keys, past_values, seqlens_k, total_seq_len.
-  std::array<std::string, 7> input_names;
-  std::vector<std::string> output_names;
-};
-
 // How the planner gets hold of a past-sized buffer to give to present.
 enum class PastSizedBuffer {
   // Gather(past_keys, layer) -> GroupQueryAttention. past_key dies at the node, so a
@@ -56,8 +51,23 @@ enum class PastSizedBuffer {
   kFreeList,
 };
 
+struct ModelOptions {
+  PastSizedBuffer kind = PastSizedBuffer::kPastItself;
+  Dim past_len = std::string("past_len");
+  // total_sequence_length as an initializer instead of a graph input.
+  std::optional<int32_t> constant_total_seq_len;
+  bool sliding_window_cache = false;
+};
+
+struct KvCacheModel {
+  std::string data;
+  // query, key, value, past_keys, past_values, seqlens_k, total_seq_len (empty when constant).
+  std::array<std::string, 7> input_names;
+  std::vector<std::string> output_names;
+};
+
 // A KV cache held as one tensor for all layers and sliced per layer.
-KvCacheModel BuildKvCacheModel(PastSizedBuffer kind, const Dim& past_len = Dim{"past_len"}) {
+KvCacheModel BuildKvCacheModel(const ModelOptions& options) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("GqaGrowingKvCache", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, logger);
@@ -67,10 +77,12 @@ KvCacheModel BuildKvCacheModel(PastSizedBuffer kind, const Dim& past_len = Dim{"
   auto* query = builder.MakeSymbolicInput<float>({kBatch, kSeqLen, kNumHeads * kHeadSize});
   auto* key = builder.MakeSymbolicInput<float>({kBatch, kSeqLen, kKvNumHeads * kHeadSize});
   auto* value = builder.MakeSymbolicInput<float>({kBatch, kSeqLen, kKvNumHeads * kHeadSize});
-  auto* past_keys = builder.MakeSymbolicInput<float>({kLayers, kBatch, kKvNumHeads, past_len, kHeadSize});
-  auto* past_values = builder.MakeSymbolicInput<float>({kLayers, kBatch, kKvNumHeads, past_len, kHeadSize});
+  auto* past_keys = builder.MakeSymbolicInput<float>({kLayers, kBatch, kKvNumHeads, options.past_len, kHeadSize});
+  auto* past_values = builder.MakeSymbolicInput<float>({kLayers, kBatch, kKvNumHeads, options.past_len, kHeadSize});
   auto* seqlens_k = builder.MakeSymbolicInput<int32_t>({kBatch});
-  auto* total_seq_len = builder.MakeSymbolicInput<int32_t>({});
+  auto* total_seq_len = options.constant_total_seq_len
+                            ? builder.MakeScalarInitializer<int32_t>(*options.constant_total_seq_len)
+                            : builder.MakeSymbolicInput<int32_t>({});
 
   auto* layer_index = builder.MakeScalarInitializer<int64_t>(0);
   auto* layer_axis = builder.Make1DInitializer<int64_t>({0});
@@ -78,7 +90,7 @@ KvCacheModel BuildKvCacheModel(PastSizedBuffer kind, const Dim& past_len = Dim{"
   auto slice_layer = [&](NodeArg* cache) {
     auto* gathered = builder.MakeIntermediate();
     builder.AddNode("Gather", {cache, layer_index}, {gathered}).AddAttribute("axis", static_cast<int64_t>(0));
-    if (kind == PastSizedBuffer::kPastItself) {
+    if (options.kind == PastSizedBuffer::kPastItself) {
       return gathered;
     }
     // Both Mul inputs are the same value, so Mul cannot run in place and `gathered` is freed.
@@ -97,6 +109,10 @@ KvCacheModel BuildKvCacheModel(PastSizedBuffer kind, const Dim& past_len = Dim{"
                               {attn_out, present_key, present_value}, kMSDomain);
   gqa.AddAttribute("num_heads", kNumHeads);
   gqa.AddAttribute("kv_num_heads", kKvNumHeads);
+  if (options.sliding_window_cache) {
+    gqa.AddAttribute("sliding_window_cache", static_cast<int64_t>(1));
+    gqa.AddAttribute("local_window_size", static_cast<int64_t>(8));
+  }
 
   auto* new_keys = builder.MakeOutput();
   auto* new_values = builder.MakeOutput();
@@ -108,8 +124,8 @@ KvCacheModel BuildKvCacheModel(PastSizedBuffer kind, const Dim& past_len = Dim{"
 
   KvCacheModel result;
   model.ToProto().SerializeToString(&result.data);
-  result.input_names = {query->Name(), key->Name(), value->Name(), past_keys->Name(),
-                        past_values->Name(), seqlens_k->Name(), total_seq_len->Name()};
+  result.input_names = {query->Name(), key->Name(), value->Name(), past_keys->Name(), past_values->Name(),
+                        seqlens_k->Name(), options.constant_total_seq_len ? "" : total_seq_len->Name()};
   result.output_names = {attn_out->Name(), new_keys->Name(), new_values->Name()};
   return result;
 }
@@ -139,8 +155,13 @@ struct Step {
   int32_t total_seq_len;
 };
 
-// The first three steps grow present beyond the past buffer; the last two do not.
-constexpr Step kSteps[] = {{0, 0, 1}, {1, 1, 2}, {2, 2, 3}, {1, 0, 1}, {4, 3, 4}};
+// Fed to a model with a symbolic past length. The first three steps grow present beyond the past
+// buffer; the last two do not.
+constexpr Step kSymbolicSteps[] = {{0, 0, 1}, {1, 1, 2}, {2, 2, 3}, {1, 0, 1}, {4, 3, 4}};
+
+// Each fed to a model whose declared past length equals the step's past length. A fixed declared
+// length does not make the cache static: total_sequence_length is still a runtime input.
+constexpr Step kFixedSteps[] = {{1, 1, 2}, {2, 2, 3}, {16, 16, 17}};
 
 std::string Describe(const Step& step) {
   return "past_len=" + std::to_string(step.past_len) + " total_seq_len=" + std::to_string(step.total_seq_len);
@@ -163,21 +184,31 @@ NameMLValMap MakeFeeds(const KvCacheModel& model, const Step& step) {
   return feeds;
 }
 
-const ONNX_NAMESPACE::TensorShapeProto* InferredPresentKeyShape(const Graph& graph) {
-  for (const Node& node : graph.Nodes()) {
+// The present_key sequence dimension inferred for the model's GroupQueryAttention node, read back
+// from a fresh load with the shapes recorded at build time dropped.
+ONNX_NAMESPACE::TensorShapeProto_Dimension InferredPresentLength(const KvCacheModel& model) {
+  ONNX_NAMESPACE::ModelProto proto;
+  EXPECT_TRUE(proto.ParseFromString(model.data));
+  proto.mutable_graph()->clear_value_info();
+  std::shared_ptr<Model> loaded;
+  EXPECT_STATUS_OK(Model::Load(std::move(proto), loaded, nullptr, DefaultLoggingManager().DefaultLogger()));
+  for (const Node& node : loaded->MainGraph().Nodes()) {
     if (node.OpType() == "GroupQueryAttention") {
-      return node.OutputDefs()[1]->Shape();
+      const auto* shape = node.OutputDefs()[1]->Shape();
+      EXPECT_NE(shape, nullptr);
+      EXPECT_EQ(shape->dim_size(), 4);
+      EXPECT_EQ(shape->dim(1).dim_value(), kKvNumHeads);
+      EXPECT_EQ(shape->dim(3).dim_value(), kHeadSize);
+      return shape->dim(2);
     }
   }
-  return nullptr;
+  ADD_FAILURE() << "no GroupQueryAttention node";
+  return {};
 }
 
-void LoadModel(const KvCacheModel& model, std::shared_ptr<Model>& loaded) {
-  ONNX_NAMESPACE::ModelProto proto;
-  ASSERT_TRUE(proto.ParseFromString(model.data));
-  // Drop the shapes recorded when the model was built, so that what is read back is inferred here.
-  proto.mutable_graph()->clear_value_info();
-  ASSERT_STATUS_OK(Model::Load(std::move(proto), loaded, nullptr, DefaultLoggingManager().DefaultLogger()));
+void ExpectDynamic(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
+  EXPECT_FALSE(dim.has_dim_value()) << dim.dim_value();
+  EXPECT_FALSE(dim.has_dim_param()) << dim.dim_param();
 }
 
 void RunOnCpu(const KvCacheModel& model, const Step& step, bool enable_mem_reuse, std::vector<OrtValue>& fetches) {
@@ -190,15 +221,26 @@ void RunOnCpu(const KvCacheModel& model, const Step& step, bool enable_mem_reuse
   ASSERT_STATUS_OK(session.Run(RunOptions{}, MakeFeeds(model, step), model.output_names, &fetches));
 }
 
-void RunOnWebGpu(PastSizedBuffer kind, const char* log_id) {
-  if (!DefaultWebGpuExecutionProvider()) {
-    GTEST_SKIP() << "WebGPU execution provider is not available.";
-  }
+// The CPU kernel declares no alias, so this is the free-list route alone; a session with memory
+// reuse disabled is the reference.
+void ExpectCpuReuseMatchesNoReuse(const KvCacheModel& model, const Step& step) {
+  std::vector<OrtValue> expected;
+  std::vector<OrtValue> actual;
+  ASSERT_NO_FATAL_FAILURE(RunOnCpu(model, step, /*enable_mem_reuse*/ false, expected));
+  ASSERT_NO_FATAL_FAILURE(RunOnCpu(model, step, /*enable_mem_reuse*/ true, actual));
 
-  const KvCacheModel model = BuildKvCacheModel(kind);
+  ASSERT_EQ(actual.size(), expected.size());
+  const TensorShape new_keys_shape{1, kBatch, kKvNumHeads, std::max<int64_t>(step.past_len, step.total_seq_len),
+                                   kHeadSize};
+  EXPECT_EQ(actual[1].Get<Tensor>().Shape(), new_keys_shape);
+  for (size_t i = 0; i < actual.size(); ++i) {
+    VerifyOutput(model.output_names[i], expected[i].Get<Tensor>(), actual[i].Get<Tensor>(), 1e-5f);
+  }
+}
+
+void ExpectWebGpuMatchesCpu(const KvCacheModel& model, const Step& step, const char* log_id) {
   const gsl::span<const std::byte> model_bytes{reinterpret_cast<const std::byte*>(model.data.data()),
                                                model.data.size()};
-
   // Gather alone would satisfy ExpectedEPNodeAssignment::Some.
   const std::function<void(const Graph&)> gqa_runs_on_webgpu = [](const Graph& graph) {
     for (const Node& node : graph.Nodes()) {
@@ -207,63 +249,60 @@ void RunOnWebGpu(PastSizedBuffer kind, const char* log_id) {
       }
     }
   };
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.fp32_abs_err = 1e-4f;
+  params.graph_verifier = &gqa_runs_on_webgpu;
+  RunAndVerifyOutputsWithEP(model_bytes, log_id, DefaultWebGpuExecutionProvider(), MakeFeeds(model, step), params);
+}
 
-  for (const Step& step : kSteps) {
-    SCOPED_TRACE(Describe(step));
-    EPVerificationParams params;
-    params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
-    params.fp32_abs_err = 1e-4f;
-    params.graph_verifier = &gqa_runs_on_webgpu;
-    RunAndVerifyOutputsWithEP(model_bytes, log_id, DefaultWebGpuExecutionProvider(), MakeFeeds(model, step), params);
+void RunOnWebGpu(PastSizedBuffer kind, const char* log_id) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+  const KvCacheModel symbolic = BuildKvCacheModel({kind});
+  for (const Step& step : kSymbolicSteps) {
+    SCOPED_TRACE("symbolic " + Describe(step));
+    ExpectWebGpuMatchesCpu(symbolic, step, log_id);
+  }
+  for (const Step& step : kFixedSteps) {
+    SCOPED_TRACE("fixed " + Describe(step));
+    ExpectWebGpuMatchesCpu(BuildKvCacheModel({kind, Dim{step.past_len}}), step, log_id);
   }
 }
 
 }  // namespace
 
-TEST(GroupQueryAttentionGrowingCacheTest, SymbolicPastLengthIsNotInferredForPresent) {
-  std::shared_ptr<Model> model;
-  ASSERT_NO_FATAL_FAILURE(LoadModel(BuildKvCacheModel(PastSizedBuffer::kPastItself), model));
-
-  const auto* present_shape = InferredPresentKeyShape(model->MainGraph());
-  ASSERT_NE(present_shape, nullptr);
-  ASSERT_EQ(present_shape->dim_size(), 4);
-  EXPECT_EQ(present_shape->dim(1).dim_value(), kKvNumHeads);
-  EXPECT_FALSE(present_shape->dim(2).has_dim_param()) << present_shape->dim(2).dim_param();
-  EXPECT_FALSE(present_shape->dim(2).has_dim_value());
-  EXPECT_EQ(present_shape->dim(3).dim_value(), kHeadSize);
+TEST(GroupQueryAttentionGrowingCacheTest, SymbolicPastLengthLeavesPresentDynamic) {
+  ExpectDynamic(InferredPresentLength(BuildKvCacheModel({})));
 }
 
-// A fixed-length past is a static cache shared with present, so its length still carries over.
-TEST(GroupQueryAttentionGrowingCacheTest, StaticPastLengthIsInferredForPresent) {
-  constexpr int64_t kMaxLen = 16;
-  std::shared_ptr<Model> model;
-  ASSERT_NO_FATAL_FAILURE(LoadModel(BuildKvCacheModel(PastSizedBuffer::kPastItself, Dim{kMaxLen}), model));
-
-  const auto* present_shape = InferredPresentKeyShape(model->MainGraph());
-  ASSERT_NE(present_shape, nullptr);
-  ASSERT_EQ(present_shape->dim_size(), 4);
-  EXPECT_EQ(present_shape->dim(2).dim_value(), kMaxLen);
+TEST(GroupQueryAttentionGrowingCacheTest, FixedPastLengthLeavesPresentDynamic) {
+  ExpectDynamic(InferredPresentLength(BuildKvCacheModel({PastSizedBuffer::kPastItself, Dim{16}})));
 }
 
-// The CPU kernel declares no alias, so this is the free-list route alone; a session with memory
-// reuse disabled is the reference.
+TEST(GroupQueryAttentionGrowingCacheTest, ConstantTotalLengthGivesExactPresentLength) {
+  ModelOptions grows{PastSizedBuffer::kPastItself, Dim{16}, 17};
+  EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(grows)).dim_value(), 17);
+  ModelOptions fits{PastSizedBuffer::kPastItself, Dim{16}, 8};
+  EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(fits)).dim_value(), 16);
+}
+
+// A windowed cache is capacity-sized and evicts internally, so present keeps the past length.
+TEST(GroupQueryAttentionGrowingCacheTest, SlidingWindowCacheKeepsPastLength) {
+  ModelOptions windowed{PastSizedBuffer::kPastItself, Dim{16}, std::nullopt, /*sliding_window_cache*/ true};
+  EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(windowed)).dim_value(), 16);
+}
+
 TEST(GroupQueryAttentionGrowingCacheTest, PresentKvMayGrowBeyondFreedPastSizedBuffer) {
-  const KvCacheModel model = BuildKvCacheModel(PastSizedBuffer::kFreeList);
-
-  for (const Step& step : kSteps) {
-    SCOPED_TRACE(Describe(step));
-    std::vector<OrtValue> expected;
-    std::vector<OrtValue> actual;
-    ASSERT_NO_FATAL_FAILURE(RunOnCpu(model, step, /*enable_mem_reuse*/ false, expected));
-    ASSERT_NO_FATAL_FAILURE(RunOnCpu(model, step, /*enable_mem_reuse*/ true, actual));
-
-    ASSERT_EQ(actual.size(), expected.size());
-    const TensorShape new_keys_shape{1, kBatch, kKvNumHeads, std::max<int64_t>(step.past_len, step.total_seq_len),
-                                     kHeadSize};
-    EXPECT_EQ(actual[1].Get<Tensor>().Shape(), new_keys_shape);
-    for (size_t i = 0; i < actual.size(); ++i) {
-      VerifyOutput(model.output_names[i], expected[i].Get<Tensor>(), actual[i].Get<Tensor>(), 1e-5f);
-    }
+  const KvCacheModel symbolic = BuildKvCacheModel({PastSizedBuffer::kFreeList});
+  for (const Step& step : kSymbolicSteps) {
+    SCOPED_TRACE("symbolic " + Describe(step));
+    ExpectCpuReuseMatchesNoReuse(symbolic, step);
+  }
+  for (const Step& step : kFixedSteps) {
+    SCOPED_TRACE("fixed " + Describe(step));
+    ExpectCpuReuseMatchesNoReuse(BuildKvCacheModel({PastSizedBuffer::kFreeList, Dim{step.past_len}}), step);
   }
 }
 
