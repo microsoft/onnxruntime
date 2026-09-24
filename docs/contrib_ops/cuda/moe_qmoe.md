@@ -100,8 +100,8 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 
 | Idx | Name | Type | Shape | Used by `quant_type` |
 |----:|------|------|-------|----------------------|
-| 0 | `input` | T | `(num_tokens, hidden_size)` | all |
-| 1 | `router_probs` | T | `(num_tokens, num_experts)` | all |
+| 0 | `input` | T | packed `(total_tokens, hidden_size)` or padded `(batch, sequence, hidden_size)` | all |
+| 1 | `router_probs` | T | `(total_tokens, num_experts)` | all |
 | 2 | `fc1_experts_weights` | T1 | `(E, fusion×inter, hidden/pack)` | all |
 | 3 | `fc1_scales` | T2 (Opt) | varies — see [§2.4](#24-input-369-interpretation-by-quant_type) | int, fp4, nvfp4, wfp4afp8 |
 | 4 | `fc1_experts_bias` | T (Opt) | `(E, fusion×inter)` | optional |
@@ -124,6 +124,12 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 
 `E = num_experts`. `pack = 8 / expert_weight_bits` for INT/MXFP4 weights; `pack = 1`
 for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
+
+For packed input, tokens from variable-length sequences may be concatenated
+without padding. MoE routing is token-local, so no sequence-offset input is
+required, and the output preserves `(total_tokens, hidden_size)`. Padded 3D
+input is flattened internally to the same token-major execution path. This
+behavior is shared by `MoE` and `QMoE` on the CPU and CUDA execution providers.
 
 `router_weights` (input 14) enables DeepSeek-style routing where `router_probs`
 is used only for top-K selection and `router_weights` provides the mixing

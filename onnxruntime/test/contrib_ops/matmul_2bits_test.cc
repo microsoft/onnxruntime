@@ -1863,6 +1863,81 @@ TEST(MatMul2BitsCuda, ChunkedFallback) {
 
 namespace {
 
+// End-to-end cover for the CUTLASS weight-only (fpA_intB) 2-bit path. This is the only test that
+// exercises the offline weight transform -- LDSM row permutation (kPerm_W2_A16), sub-byte
+// transpose, 8-column interleave and the [e0,e2,..,e14,e1,e3,..,e15] pair-interleave -- against an
+// independent dequantize + matmul reference, so a wrong permutation shows up here and nowhere else.
+// M = 1 takes the fused GEMV, M = 32 the CUTLASS GEMM. N must be a multiple of 128 for 2 bits.
+template <typename T1>
+void RunFpAIntB2BitsShapes(int64_t block_size, float abs_error, float rel_error) {
+  for (int64_t m : {int64_t{1}, int64_t{32}}) {
+    for (bool has_zero_point : {false, true}) {
+      for (const auto& nk : {std::pair<int64_t, int64_t>{128, 1024},
+                             std::pair<int64_t, int64_t>{256, 2048}}) {
+        TestOptions2Bits opts{};
+        opts.M = m;
+        opts.N = nk.first;
+        opts.K = nk.second;
+        opts.block_size = block_size;
+        opts.has_zero_point = has_zero_point;
+        opts.use_cuda = true;
+        opts.output_abs_error = abs_error;
+        opts.output_rel_error = rel_error;
+        RunTest2Bits<T1>(opts);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+TEST(MatMul2BitsCuda, Float16_FpAIntB) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+  for (int64_t block_size : {int64_t{64}, int64_t{128}}) {
+    RunFpAIntB2BitsShapes<MLFloat16>(block_size, 0.1f, 0.02f);
+  }
+}
+
+TEST(MatMul2BitsCuda, BFloat16_FpAIntB) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16";
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+  for (int64_t block_size : {int64_t{64}, int64_t{128}}) {
+    RunFpAIntB2BitsShapes<BFloat16>(block_size, 0.3f, 0.05f);
+  }
+}
+
+// Cover production N/K at small M and the large-M GEMM route with bounded reference work.
+TEST(MatMul2BitsCuda, Float16_FpAIntB_ProductionShape) {
+  if (SkipIfNo2BitCudaDevice()) GTEST_SKIP() << "No CUDA device with the required architecture";
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+  for (int64_t m : {int64_t{1}, int64_t{8}}) {
+    TestOptions2Bits opts{};
+    opts.M = m;
+    opts.N = 10240;
+    opts.K = 5120;
+    opts.block_size = 128;
+    opts.has_zero_point = true;
+    opts.use_cuda = true;
+    opts.output_abs_error = 0.2f;
+    opts.output_rel_error = 0.02f;
+    RunTest2Bits<MLFloat16>(opts);
+  }
+
+  TestOptions2Bits opts{};
+  opts.M = 512;
+  opts.N = 128;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.has_zero_point = true;
+  opts.use_cuda = true;
+  opts.output_abs_error = 0.2f;
+  opts.output_rel_error = 0.02f;
+  RunTest2Bits<MLFloat16>(opts);
+}
+
+namespace {
+
 // Ternary weights {-1, 0, +1} map exactly onto the affine 2-bit ABI as codes {0, 1, 2} with a
 // uniform zero point of 1. MlasQuantizeBlockwise never emits that subset, so the node is built by
 // hand here and checked against an exact float reference; every quantity is chosen to be

@@ -556,6 +556,48 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# An installed ONNX package ships pre-generated protobuf headers/sources that ONNX Runtime compiles into its own
+# objects, so both must resolve to a single protobuf runtime with a single message representation. If they do not,
+# the mismatch is not caught by the linker: it shows up as heap corruption while copying onnx::AttributeProto (see
+# https://github.com/microsoft/onnxruntime/issues/28664). Validate the two ways this can happen.
+if(onnx_FOUND OR ONNX_FOUND)
+  if(NOT Protobuf_FOUND)
+    message(FATAL_ERROR
+            "ONNX was resolved to an installed package but protobuf is being built from source by ONNX Runtime. "
+            "The installed ONNX links a different protobuf runtime than the one ONNX Runtime would use. "
+            "Install a protobuf CMake config package and make it discoverable via CMAKE_PREFIX_PATH, or force ONNX "
+            "to be built from source with -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER.")
+  endif()
+
+  if(TARGET ONNX::onnx_proto)
+    get_target_property(onnx_package_definitions ONNX::onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  else()
+    get_target_property(onnx_package_definitions onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  endif()
+  if(onnx_package_definitions)
+    if("ONNX_USE_LITE_PROTO=1" IN_LIST onnx_package_definitions)
+      set(onnx_package_protobuf_flavor "lite")
+    else()
+      set(onnx_package_protobuf_flavor "full")
+    endif()
+    if(onnxruntime_USE_FULL_PROTOBUF)
+      set(onnxruntime_protobuf_flavor "full")
+    else()
+      set(onnxruntime_protobuf_flavor "lite")
+    endif()
+    if(NOT onnx_package_protobuf_flavor STREQUAL onnxruntime_protobuf_flavor)
+      message(FATAL_ERROR
+              "The installed ONNX package links the ${onnx_package_protobuf_flavor} protobuf runtime but ONNX "
+              "Runtime is configured for the ${onnxruntime_protobuf_flavor} one "
+              "(onnxruntime_USE_FULL_PROTOBUF=${onnxruntime_USE_FULL_PROTOBUF}). Rebuild ONNX with a matching "
+              "ONNX_USE_LITE_PROTO, or reconfigure ONNX Runtime to use the ${onnx_package_protobuf_flavor} runtime.")
+    endif()
+  endif()
+  message(STATUS "Using ONNX from find_package(or vcpkg). ONNX version: ${ONNX_VERSION}, "
+                 "protobuf version: ${Protobuf_VERSION}")
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()

@@ -559,6 +559,11 @@ MlasHalfGemmKleidiAIPackB(
     void* PackedB
     );
 
+#if defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)
+const char* GetKleidiAIHalfGemmKernelNameForTesting();
+size_t GetKleidiAISve2p1HalfGemmNStepForTesting();
+#endif
+
 bool
 MLASCALL
 MlasHalfConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
