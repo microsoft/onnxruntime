@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <gsl/gsl>
 #include <string>
 #include <unordered_map>
@@ -46,6 +47,33 @@ struct HandlerInfo {
 
 using NodeIdToInputIdxsMap = std::unordered_map<int64_t, std::vector<size_t>>;
 
+// Identifies one query of the transpose cancellation walk: the value a pushed Transpose would sit on, the permutation
+// it carries, and the query variant. See onnx_transpose_optimization.cc for the meaning of the variant fields.
+struct CancelWalkKey {
+  std::string value;
+  std::vector<int64_t> pushed_perm;
+  bool tolerate_stranded_branches = false;
+  uint8_t mode = 0;
+
+  bool operator==(const CancelWalkKey& other) const {
+    return tolerate_stranded_branches == other.tolerate_stranded_branches && mode == other.mode &&
+           value == other.value && pushed_perm == other.pushed_perm;
+  }
+};
+
+struct CancelWalkKeyHasher {
+  size_t operator()(const CancelWalkKey& key) const {
+    size_t hash = std::hash<std::string>{}(key.value);
+    const auto combine = [&hash](size_t value) { hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
+    combine(static_cast<size_t>(key.tolerate_stranded_branches));
+    combine(static_cast<size_t>(key.mode));
+    for (int64_t axis : key.pushed_perm) {
+      combine(std::hash<int64_t>{}(axis));
+    }
+    return hash;
+  }
+};
+
 struct OptimizerCtx {
   int64_t opset;
   api::GraphRef& graph;
@@ -59,7 +87,7 @@ struct OptimizerCtx {
 
   // Memo of cancellation walks for the current OptimizeImpl invocation. Cleared after a successful rewrite.
   // Values: -1 in-progress, 0 fail, 1 no cancel, 2 cancel.
-  std::unordered_map<std::string, int8_t> pushed_transpose_cancels_cache;
+  std::unordered_map<CancelWalkKey, int8_t, CancelWalkKeyHasher> pushed_transpose_cancels_cache;
 };
 
 /// <summary>
