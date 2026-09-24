@@ -463,6 +463,10 @@ def _external_data_file_size(external_path, initializer_name):
 def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_experts, model_path=None):
     expert_bytes = {}
     for identity in node_identities:
+        if len(identity) == 4 and identity[0] != "main":
+            raise ValueError(
+                f"QMoE expert-size analysis only supports nodes in the main graph: {node_display_name(identity)}"
+            )
         model_identity = identity[1:] if len(identity) == 4 and identity[0] == "main" else identity
         node = qmoe_nodes.get(model_identity)
         if node is None:

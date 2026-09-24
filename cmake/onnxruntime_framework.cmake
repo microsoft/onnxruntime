@@ -37,7 +37,7 @@ endif()
 
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
-    "${ONNXRUNTIME_ROOT}/core/framework/kernel_usage.h"
+    "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot.h"
     "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.h"
     "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_selection.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/kernel_pilot_moe_expert_state.h"

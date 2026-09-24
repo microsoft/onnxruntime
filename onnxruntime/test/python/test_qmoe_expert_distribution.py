@@ -276,6 +276,10 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     model_path=model_path,
                 )
 
+    def test_subgraph_expert_size_analysis_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "only supports nodes in the main graph"):
+            calculate_qmoe_expert_bytes({}, {}, [("main/4/11:then_branch", 0, "QMoE", "qmoe")], 2)
+
     def test_ranking_final_row_and_threshold_outputs(self):
         identity = ("main", 17, "QMoE", "/layers.0/qmoe")
         rankings = rank_experts_by_frequency({identity: {0: 2, 1: 2, 2: 1}}, 3)
