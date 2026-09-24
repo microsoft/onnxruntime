@@ -2190,6 +2190,15 @@ TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
       /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/128);
 }
 
+TEST(MoETest, QMoETest_MixedWidthCudaSingleBlock) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/32, /*inter_size=*/64);
+}
+
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
 TEST(MoETest, QMoETest_MixedWidthCudaBlockWiseBFloat16) {
   if (!HasCudaEnvironment(800)) {
