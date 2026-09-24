@@ -350,6 +350,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
+  if (use_int_dequant_fallback) {
+    ORT_ENFORCE(!weights_prepacked_,
+                "INT2 or mixed-width CUDA QMoE requires raw weights with weights_prepacked=0.");
+    ORT_ENFORCE(block_size_ >= 16 && block_size_ <= 256 &&
+                    (block_size_ & (block_size_ - 1)) == 0,
+                "INT2 or mixed-width CUDA QMoE requires block_size to be a power of two in [16, 256], got ",
+                block_size_, ".");
+  }
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "nvfp4", "QMoE quant_type='nvfp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -809,12 +817,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   size_t int_dequant_fc1_bytes = 0;
   size_t int_dequant_fc2_bytes = 0;
   if (use_int_dequant_fallback) {
-    ORT_RETURN_IF_NOT(!weights_prepacked_,
-                      "INT2 or mixed-width CUDA QMoE requires raw weights with weights_prepacked=0.");
-    ORT_RETURN_IF_NOT(block_size_ >= 16 && block_size_ <= 256 &&
-                          (block_size_ & (block_size_ - 1)) == 0,
-                      "INT2 or mixed-width CUDA QMoE requires block_size to be a power of two in [16, 256], got ",
-                      block_size_, ".");
     ORT_RETURN_IF_NOT(moe_params.hidden_size % block_size_ == 0,
                       "INT2 or mixed-width CUDA QMoE requires hidden_size to be divisible by block_size, got hidden_size=",
                       moe_params.hidden_size, " and block_size=", block_size_, ".");
@@ -1344,7 +1346,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // For block-wise quantization, Cutlass expects scales laid out as [Experts, Blocks, N].
       // Input tensors are provided as [Experts, N, Blocks], so transpose when PrePack is not used.
       auto scale_shape = scales->Shape();
-      if (block_size_ > 0 && scale_shape.NumDimensions() == 3 && scale_shape[2] > 1) {
+      if (block_size_ > 0 && scale_shape.NumDimensions() == 3) {
         size_t rows = scale_shape[1];   // N
         size_t cols = scale_shape[2];   // Blocks
         size_t batch = scale_shape[0];  // Experts
@@ -1534,10 +1536,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   };
 
-  prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
-                   transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp);
-  prepare_scale_zp(fc2_scales, fc2_zeros, packed_fc2_scales_, packed_fc2_bias_,
-                   transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp);
+  if (!use_int_dequant_fallback) {
+    prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
+                     transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp);
+    prepare_scale_zp(fc2_scales, fc2_zeros, packed_fc2_scales_, packed_fc2_bias_,
+                     transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp);
+  }
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params;
   if (is_fp4 && fp4_sm80_prefill) {

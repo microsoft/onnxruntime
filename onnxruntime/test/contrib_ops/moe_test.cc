@@ -2226,7 +2226,9 @@ TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
-  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, true);
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/128, /*inter_size=*/128);
 }
 
 static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
@@ -2901,6 +2903,11 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Decode) {
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Prefill) {
   RunQMoECpuBlockWiseSwiGLU<float>({37, 4, 128, 96, 32, 2, false}, 0.01f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_SingleBlockZeroPoints) {
+  RunQMoECpuBlockWiseSwiGLU<float>(
+      {5, 4, 32, 32, 32, 2, false, 4, true, 0, 2}, 0.01f);
 }
 
 // The two cases below pin the per-expert dispatch path: capping the pool at two threads leaves at
