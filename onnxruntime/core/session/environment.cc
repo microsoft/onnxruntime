@@ -588,7 +588,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   auto status = Status::OK();
 
   ORT_TRY {
-    // Contain early Status returns so every started registration reaches the End event.
+    // Contain early Status returns so they reach the End event.
     status = [&]() -> Status {
       // create the EpInfo which loads the library if required
       std::unique_ptr<EpInfo> ep_info = nullptr;
