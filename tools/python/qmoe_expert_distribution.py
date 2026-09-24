@@ -11,9 +11,8 @@ from pathlib import Path
 
 import onnx
 
-ROUTING_MARKER = "moe_routing "
-ROUTING_TRUNCATED_MARKER = "moe_routing_truncated "
-ROUTING_COMPLETE_MARKER = "moe_routing_complete "
+COUNTER_MARKER = "moe_expert_counters "
+COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
 PROMPT_START = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 PROMPT_END = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_end$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
@@ -23,8 +22,13 @@ MAX_EXTERNAL_DATA_VALUE = (1 << 63) - 1
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Compute expert selection distributions from an ORT QMoE routing log.")
-    parser.add_argument("log", type=Path, help="Log containing 'moe_routing' JSON records.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compute per-invocation expert participation distributions from ORT QMoE counter-update logs. "
+            "Each selected expert is counted at most once per kernel invocation."
+        )
+    )
+    parser.add_argument("log", type=Path, help="Log containing 'moe_expert_counters' JSON records.")
     parser.add_argument(
         "--benchmark-json",
         type=Path,
@@ -83,66 +87,63 @@ def layer_sort_key(node_name):
 
 
 def node_identity(event):
-    return event["node_index"], event["node_type"], event["node_name"]
+    return event["graph_scope"], event["node_index"], event["node_type"], event["node_name"]
 
 
 def node_sort_key(identity):
-    node_index, node_type, node_name = identity
-    return (*layer_sort_key(node_name), node_index, node_type)
+    graph_scope, node_index, node_type, node_name = identity
+    return (graph_scope, *layer_sort_key(node_name), node_index, node_type)
 
 
 def node_csv_fields(identity):
-    node_index, node_type, node_name = identity
-    return node_index, node_type, node_name
+    return identity
 
 
 def node_display_name(identity):
-    node_index, node_type, node_name = identity
-    return node_name or f"{node_type}[{node_index}]"
+    graph_scope, node_index, node_type, node_name = identity
+    return f"{graph_scope}:{node_name or f'{node_type}[{node_index}]'}"
 
 
-def _validate_routing_event(event, line_number):
+def _validate_counter_event(event, line_number):
     if not isinstance(event, dict):
-        raise ValueError(f"Line {line_number}: routing payload must be a JSON object.")
+        raise ValueError(f"Line {line_number}: counter payload must be a JSON object.")
+    if not isinstance(event.get("request_id"), str):
+        raise ValueError(f"Line {line_number}: request_id must be a string.")
+    if not isinstance(event.get("graph_scope"), str) or not event["graph_scope"]:
+        raise ValueError(f"Line {line_number}: graph_scope must be a non-empty string.")
     if not isinstance(event.get("node_index"), int) or isinstance(event["node_index"], bool) or event["node_index"] < 0:
         raise ValueError(f"Line {line_number}: node_index must be a non-negative integer.")
     if not isinstance(event.get("node_type"), str) or not event["node_type"]:
         raise ValueError(f"Line {line_number}: node_type must be a non-empty string.")
     if not isinstance(event.get("node_name"), str):
         raise ValueError(f"Line {line_number}: node_name must be a string.")
-    for field in ("num_rows", "top_k"):
-        value = event.get(field)
-        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-            raise ValueError(f"Line {line_number}: {field} must be a positive integer.")
-
-    expected = event["num_rows"] * event["top_k"]
-    for field in ("expert_ids", "router_weights"):
-        values = event.get(field)
-        if not isinstance(values, list) or len(values) != expected:
-            actual = len(values) if isinstance(values, list) else "non-list"
-            raise ValueError(f"Line {line_number}: expected {expected} {field}, got {actual}.")
-    if any(not isinstance(expert_id, int) or isinstance(expert_id, bool) for expert_id in event["expert_ids"]):
-        raise ValueError(f"Line {line_number}: expert_ids must contain integers.")
+    selected_experts = event.get("selected_experts")
+    if not isinstance(selected_experts, list) or not selected_experts:
+        raise ValueError(f"Line {line_number}: selected_experts must be a non-empty list.")
+    if any(not isinstance(expert_id, int) or isinstance(expert_id, bool) for expert_id in selected_experts):
+        raise ValueError(f"Line {line_number}: selected_experts must contain integers.")
+    if len(selected_experts) != len(set(selected_experts)):
+        raise ValueError(f"Line {line_number}: selected_experts must not contain duplicates.")
+    counters = event.get("counters")
+    if not isinstance(counters, list) or not counters:
+        raise ValueError(f"Line {line_number}: counters must be a non-empty list.")
     if any(
-        not isinstance(weight, (int, float)) or isinstance(weight, bool) or not math.isfinite(weight)
-        for weight in event["router_weights"]
+        not isinstance(counter, (int, float)) or isinstance(counter, bool) or not math.isfinite(counter) or counter < 0
+        for counter in counters
     ):
-        raise ValueError(f"Line {line_number}: router_weights must contain finite numbers.")
+        raise ValueError(f"Line {line_number}: counters must contain finite non-negative numbers.")
 
 
-def parse_routing_trace(log_path, on_event=None):
+def parse_counter_trace(log_path, on_event=None):
     active_prompt = None
     completed_prompts = 0
     expected_prompts = None
-    routing_events = [] if on_event is None else None
-    routing_event_count = 0
+    counter_events = [] if on_event is None else None
+    counter_event_count = 0
     completion = None
 
     with log_path.open(encoding="utf-8", errors="replace") as stream:
         for line_number, line in enumerate(stream, start=1):
-            if ROUTING_TRUNCATED_MARKER in line:
-                raise ValueError(f"Incomplete routing trace at line {line_number}: {line.strip()}")
-
             stripped_line = line.strip()
             prompt_start = PROMPT_START.fullmatch(stripped_line)
             if prompt_start:
@@ -172,68 +173,68 @@ def parse_routing_trace(log_path, on_event=None):
                 completed_prompts += 1
                 continue
 
-            completion_position = line.find(ROUTING_COMPLETE_MARKER)
+            completion_position = line.find(COUNTER_COMPLETE_MARKER)
             if completion_position >= 0:
                 if completion is not None:
-                    raise ValueError(f"Duplicate routing completion footer at line {line_number}.")
+                    raise ValueError(f"Duplicate counter completion footer at line {line_number}.")
                 if active_prompt is not None:
-                    raise ValueError(f"Routing completion footer precedes prompt_end at line {line_number}.")
+                    raise ValueError(f"Counter completion footer precedes prompt_end at line {line_number}.")
                 try:
-                    completion = json.loads(line[completion_position + len(ROUTING_COMPLETE_MARKER) :])
+                    completion = json.loads(line[completion_position + len(COUNTER_COMPLETE_MARKER) :])
                 except json.JSONDecodeError as exc:
-                    raise ValueError(f"Invalid routing completion footer at line {line_number}: {exc}") from exc
+                    raise ValueError(f"Invalid counter completion footer at line {line_number}: {exc}") from exc
                 continue
 
-            marker_position = line.find(ROUTING_MARKER)
+            marker_position = line.find(COUNTER_MARKER)
             if marker_position < 0:
                 continue
             if active_prompt is None:
-                raise ValueError(f"Routing event at line {line_number} is outside an active prompt.")
+                raise ValueError(f"Counter event at line {line_number} is outside an active prompt.")
             if completion is not None:
-                raise ValueError(f"Routing event follows the completion footer at line {line_number}.")
+                raise ValueError(f"Counter event follows the completion footer at line {line_number}.")
 
-            payload = line[marker_position + len(ROUTING_MARKER) :].strip()
+            payload = line[marker_position + len(COUNTER_MARKER) :].strip()
             try:
                 event = json.loads(payload)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid routing JSON at line {line_number}: {exc}") from exc
-            _validate_routing_event(event, line_number)
+                raise ValueError(f"Invalid counter JSON at line {line_number}: {exc}") from exc
+            _validate_counter_event(event, line_number)
             if on_event is None:
-                routing_events.append((active_prompt, event))
+                counter_events.append((active_prompt, event))
             else:
                 on_event(active_prompt, event)
-            routing_event_count += 1
+            counter_event_count += 1
 
     if active_prompt is not None:
-        raise ValueError(f"Incomplete routing trace: prompt {active_prompt} has no prompt_end marker.")
+        raise ValueError(f"Incomplete counter trace: prompt {active_prompt} has no prompt_end marker.")
     if expected_prompts is None:
-        raise ValueError("Incomplete routing trace: no prompt_start marker.")
+        raise ValueError("Incomplete counter trace: no prompt_start marker.")
     if completed_prompts != expected_prompts:
-        raise ValueError(f"Incomplete routing trace: completed {completed_prompts} of {expected_prompts} prompts.")
+        raise ValueError(f"Incomplete counter trace: completed {completed_prompts} of {expected_prompts} prompts.")
     if not isinstance(completion, dict):
-        raise ValueError("Incomplete routing trace: missing moe_routing_complete footer.")
+        raise ValueError("Incomplete counter trace: missing moe_expert_counters_complete footer.")
     if any(
         not isinstance(completion.get(field), int) or isinstance(completion[field], bool)
-        for field in ("prompts", "prompt_runs", "routing_records")
+        for field in ("prompts", "prompt_runs", "counter_records")
     ):
-        raise ValueError("Routing completion footer counts must be integers.")
+        raise ValueError("Counter completion footer counts must be integers.")
 
     expected_completion = {
         "prompts": expected_prompts,
         "prompt_runs": completed_prompts,
-        "routing_records": routing_event_count,
+        "counter_records": counter_event_count,
     }
     if completion != expected_completion:
-        raise ValueError(f"Routing completion footer mismatch: expected {expected_completion}, got {completion}.")
-    return routing_events, completion
+        raise ValueError(f"Counter completion footer mismatch: expected {expected_completion}, got {completion}.")
+    return counter_events, completion
 
 
-def iter_routing_events(log_path):
-    routing_events, _ = parse_routing_trace(log_path)
-    yield from routing_events
+def iter_counter_events(log_path):
+    counter_events, _ = parse_counter_trace(log_path)
+    yield from counter_events
 
 
-def analyze_routing_trace(log_path, num_experts):
+def analyze_counter_trace(log_path, num_experts):
     by_prompt_qmoe = defaultdict(Counter)
     by_qmoe = defaultdict(Counter)
     global_counts = Counter()
@@ -242,7 +243,11 @@ def analyze_routing_trace(log_path, num_experts):
     def update_distributions(prompt_index, event):
         nonlocal event_count
         identity = node_identity(event)
-        expert_ids = event["expert_ids"]
+        expert_ids = event["selected_experts"]
+        if len(event["counters"]) != num_experts:
+            raise ValueError(
+                f"Trace contains {len(event['counters'])} counters, but the model has {num_experts} experts."
+            )
         for expert_id in expert_ids:
             if not 0 <= expert_id < num_experts:
                 raise ValueError(f"Trace contains expert ID {expert_id}, but the model has {num_experts} experts.")
@@ -252,15 +257,15 @@ def analyze_routing_trace(log_path, num_experts):
         global_counts.update(counts)
         event_count += 1
 
-    _, completion = parse_routing_trace(log_path, update_distributions)
+    _, completion = parse_counter_trace(log_path, update_distributions)
     if event_count == 0:
-        raise ValueError(f"No '{ROUTING_MARKER.strip()}' records found in {log_path}.")
+        raise ValueError(f"No '{COUNTER_MARKER.strip()}' records found in {log_path}.")
 
     return by_prompt_qmoe, by_qmoe, global_counts, event_count, completion
 
 
 def read_distributions(log_path, num_experts):
-    return analyze_routing_trace(log_path, num_experts)[:4]
+    return analyze_counter_trace(log_path, num_experts)[:4]
 
 
 def distribution_rows(counts, num_experts):
@@ -277,6 +282,7 @@ def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
             [
                 "prompt_index",
                 "prompt",
+                "graph_scope",
                 "node_index",
                 "node_type",
                 "node_name",
@@ -303,7 +309,9 @@ def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
 def write_qmoe_csv(path, distributions, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["node_index", "node_type", "node_name", "expert_id", "count", "selection_share"])
+        writer.writerow(
+            ["graph_scope", "node_index", "node_type", "node_name", "expert_id", "count", "selection_share"]
+        )
         for identity in sorted(distributions, key=node_sort_key):
             for expert_id, count, share in distribution_rows(distributions[identity], num_experts):
                 writer.writerow([*node_csv_fields(identity), expert_id, count, share])
@@ -312,7 +320,7 @@ def write_qmoe_csv(path, distributions, num_experts):
 def write_qmoe_pivot_csv(path, distributions, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["node_index", "node_type", "node_name", *range(num_experts)])
+        writer.writerow(["graph_scope", "node_index", "node_type", "node_name", *range(num_experts)])
         for identity in sorted(distributions, key=node_sort_key):
             writer.writerow(
                 [*node_csv_fields(identity), *(distributions[identity][expert_id] for expert_id in range(num_experts))]
@@ -334,9 +342,8 @@ def expert_rank_positions(expert_ids, ranked_expert_ids):
     return [rank_by_expert_id[expert_id] for expert_id in expert_ids]
 
 
-def inference_expert_ids(event):
-    top_k = event["top_k"]
-    return event["expert_ids"][-top_k:]
+def selected_expert_ids(event):
+    return event["selected_experts"]
 
 
 def expert_rank_threshold_counts(positions, num_experts):
@@ -346,7 +353,7 @@ def expert_rank_threshold_counts(positions, num_experts):
 def write_qmoe_ranked_experts_csv(path, rankings):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(["node_index", "node_type", "node_name", "expert_ids_by_decreasing_frequency"])
+        writer.writerow(["graph_scope", "node_index", "node_type", "node_name", "expert_ids_by_decreasing_frequency"])
         for identity in sorted(rankings, key=node_sort_key):
             writer.writerow([*node_csv_fields(identity), json.dumps(rankings[identity], separators=(",", ":"))])
 
@@ -360,22 +367,21 @@ def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, nu
                 "prompt_index",
                 "prompt",
                 "inference_index",
+                "graph_scope",
                 "node_index",
                 "node_type",
                 "node_name",
-                "num_rows",
-                "top_k",
                 "selected_expert_ids",
                 "expert_rank_positions_0_based",
                 "max_expert_rank_position",
                 *(f"experts_rank_ge_{threshold}" for threshold in range(num_experts)),
             ]
         )
-        for prompt_index, event in iter_routing_events(log_path):
+        for prompt_index, event in iter_counter_events(log_path):
             identity = node_identity(event)
             key = (prompt_index, identity)
             inference_indexes[key] += 1
-            expert_ids = inference_expert_ids(event)
+            expert_ids = selected_expert_ids(event)
             positions = expert_rank_positions(expert_ids, rankings[identity])
             threshold_counts = expert_rank_threshold_counts(positions, num_experts)
             writer.writerow(
@@ -384,8 +390,6 @@ def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, nu
                     prompt_labels.get(prompt_index, ""),
                     inference_indexes[key],
                     *node_csv_fields(identity),
-                    event["num_rows"],
-                    event["top_k"],
                     json.dumps(expert_ids, separators=(",", ":")),
                     json.dumps(positions, separators=(",", ":")),
                     max(positions),
@@ -397,9 +401,9 @@ def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, nu
 def aggregate_rank_thresholds_by_qmoe(log_path, rankings, num_experts):
     inference_counts = Counter()
     threshold_totals = defaultdict(lambda: [0] * num_experts)
-    for _, event in iter_routing_events(log_path):
+    for _, event in iter_counter_events(log_path):
         identity = node_identity(event)
-        expert_ids = inference_expert_ids(event)
+        expert_ids = selected_expert_ids(event)
         positions = expert_rank_positions(expert_ids, rankings[identity])
         inference_counts[identity] += 1
         for index, count in enumerate(expert_rank_threshold_counts(positions, num_experts)):
@@ -459,7 +463,8 @@ def _external_data_file_size(external_path, initializer_name):
 def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_identities, num_experts, model_path=None):
     expert_bytes = {}
     for identity in node_identities:
-        node = qmoe_nodes.get(identity)
+        model_identity = identity[1:] if len(identity) == 4 and identity[0] == "main" else identity
+        node = qmoe_nodes.get(model_identity)
         if node is None:
             raise ValueError(f"QMoE node from log not found in model: {node_display_name(identity)}")
 
@@ -525,6 +530,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         writer = csv.writer(stream)
         writer.writerow(
             [
+                "graph_scope",
                 "node_index",
                 "node_type",
                 "node_name",
@@ -540,9 +546,10 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
                     *threshold_totals[identity],
                 ]
             )
-        writer.writerow(["", "", "TOTAL", *total_values])
+        writer.writerow(["", "", "", "TOTAL", *total_values])
         writer.writerow(
             [
+                "",
                 "",
                 "",
                 "TOTAL_NORMALIZED",
@@ -552,6 +559,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         bytes_per_rank = sum(expert_bytes.values())
         writer.writerow(
             [
+                "",
                 "",
                 "",
                 "QMOE_EXPERT_BYTES",
@@ -564,6 +572,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
             [
                 "",
                 "",
+                "",
                 "QMOE_EXPERT_BYTES_COMPLEMENT",
                 0,
                 *((num_experts - rank) * bytes_per_rank for rank in range(num_experts)),
@@ -571,6 +580,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
         )
         writer.writerow(
             [
+                "",
                 "",
                 "",
                 "QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
@@ -680,11 +690,11 @@ def main():
     prompt_labels = load_prompt_labels(benchmark_json)
     model_path = resolve_model_path(args.log, args.model)
     initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
-    by_prompt_qmoe, by_qmoe, global_counts, event_count, completion = analyze_routing_trace(args.log, num_experts)
+    by_prompt_qmoe, by_qmoe, global_counts, event_count, completion = analyze_counter_trace(args.log, num_experts)
     if len(prompt_labels) != completion["prompts"]:
         raise ValueError(
             f"Benchmark JSON contains {len(prompt_labels)} prompts, "
-            f"but the routing trace completed {completion['prompts']} prompts."
+            f"but the counter trace completed {completion['prompts']} prompts."
         )
     expert_bytes = calculate_qmoe_expert_bytes(
         initializers, qmoe_nodes, by_qmoe.keys(), num_experts, model_path=model_path
@@ -721,7 +731,7 @@ def main():
     write_selected_layers_rank_plot(selected_layers_plot_path, threshold_totals)
     write_global_csv(global_path, global_counts, num_experts)
 
-    print(f"routing events: {event_count}")
+    print(f"counter events: {event_count}")
     print(f"prompts: {len({key[0] for key in by_prompt_qmoe})}")
     print(f"QMoE nodes: {len(by_qmoe)}")
     print(f"experts: {num_experts}")
