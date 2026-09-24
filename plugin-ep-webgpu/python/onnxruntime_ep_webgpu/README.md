@@ -5,7 +5,10 @@ WebGPU Plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft
 ## Prerequisites
 
 This package provides the WebGPU plugin EP only. You must separately install an ONNX Runtime package
-(e.g. `onnxruntime`) of version `@min_onnxruntime_version@` or later.
+(e.g. `onnxruntime`). Supported core ONNX Runtime versions are @supported_onnxruntime_versions@.
+
+Exact older-version exceptions require a runtime with the necessary plugin EP API backports.
+The version check does not supply those backports or establish runtime compatibility by itself.
 
 If the installed ONNX Runtime is incompatible, the plugin EP will report an error when its library is
 registered.
@@ -60,6 +63,6 @@ output = session.run(None, {"input": input_data})
 - **`No WebGPU EP device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
   usually means the Vulkan loader (`libvulkan.so.1`) is not installed; install it via your distribution's package
   manager. On Windows it may indicate a missing or outdated GPU driver.
-- **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the
-  installed `onnxruntime` package is older than `@min_onnxruntime_version@`. Upgrade with
+- **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the installed
+  `onnxruntime` package is incompatible. Install one of the supported versions listed above; the recommended default is
   `pip install --upgrade "onnxruntime>=@min_onnxruntime_version@"`.

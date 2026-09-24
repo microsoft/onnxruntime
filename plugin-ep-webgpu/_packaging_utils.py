@@ -12,6 +12,22 @@ from pathlib import Path
 _TEMPLATE_VARIABLE_PATTERN = re.compile(r"@(\w+)@")
 
 
+def get_ort_version_substitutions(plugin_dir: Path) -> dict[str, str]:
+    """Read the shared runtime compatibility policy for package README templates."""
+    minimum_file = plugin_dir / "MIN_ONNXRUNTIME_VERSION"
+    minimum = minimum_file.read_text(encoding="utf-8").strip()
+    additional_file = plugin_dir / "ADDITIONAL_SUPPORTED_ONNXRUNTIME_VERSIONS"
+    additional = [line.strip() for line in additional_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    for version in [minimum, *additional]:
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+            raise ValueError(f"Invalid ONNX Runtime version {version!r} in {plugin_dir}; expected MAJOR.MINOR.PATCH")
+
+    supported = f"`{minimum}` or later"
+    if additional:
+        supported = ", ".join(f"`{version}`" for version in additional) + f", or {supported}"
+    return {"min_onnxruntime_version": minimum, "supported_onnxruntime_versions": supported}
+
+
 def gen_file_from_template(
     template_file: Path, output_file: Path, variable_substitutions: dict[str, str], strict: bool = True
 ) -> None:
