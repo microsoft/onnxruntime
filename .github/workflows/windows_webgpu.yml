@@ -23,11 +23,12 @@ env:
   ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
 
 jobs:
-  webgpu_build_x64_RelWithDebInfo:
+  webgpu_compile_x64_RelWithDebInfo:
+    name: webgpu_compile_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
+      "JobId=webgpu_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
       ]
     timeout-minutes: 300
     strategy:
@@ -80,7 +81,6 @@ jobs:
           architecture: x64
 
       - name: API Documentation Check and generate
-        if: matrix.vcpkg_option == 'novcpkg'
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
           set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
@@ -153,14 +153,15 @@ jobs:
           if-no-files-found: error
 
       - name: Validate C# native delegates
-        if: matrix.vcpkg_option == 'novcpkg'
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
         working-directory: ${{ github.workspace }}\csharp
         continue-on-error: true
 
   webgpu_test_x64_RelWithDebInfo:
-    needs: webgpu_build_x64_RelWithDebInfo
+    # Preserve the legacy required-check name so branch protection waits for GPU tests.
+    name: webgpu_build_x64_RelWithDebInfo (${{ matrix.vcpkg_option }}, static)
+    needs: webgpu_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -253,11 +254,12 @@ jobs:
             exit $lastExitCode
           }
 
-  webgpu_plugin_build_x64_RelWithDebInfo:
+  webgpu_plugin_compile_x64_RelWithDebInfo:
+    name: webgpu_plugin_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
-      "JobId=webgpu_plugin_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=webgpu_plugin_compile_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
     timeout-minutes: 300
     env:
@@ -341,7 +343,9 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_plugin_test_x64_RelWithDebInfo:
-    needs: webgpu_plugin_build_x64_RelWithDebInfo
+    # Preserve the legacy required-check name so branch protection waits for GPU tests.
+    name: webgpu_plugin_build_x64_RelWithDebInfo
+    needs: webgpu_plugin_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -510,6 +514,16 @@ jobs:
           java-version: "17"
           architecture: x64
 
+      - name: API Documentation Check and generate
+        run: |
+          set ORT_DOXY_SRC=${{ github.workspace }}
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          mkdir %ORT_DOXY_SRC%
+          mkdir %ORT_DOXY_OUT%
+          "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
+        shell: cmd
+        working-directory: ${{ github.workspace }}
+
       - name: Setup .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         env:
@@ -536,3 +550,9 @@ jobs:
             exit $lastExitCode
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: Validate C# native delegates
+        run: python tools\ValidateNativeDelegateAttributes.py
+        shell: cmd
+        working-directory: ${{ github.workspace }}\csharp
+        continue-on-error: true
