@@ -16,6 +16,8 @@ CUDA 12 and CUDA 13 builds are not binary compatible. Install the matching CUDA 
 
 The [packaging pipeline](../tools/ci_build/github/azure-pipelines/c-api-noopenmp-packaging-pipelines.yml) defaults to `CudaVersion: '13.0'` for both Linux and Windows native libraries included in the GPU JAR. It still accepts `CudaVersion: '12.8'` for custom CUDA 12 builds; this does not create a separate Maven coordinate or classifier.
 
+When testing a custom CUDA 12 build, manually run [JAR package testing](../tools/ci_build/github/azure-pipelines/jar_package_testing.yml) and [native/NuGet package testing](../tools/ci_build/github/azure-pipelines/c-api-noopenmp-test-pipelines.yml) with the matching build resource and `CudaVersion: '12.8'`. Automatically triggered tests use the CUDA 13 default.
+
 ### Building
 
 Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html) with the `--build_java` option.
