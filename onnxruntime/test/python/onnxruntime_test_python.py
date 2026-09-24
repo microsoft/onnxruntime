@@ -1517,6 +1517,36 @@ class TestInferenceSession(unittest.TestCase):
                 ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_dlpack_capsule_callback_failure_releases_storage(self):
+        for failure_mode in ("before", "after_one", "after_consume"):
+            with self.subTest(failure_mode=failure_mode):
+                array = np.arange(6, dtype=np.float32)
+                reference = weakref.ref(array)
+                value = C.OrtValue.from_dlpack(array.__dlpack__())
+                vector = C.OrtValueVector()
+                vector.push_back(value)
+                vector.push_back(value)
+                del value, array
+                calls = 0
+
+                def callback(capsule, failure_mode=failure_mode):
+                    nonlocal calls
+                    calls += 1
+                    if failure_mode == "after_one" and calls == 1:
+                        return C.OrtValue.from_dlpack(capsule)
+                    if failure_mode == "after_consume":
+                        C.OrtValue.from_dlpack(capsule)
+                    raise LookupError("deliberate DLPack consumer failure")
+
+                with self.assertRaisesRegex(RuntimeError, "to_tensor returned a null pointer") as caught:
+                    vector.to_dlpacks(callback)
+                self.assertIsInstance(caught.exception.__cause__, LookupError)
+                # The exception's traceback can itself retain the callback capsule.
+                del caught, vector
+                gc.collect()
+                self.assertIsNone(reference())
+
     def test_ort_value_array_protocol(self):
         """Test that OrtValue supports numpy's __array__ protocol."""
         numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)

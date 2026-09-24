@@ -609,48 +609,38 @@ void addOrtValueMethods(pybind11::module& m) {
               return py::list();
 
             py::list list_dlpacks;
-            PyObject* obj;
 
             py::gil_scoped_acquire acquire;
 
             if (to_tensor.is_none()) {
-              DLManagedTensor* dlmanaged_tensor;
-
               for (auto it : v) {
                 ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
-                dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-                py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+                auto capsule = py::reinterpret_steal<py::object>(ToDlpack(it));
+                if (!capsule) throw py::error_already_set();
                 list_dlpacks.append(capsule);
               }
             } else {
-              DLManagedTensor* dlmanaged_tensor;
-              PyObject* capsule = NULL;
+              py::object capsule;
               PyObject* handle = to_tensor.ptr();
 
               for (auto it : v) {
                 // A new instance of dlpack needs to be created. The object which consumes it
                 // is responsible for its deletion.
                 ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
-                dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-                if (capsule == NULL) {
-                  capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
-                  if (capsule == NULL)
+                if (!capsule) {
+                  capsule = py::reinterpret_steal<py::object>(ToDlpack(it));
+                  if (!capsule)
                     throw std::runtime_error("Unexpected error: empty capsule returned.");
                 } else {
                   // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-                  PyCapsule_SetName(capsule, "dltensor");
-                  PyCapsule_SetPointer(capsule, dlmanaged_tensor);
+                  auto* dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+                  PyCapsule_SetPointer(capsule.ptr(), dlmanaged_tensor);
+                  PyCapsule_SetName(capsule.ptr(), "dltensor");
                 }
-                obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-                if (obj == NULL)
+                auto obj = py::reinterpret_steal<py::object>(PyObject_CallFunctionObjArgs(handle, capsule.ptr(), nullptr));
+                if (!obj)
                   throw std::runtime_error("to_tensor returned a null pointer. This may be caused by the data conversion.");
                 list_dlpacks.append(obj);
-                Py_DECREF(obj);
-              }
-              if (capsule != NULL) {
-                // This test is never wrong because v is not empty if the execution goes through that path.
-                // If not present, Guardian detects a potential failure.
-                Py_DECREF(capsule);
               }
             }
             return list_dlpacks; },
