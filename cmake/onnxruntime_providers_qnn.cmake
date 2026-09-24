@@ -39,6 +39,17 @@
     # Build QNN EP as a static library
     #
     set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs})
+
+    # In static builds, QNN EP reuses NodeAttrHelper from the shared utils instead of
+    # defining its own copy (avoids duplicate symbols when linking with NNAPI or other
+    # providers that also compile shared/utils/utils.cc).
+    if(NOT onnxruntime_USE_NNAPI_BUILTIN)
+      list(APPEND onnxruntime_providers_qnn_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+      )
+    endif()
+
     source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_static_library(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx
