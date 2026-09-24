@@ -868,6 +868,7 @@ TEST(InferenceSessionTests, InitializeBeforeLoadRecordsProfilingEvent) {
 
   InferenceSession session{so, GetEnvironment()};
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Model was not loaded");
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
 
   const std::string profile_file = session.EndProfiling();
   auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });

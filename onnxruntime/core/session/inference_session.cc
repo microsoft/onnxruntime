@@ -1175,9 +1175,13 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
   ORT_TRY {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -1217,7 +1221,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
-#else
+#elif defined(_WIN32)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
 
@@ -2174,11 +2178,15 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
 #endif
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
   Status status = Status::OK();
   ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
@@ -2321,7 +2329,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
-#else
+#elif defined(_WIN32)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
 #endif
   return status;
@@ -2704,7 +2712,9 @@ common::Status InferenceSession::Initialize() {
     if (session_profiler_.IsEnabled()) {
       start_time = session_profiler_.Start();
     }
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
     Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
+#endif
     return start_time;
   };
 
@@ -4739,7 +4749,7 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
 #if defined(ORT_USE_TELEMETRY)
   Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
       session_id_, status, TimeDiffMicroSeconds(tp));
-#else
+#elif defined(_WIN32)
   Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status, 0);
 #endif
   return status;
