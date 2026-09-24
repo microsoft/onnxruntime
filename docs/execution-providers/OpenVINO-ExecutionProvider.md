@@ -37,8 +37,8 @@ To explicitly use the Intel OpenVINO™ EP from Python, install:
 pip install onnxruntime-ep-openvino
 ```
 
-#### Nuget
-Nuget Package for ABI EP is published under namespace: 
+#### NuGet
+NuGet package for ABI EP is published under namespace:
 
 [Intel.ML.OnnxRuntime.EP.OpenVINO](https://www.nuget.org/packages/Intel.ML.OnnxRuntime.EP.OpenVINO)
 
