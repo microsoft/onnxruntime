@@ -1,0 +1,24 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+#param has_bias
+
+$MAIN {
+  let row = global_id.y;
+  let col = global_id.x;
+  if (row >= uniforms.rows || col >= uniforms.cols) {
+    return;
+  }
+  let output_offset = row * uniforms.cols + col;
+  let weight_base = (uniforms.expert_idx * uniforms.cols + col) * uniforms.inner;
+  var value = 0.0;
+  for (var inner = 0u; inner < uniforms.inner; inner++) {
+    value += f32(input.getByOffset(row * uniforms.inner + inner)) * f32(weights.getByOffset(weight_base + inner));
+  }
+#if has_bias
+  value += f32(bias.getByOffset(uniforms.expert_idx * uniforms.cols + col));
+#endif
+  output.setByOffset(output_offset, output_element_t(value));
+} // MAIN

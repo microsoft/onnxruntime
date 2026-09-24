@@ -2839,6 +2839,28 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExternalValues_Extern
   EXPECT_EQ(unpacked, expected);
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsZeroElementStringValues) {
+  SparseTensorProto sparse;
+  sparse.add_dims(0);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_string");
+  values->set_data_type(TensorProto_DataType_STRING);
+  values->add_dims(0);
+  values->add_string_data("unexpected");
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(0);
+  indices->set_raw_data("");
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense),
+      "Unsupported sparse tensor data type");
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace test
 }  // namespace onnxruntime

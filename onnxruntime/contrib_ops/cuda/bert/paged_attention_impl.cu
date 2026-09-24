@@ -828,6 +828,7 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                    const float scale,
                                    const float softcap,
                                    const int local_window_size,
+                                   const bool is_causal,
                                    const bool k_per_channel) {
   extern __shared__ float paged_decode_smem[];
   const int channel_groups = PagedDecodeChannelGroups(head_size);
@@ -869,22 +870,20 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   const int64_t partial_head_index =
       (static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id;
 
-  // Causality is resolved per query token instead of assuming one new token per sequence:
-  // kv_len - q_len is past_seqlens[batch_id], so the token at offset q_index inside its sequence
-  // attends to cached positions [0, past + q_index]. For the decode case (q_len == 1) this reduces
-  // to the whole live context, as before.
+  // Resolve the query position even for non-causal attention: the left window stays anchored
+  // there, while the right bound expands to the full live context.
   const int q_index = token_id - cumulative_seqlens_q[batch_id];
   const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
   const int seq_kv_len = cumulative_seqlens_kv[batch_id + 1] - cumulative_seqlens_kv[batch_id];
-  const int kv_len = seq_kv_len - q_len + q_index + 1;
+  const int query_end = seq_kv_len - q_len + q_index + 1;
+  const int kv_len = is_causal ? query_end : seq_kv_len;
 
-  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1 convention at
-  // query position kv_len - 1, i.e. positions in [kv_len - local_window_size, kv_len).
+  // Sliding window matches FlashAttention's window_size_left = local_window_size - 1.
   const int tokens_per_split = (kv_len + num_splits - 1) / num_splits;
   int kv_begin = split_id * tokens_per_split;
   const int kv_end = min(kv_len, kv_begin + tokens_per_split);
   if (local_window_size > 0) {
-    kv_begin = max(kv_begin, kv_len - local_window_size);
+    kv_begin = max(kv_begin, query_end - local_window_size);
   }
 
   if (kv_begin >= kv_end) {
@@ -1154,14 +1153,14 @@ Status LaunchPagedDecodeAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int block_size, const int max_num_blocks_per_seq,
                                   const int token_count, const int num_splits, const float scale,
-                                  const float softcap, const int local_window_size,
+                                  const float softcap, const int local_window_size, const bool is_causal,
                                   const bool use_smooth_softmax, cudaStream_t stream) {
   const size_t smem_bytes = GetPagedDecodeSharedMemoryBytes(head_size);
   const dim3 grid(num_heads, token_count, num_splits);
   PagedDecodeSplitKV<T, TCACHE><<<grid, kPagedDecodeThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, cumulative_seqlens_q, cumulative_seqlens_kv, block_table,
       partial_out, partial_max, partial_sum, batch_size, num_heads, kv_num_heads, head_size, block_size,
-      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, k_per_channel);
+      max_num_blocks_per_seq, token_count, num_splits, scale, softcap, local_window_size, is_causal, k_per_channel);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   const dim3 reduce_grid(num_heads, token_count);
@@ -1221,6 +1220,7 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
                                            const float scale,
                                            const float softcap,
                                            const int local_window_size,
+                                           const bool is_causal,
                                            const bool k_per_channel,
                                            const bool v_per_channel) {
   extern __shared__ float paged_latent_smem[];
@@ -1250,14 +1250,13 @@ __global__ void PagedLatentAttentionKernel(const T* __restrict__ query,         
   const int batch_id = left;
   const int s = token_id - cumulative_seqlens_q[batch_id];
 
-  // Causality: this token's logical position is past_seqlens[b] + s, and it attends every cached
-  // position up to and including its own. That is exactly FlashAttention's bottom-right-aligned
-  // causal convention for seqlen_k = past + seqlen_q.
-  const int kv_end = past_seqlens[batch_id] + s + 1;
+  const int query_end = past_seqlens[batch_id] + s + 1;
+  const int q_len = cumulative_seqlens_q[batch_id + 1] - cumulative_seqlens_q[batch_id];
+  const int kv_end = is_causal ? query_end : past_seqlens[batch_id] + q_len;
   int kv_begin = 0;
   if (local_window_size > 0) {
     // local_window_size counts the current token, matching mha_varlen_fwd's window_size_left = W-1.
-    kv_begin = max(0, kv_end - local_window_size);
+    kv_begin = max(0, query_end - local_window_size);
   }
 
   const int kv_head_id = head_id / (num_heads / kv_num_heads);
@@ -1396,13 +1395,14 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
                                   const int batch_size, const int num_heads, const int kv_num_heads,
                                   const int head_size, const int v_head_size, const int block_size,
                                   const int max_num_blocks_per_seq, const int token_count, const float scale,
-                                  const float softcap, const int local_window_size, cudaStream_t stream) {
+                                  const float softcap, const int local_window_size, const bool is_causal,
+                                  cudaStream_t stream) {
   const size_t smem_bytes = GetPagedLatentSharedMemoryBytes(head_size, v_head_size);
   const dim3 grid(token_count, num_heads);
   PagedLatentAttentionKernel<T, TCACHE><<<grid, kLatentThreads, smem_bytes, stream>>>(
       query, key_cache, value_cache, k_scale, v_scale, cumulative_seqlens_q, past_seqlens, block_table, output,
       batch_size, num_heads, kv_num_heads, head_size, v_head_size, block_size, max_num_blocks_per_seq, scale,
-      softcap, local_window_size, k_per_channel, v_per_channel);
+      softcap, local_window_size, is_causal, k_per_channel, v_per_channel);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1516,7 +1516,7 @@ Status LatentAttention(
       data.cumulative_seqlens_q, data.past_seqlens, data.block_table, data.output,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.v_head_size, parameters.block_size, parameters.max_num_blocks_per_seq,
-      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, stream)));
+      parameters.token_count, scale, parameters.softcap, parameters.local_window_size, parameters.is_causal, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("latent (MLA) paged attention output", data.output, parameters.token_count, parameters.num_heads,
@@ -1544,7 +1544,8 @@ Status PagedDecodeAttention(
       data.decode_partial_out, data.decode_partial_max, data.decode_partial_sum,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size,
       parameters.block_size, parameters.max_num_blocks_per_seq, parameters.token_count, data.num_splits,
-      scale, parameters.softcap, parameters.local_window_size, parameters.use_smooth_softmax, stream)));
+      scale, parameters.softcap, parameters.local_window_size, parameters.is_causal,
+      parameters.use_smooth_softmax, stream)));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("paged decode attention output", data.output, parameters.token_count, parameters.num_heads,
@@ -1679,13 +1680,14 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   }
 }
 
-// Lower-triangular packed mask for the speculative XQA kernel: row = query token (global, packed
-// token-major), bit p of word w = "may attend to draft token w*32+p".
-__global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
-                                                const int* __restrict__ cumulative_seqlens_q,
-                                                const int batch_size,
-                                                const int token_count,
-                                                const int words_per_row) {
+// Packed mask for the speculative XQA kernel: row = query token (global, packed token-major),
+// bit p of word w = "may attend to draft token w*32+p".
+__global__ void PagedXqaSpecDecMaskKernel(uint32_t* __restrict__ mask,
+                                          const int* __restrict__ cumulative_seqlens_q,
+                                          const int batch_size,
+                                          const int token_count,
+                                          const int words_per_row,
+                                          const bool is_causal) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= token_count * words_per_row) {
     return;
@@ -1705,7 +1707,8 @@ __global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
   }
 
   const int local_row = token_id - cumulative_seqlens_q[lo];
-  const int allowed_bits = local_row + 1 - word * 32;
+  const int q_len = cumulative_seqlens_q[lo + 1] - cumulative_seqlens_q[lo];
+  const int allowed_bits = (is_causal ? local_row + 1 : q_len) - word * 32;
   // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
   // then reuses that instruction's clamp predicate for an equality test against the clamp bound
   // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
@@ -1802,9 +1805,9 @@ Status PagedXqaDecodeAttention(
     const int words_per_row = (data.max_query_len + 31) / 32;
     const int mask_words = parameters.token_count * words_per_row;
     const int blocks = (mask_words + max_threads_per_block - 1) / max_threads_per_block;
-    PagedXqaSpecDecCausalMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
+    PagedXqaSpecDecMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
         data.xqa_spec_dec_mask, data.cumulative_seqlens_q, batch_size,
-        parameters.token_count, words_per_row);
+        parameters.token_count, words_per_row, parameters.is_causal);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     ORT_RETURN_IF_ERROR(LaunchXQAPagedSpecDecKernel(
@@ -2057,7 +2060,7 @@ Status EfficientAttention(
   p.max_sequence_length = total_kv_tokens;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_causal;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.local_window_size = local_window_size;

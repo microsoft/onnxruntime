@@ -1,0 +1,53 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+#param activation
+#param swiglu_fusion
+#param has_fc3
+
+fn activate(value: f32) -> f32 {
+#if activation == 0
+  return max(value, 0.0);
+#elif activation == 1
+  return 0.5 * value * (1.0 + tanh(0.7978845608 * (value + 0.044715 * value * value * value)));
+#elif activation == 2
+  return value / (1.0 + exp(-value));
+#else
+  return value;
+#endif
+}
+
+$MAIN {
+  let row = global_id.y;
+  let col = global_id.x;
+  if (row >= uniforms.rows || col >= uniforms.cols) {
+    return;
+  }
+  let output_offset = row * uniforms.cols + col;
+#if activation == 4
+#if has_fc3
+  var gate_value = f32(input.getByOffset(output_offset));
+  var linear_value = f32(fc3_input.getByOffset(output_offset));
+#elif swiglu_fusion == 1
+  let input_offset = (row * uniforms.cols + col) * 2u;
+  var gate_value = f32(input.getByOffset(input_offset));
+  var linear_value = f32(input.getByOffset(input_offset + 1u));
+#else
+  let input_offset = row * uniforms.cols * 2u + col;
+  var gate_value = f32(input.getByOffset(input_offset));
+  var linear_value = f32(input.getByOffset(input_offset + uniforms.cols));
+#endif
+  gate_value = min(gate_value, uniforms.swiglu_limit);
+  linear_value = clamp(linear_value, -uniforms.swiglu_limit, uniforms.swiglu_limit);
+  let glu = gate_value / (1.0 + exp(-uniforms.alpha * gate_value));
+  output.setByOffset(output_offset, output_element_t(glu * (linear_value + uniforms.beta)));
+#else
+  var value = activate(f32(input.getByOffset(output_offset)));
+#if has_fc3
+  value *= f32(fc3_input.getByOffset(output_offset));
+#endif
+  output.setByOffset(output_offset, output_element_t(value));
+#endif
+} // MAIN

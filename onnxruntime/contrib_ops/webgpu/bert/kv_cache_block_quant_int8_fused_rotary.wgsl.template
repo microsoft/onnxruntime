@@ -45,7 +45,8 @@ $MAIN {
   }
 
 #if use_seqlen_k
-  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
+  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
+  let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -53,7 +54,9 @@ $MAIN {
       per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
 
 #if prepare_indirect_dispatch
-  let global_total_seq_length = u32(total_sequence_length_input[0]);
+  let raw_global_total_seq_length = total_sequence_length_input[0];
+  let global_total_seq_length =
+      min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_seq_length);
 #else
   let global_total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -63,6 +66,7 @@ $MAIN {
 #else
   let base_position = 0u;
 #endif
+  let max_rotary_position = min(uniforms.cos_cache_shape[0], uniforms.sin_cache_shape[0]);
 
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
@@ -83,10 +87,16 @@ $MAIN {
     let q_dst_base =
         (batch * uniforms.kv_sequence_length + seq) * uniforms.hidden_size + head * HEAD_SIZE;
     let seq_position_id = past_seq_length + seq;
+    let valid_rotary_position =
+        base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_value = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
-      let sin_value = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      var cos_value = cos_cache_value_t(1);
+      var sin_value = cos_cache_value_t(0);
+      if (valid_rotary_position) {
+        cos_value = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+        sin_value = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      }
       let q_i = packed_qkv.getByOffset(q_src_base + i);
       let q_j = packed_qkv.getByOffset(q_src_base + i + HALF_ROTARY_DIM);
       query.setByOffset(q_dst_base + i, q_i * cos_value - q_j * sin_value);
@@ -120,11 +130,17 @@ $MAIN {
   let v_src_base = token_offset + uniforms.hidden_size + uniforms.kv_hidden_size + head * HEAD_SIZE;
   let src_base = select(k_src_base, v_src_base, is_value);
   let seq_position_id = past_seq_length + seq;
+  let valid_rotary_position =
+      base_position < max_rotary_position && seq_position_id < max_rotary_position - base_position;
 
   if (!is_value) {
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
-      let cos_value = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
-      let sin_value = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      var cos_value = 1.0f;
+      var sin_value = 0.0f;
+      if (valid_rotary_position) {
+        cos_value = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+        sin_value = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      }
       let k_i = f32(packed_qkv.getByOffset(src_base + i));
       let k_j = f32(packed_qkv.getByOffset(src_base + i + HALF_ROTARY_DIM));
       block_values[i] = k_i * cos_value - k_j * sin_value;

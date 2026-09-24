@@ -28,7 +28,8 @@ namespace weight_only {
 enum class QuantType {
   W8_A16,
   W4_A16,
-  W4_AFP8
+  W4_AFP8,
+  W2_A16
 };
 
 int get_arch_for_mixed_gemm_weight_preprocess(int arch);

@@ -25,10 +25,10 @@
 
 #if has_zero_points
   const elements_in_uint32:u32 = 32u / n_bits;
-  fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type
+  fn mm_read_zero(matrix_idx: u32, row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type
   {
     if (row < r_dim && col < c_dim) {
-      let offset = row * c_dim + col;
+      let offset = matrix_idx * r_dim * c_dim + row * c_dim + col;
 
       // u32 holds elements_in_uint32 packed nbits.
       let array_index = offset / elements_in_uint32;
@@ -44,7 +44,7 @@
     return output_type(0);
   }
 #else
-  fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type {
+  fn mm_read_zero(matrix_idx: u32, row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_type {
     return output_type(default_zero_point);
   }
 #endif
