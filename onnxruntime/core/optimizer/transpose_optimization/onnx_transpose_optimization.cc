@@ -2903,6 +2903,10 @@ enum class CancelWalkResult : int8_t {
 
 static constexpr int8_t kCancelWalkInProgress = -1;
 
+static constexpr int8_t kFanoutWalkInProgress = -1;
+static constexpr int8_t kFanoutReachesTranspose = 1;
+static constexpr int8_t kFanoutReachesStranded = 2;
+
 static CancelWalkResult CombineCancelWalk(CancelWalkResult a, CancelWalkResult b) {
   if (a == CancelWalkResult::kFail || b == CancelWalkResult::kFail) {
     return CancelWalkResult::kFail;
@@ -3450,61 +3454,115 @@ static bool IncomingTransposeIsSolelyConsumedByNode(const api::GraphRef& graph, 
   return saw_matching_transpose;
 }
 
+// What a pushed Transpose on a value reaches, unioned over everything downstream of it. The two facts are tracked
+// separately so they compose: a value's flags are the union of its own consumers' verdicts and the flags of the
+// values those consumers would produce.
+//
+// Evaluated with an explicit stack and memoized per value+perm, so a long chain costs one walk in total instead of
+// one walk per push.
+static int8_t PushedOutputFanoutFlags(OptimizerCtx& ctx, std::string_view start_value,
+                                      const std::vector<int64_t>& start_perm) {
+  struct Frame {
+    CancelWalkKey key;
+    bool expanded = false;
+    int8_t flags = 0;
+    size_t child_i = 0;
+    std::vector<std::pair<std::string, std::vector<int64_t>>> children;
+  };
+
+  auto lookup = [&ctx](const CancelWalkKey& key) -> const int8_t* {
+    const auto it = ctx.pushed_output_fanout_cache.find(key);
+    if (it == ctx.pushed_output_fanout_cache.end()) {
+      return nullptr;
+    }
+    return &it->second;
+  };
+
+  auto make_key = [](std::string_view value, const std::vector<int64_t>& perm) {
+    return MakeCancelWalkKey(value, perm, /*tolerate_stranded_branches*/ false, CancelWalkMode::kAnyValidTranspose);
+  };
+
+  std::vector<Frame> stack;
+  Frame start_frame;
+  start_frame.key = make_key(start_value, start_perm);
+  stack.push_back(std::move(start_frame));
+
+  int8_t start_flags = 0;
+
+  while (!stack.empty()) {
+    Frame& frame = stack.back();
+
+    if (!frame.expanded) {
+      if (const int8_t* cached = lookup(frame.key)) {
+        // An in-progress entry means a cycle; contribute nothing rather than recursing forever.
+        start_flags = (*cached == kFanoutWalkInProgress) ? 0 : *cached;
+        stack.pop_back();
+        continue;
+      }
+
+      ctx.pushed_output_fanout_cache[frame.key] = kFanoutWalkInProgress;
+      frame.expanded = true;
+
+      const auto consumers = ctx.graph.GetValueConsumers(frame.key.value);
+      if (!consumers->comprehensive || consumers->nodes.empty()) {
+        frame.flags |= kFanoutReachesStranded;
+      }
+      for (auto& consumer : consumers->nodes) {
+        if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer).has_value()) {
+          frame.flags |= kFanoutReachesTranspose;
+          continue;
+        }
+        if (!CanModifyNode(ctx, *consumer) || !ValueIsOnTransposableInput(ctx, *consumer, frame.key.value)) {
+          frame.flags |= kFanoutReachesStranded;
+          continue;
+        }
+        const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, frame.key.pushed_perm);
+        if (!output_perm.has_value() ||
+            !ConsumerInputCostAllowsPush(ctx, *consumer, frame.key.value, frame.key.pushed_perm)) {
+          frame.flags |= kFanoutReachesStranded;
+          continue;
+        }
+        for (auto out : consumer->Outputs()) {
+          if (!out.empty()) {
+            frame.children.emplace_back(std::string(out), *output_perm);
+          }
+        }
+      }
+    }
+
+    if (frame.child_i < frame.children.size()) {
+      const auto& child = frame.children[frame.child_i];
+      CancelWalkKey child_key = make_key(child.first, child.second);
+      if (const int8_t* cached = lookup(child_key)) {
+        if (*cached != kFanoutWalkInProgress) {
+          frame.flags |= *cached;
+        }
+        ++frame.child_i;
+        continue;
+      }
+
+      Frame child_frame;
+      child_frame.key = std::move(child_key);
+      stack.push_back(std::move(child_frame));
+      continue;
+    }
+
+    ctx.pushed_output_fanout_cache[frame.key] = frame.flags;
+    start_flags = frame.flags;
+    stack.pop_back();
+  }
+
+  return start_flags;
+}
+
 // True if a pushed Transpose on `start_value` would both meet a later Transpose and remain for a stranded terminal
 // (graph output, implicit use, or an unpushable consumer). Multi-output nodes are one unit: Transpose -> Relu -> Split
 // with a merge Transpose on one Split output and a graph output on the other is fanout, even though neither Split
 // output is consumed by both. Intermediate handlers that would actually be pushed are not stranded terminals.
 static bool PushedOutputFansOutToTransposeAndOthers(OptimizerCtx& ctx, std::string_view start_value,
                                                     const std::vector<int64_t>& start_perm) {
-  struct Item {
-    std::string value;
-    std::vector<int64_t> perm;
-  };
-  std::vector<Item> stack;
-  std::unordered_set<CancelWalkKey, CancelWalkKeyHasher> seen;
-  stack.push_back(Item{std::string(start_value), start_perm});
-
-  bool found_transpose = false;
-  bool found_stranded = false;
-
-  while (!stack.empty()) {
-    Item item = std::move(stack.back());
-    stack.pop_back();
-    CancelWalkKey seen_key = MakeCancelWalkKey(item.value, item.perm, /*tolerate_stranded_branches*/ false,
-                                               CancelWalkMode::kAnyValidTranspose);
-    if (!seen.insert(std::move(seen_key)).second) {
-      continue;
-    }
-
-    const auto consumers = ctx.graph.GetValueConsumers(item.value);
-    if (!consumers->comprehensive || consumers->nodes.empty()) {
-      found_stranded = true;
-    }
-    for (auto& consumer : consumers->nodes) {
-      if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer).has_value()) {
-        found_transpose = true;
-        continue;
-      }
-      if (!CanModifyNode(ctx, *consumer) || !ValueIsOnTransposableInput(ctx, *consumer, item.value)) {
-        found_stranded = true;
-        continue;
-      }
-      const auto output_perm = PreviewPushedOutputPerm(ctx, *consumer, item.perm);
-      if (!output_perm.has_value() || !ConsumerInputCostAllowsPush(ctx, *consumer, item.value, item.perm)) {
-        found_stranded = true;
-        continue;
-      }
-      for (auto out : consumer->Outputs()) {
-        if (!out.empty()) {
-          stack.push_back(Item{std::string(out), *output_perm});
-        }
-      }
-    }
-    if (found_transpose && found_stranded) {
-      return true;
-    }
-  }
-  return false;
+  const int8_t flags = PushedOutputFanoutFlags(ctx, start_value, start_perm);
+  return (flags & kFanoutReachesTranspose) != 0 && (flags & kFanoutReachesStranded) != 0;
 }
 
 // Drop memo entries for values whose producers or consumers were rewired. Downstream keys stay valid, so a chain
@@ -3513,13 +3571,17 @@ static void InvalidateCancelWalkCache(OptimizerCtx& ctx, const std::unordered_se
   if (rewired_values.empty()) {
     return;
   }
-  for (auto it = ctx.pushed_transpose_cancels_cache.begin(); it != ctx.pushed_transpose_cancels_cache.end();) {
-    if (rewired_values.find(it->first.value) != rewired_values.end()) {
-      it = ctx.pushed_transpose_cancels_cache.erase(it);
-    } else {
-      ++it;
+  const auto erase_rewired = [&rewired_values](auto& cache) {
+    for (auto it = cache.begin(); it != cache.end();) {
+      if (rewired_values.find(it->first.value) != rewired_values.end()) {
+        it = cache.erase(it);
+      } else {
+        ++it;
+      }
     }
-  }
+  };
+  erase_rewired(ctx.pushed_transpose_cancels_cache);
+  erase_rewired(ctx.pushed_output_fanout_cache);
 }
 
 static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
