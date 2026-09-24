@@ -159,8 +159,7 @@ jobs:
         continue-on-error: true
 
   webgpu_test_x64_RelWithDebInfo:
-    # Preserve the legacy required-check name so branch protection waits for GPU tests.
-    name: webgpu_build_x64_RelWithDebInfo (${{ matrix.vcpkg_option }}, static)
+    name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     needs: webgpu_compile_x64_RelWithDebInfo
     runs-on: [
       "self-hosted",
@@ -253,6 +252,34 @@ jobs:
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+
+  webgpu_build_x64_RelWithDebInfo:
+    # Preserve the legacy required-check name on an always-running gate so branch
+    # protection blocks the merge when the compile or test job fails or is skipped.
+    name: webgpu_build_x64_RelWithDebInfo (${{ matrix.vcpkg_option }}, static)
+    needs:
+      - webgpu_compile_x64_RelWithDebInfo
+      - webgpu_test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: *webgpu_matrix
+    steps:
+      - name: Check compile and test results
+        env:
+          COMPILE_RESULT: ${{ needs.webgpu_compile_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.webgpu_test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$COMPILE_RESULT" != "success" ]]; then
+            echo "::error::WebGPU compile result: $COMPILE_RESULT"
+            exit 1
+          fi
+
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::WebGPU test result: $TEST_RESULT"
+            exit 1
+          fi
 
   webgpu_plugin_compile_x64_RelWithDebInfo:
     name: webgpu_plugin_compile_x64_RelWithDebInfo
