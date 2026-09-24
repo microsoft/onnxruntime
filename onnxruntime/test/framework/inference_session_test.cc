@@ -665,6 +665,8 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
 TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   // Intentionally do NOT call Initialize().
@@ -992,14 +994,27 @@ TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
   auto logger = logging_manager.CreateLogger("moe_logging_concurrency");
   KernelPilotMoeExpertState state;
 
-  ASSERT_STATUS_OK(state.BeginLogging("first", *logger));
-  const Status concurrent_status = state.BeginLogging("second", *logger);
+  ASSERT_STATUS_OK(state.BeginRun("first", logger.get()));
+  const Status concurrent_status = state.BeginRun("second", logger.get());
   ASSERT_FALSE(concurrent_status.IsOK());
   EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
 
-  ASSERT_STATUS_OK(state.EndLogging());
-  ASSERT_STATUS_OK(state.BeginLogging("second", *logger));
-  ASSERT_STATUS_OK(state.EndLogging());
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("second", logger.get()));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
+TEST(InferenceSessionTests, MoeCountingRejectsConcurrentRuns) {
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const Status concurrent_status = state.BeginRun("", nullptr);
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {

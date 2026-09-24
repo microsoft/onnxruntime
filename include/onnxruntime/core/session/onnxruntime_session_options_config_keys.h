@@ -27,6 +27,7 @@ static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
 
 // Persist per-expert usage counters across Run() calls, without changing placement.
 // "0": disable (default); "1": enable. Counting alone does not emit statistics logs.
+// Overlapping Run() calls on the same session are rejected while enabled.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
     "session.enable_moe_expert_counting";
 // Optional UTF-8 initial counter-state file. Requires expert counting or statistics logging to be enabled.

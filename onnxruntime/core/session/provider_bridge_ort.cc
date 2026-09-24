@@ -28,6 +28,7 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/framework/random_generator.h"
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/run_options.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1617,6 +1618,43 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
+  const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+      const OpKernelContext*) override {
+    return nullptr;
+  }
+  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext*) override {
+    static const std::string empty;
+    return empty;
+  }
+  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext*) override {
+    return {};
+  }
+  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext*) override {
+    return 0;
+  }
+  void RunInstrumentationContext__AddDeferredRecord(
+      const RunInstrumentationContext*,
+      std::unique_ptr<DeferredRunInstrumentationRecord>) override {
+  }
+  bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
+      const RunInstrumentationContext*, size_t) override {
+    return false;
+  }
+  void RunInstrumentationContext__RecordMoeRoutingEvent(
+      const RunInstrumentationContext*,
+      const TimePoint&,
+      const TimePoint&,
+      const std::string&,
+      NodeIndex,
+      const std::string&,
+      std::string,
+      std::string,
+      int64_t,
+      int64_t,
+      int,
+      int64_t,
+      const std::string&) override {
+  }
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }

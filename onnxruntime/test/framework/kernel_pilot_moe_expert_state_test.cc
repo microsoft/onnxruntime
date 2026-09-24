@@ -144,11 +144,11 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsCounterUpdateAsStructuredJson) {
       std::move(capturing_sink), logging::Severity::kINFO, false,
       logging::LoggingManager::InstanceType::Temporal);
   auto logger = logging_manager.CreateLogger("moe_counter_update");
-  ASSERT_STATUS_OK(state.BeginLogging("request \"one\"", *logger));
+  ASSERT_STATUS_OK(state.BeginRun("request \"one\"", logger.get()));
 
   const int selected[] = {2, 0, 2};
   ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
-  ASSERT_STATUS_OK(state.EndLogging());
+  ASSERT_STATUS_OK(state.EndRun());
 
   ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
   const std::string& message = capturing_sink_ptr->Messages()[0];

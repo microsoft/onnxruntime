@@ -20,20 +20,21 @@
 
 namespace onnxruntime {
 
-Status KernelPilotMoeExpertState::BeginLogging(std::string request_id, const logging::Logger& logger) {
-  std::lock_guard<std::mutex> lock(logging_mutex_);
-  ORT_RETURN_IF(logging_logger_ != nullptr,
-                "Concurrent Runs are not supported while MoE expert statistics logging is enabled.");
+Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging::Logger* logger) {
+  std::lock_guard<std::mutex> lock(run_mutex_);
+  ORT_RETURN_IF(run_active_, "Concurrent Runs are not supported while MoE expert tracking is enabled.");
+  run_active_ = true;
   logging_request_id_ = std::move(request_id);
-  logging_logger_ = &logger;
+  logging_logger_ = logger;
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::EndLogging() {
-  std::lock_guard<std::mutex> lock(logging_mutex_);
-  ORT_RETURN_IF_NOT(logging_logger_, "MoE expert statistics logging is not active.");
+Status KernelPilotMoeExpertState::EndRun() {
+  std::lock_guard<std::mutex> lock(run_mutex_);
+  ORT_RETURN_IF_NOT(run_active_, "MoE expert tracking is not active.");
   logging_request_id_.clear();
   logging_logger_ = nullptr;
+  run_active_ = false;
   return Status::OK();
 }
 
@@ -154,7 +155,7 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     counters_[expert_ids_.at({kernel, expert})] += beta_;
   }
 
-  std::lock_guard<std::mutex> lock(logging_mutex_);
+  std::lock_guard<std::mutex> lock(run_mutex_);
   if (logging_logger_ != nullptr) {
     std::ostringstream event;
     event.imbue(std::locale::classic());

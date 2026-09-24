@@ -30,12 +30,12 @@ class KernelPilotMoeExpertState {
   KernelPilotMoeExpertState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertState);
 
-  // Starts counter-update logging for one Run. Concurrent Runs are rejected while
-  // logging is active because the request ID and logger are session-owned state.
-  Status BeginLogging(std::string request_id, const logging::Logger& logger);
+  // Starts one Run and optionally enables counter-update logging for it.
+  // A second Run is rejected because selections and counters are session-owned state.
+  Status BeginRun(std::string request_id, const logging::Logger* logger);
 
-  // Releases the active Run's logging state so another Run can begin logging.
-  Status EndLogging();
+  // Releases the active Run and its optional logging state.
+  Status EndRun();
 
   // Expert counters
   // ---------------
@@ -115,7 +115,8 @@ class KernelPilotMoeExpertState {
   NodeHashMap<const OpKernel*, KernelState> kernels_;
   InlinedHashMap<std::pair<const OpKernel*, int>, size_t> expert_ids_;
   InlinedVector<double> counters_;
-  mutable std::mutex logging_mutex_;
+  mutable std::mutex run_mutex_;
+  bool run_active_{false};
   std::string logging_request_id_;
   const logging::Logger* logging_logger_{nullptr};
   double alpha_{0.9};

@@ -3726,15 +3726,19 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  const bool track_moe_experts =
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  KernelPilotMoeExpertState* moe_expert_state =
-      collect_moe_statistics ? session_state_->GetMoeExpertState() : nullptr;
-  bool moe_logging_active = false;
-  auto end_moe_logging = gsl::finally([&]() {
-    if (moe_logging_active) {
-      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndLogging());
+  KernelPilotMoeExpertState* moe_expert_state = nullptr;
+  bool moe_run_active = false;
+  auto end_moe_run = gsl::finally([&]() {
+    if (moe_run_active) {
+      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun());
     }
   });
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3832,6 +3836,16 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
+#if !defined(ORT_MINIMAL_BUILD)
+      if (track_moe_experts) {
+        moe_expert_state = session_state_->GetMoeExpertState();
+        ORT_RETURN_IF_NOT(moe_expert_state, "MoE expert state is unavailable.");
+        ORT_RETURN_IF_ERROR_SESSIONID_(moe_expert_state->BeginRun(
+            run_options.run_tag, collect_moe_statistics ? &run_logger : nullptr));
+        moe_run_active = true;
+      }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
       std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
       if (is_concurrent_run_supported_ == false) {
         sequential_run_lock.emplace(session_mutex_);
@@ -3851,13 +3865,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
-
-#if !defined(ORT_MINIMAL_BUILD)
-      if (retval.IsOK() && collect_moe_statistics) {
-        ORT_CHECK_AND_SET_RETVAL(moe_expert_state->BeginLogging(run_options.run_tag, run_logger));
-        moe_logging_active = retval.IsOK();
-      }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #ifdef ENABLE_TRAINING
       if (run_options.only_execute_path_to_fetches) {
@@ -3905,11 +3912,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       }
 
 #if !defined(ORT_MINIMAL_BUILD)
-      if (moe_logging_active) {
-        const Status logging_status = moe_expert_state->EndLogging();
-        moe_logging_active = false;
-        if (retval.IsOK() && !logging_status.IsOK()) {
-          retval = logging_status;
+      if (moe_run_active) {
+        const Status moe_run_status = moe_expert_state->EndRun();
+        moe_run_active = false;
+        if (retval.IsOK() && !moe_run_status.IsOK()) {
+          retval = moe_run_status;
         }
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)

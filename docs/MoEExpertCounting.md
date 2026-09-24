@@ -35,9 +35,9 @@ expert computations were still in flight when their counters were updated. Updat
 entire model invocation.
 
 The root `SessionState` owns a `KernelPilotMoeExpertState` shared with its subgraph states. Sessions never share counters.
-While counter-update logging is active, the state also stores the current request ID and logger. Because those fields
-describe one Run, a concurrent Run is rejected while logging is active; concurrent Runs remain allowed when only expert
-counting is enabled.
+While counter-update logging is active, the state also stores the current request ID and logger. Because expert
+selections and counters are session-owned mutable state, a concurrent Run is rejected whenever counting or
+counter-update logging is enabled.
 Registration uses graph scope and resolved node index, with one counter per expert. The router's expert dimension must
 be statically known when the session is initialized. The global expert count is the sum of those per-node dimensions;
 for `N` equally sized MoE nodes with `E` experts, it is `N * E`.
@@ -52,10 +52,9 @@ A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilot
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.
 
-The counting path does not serialize overlapping `Run()` calls and does not lock selection or counter updates.
-Concurrent execution of the same kernel can therefore produce approximate counts by interleaving selection resets,
-collection, or counter updates. The offload policy treats these rare discrepancies as acceptable. Registration,
-counter parameters, and file loading are frozen before execution starts.
+The counting path rejects overlapping `Run()` calls before execution begins. Counter updates therefore require no
+per-counter synchronization, and one invocation cannot interleave selection resets or updates with another.
+Registration, counter parameters, and file loading are frozen before execution starts.
 
 Kernels call `OpKernelContext::GetKernelPilot()` to obtain their session-owned pilot, or `nullptr` when unavailable.
 They reset its `Moe()` member for the invocation and collect local expert IDs directly into it.
