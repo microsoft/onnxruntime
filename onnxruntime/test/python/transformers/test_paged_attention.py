@@ -1666,6 +1666,134 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
 
     @parameterized.expand(
         [
+            (f"{name}_{rotary}_{interleaved}", lengths, past, kv_heads, head_size, local, rotary, interleaved)
+            for name, lengths, past, kv_heads, head_size, local in [
+                ("decode_mha", [1, 1], [15, 63], 4, 64, False),
+                ("decode_gqa", [1, 1], [16, 65], 2, 80, False),
+                ("prefill_gqa", [65, 33, 0], [0, 7, 0], 1, 128, False),
+                ("dflash", [7, 2, 0], [31, 1, 0], 2, 64, True),
+                ("local_prefill", [65, 33, 1], [17, 0, 3], 2, 64, True),
+            ]
+            for rotary, interleaved in rotary_options_for_current_os()
+        ]
+    )
+    def test_qk_norm_parity(self, _, lengths, past, kv_heads, head_size, local, rotary, interleaved):
+        config = Config(
+            len(lengths),
+            max(lengths),
+            128,
+            4,
+            kv_heads,
+            head_size,
+            16,
+            local,
+            rotary,
+            interleaved,
+            rotary,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.use_qk_norm = True
+        config.is_causal = not local
+        config.use_attention_metadata = local
+        if local:
+            config.attention_metadata_override = numpy.array([max(lengths), 128], dtype=numpy.int32)
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor(lengths, dtype=torch.int32),
+            past_seqlens_override=torch.tensor(past, dtype=torch.int32),
+            local_window_size_override=4 if local else -1,
+        )
+
+    def test_qk_norm_split_norm_dimension(self):
+        # A single 512-channel head selects the normalization helper's split-dimension shader.
+        config = Config(1, 1, 32, 1, 1, 512, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
+        config.use_qk_norm = True
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([1]),
+            past_seqlens_override=torch.tensor([15]),
+        )
+
+    @parameterized.expand(
+        [("per_head", 1.0, 0.25), ("zero", 0.0, 1e-12), ("small", 1e-6, 1e-12), ("large", 1000.0, 1e-6)]
+    )
+    def test_qk_norm_cpu_reference_and_cache_reuse(self, _, magnitude, epsilon):
+        config = Config(1, 1, 32, 4, 2, 64, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
+        config.use_qk_norm = True
+        config.qk_norm_epsilon = epsilon
+        generator = torch.Generator(device="cpu").manual_seed(43)
+        key_cache = torch.randn(2, 16, 2, 64, generator=generator, dtype=torch.float16)
+        value_cache = torch.randn(2, 16, 2, 64, generator=generator, dtype=torch.float16)
+        block_table = torch.tensor([[1, 0]], dtype=torch.int32)
+        channels = torch.linspace(-1.0, 1.0, 64)
+        # Gains are per channel and shared across heads; Q and K have different learned gains.
+        q_weight = torch.linspace(0.2, 1.7, 64).half()
+        k_weight = torch.linspace(1.3, -0.7, 64).half()
+        query = (magnitude * torch.tensor([0.01, 0.3, 2.0, 20.0])[:, None] * channels).half().unsqueeze(0)
+        key = (magnitude * torch.tensor([0.1, 3.0])[:, None] * channels.flip(0)).half().unsqueeze(0)
+        value = torch.randn(1, 2, 64, generator=generator, dtype=torch.float16)
+        q_ref = rms_norm_ref(query, q_weight, epsilon)
+        k_ref = rms_norm_ref(key, k_weight, epsilon)
+
+        def attend(q, dense_k, dense_v):
+            logits = torch.einsum("qnh,knh->nqk", q.float(), dense_k.float()) / math.sqrt(64)
+            return torch.einsum("nqk,knh->qnh", logits.softmax(-1), dense_v.float()).reshape(1, -1)
+
+        for past in (15, 16):
+            expected_k = key_cache.clone()
+            expected_v = value_cache.clone()
+            block, slot = block_table[0, past // 16], past % 16
+            expected_k[block, slot] = k_ref[0]
+            expected_v[block, slot] = value[0]
+            dense_k = expected_k[block_table[0].long()].flatten(0, 1)[: past + 1].repeat_interleave(2, dim=1)
+            dense_v = expected_v[block_table[0].long()].flatten(0, 1)[: past + 1].repeat_interleave(2, dim=1)
+
+            expected_output = attend(q_ref, dense_k, dense_v)
+            if magnitude == 1.0:
+                wrong_q = rms_norm_ref(query.flatten(1), q_weight.repeat(4), epsilon).reshape_as(query)
+                self.assertGreater((attend(wrong_q, dense_k, dense_v) - expected_output).abs().max().item(), 0.02)
+                wrong_k = rms_norm_ref(key.flatten(1), k_weight.repeat(2), epsilon).reshape_as(key)
+                self.assertGreater((wrong_k - k_ref).abs().max().item(), 0.1)
+
+            output, actual_k, actual_v = paged_attention_func(
+                config,
+                query.flatten(1),
+                key.flatten(1),
+                value.flatten(1),
+                key_cache,
+                value_cache,
+                torch.tensor([0, 1], dtype=torch.int32),
+                torch.tensor([past], dtype=torch.int32),
+                block_table,
+                q_norm_weight=q_weight,
+                k_norm_weight=k_weight,
+            )
+            self.assertTrue(numpy.isfinite(output.numpy()).all())
+            self.assertTrue(numpy.isfinite(actual_k).all())
+            numpy.testing.assert_allclose(output.numpy(), expected_output.numpy(), rtol=5e-3, atol=5e-3)
+            numpy.testing.assert_allclose(actual_k, expected_k.numpy(), rtol=1e-3, atol=1e-3)
+            numpy.testing.assert_array_equal(actual_v, expected_v.numpy())
+            # All old and unused cache slots must be untouched, including K appended on the previous call.
+            unchanged = numpy.ones((2, 16), dtype=bool)
+            unchanged[block, slot] = False
+            numpy.testing.assert_array_equal(actual_k[unchanged], key_cache.numpy()[unchanged])
+            key_cache, value_cache = torch.from_numpy(actual_k.copy()), torch.from_numpy(actual_v.copy())
+
+    @parameterized.expand([("zero", 0.0), ("negative", -1.0), ("nan", float("nan")), ("infinite", float("inf"))])
+    def test_qk_norm_invalid_epsilon(self, _, epsilon):
+        config = Config(1, 1, 32, 4, 2, 64, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
+        config.use_qk_norm = True
+        config.qk_norm_epsilon = epsilon
+        with self.assertRaisesRegex(Exception, "qk_norm_epsilon"):
+            parity_check_paged_attention(config)
+
+    @parameterized.expand(
+        [
             (f"{name}_{causal}_{metadata}", new_lengths, past_lengths, window, kv_heads, causal, metadata)
             for name, new_lengths, past_lengths, window, kv_heads in [
                 ("decode", [1, 1, 1], [0, 3, 65], 4, 4),
