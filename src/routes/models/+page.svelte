@@ -9,12 +9,12 @@
 			imagealt: 'Hugging Face Logo'
 		},
 		{
-			title: 'Model Zoo (hosted on ONNX website)',
+			title: 'Hugging Face ONNX Model Zoo',
 			description:
-				'Explore a wide variety of pre-trained ONNX models curated by the ONNX community.',
-			url: 'https://onnx.ai/models/',
-			image: 'https://onnx.ai/models/assets/logos/onnx.png',
-			imagealt: 'ONNX Model Zoo'
+				'Explore a wide variety of pre-trained ONNX models in the Hugging Face ONNX Model Zoo.',
+			url: 'https://huggingface.co/onnxmodelzoo',
+			image: 'https://huggingface.co/front/assets/huggingface_logo-noborder.svg',
+			imagealt: 'Hugging Face ONNX Model Zoo'
 		},
 		{
 			title: 'AMD Models (hosted on Hugging Face)',

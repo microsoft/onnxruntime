@@ -14,29 +14,16 @@
 
 	let containerRef: HTMLDivElement;
 	let scrollerRef: HTMLUListElement;
+	let userPaused = false;
 
 	onMount(() => {
-		addAnimation();
+		getDirection();
+		getSpeed();
+		start = true;
 	});
 
 	let start = false;
 
-	function addAnimation() {
-		if (containerRef && scrollerRef) {
-			const scrollerContent = Array.from(scrollerRef.children);
-
-			scrollerContent.forEach((item) => {
-				const duplicatedItem = item.cloneNode(true);
-				if (scrollerRef) {
-					scrollerRef.appendChild(duplicatedItem);
-				}
-			});
-
-			getDirection();
-			getSpeed();
-			start = true;
-		}
-	}
 	const getDirection = () => {
 		if (containerRef) {
 			if (direction === 'left') {
@@ -60,20 +47,43 @@
 
 	const toggleScroll = () => {
 		if (scrollerRef) {
-			const currentState = window.getComputedStyle(scrollerRef).animationPlayState;
-			scrollerRef.style.animationPlayState = currentState === 'running' ? 'paused' : 'running';
+			userPaused = !userPaused;
+			scrollerRef.style.animationPlayState = userPaused ? 'paused' : '';
 		}
 	};
 
-	const handleKeyDown = (event: { key: string; preventDefault: () => void }) => {
+	const handleKeyDown = (event: KeyboardEvent) => {
 		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault(); // Prevent default spacebar scrolling behavior
+			event.preventDefault();
 			toggleScroll();
+		}
+	};
+
+	const handleLinkFocus = (event: FocusEvent) => {
+		if (event.target instanceof HTMLElement && scrollerRef) {
+			scrollerRef.style.animation = 'none';
+			event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		}
+	};
+
+	const handleLinkBlur = (event: FocusEvent) => {
+		if (
+			scrollerRef &&
+			containerRef &&
+			!(event.relatedTarget instanceof Node && scrollerRef.contains(event.relatedTarget))
+		) {
+			containerRef.scrollLeft = 0;
+			scrollerRef.style.removeProperty('animation');
+			scrollerRef.style.animationPlayState = userPaused ? 'paused' : '';
 		}
 	};
 </script>
 
-<div bind:this={containerRef} class={cn('scroller relative z-2 overflow-hidden ', className)}>
+<div
+	bind:this={containerRef}
+	class={cn('scroller relative z-2 overflow-hidden ', className)}
+	data-customer-carousel
+>
 	<button
 		class="hover:bg-primary focus:bg-primary menu-item py-2 sr-only focus:not-sr-only"
 		on:keydown={handleKeyDown}
@@ -82,19 +92,49 @@
 	<ul
 		bind:this={scrollerRef}
 		class={cn(
-			' flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4',
+			'moving-cards flex w-max min-w-full shrink-0 flex-nowrap gap-4 py-4',
 			start && 'animate-scroll',
 			pauseOnHover && 'hover:[animation-play-state:paused]'
 		)}
+		aria-label="Customer testimonials"
 	>
-		{#each items as item, idx (item.alt)}
+		{#each items as item (item.alt)}
 			<li
 				class="bg-slate-300 m-auto relative h-28 w-[200px] max-w-full flex-shrink-0 hover:scale-105 transition duration-200 rounded-md border border-2 border-secondary md:w-[200px]"
+				data-carousel-original
 			>
-				<a href={item.href} class="block h-full w-full rounded-md focus:outline-none focus-visible:ring-4 focus-visible:ring-primary focus-visible:ring-offset-2">
+				<a
+					href={item.href}
+					class="block h-full w-full rounded-md focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-primary focus-visible:ring-offset-2"
+					on:focus={handleLinkFocus}
+					on:blur={handleLinkBlur}
+				>
 					<img class="h-28 p-2 m-auto" src={item.src} alt={item.alt} />
+				</a>
+			</li>
+		{/each}
+		{#each items as item (item.alt)}
+			<li
+				class="bg-slate-300 m-auto relative h-28 w-[200px] max-w-full flex-shrink-0 hover:scale-105 transition duration-200 rounded-md border border-2 border-secondary md:w-[200px]"
+				aria-hidden="true"
+				data-carousel-copy
+			>
+				<a href={item.href} tabindex="-1">
+					<img class="h-28 p-2 m-auto" src={item.src} alt="" />
 				</a>
 			</li>
 		{/each}
 	</ul>
 </div>
+
+<style>
+	.moving-cards:focus-within {
+		animation: none !important;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.moving-cards {
+			animation: none !important;
+		}
+	}
+</style>

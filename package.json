@@ -8,6 +8,7 @@
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test:carousel-accessibility": "npm run build && node --test tests/carousel-accessibility.test.mjs",
 		"lint": "prettier --plugin-search-dir . --check . && eslint .",
 		"format": "prettier --plugin-search-dir . --write ./src",
 		"deploy": "npx gh-pages -d build -r git@github.com:MaanavD/onnxruntime.git",

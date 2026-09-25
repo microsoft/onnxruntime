@@ -41,7 +41,7 @@ const env = ort.env;
 These flags are usually required to be set before any inference session is created.
 
 
-For more information, see [API reference: Interface Env](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html).
+For more information, see [API reference: Interface Env](https://onnxruntime.ai/docs/api/js/interfaces/Env.html).
 
 ### `env.debug`
 
@@ -52,7 +52,7 @@ The `env.debug` flag is used to enable/disable the debug mode. When enabled, ONN
 ort.env.debug = true;
 ```
 
-For more information, see [API reference: env.debug](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html#debug).
+For more information, see [API reference: env.debug](https://onnxruntime.ai/docs/api/js/interfaces/Env.html#debug).
 
 ### `env.logLevel`
 
@@ -63,7 +63,7 @@ The `env.logLevel` flag is used to set the log level. It can be set to one of `"
 ort.env.logLevel = 'verbose';
 ```
 
-For more information, see [API reference: env.logLevel](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html#logLevel).
+For more information, see [API reference: env.logLevel](https://onnxruntime.ai/docs/api/js/interfaces/Env.html#logLevel).
 
 ### `env.wasm`
 

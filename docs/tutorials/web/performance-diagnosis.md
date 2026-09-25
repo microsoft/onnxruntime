@@ -168,7 +168,7 @@ ort.env.trace = true;
 
 This feature uses `console.timeStamp` to log the trace data. You can use the browser's performance tool to analyze the trace data.
 
-See [API reference: env.trace](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html#trace) for more details.
+See [API reference: env.trace](https://onnxruntime.ai/docs/api/js/interfaces/Env.html#trace) for more details.
 
 ### Log level 'verbose'
 
@@ -177,7 +177,7 @@ You can set the log level to 'verbose' to get more detailed logs:
 ort.env.logLevel = 'verbose';
 ```
 
-See [API reference: env.logLevel](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html#logLevel) for more details.
+See [API reference: env.logLevel](https://onnxruntime.ai/docs/api/js/interfaces/Env.html#logLevel) for more details.
 
 ### Enable debug mode
 
@@ -188,7 +188,7 @@ ort.env.debug = true;
 
 In debug mode, ONNX Runtime Web will log detailed information about the execution of the model, and also apply some additional checks. Usually you need to use `verbose` log level to see the debug logs.
 
-See [API reference: env.debug](https://onnxruntime.ai/docs/api/js/interfaces/Env-1.html#debug) for more details.
+See [API reference: env.debug](https://onnxruntime.ai/docs/api/js/interfaces/Env.html#debug) for more details.
 
 ## Analyze the profiling data
 

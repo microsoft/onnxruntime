@@ -1,4 +1,6 @@
 <script lang="ts">
+	import YouTubeFacade from './youtube-facade.svelte';
+
 	export let videos: { title: string; link: string }[];
 	export let px = 10;
 	export let my = 10;
@@ -13,14 +15,7 @@
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mx-auto my-{my}">
 		{#each videos as video}
 			<div>
-				<iframe
-					class="w-full h-64 pb-2"
-					src={video.link}
-					title="YouTube video player"
-					frameborder="0"
-					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-					allowfullscreen
-				/>
+				<YouTubeFacade className="mb-2 h-64 w-full" src={video.link} title={video.title} />
 				<div class="text-center">
 					<a class="text-xl underline" href={video.link}>
 						{video.title}
