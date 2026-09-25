@@ -202,6 +202,11 @@ static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_k
   if (!fbs_op_kernel_type_str_args) {
     return "op_kernel_type_str_args is null.";
   }
+  if (const auto status = fbs::utils::ValidateRequiredTableOffsets(fbs_op_kernel_type_str_args,
+                                                                   "op kernel type string arguments");
+      !status.IsOK()) {
+    return status.ErrorMessage();
+  }
 
   OpKernelTypeStrMap op_kernel_type_str_map{};
   op_kernel_type_str_map.reserve(fbs_op_kernel_type_str_args->size());
@@ -219,6 +224,11 @@ static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_k
     if (!fbs_kernel_type_str_args) {
       return "kernel_type_str_args is null.";
     }
+    if (const auto status = fbs::utils::ValidateRequiredTableOffsets(fbs_kernel_type_str_args,
+                                                                     "kernel type string arguments");
+        !status.IsOK()) {
+      return status.ErrorMessage();
+    }
 
     KernelTypeStrToArgsMap kernel_type_str_map{};
     kernel_type_str_map.reserve(fbs_kernel_type_str_args->size());
@@ -235,6 +245,10 @@ static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_k
       const auto* fbs_args = fbs_kernel_type_str_args_entry->args();
       if (!fbs_args) {
         return "args is null.";
+      }
+      if (const auto status = fbs::utils::ValidateRequiredTableOffsets(fbs_args, "kernel type string argument");
+          !status.IsOK()) {
+        return status.ErrorMessage();
       }
 
       InlinedVector<ArgTypeAndIndex> args{};
