@@ -103,6 +103,22 @@ TEST(MathOpTest, Clip_Default_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+// Regression test for a broken SSE2 int64 less-than compare in Eigen that made Clip
+// mis-clamp values above INT32_MAX (e.g. 2147483649 == 2^31 + 1). Clamps to max=0, so
+// the positive input must be pulled down to 0 rather than passed through.
+TEST(MathOpTest, Clip_int64_above_int32_max) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{2};
+  test.AddInput<int64_t>("X", dims, {2147483649, 2147483649});
+  test.AddOptionalInputEdge<int64_t>();  // no min
+  test.AddInput<int64_t>("max", {}, {0});
+  test.AddOutput<int64_t>("Y", dims, {0, 0});
+
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(MathOpTest, Clip_Default_uint64) {
   OpTester test("Clip", 12);
 
