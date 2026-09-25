@@ -22,6 +22,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #ifdef USE_CUDA
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
@@ -32,6 +33,24 @@ namespace test {
 // regardless of the normalize_routing_weights parameter value for mathematical correctness.
 
 #ifndef ENABLE_TRAINING
+
+#ifdef USE_CUDA
+TEST(MoETest, MoeGemvExpandedRowsAreSm120Only) {
+  using onnxruntime::llm::kernels::moe_gemv::IsProfiledExpandedRowCount;
+
+  for (int sm : {80, 89, 119}) {
+    EXPECT_FALSE(IsProfiledExpandedRowCount(sm, 0));
+    EXPECT_TRUE(IsProfiledExpandedRowCount(sm, 8));
+    EXPECT_FALSE(IsProfiledExpandedRowCount(sm, 9));
+  }
+  for (int sm : {120, 121}) {
+    EXPECT_FALSE(IsProfiledExpandedRowCount(sm, 0));
+    EXPECT_TRUE(IsProfiledExpandedRowCount(sm, 9));
+    EXPECT_TRUE(IsProfiledExpandedRowCount(sm, 64));
+    EXPECT_FALSE(IsProfiledExpandedRowCount(sm, 65));
+  }
+}
+#endif
 
 // The CUTLASS SIMT kernel (128x128x8 tile) used on the CUDA MoE path requires minimum
 // problem dimensions. For float on SM80+, both hidden_size and inter_size must be >= 128.
