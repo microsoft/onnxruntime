@@ -36,9 +36,11 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto* x_shape = x_arg.Shape();
 
     // 'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW) can be supported.
-    // we only support 4-d tensor for now, and the channel must be known.
+    // we only support 4-d tensors for now. The channel and spatial dimensions must be known
+    // because the kernel caches the output H and W during construction.
     // we assume the input in NCHW for this test.
-    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
+    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0 ||
+        x_shape->dim(2).dim_value() <= 0 || x_shape->dim(3).dim_value() <= 0) {
       break;
     }
 
@@ -57,46 +59,67 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                   ? graph_viewer.GetConstantInitializer(inputs[size_idx].node_arg.Name(), true)
                                   : nullptr;
 
-    // if both scales and sizes are nullptr the one that was provided was not a constant initializer
-    if (!scale_tensor && !size_tensor) {
-      break;
-    }
-
     // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
     // if not, it is not the C dim as a Resize will not change the number of channels.
+    bool has_scales_data = false;
     if (scale_tensor) {
       const Initializer scale_val(graph_viewer.GetGraph(), *scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
-      if (scales[1] != 1.0F) {
-        break;
-      }
-
-      // downsampling output seems to require the output size to be a factor of the input to match ONNX
-      if (scales[2] < 1.0f || scales[3] < 1.0f) {
-        // we also require input_shape to be known to check
-        int64_t h_in = x_shape->dim(2).dim_value();
-        int64_t w_in = x_shape->dim(3).dim_value();
-        if (h_in < 0 || w_in < 0) {
+      if (!scales.empty()) {
+        if (scales.size() != 4) {
           break;
         }
 
-        float scale_h = scales[2];
-        float scale_w = scales[3];
-        if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h) ||
-            !utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
+        has_scales_data = true;
+        if (scales[1] != 1.0F) {
           break;
+        }
+
+        // downsampling output seems to require the output size to be a factor of the input to match ONNX
+        if (scales[2] < 1.0f || scales[3] < 1.0f) {
+          // we also require input_shape to be known to check
+          int64_t h_in = x_shape->dim(2).dim_value();
+          int64_t w_in = x_shape->dim(3).dim_value();
+          if (h_in < 0 || w_in < 0) {
+            break;
+          }
+
+          float scale_h = scales[2];
+          float scale_w = scales[3];
+          if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h) ||
+              !utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
+            break;
+          }
         }
       }
     }
 
+    bool has_sizes_data = false;
     if (size_tensor) {
       const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
-      if (size_val.DataAsSpan<int64_t>()[1] != x_shape->dim(1).dim_value()) {
+      const auto sizes = size_val.DataAsSpan<int64_t>();
+      // ORT treats an empty scales tensor as unused when sizes supplies the geometry, but it
+      // does not treat an empty sizes tensor as unused when scales is present.
+      if (sizes.size() != 4) {
         break;
       }
+
+      has_sizes_data = true;
+      if (sizes[1] != x_shape->dim(1).dim_value()) {
+        break;
+      }
+    }
+
+    // Exactly one input must provide the output geometry. A zero-element tensor represents an unused input.
+    if (has_scales_data == has_sizes_data) {
+      break;
     }
 
     const auto* output_shape = node_unit.Outputs()[0].node_arg.Shape();
+    if (!output_shape || output_shape->dim_size() != 4) {
+      break;
+    }
+
     bool length_resized_compatible_pytorch_half_pixel = true;
     // when length_resized > 1, there is no difference between pytorch_half_pixel and half_pixel
     // according onnx spec.
