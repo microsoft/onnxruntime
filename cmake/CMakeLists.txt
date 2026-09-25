@@ -1549,7 +1549,7 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_CUDA_MINIMAL)
     include(CheckCXXSourceCompiles)
     include(CMakePushCheckState)
     cmake_push_check_state(RESET)

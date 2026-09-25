@@ -130,7 +130,12 @@ common::Status GetFileLength(int fd, size_t& file_size) {
   return common::Status::OK();
 }
 
-class PosixRandomAccessFile final : public RandomAccessFile, public PosixFileDescriptorProvider {
+class PosixRandomAccessFile final : public RandomAccessFile
+#if !defined(ORT_MINIMAL_BUILD)
+    ,
+                                    public PosixFileDescriptorProvider
+#endif
+{
  public:
   PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
       : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
@@ -163,9 +168,11 @@ class PosixRandomAccessFile final : public RandomAccessFile, public PosixFileDes
     return common::Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   int GetFileDescriptor() const override {
     return descriptor_.Get();
   }
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PosixRandomAccessFile);

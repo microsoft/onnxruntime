@@ -119,9 +119,18 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds,
                                        bool use_directstorage)
     : device_id_(device_id),
-      reading_thread_count_(reading_thread_count),
+      reading_thread_count_(reading_thread_count)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+      ,
       use_gds_(use_gds),
-      use_directstorage_(use_directstorage) {}
+      use_directstorage_(use_directstorage)
+#endif
+{
+#if defined(ORT_MINIMAL_BUILD) || defined(USE_CUDA_MINIMAL)
+  ORT_UNUSED_PARAMETER(use_gds);
+  ORT_UNUSED_PARAMETER(use_directstorage);
+#endif
+}
 
 ExternalDataLoader::~ExternalDataLoader() {
   reader_pool_.reset();
@@ -165,8 +174,10 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
       previous_device != device_id_ &&
       cudaSetDevice(device_id_) == cudaSuccess;
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
   gds_loader_.reset();
   directstorage_loader_.reset();
+#endif
 
   for (auto& stream : streams_) {
     if (stream != nullptr) {
@@ -213,6 +224,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
   if (use_directstorage_ && !directstorage_disabled_ && length != 0 &&
       std::endian::native == std::endian::little && !tensor.IsDataType<bool>()) {
     Status status = Status::OK();
@@ -272,6 +284,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
                           << " loader. "
                           << gds_status.ErrorMessage();
   }
+#endif
 
   if (reading_thread_count_ == 0) {
     ORT_RETURN_IF_ERROR(LoadWithPageableBuffer(*file, data_offset, length, tensor, 1, reader_pool_));

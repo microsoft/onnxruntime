@@ -137,6 +137,7 @@ class RandomAccessFile {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RandomAccessFile);
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 class PosixFileDescriptorProvider {
  public:
   virtual ~PosixFileDescriptorProvider() = default;
@@ -152,6 +153,7 @@ class WindowsFileHandleProvider {
   // The handle remains owned by the provider and is valid only for its lifetime.
   virtual void* GetFileHandle() const = 0;
 };
+#endif
 
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

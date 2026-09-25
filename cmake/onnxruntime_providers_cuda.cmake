@@ -24,6 +24,12 @@
   endif()
   # Exclude plugin directory if it was picked up by GLOB_RECURSE
   list(FILTER onnxruntime_providers_cuda_cc_srcs EXCLUDE REGEX "core/providers/cuda/plugin/.*")
+  if(onnxruntime_MINIMAL_BUILD OR onnxruntime_CUDA_MINIMAL)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_directstorage.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds.cc"
+    )
+  endif()
 
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
@@ -236,12 +242,14 @@
 
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
-  if(onnxruntime_USE_CUDA_DIRECTSTORAGE)
+  if(onnxruntime_USE_CUDA_DIRECTSTORAGE AND
+     NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_CUDA_MINIMAL)
     include(external/directstorage.cmake)
   endif()
 
   function(config_cuda_provider_shared_module target)
-    if(onnxruntime_USE_CUDA_DIRECTSTORAGE)
+    if(onnxruntime_USE_CUDA_DIRECTSTORAGE AND
+       NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_CUDA_MINIMAL)
       target_compile_definitions(${target} PRIVATE ORT_CUDA_DIRECTSTORAGE_AVAILABLE)
       target_include_directories(${target} PRIVATE "${directstorage_SOURCE_DIR}/native/include")
       target_link_libraries(${target} PRIVATE d3d12 dxgi)

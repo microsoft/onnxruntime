@@ -12,5 +12,5 @@ onnxruntime_fetchcontent_makeavailable(directstorage)
 
 if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   # CI deploys the SDK runtime only beside test executables, including when the SDK source is overridden.
-  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/directstorage-source-dir.txt" CONTENT "${directstorage_SOURCE_DIR}\n")
+  file(WRITE "${CMAKE_BINARY_DIR}/directstorage-source-dir.txt" "${directstorage_SOURCE_DIR}\n")
 endif()

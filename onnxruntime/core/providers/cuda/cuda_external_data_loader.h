@@ -8,8 +8,10 @@
 #include <mutex>
 
 #include "core/framework/external_data_loader.h"
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
 #include "core/providers/cuda/cuda_external_data_loader_gds.h"
 #include "core/providers/cuda/cuda_external_data_loader_directstorage.h"
+#endif
 #include "cuda_pch.h"
 
 namespace onnxruntime {
@@ -87,12 +89,14 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable std::array<void*, 2> buffers_{};
   mutable std::array<cudaStream_t, 2> streams_{};
   const size_t reading_thread_count_;
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
   const bool use_gds_;
   mutable bool gds_disabled_{false};
   mutable std::unique_ptr<GdsLoader> gds_loader_;
   const bool use_directstorage_;
   mutable bool directstorage_disabled_{false};
   mutable std::unique_ptr<DirectStorageLoader> directstorage_loader_;
+#endif
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 
