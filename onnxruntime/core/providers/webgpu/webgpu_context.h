@@ -149,7 +149,10 @@ struct WebGpuContextConfig {
   bool compile_only{false};
   uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
+  // Internal test hook. Provider-option parsing never populates this field.
+  uint64_t test_only_max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
+  std::optional<uint32_t> adapter_index;
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
   int backend_type{
 #ifdef _WIN32
@@ -216,6 +219,12 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
+  static constexpr uint64_t kMinConfigurableStorageBufferBindingSize = 256;
+  // WebGPU's guaranteed maxStorageBufferBindingSize limit is 128 MiB.
+  // See https://gpuweb.github.io/gpuweb/?utm_source=openai
+  static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
+      128ULL * 1024 * 1024;
+
   Status Wait(wgpu::Future f);
 
   const wgpu::Instance& Instance() const { return instance_; }
@@ -335,22 +344,35 @@ class WebGpuContext final {
     AtPasses
   };
 
+  static uint64_t ResolveMaxStorageBufferBindingSize(
+      uint64_t max_storage_buffer_binding_size,
+      uint64_t test_only_max_storage_buffer_binding_size) {
+    ORT_ENFORCE(max_storage_buffer_binding_size == 0 ||
+                    max_storage_buffer_binding_size >= kWebGpuGuaranteedMaxStorageBufferBindingSize,
+                "max_storage_buffer_binding_size must be 0 or at least 128 MiB");
+    ORT_ENFORCE(test_only_max_storage_buffer_binding_size == 0 ||
+                    test_only_max_storage_buffer_binding_size >= kMinConfigurableStorageBufferBindingSize,
+                "test_only_max_storage_buffer_binding_size must be 0 or at least 256 bytes");
+    return test_only_max_storage_buffer_binding_size != 0
+               ? test_only_max_storage_buffer_binding_size
+               : max_storage_buffer_binding_size;
+  }
+
   WebGpuContext(WGPUInstance instance,
                 WGPUDevice device,
                 webgpu::ValidationMode validation_mode,
                 bool validation_mode_explicitly_set,
                 bool preserve_device,
-                uint64_t max_storage_buffer_binding_size)
+                uint64_t max_storage_buffer_binding_size,
+                uint64_t test_only_max_storage_buffer_binding_size)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
         validation_mode_explicitly_set_{validation_mode_explicitly_set},
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
-        max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
-    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 || max_storage_buffer_binding_size_ >= 134217728,
-                "max_storage_buffer_binding_size must be 0 or at least 128MB");
-  }
+        max_storage_buffer_binding_size_{ResolveMaxStorageBufferBindingSize(
+            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
@@ -397,6 +419,9 @@ class WebGpuContext final {
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
+  std::optional<uint32_t> adapter_index_;
+  int adapter_power_preference_ = static_cast<int>(WGPUPowerPreference_HighPerformance);
+  int adapter_backend_type_ = 0;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;

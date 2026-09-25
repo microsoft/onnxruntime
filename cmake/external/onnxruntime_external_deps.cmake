@@ -88,7 +88,7 @@ if (onnxruntime_BUILD_BENCHMARKS)
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
     EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES benchmark
+    FIND_PACKAGE_ARGS 1.9.5 NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
@@ -556,6 +556,48 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# An installed ONNX package ships pre-generated protobuf headers/sources that ONNX Runtime compiles into its own
+# objects, so both must resolve to a single protobuf runtime with a single message representation. If they do not,
+# the mismatch is not caught by the linker: it shows up as heap corruption while copying onnx::AttributeProto (see
+# https://github.com/microsoft/onnxruntime/issues/28664). Validate the two ways this can happen.
+if(onnx_FOUND OR ONNX_FOUND)
+  if(NOT Protobuf_FOUND)
+    message(FATAL_ERROR
+            "ONNX was resolved to an installed package but protobuf is being built from source by ONNX Runtime. "
+            "The installed ONNX links a different protobuf runtime than the one ONNX Runtime would use. "
+            "Install a protobuf CMake config package and make it discoverable via CMAKE_PREFIX_PATH, or force ONNX "
+            "to be built from source with -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER.")
+  endif()
+
+  if(TARGET ONNX::onnx_proto)
+    get_target_property(onnx_package_definitions ONNX::onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  else()
+    get_target_property(onnx_package_definitions onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  endif()
+  if(onnx_package_definitions)
+    if("ONNX_USE_LITE_PROTO=1" IN_LIST onnx_package_definitions)
+      set(onnx_package_protobuf_flavor "lite")
+    else()
+      set(onnx_package_protobuf_flavor "full")
+    endif()
+    if(onnxruntime_USE_FULL_PROTOBUF)
+      set(onnxruntime_protobuf_flavor "full")
+    else()
+      set(onnxruntime_protobuf_flavor "lite")
+    endif()
+    if(NOT onnx_package_protobuf_flavor STREQUAL onnxruntime_protobuf_flavor)
+      message(FATAL_ERROR
+              "The installed ONNX package links the ${onnx_package_protobuf_flavor} protobuf runtime but ONNX "
+              "Runtime is configured for the ${onnxruntime_protobuf_flavor} one "
+              "(onnxruntime_USE_FULL_PROTOBUF=${onnxruntime_USE_FULL_PROTOBUF}). Rebuild ONNX with a matching "
+              "ONNX_USE_LITE_PROTO, or reconfigure ONNX Runtime to use the ${onnx_package_protobuf_flavor} runtime.")
+    endif()
+  endif()
+  message(STATUS "Using ONNX from find_package(or vcpkg). ONNX version: ${ONNX_VERSION}, "
+                 "protobuf version: ${Protobuf_VERSION}")
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -665,6 +707,13 @@ if (onnxruntime_USE_WEBGPU)
     endif()
     if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
       message(FATAL_ERROR "DAWN_USE_AGILITY_SDK requires the Dawn D3D12 backend.")
+    endif()
+    if (onnxruntime_USE_EP_API_ADAPTERS)
+      # Plugin EP packages cannot guarantee that the Agility SDK runtime DLLs are deployed
+      # next to the host executable.
+      message(FATAL_ERROR
+              "DAWN_USE_AGILITY_SDK is not supported with onnxruntime_USE_EP_API_ADAPTERS=ON (plugin EP build). "
+              "It is intended for local development builds only.")
     endif()
   endif()
 
@@ -818,8 +867,7 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
           #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
           #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
-          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
-          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
@@ -1018,19 +1066,23 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # HttpClient_Android and its Java bridge.
     # Use cpp_client_telemetry's canonical build options. The SDK keeps its
     # build policy and dependency selection local to 1DS.
-    set(BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
-    set(BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
-    set(BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
-    set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
-    set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
-    set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-    set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
-    set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
-    set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
-    set(BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
-    set(BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
+    set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
+    set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
+    set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS CDS module" FORCE)
+    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector" FORCE)
+    set(MATSDK_BUILD_SIGNALS OFF CACHE BOOL "Disable 1DS signals module" FORCE)
+    set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    set(MATSDK_BUILD_AZMON OFF CACHE BOOL "Disable 1DS Azure Monitor module" FORCE)
+    set(MATSDK_BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
+    set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
     if(APPLE)
-      set(BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+      set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
     # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
     # transport. On Apple/Android the SDK selects the native transport.
@@ -1038,11 +1090,6 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
     set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
     set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
-    # The pinned stable SDK selects its vendored sqlite3/zlib through this legacy flag, which ORT's
-    # patch also honors. Without it the patched Apple fallback links the system sqlite3/z names, and
-    # iOS consumers fail to link because there is no SQLite3 framework in the iOS SDK.
-    set(MATSDK_BUNDLE_VENDORED_DEPS ON)
-    set(MATSDK_BUNDLE_VENDORED_DEPS ON CACHE BOOL "Build the 1DS SDK's vendored sqlite3 and zlib" FORCE)
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
@@ -1052,22 +1099,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    # Android vcpkg builds intentionally use this fallback. Force the SDK's
-    # self-contained mode and restore the caller's cache entry after configuration.
-    get_property(_ort_matsdk_vcpkg_was_set CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE SET)
-    if(_ort_matsdk_vcpkg_was_set)
-      get_property(_ort_matsdk_vcpkg_type CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE)
-      get_property(_ort_matsdk_vcpkg_help CACHE MATSDK_USE_VCPKG_DEPS PROPERTY HELPSTRING)
-      get_property(_ort_matsdk_vcpkg_value CACHE MATSDK_USE_VCPKG_DEPS PROPERTY VALUE)
-    endif()
-    set(MATSDK_USE_VCPKG_DEPS OFF)
-    set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use self-contained 1DS dependencies" FORCE)
     if(NOT Patch_FOUND)
       message(FATAL_ERROR
               "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
     endif()
     set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
+        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
         ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
@@ -1077,23 +1114,10 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    unset(MATSDK_USE_VCPKG_DEPS)
-    if(_ort_matsdk_vcpkg_was_set)
-      if(_ort_matsdk_vcpkg_type STREQUAL "UNINITIALIZED")
-        set(_ort_matsdk_vcpkg_type BOOL)
-      endif()
-      set(MATSDK_USE_VCPKG_DEPS
-          "${_ort_matsdk_vcpkg_value}"
-          CACHE "${_ort_matsdk_vcpkg_type}"
-          "${_ort_matsdk_vcpkg_help}"
-          FORCE)
-    else()
-      unset(MATSDK_USE_VCPKG_DEPS CACHE)
+    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
+    if(ANDROID)
+      target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()
-    unset(_ort_matsdk_vcpkg_was_set)
-    unset(_ort_matsdk_vcpkg_type)
-    unset(_ort_matsdk_vcpkg_help)
-    unset(_ort_matsdk_vcpkg_value)
 
     if(ANDROID)
       string(CONCAT _ort_android_telemetry_java_source_dir

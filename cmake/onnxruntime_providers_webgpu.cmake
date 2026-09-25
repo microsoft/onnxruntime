@@ -241,7 +241,7 @@
     endif()
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-      # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
+      # Ensure dxcompiler.dll exists in the output directory $<TARGET_FILE_DIR:dxcompiler>
       # TODO: the following code is used to disable building Dawn using vcpkg temporarily
       # until we figure out how to resolve the packaging pipeline failures
       #
@@ -249,14 +249,10 @@
       if (FALSE)
         find_package(directx-dxc CONFIG REQUIRED)
         target_link_libraries(onnxruntime_providers_webgpu Microsoft::DirectXShaderCompiler)
-        target_link_libraries(onnxruntime_providers_webgpu Microsoft::DXIL)
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DXIL>")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DirectXShaderCompiler>")
       else()
-        add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
         add_dependencies(onnxruntime_providers_webgpu dxcompiler)
 
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
       endif()
     endif()

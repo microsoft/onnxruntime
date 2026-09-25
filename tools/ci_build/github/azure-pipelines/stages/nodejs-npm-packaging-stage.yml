@@ -24,7 +24,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     templateContext:
       sdl:
@@ -77,7 +77,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - onnxruntime.dll
     #      - DirectML.dll
-    #      - dxil.dll
     #      - dxcompiler.dll
     #
     #  - Windows arm64 (CPU, DML, WebGPU):
@@ -86,7 +85,6 @@ stages:
     #      - onnxruntime_binding.node
     #      - onnxruntime.dll
     #      - DirectML.dll
-    #      - dxil.dll
     #      - dxcompiler.dll
     #
     #  - Linux x64 (CPU, CUDA, TensorRT, WebGPU):

@@ -34,12 +34,12 @@ std::string pass_as_string(T&& v) {
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // d068d46b84a7c8561439328fe3b6b45dd6fe0c4a7db05dc2072c761794d2bd9b
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 2c9bc6d556617293b1b1a7ec4225c21c3f98d3cf9ae5add964ff7a6e8a952a4f
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 8f9b5bcb94ae91edc78567b06c4bd77584898deab7783a84d400d0d8f139dc73
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 67949855e1b8b8c3f21aae3b5cd466612759a5d96b1a154e5edff75ee8f5fab4
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 35487692058e08b027768dcb1ab30ef93772da9a4a664702c34351a74d2568dc
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 43a2d8f5014de2ce571c703d842f2457d7c1762575254bc42ccee437a181cd3f
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // 1aaff98897bad5e6e46888a2948ca3ac245eda97bdbbe7463c7cec4b6da6d0a9
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // e8c57a24be7028a3abfc97b621682fcbaa50068bb03648d092012c0936e307a3
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 8f4e48274de5ab42febd2d062ee1aca30efd78d7fb8c075d08f8d0b28ba7f9b6
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 460a3bdbd567ff378e9291aeee336fb81f19d2194f8a3f1ba036a663a488f16e
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ea6d6ea3ad39540d34a2153b291792f6e419401941c9f1fcbc910a9d0880df54
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 2c39520bb179cbd18964c7364065e3de93d7f99b6e3eacee1e662ec8c4b88c04
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

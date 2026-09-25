@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param acc_f32
 #param tile_size
 #param tile_size_k_vec
 #param single_scale_weights
@@ -40,7 +41,15 @@
 
 const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
-var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+// Precision of the cross-tile accumulator, selected by the
+// "enableMatmulFp32Accumulation" provider option. SDP8AI itself is an exact integer
+// dot product; it is the accumulation over K that can overflow the f16 max (~65504).
+#if acc_f32
+alias acc_element_t = f32;
+#else
+alias acc_element_t = output_element_t;
+#endif
+var<workgroup> inter_results: array<array<acc_element_t, tile_size_k_vec>, tile_size>;
 // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
 var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
 // double_tile_size_k_vec * 16 / 128
@@ -68,6 +77,15 @@ $MAIN {
         return;
     }
     let a_global = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M);
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[a_global];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+#else
+    const actual_weight_idx : u32 = 0;
+#endif
     // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.
     // Always read from A row 0; a_global is used for output row and weight selection.
 #if broadcast_a_row
@@ -112,7 +130,7 @@ $MAIN {
     workgroupBarrier();
 #endif
 #if single_scale_weights
-    let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
+    let zero = mm_read_zero(actual_weight_idx, 0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
 #if has_weight_idx_indirect
     let own_scale_b = scales_b.getByOffset(weight_index_indirect[a_global]);
@@ -158,7 +176,7 @@ $MAIN {
                 let own_scale_b = scales_b.getByOffset(b_global * uniforms.K / uniforms.block_size + block_idx);
 #endif
 #if !single_scale_weights
-                let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+                let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
 #if n_bits == 4
                 let b_value = b.getByOffset(b_offset);
@@ -192,7 +210,7 @@ $MAIN {
 
     if (local_idx < tile_size) {
       // Do reduce sum to get final output.
-      var output_value = output_element_t(0);
+      var output_value = acc_element_t(0);
       for (var b = 0u; b < tile_size_k_vec; b++) {
         output_value += inter_results[local_idx][b];
       }
@@ -200,10 +218,11 @@ $MAIN {
       let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
-        let bias_value = bias[b_global + b_bias_offset];
-        output.setByOffset(output_idx, output_value + bias_value);
+        let bias_value = acc_element_t(bias[b_global + b_bias_offset]);
+        // Downcast to the output element type only at the final store.
+        output.setByOffset(output_idx, output_element_t(output_value + bias_value));
 #else
-        output.setByOffset(output_idx, output_value);
+        output.setByOffset(output_idx, output_element_t(output_value));
 #endif
       }
     }

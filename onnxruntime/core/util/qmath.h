@@ -263,6 +263,11 @@ DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdU4, UInt4x2, MlasQuantizeLi
       inp_start += num_boundary;                                                                              \
     }                                                                                                         \
                                                                                                               \
+    /* The leading partial byte may have consumed the entire interval. */                                     \
+    if (out_start == out_end) {                                                                               \
+      return;                                                                                                 \
+    }                                                                                                         \
+                                                                                                              \
     /* If ending at a 2-bit element not at the end of a byte, quantize those elements by themselves. */       \
     size_t end_offset = out_end & 0x3;                                                                        \
     if (end_offset != 0) {                                                                                    \
@@ -338,7 +343,7 @@ ParQuantizeLinearStd(const MLFloat16* Input,
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
     float fscale = Scale.ToFloat();
     for (; begin_idx != end_idx; ++begin_idx) {
-      int32_t ival = static_cast<int32_t>(Input[begin_idx].ToFloat() / fscale) + ZeroPoint;
+      int32_t ival = static_cast<int32_t>(std::nearbyint(Input[begin_idx].ToFloat() / fscale)) + ZeroPoint;
       Output[begin_idx] = static_cast<OutputType>(std::min(static_cast<int32_t>(std::numeric_limits<OutputType>::max()),
                                                            std::max(static_cast<int32_t>(std::numeric_limits<OutputType>::lowest()), ival)));
     }

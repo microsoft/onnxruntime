@@ -28,7 +28,10 @@ namespace wgsl_gen {
   .param_##name = static_cast<int>(value)
 
 #define WGSL_TEMPLATE_VARIABLE(name, value) \
-  .var_##name = &value
+  .var_##name = &(value)
+
+#define WGSL_TEMPLATE_OPTIONAL_VARIABLE(name, value) \
+  .var_##name = (value)
 
 #define WGSL_TEMPLATE_APPLY(shader_helper, template_filepath, ...) \
   onnxruntime::webgpu::wgsl_gen::ApplyTemplate<template_filepath>(shader_helper, {__VA_ARGS__})

@@ -105,7 +105,7 @@ class CutlassFpAIntBGemmRunnerInterface {
 // microsoft/onnxruntime#29775):
 //   - CutlassFpAIntBGemmRunner<...>::getWorkspaceSize (runtime, via the constructed runner);
 //   - MatMulNBits::DeclareWorkspaceRequirements (Level 2, instance-level, after CreateKernels);
-//   - EstimateMatMulNBitsWorkspace (Level 1, partition-time, before any kernel instance exists).
+//   - EstimateMatMulNBitsMemory (Level 1, partition-time, before any kernel instance exists).
 // It is pure arithmetic: no CUDA calls, no device state, no tensor data - it depends only on
 // m, n, sm and multi_processor_count (k is unused, matching the CUTLASS runner). Every intermediate
 // is computed with SafeInt<size_t> so adversarial (untrusted-model) dimensions cannot silently

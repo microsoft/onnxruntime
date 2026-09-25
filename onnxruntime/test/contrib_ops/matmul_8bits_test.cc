@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
+#include <algorithm>
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -26,6 +27,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+
+#ifdef USE_CUDA
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#endif
 
 #if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) &&    \
      !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || \
@@ -906,12 +911,11 @@ TEST(MatMulNBits, BFloat16_Int8_Chunked_BFloat16ZeroPoint) {
   }
 }
 
-// Exercises the CUDA small-M batched GEMV tiles for 8-bit: CtaM in {2,4,8} (M=3,5 hit the row-skip
-// path) and CtaN in {1,2} (N divisible / not divisible by 16). 8-bit caps the batched path at M=5.
-TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
+template <typename T>
+void TestInt8SmallMBatchedTiles() {
   constexpr float abs_error = 0.1f;
   constexpr float rel_error = 0.02f;
-  for (auto block_size : {32, 128}) {
+  for (auto block_size : {16, 32, 64, 128, 256}) {
     for (auto m : {2, 3, 4, 5}) {
       for (auto n : {256, 24}) {  // N=256 -> CtaN=2, N=24 -> CtaN=1
         for (auto has_zeropoint : {false, true}) {
@@ -922,11 +926,118 @@ TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
           opts.zp_is_typed = false;
           opts.output_abs_error = abs_error;
           opts.output_rel_error = rel_error;
-          RunTest8Bits<MLFloat16>(opts);
+          RunTest8Bits<T>(opts);
         }
       }
     }
   }
+}
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Int8SmallMDispatchEligibility) {
+  using onnxruntime::contrib::cuda::IsMatMul8BitsSmallM;
+
+  constexpr int n = 200064;
+  constexpr int k = 3584;
+  constexpr int block_size = 64;
+
+  EXPECT_FALSE(IsMatMul8BitsSmallM(0, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(1, n, k, block_size, 80, false));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(5, n, k, block_size, 80, false));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(6, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(7, n, k, block_size, 121, true));
+  EXPECT_TRUE(IsMatMul8BitsSmallM(8, n, k, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(9, n, k, block_size, 121, true));
+
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 120, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 89, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 80, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, block_size, 121, false));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n + 8, k, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k + 8, block_size, 121, true));
+  EXPECT_FALSE(IsMatMul8BitsSmallM(8, n, k, 32, 121, true));
+}
+
+TEST(MatMulNBits, Fp16_Int8_Sm121QualifiedM6To8) {
+  if (GetCudaArchitecture() != 1210) {
+    GTEST_SKIP() << "The M=6..8 dispatch is qualified only on SM121";
+  }
+
+  constexpr int64_t n = 200064;
+  constexpr int64_t k = 3584;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t blocks_per_k = k / block_size;
+  const auto one = MLFloat16(1.0f);
+
+  for (const int64_t m : {6, 7, 8}) {
+    std::vector<MLFloat16> activations(static_cast<size_t>(m * k));
+    std::vector<MLFloat16> expected(static_cast<size_t>(m * n));
+    for (int64_t row = 0; row < m; ++row) {
+      const auto activation_value = MLFloat16(static_cast<float>(row + 1));
+      const auto expected_value = MLFloat16(static_cast<float>((row + 1) * k));
+      std::fill_n(activations.begin() + static_cast<size_t>(row * k),
+                  static_cast<size_t>(k), activation_value);
+      std::fill_n(expected.begin() + static_cast<size_t>(row * n),
+                  static_cast<size_t>(n), expected_value);
+    }
+
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("bits", QBits);
+    test.AddAttribute<int64_t>("accuracy_level", 0);
+
+    test.AddInput<MLFloat16>("A", {m, k}, activations, false);
+    test.AddInput<uint8_t>("B", {n, blocks_per_k, block_size},
+                           std::vector<uint8_t>(static_cast<size_t>(n * k), 129), true);
+    test.AddInput<MLFloat16>("scales", {n, blocks_per_k},
+                             std::vector<MLFloat16>(n * blocks_per_k, one), true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<MLFloat16>();
+    test.AddOutput<MLFloat16>("Y", {m, n}, expected);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+}
+#endif
+
+template <typename T>
+void TestInt8SmallMFallback() {
+  for (auto n : {256, 24}) {
+    for (auto has_zeropoint : {false, true}) {
+      TestOptions8Bits opts{};
+      opts.M = 9, opts.N = n, opts.K = 1024;
+      opts.block_size = 64;
+      opts.has_zero_point = has_zeropoint;
+      opts.zp_is_typed = false;
+      opts.output_abs_error = 0.1f;
+      opts.output_rel_error = 0.02f;
+      RunTest8Bits<T>(opts);
+    }
+  }
+}
+
+// Exercises every CUDA small-M batched GEMV tile for 8-bit: CtaM in {2,4,8} (odd row counts hit
+// the row-skip path), CtaN in {1,2}, and every supported block size.
+TEST(MatMulNBits, Float32_Int8_SmallMBatchedTiles) {
+  TestInt8SmallMBatchedTiles<float>();
+}
+
+TEST(MatMulNBits, Fp16_Int8_SmallMBatchedTiles) {
+  TestInt8SmallMBatchedTiles<MLFloat16>();
+}
+
+TEST(MatMulNBits, Float32_Int8_SmallMFallback) {
+  TestInt8SmallMFallback<float>();
+}
+
+TEST(MatMulNBits, Fp16_Int8_SmallMFallback) {
+  TestInt8SmallMFallback<MLFloat16>();
 }
 
 TEST(MatMulNBits, BFloat16_Int8_SmallMBatchedTiles) {
@@ -934,24 +1045,15 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMBatchedTiles) {
     GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
   }
 
-  constexpr float abs_error = 0.1f;
-  constexpr float rel_error = 0.02f;
-  for (auto block_size : {32, 128}) {
-    for (auto m : {2, 3, 4, 5}) {
-      for (auto n : {256, 24}) {
-        for (auto has_zeropoint : {false, true}) {
-          TestOptions8Bits opts{};
-          opts.M = m, opts.N = n, opts.K = 1024;
-          opts.block_size = block_size;
-          opts.has_zero_point = has_zeropoint;
-          opts.zp_is_typed = false;
-          opts.output_abs_error = abs_error;
-          opts.output_rel_error = rel_error;
-          RunTest8Bits<BFloat16>(opts);
-        }
-      }
-    }
+  TestInt8SmallMBatchedTiles<BFloat16>();
+}
+
+TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
   }
+
+  TestInt8SmallMFallback<BFloat16>();
 }
 #endif
 

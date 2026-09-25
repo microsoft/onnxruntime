@@ -23,6 +23,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/int4.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/resource_accountant.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -2971,6 +2972,44 @@ TEST_F(GraphTransformationTests, LabelEncoderFusion) {
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
+TEST_F(GraphTransformationTests, LabelEncoderFusionIgnoresMismatchedEmptyAttribute) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/label_encoder.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  Node* target = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() != "LabelEncoder" || node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    auto& next_node = *node.OutputNodesBegin();
+    const auto& node_attributes = node.GetAttributes();
+    const auto& next_attributes = next_node.GetAttributes();
+    if (next_node.OpType() == "LabelEncoder" &&
+        node_attributes.find("values_strings") != node_attributes.end() &&
+        next_attributes.find("keys_strings") != next_attributes.end() &&
+        next_attributes.find("values_int64s") != next_attributes.end() &&
+        next_attributes.find("values_strings") == next_attributes.end()) {
+      target = graph.GetNode(next_node.Index());
+      break;
+    }
+  }
+
+  ASSERT_NE(target, nullptr);
+  target->AddAttribute("values_strings", std::vector<std::string>{});
+
+  GraphTransformerManager transformer_manager{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("LabelEncoderFusionTest");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<LabelEncoderFusion>()));
+  ASSERT_STATUS_OK(transformer_manager.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(transformer_manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count.at("ai.onnx.ml.LabelEncoder"), 7);
+}
+
 TEST_F(GraphTransformationTests, NotWhereFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/not_where.onnx";
   std::shared_ptr<Model> model;
@@ -4383,6 +4422,32 @@ TEST_F(GraphTransformationTests, WebGpuIm2ColConvClipFusionMatchesUnfusedResults
   };
   RunWebGpuIm2ColActivationParity(add_clip, "Clip", 17);
 }
+
+// Build the exporter pattern consumed by QuickGeluFusion: x * sigmoid(alpha * x).
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluFusionMatchesUnfusedResults) {
+  auto add_quick_gelu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    // alpha must match the fp16 tensor type this path requires.
+    auto* alpha = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.4f));
+    auto* scaled = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {conv_out, alpha}, {scaled});
+    builder.AddNode("Sigmoid", {scaled}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_quick_gelu, "QuickGelu", 17);
+}
+
+// x * sigmoid(x) fuses to QuickGelu with alpha 1, which selects the shader variant that drops
+// both the multiply and activation_param_0. Without this case the alpha-1 template branch is
+// never compiled, so a stale uniform reference in it would not be caught.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluUnitAlphaFusionMatchesUnfusedResults) {
+  auto add_silu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Sigmoid", {conv_out}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_silu, "QuickGelu", 17);
+}
 #endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -5410,6 +5475,122 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
   auto new_input_defs = node.InputDefs();
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTranspose) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{3, 4}});
+    auto* weight = builder.MakeInput<float>({{4, 5}});
+    auto* transposed_weight = builder.MakeIntermediate<float>(std::vector<int64_t>{4, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    builder.AddNode("Transpose", {weight}, {transposed_weight}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    auto& gemm = builder.AddNode("Gemm", {input, transposed_weight}, {output});
+    gemm.AddAttribute("transA", int64_t{0});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 1.0f);
+    gemm.AddAttribute("beta", 1.0f);
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTransposeAtOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4, 3}}, "A");
+    auto* weight = builder.MakeInput<float>({{4, 5}}, "B");
+    auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    auto& gemm = builder.AddNode("Gemm", {input, weight}, {gemm_output});
+    gemm.AddAttribute("transA", int64_t{1});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 2.0f);
+    gemm.AddAttribute("beta", 3.0f);
+    builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Gemm") {
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == 1);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == 0);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+        TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+        TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionPreservesIdentityOutputWhenFusingInput) {
+  for (bool transpose_input_b : {false, true}) {
+    SCOPED_TRACE(transpose_input_b);
+    auto build_test_case = [transpose_input_b](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{3, 4}
+                                                               : std::vector<int64_t>{4, 3},
+                                             "A");
+      auto* weight = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{5, 4}
+                                                                : std::vector<int64_t>{4, 5},
+                                              "B");
+      auto* transposed_input = builder.MakeIntermediate();
+      auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+      builder.AddNode("Transpose", {transpose_input_b ? weight : input}, {transposed_input})
+          .AddAttribute("perm", std::vector<int64_t>{1, 0});
+      auto& gemm = builder.AddNode("Gemm", {transpose_input_b ? input : transposed_input, transpose_input_b ? transposed_input : weight},
+                                   {gemm_output});
+      gemm.AddAttribute("transA", int64_t{0});
+      gemm.AddAttribute("transB", int64_t{0});
+      gemm.AddAttribute("alpha", 2.0f);
+      gemm.AddAttribute("beta", 3.0f);
+      builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    };
+
+    auto check_graph = [transpose_input_b](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Gemm") {
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == (transpose_input_b ? 0 : 1));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == (transpose_input_b ? 1 : 0));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+          TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+          TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+        } else if (node.OpType() == "Transpose") {
+          const auto perm = RetrieveValues<int64_t>(node.GetAttributes().at("perm"));
+          TEST_RETURN_IF_NOT(perm == std::vector<int64_t>({0, 1}));
+          TEST_RETURN_IF_NOT(graph.NodeProducesGraphOutput(node));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, nullptr, check_graph));
+  }
 }
 
 // (A')'B' = AB' where transpose has multiple consumers
@@ -10033,6 +10214,71 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
                            1, 0, 1);
 }
 
+TEST_F(GraphTransformationTests, BitmaskDropoutReplacementTransfersWorkspaceReservations) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(
+      MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx",
+      model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  constexpr size_t kDropoutReservationBytes = 11;
+  constexpr size_t kDropoutGradReservationBytes = 17;
+  NodeWorkspaceReservationMap reservations;
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Dropout") {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+      reservations.insert_or_assign(
+          node.Index(),
+          WorkspaceEstimateSelection{
+              kDropoutReservationBytes, WorkspaceEstimateSource::kEstimator});
+    } else if (node.OpType() == "DropoutGrad") {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+      reservations.insert_or_assign(
+          node.Index(),
+          WorkspaceEstimateSelection{
+              kDropoutGradReservationBytes, WorkspaceEstimateSource::kEstimator});
+    }
+  }
+  ASSERT_EQ(reservations.size(), 2U);
+
+  graph.SetNodeReplacementCallback(
+      [&reservations](const Graph&,
+                      gsl::span<const NodeIndex> source_node_indices,
+                      NodeIndex destination_node_index) {
+        ConsolidateWorkspaceReservations(
+            reservations, source_node_indices, destination_node_index);
+      });
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<BitmaskDropoutReplacement>(),
+      TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(
+      graph, TransformerLevel::Level2, *logger_));
+  graph.SetNodeReplacementCallback({});
+
+  const Node* bitmask_dropout_node = nullptr;
+  const Node* bitmask_dropout_grad_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "BitmaskDropout") {
+      bitmask_dropout_node = &node;
+    } else if (node.OpType() == "BitmaskDropoutGrad") {
+      bitmask_dropout_grad_node = &node;
+    }
+  }
+
+  ASSERT_NE(bitmask_dropout_node, nullptr);
+  ASSERT_NE(bitmask_dropout_grad_node, nullptr);
+  ASSERT_EQ(reservations.size(), 2U);
+  EXPECT_EQ(
+      reservations.at(bitmask_dropout_node->Index()).bytes,
+      kDropoutReservationBytes);
+  EXPECT_EQ(
+      reservations.at(bitmask_dropout_grad_node->Index()).bytes,
+      kDropoutGradReservationBytes);
+}
+
 /*
 This test build a graph like:
              input0  input1
@@ -10672,6 +10918,50 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(alpha_attr->second.f(), pow(scale_value, num_scales));
         });
   }
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionTransfersWorkspaceReservations) {
+  WorkspaceReservationMap reservations;
+  size_t reserved_bytes = 0;
+  constexpr size_t bytes_per_node = 64;
+
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx", *logger_,
+      [&](Graph& graph) {
+        auto& graph_reservations = reservations[&graph];
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCudaExecutionProvider);
+          if (node.OpType() == "MatMul" || node.OpType() == "Mul" || node.OpType() == "Div") {
+            graph_reservations.insert_or_assign(
+                node.Index(),
+                WorkspaceEstimateSelection{bytes_per_node, WorkspaceEstimateSource::kEstimator});
+            reserved_bytes += bytes_per_node;
+          }
+        }
+        graph.SetNodeReplacementCallback(
+            [&reservations](const Graph& modified_graph,
+                            gsl::span<const NodeIndex> source_node_indices,
+                            NodeIndex destination_node_index) {
+              auto graph_it = reservations.find(&modified_graph);
+              ASSERT_NE(graph_it, reservations.end());
+              ConsolidateWorkspaceReservations(
+                  graph_it->second, source_node_indices, destination_node_index);
+            });
+      },
+      [&](Graph& graph, const auto&, const auto&) {
+        const auto fused_node = std::find_if(
+            graph.Nodes().cbegin(), graph.Nodes().cend(),
+            [](const Node& node) { return node.OpType() == "FusedMatMul"; });
+        ASSERT_NE(fused_node, graph.Nodes().cend());
+
+        const auto& graph_reservations = reservations.at(&graph);
+        ASSERT_EQ(graph_reservations.size(), 1U);
+        const auto reservation_it = graph_reservations.find(fused_node->Index());
+        ASSERT_NE(reservation_it, graph_reservations.end());
+        EXPECT_EQ(reservation_it->second.bytes, reserved_bytes);
+        graph.SetNodeReplacementCallback({});
+      },
+      {kCudaExecutionProvider});
 }
 
 TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {

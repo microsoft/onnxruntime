@@ -346,6 +346,39 @@ TEST(FunctionTest, CallInConditional) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
+// A model-local function that declares zero inputs must not be invoked with
+// actual inputs.
+TEST(FunctionTest, RejectsZeroInputFunctionCalledWithInput) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[1] y)
+        {
+            y = local.zerofun (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        zerofun () => (ly) {
+            ly = Constant <value = float[1] {2.0}> ()
+        }
+        )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  const auto status = session_object.Load(sstr);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("declares no inputs"));
+}
+
 TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
   const char* code = R"(
         <
@@ -443,6 +476,63 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
 
 // --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
 // These test the cycle detection algorithm directly without constructing ONNX models.
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionModel(size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* nodes = model_proto.add_functions()->mutable_node();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = nodes->Add();
+    auto* attr = node->add_attribute();
+    if (use_graphs_attribute) {
+      nodes = attr->add_graphs()->mutable_node();
+    } else {
+      nodes = attr->mutable_g()->mutable_node();
+    }
+  }
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionDefaultAttributeModel(
+    size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* function = model_proto.add_functions();
+  auto* attr = function->add_attribute_proto();
+  auto* graph = use_graphs_attribute ? attr->add_graphs() : attr->mutable_g();
+  for (size_t i = 1; i < depth; ++i) {
+    auto* node = graph->add_node();
+    attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, LocalFunctionSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
+
+TEST(FunctionTest, LocalFunctionDefaultAttributeSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
 
 TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
   onnxruntime::LocalFunctionCallGraph call_graph;
@@ -1223,6 +1313,59 @@ TEST(FunctionTest, InlinedNodesInheritDistinctAnnotationsPerCallSite) {
   }
   EXPECT_TRUE(found_a) << "No node found with AnnotationA";
   EXPECT_TRUE(found_b) << "No node found with AnnotationB";
+}
+
+static ONNX_NAMESPACE::FunctionProto MakeIdentityFunction(
+    const std::string& domain, const std::string& name, const std::string& overload = {}) {
+  ONNX_NAMESPACE::FunctionProto function;
+  function.set_domain(domain);
+  function.set_name(name);
+  function.set_overload(overload);
+  function.add_input("x");
+  function.add_output("y");
+  auto* opset = function.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(17);
+  auto* node = function.add_node();
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  return function;
+}
+
+TEST(FunctionTest, RejectDuplicateFunctionIdentifiersFromModelProto) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(10);
+  auto* default_opset = model_proto.add_opset_import();
+  default_opset->set_domain("");
+  default_opset->set_version(17);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+  model_proto.mutable_graph()->set_name("duplicate_functions");
+  *model_proto.add_functions() = MakeIdentityFunction("local", "myfun");
+  *model_proto.add_functions() = MakeIdentityFunction("local", "myfun");
+
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  const auto status = session.Load(serialized_model.data(), static_cast<int>(serialized_model.size()));
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Duplicate model-local function identifier"));
+}
+
+TEST(FunctionTest, RejectDuplicateFunctionIdentifiersFromFunctionVector) {
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions{
+      MakeIdentityFunction("local", "myfun", "same_overload"),
+      MakeIdentityFunction("local", "myfun", "same_overload")};
+  const std::unordered_map<std::string, int> domain_to_version{{"", 17}, {"local", 1}};
+
+  EXPECT_THROW(
+      Model("duplicate_functions", false, ModelMetaData(), PathString(),
+            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, functions,
+            DefaultLoggingManager().DefaultLogger()),
+      OnnxRuntimeException);
 }
 
 // Test that overloaded functions (IR version 10+) are resolved correctly.

@@ -19,6 +19,7 @@
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -41,8 +42,7 @@ enum class WeightTypeId {
 constexpr int32_t FP16_BITS = 16;
 constexpr int32_t INT8_BITS = 8;
 constexpr int32_t INT4_BITS = 4;
-constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
-constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
+constexpr int32_t INT2_BITS = 2;
 
 // Comma-separated list of M buckets to profile for MatMulNBits/fpA_intB. Overrides the default
 // reduced bucket set. Example: ORT_FPA_INTB_PROFILE_M="1,8,64,512".
@@ -51,6 +51,14 @@ constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
 // Default top M that bounds the initial profile sweep when no override is given. Larger runtime
 // M values are handled by lazy single-bucket profiling.
 constexpr int kDefaultProfileMaxM = 2048;
+
+// Computes the single temporary CUDA allocation used while profiling tactics.
+// `packed_n` is the number of 16-bit elements that hold one packed weight row.
+// This pure-math helper is shared by the runtime profiler and partition-time
+// memory estimation so their allocation formulas cannot drift.
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes);
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
@@ -62,6 +70,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
   static std::vector<int> ParseProfileMList(const std::string& value);
+
+  // Returns the exact initial bucket set used by construction-time profiling.
+  static std::vector<int> GetInitialProfileMBuckets(
+      int min_m, int max_m, const std::vector<int>& profile_m_override);
 
   // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
   // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.

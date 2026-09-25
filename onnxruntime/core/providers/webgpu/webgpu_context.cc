@@ -78,6 +78,17 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
+    adapter_index_ = config.adapter_index;
+    adapter_power_preference_ = config.power_preference;
+    adapter_backend_type_ = config.backend_type;
+
+    ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
+                "adapterIndex cannot be used with an externally supplied WebGPU device.");
+
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+    ORT_ENFORCE(!config.adapter_index,
+                "adapterIndex requires a native Dawn build with adapter enumeration support.");
+#endif
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -109,33 +120,50 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
-      // Capture adapter request result without throwing inside the Dawn callback.
-      // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
-      // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
-      // OrtEnv teardown via EventManager::ShutDown()).
-      struct RequestAdapterResult {
-        wgpu::RequestAdapterStatus status = wgpu::RequestAdapterStatus::Error;
-        wgpu::Adapter adapter;
-        std::string message;
-      };
-      RequestAdapterResult adapter_result;
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
-                                                                     &req_adapter_options,
-                                                                     wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
-                                                                        RequestAdapterResult* result) noexcept {
-                                                                       result->status = status;
-                                                                       if (status == wgpu::RequestAdapterStatus::Success) {
-                                                                         result->adapter = std::move(adapter);
-                                                                       } else {
-                                                                         result->message = std::string{message};
-                                                                       }
-                                                                     },
-                                                                     &adapter_result),
-                                                                 UINT64_MAX));
-      ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
-                  "Failed to get a WebGPU adapter: ", adapter_result.message);
-      wgpu::Adapter adapter = std::move(adapter_result.adapter);
+      wgpu::Adapter adapter;
+      if (config.adapter_index) {
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+        dawn::native::Instance native_instance(
+            reinterpret_cast<dawn::native::InstanceBase*>(instance_.Get()));
+        const auto adapters = native_instance.EnumerateAdapters(&req_adapter_options);
+        ORT_ENFORCE(*config.adapter_index < adapters.size(),
+                    "WebGPU adapterIndex ", *config.adapter_index,
+                    " is out of range; Dawn enumerated ", adapters.size(),
+                    " adapter(s) for the requested backend and power-preference hint.");
+        adapter = wgpu::Adapter(adapters[*config.adapter_index].Get());
+        LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
+                           << " of " << adapters.size()
+                           << " adapter(s) for the requested backend and power-preference hint.";
+#endif
+      } else {
+        // Capture adapter request result without throwing inside the Dawn callback.
+        // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
+        // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
+        // OrtEnv teardown via EventManager::ShutDown()).
+        struct RequestAdapterResult {
+          wgpu::RequestAdapterStatus status = wgpu::RequestAdapterStatus::Error;
+          wgpu::Adapter adapter;
+          std::string message;
+        };
+        RequestAdapterResult adapter_result;
+        ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
+                                                                       &req_adapter_options,
+                                                                       wgpu::CallbackMode::WaitAnyOnly,
+                                                                       [](wgpu::RequestAdapterStatus status, wgpu::Adapter requested_adapter, wgpu::StringView message,
+                                                                          RequestAdapterResult* result) noexcept {
+                                                                         result->status = status;
+                                                                         if (status == wgpu::RequestAdapterStatus::Success) {
+                                                                           result->adapter = std::move(requested_adapter);
+                                                                         } else {
+                                                                           result->message = std::string{message};
+                                                                         }
+                                                                       },
+                                                                       &adapter_result),
+                                                                   UINT64_MAX));
+        ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
+                    "Failed to get a WebGPU adapter: ", adapter_result.message);
+        adapter = std::move(adapter_result.adapter);
+      }
       ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
       // Create wgpu::Device
@@ -216,6 +244,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
+    if (max_storage_buffer_binding_size_ != 0) {
+      device_limits_.maxStorageBufferBindingSize =
+          std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
+    }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -275,6 +307,20 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         << ". Requested value "
         << config.max_num_pending_dispatches
         << " will be ignored.";
+  }
+
+  if (config.adapter_index &&
+      (config.adapter_index != adapter_index_ ||
+       config.power_preference != adapter_power_preference_ ||
+       config.backend_type != adapter_backend_type_)) {
+    ORT_THROW("WebGPU context is already initialized with adapterIndex=",
+              adapter_index_ ? std::to_string(*adapter_index_) : "automatic",
+              ", powerPreference=", adapter_power_preference_,
+              ", dawnBackendType=", adapter_backend_type_,
+              ". Requested selector has adapterIndex=", *config.adapter_index,
+              ", powerPreference=", config.power_preference,
+              ", dawnBackendType=", config.backend_type,
+              " and cannot be applied to the existing device. Use a separate process or an externally supplied custom context/device.");
   }
 
   if (config.enable_robustness_explicitly_set) {
@@ -675,17 +721,26 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
+  const size_t total_buffer_count =
+      std::count_if(inputs_segments.begin(), inputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      std::count_if(outputs_segments.begin(), outputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
   std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(total_buffer_count);
   bind_buffers_segments.reserve(total_buffer_count);
   for (size_t i = 0; i < inputs.size(); i++) {
+    if (inputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
     bind_buffers_segments.push_back(inputs_segments[i]);
   }
   for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
     bind_buffers_segments.push_back(outputs_segments[i]);
   }
@@ -821,8 +876,8 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
   required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
 
-  if (max_storage_buffer_binding_size_ == 0) {
-    // If not set by the user, use the adapter limit.
+  if (max_storage_buffer_binding_size_ < kWebGpuGuaranteedMaxStorageBufferBindingSize) {
+    // Lower values are applied as a logical segmentation limit after device creation.
     required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
   } else {
     required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;
@@ -1258,7 +1313,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode,
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size));
+                                                                    config.max_storage_buffer_binding_size,
+                                                                    config.test_only_max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

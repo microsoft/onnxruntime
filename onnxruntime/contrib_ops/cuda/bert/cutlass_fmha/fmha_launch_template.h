@@ -74,7 +74,9 @@ struct RightPaddingBatchHook {
           batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
     }
 
-    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+    if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight ||
+        (p.custom_mask_type == AttentionKernel::NoCustomMask && p.window_size > 0)) {
+      // Keep a non-causal left window anchored to the bottom-right query position.
       // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
       // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
@@ -97,7 +99,8 @@ struct RightPaddingBatchHook {
     // 15/16th of tensor core compute In that case :
     //  - we only launch kernels for head_id % kQueriesPerBlock == 0
     //  - we iterate over heads instead of queries (strideM = strideH)
-    if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
+    // A local window must not treat these head rows as different query positions.
+    if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0 && p.window_size <= 0) {
       if (head_id % kQueriesPerBlock != 0)
         return false;
       p.q_strideM = p.q_strideH;
