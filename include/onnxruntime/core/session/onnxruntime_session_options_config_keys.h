@@ -388,8 +388,8 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 // file path or from a memory buffer/stream. All external data files must be in the same folder.
 // Typical uses include loading models with external data from memory, sharing a weights file
 // across models, and weightless/cache models whose weights live outside the model directory.
-// For EPContext workflows, also set kOrtSessionOptionEpContextFilePath so the EPContext
-// model location remains available for resolving an external EP context binary.
+// For EPContext models loaded from memory or a stream, also set kOrtSessionOptionEpContextFilePath
+// so the EPContext model location remains available for resolving an external EP context binary.
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
@@ -520,8 +520,8 @@ static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 // During inference, EPs use this path to resolve an external EP context binary whose
 // relative path is stored in an EPContext node's ep_cache_context attribute.
 // To resolve an external EP context binary, set this option when the model path is
-// unavailable or when kOrtSessionOptionsModelExternalInitializersFileFolderPath overrides
-// it with a different directory. Specifying both paths is recommended for EPContext workflows.
+// unavailable. For file-path EPContext model loads, ONNX Runtime uses the model path by default
+// when kOrtSessionOptionsModelExternalInitializersFileFolderPath overrides external initializer lookup.
 // A folder is not a valid value.
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
