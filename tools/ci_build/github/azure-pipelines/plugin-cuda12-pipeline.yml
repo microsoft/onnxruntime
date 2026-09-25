@@ -86,7 +86,7 @@ extends:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
     pool:
-      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      name: onnxruntime-Win-CPU-2022
       os: windows
 
     stages:
@@ -98,7 +98,7 @@ extends:
         - job: Validate
           displayName: 'Validate parameter combinations'
           pool:
-            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            name: onnxruntime-Win-CPU-2022
             os: windows
           steps:
           - checkout: none
