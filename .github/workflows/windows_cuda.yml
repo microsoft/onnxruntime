@@ -108,22 +108,50 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
-      - name: Build and Clean Binaries
+      - name: Configure build
         working-directory: ${{ runner.temp }}
         run: |
           npm install -g typescript
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
+        shell: pwsh
 
-          $cudaTestModule = Join-Path $env:OnnxRuntimeBuildDirectory "RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_cuda_ut.dll"
-          if (-not (Test-Path -LiteralPath $cudaTestModule -PathType Leaf)) {
-            throw "CUDA EP internal tests were requested, but the build did not produce $cudaTestModule"
+      - name: Verify targeted provider-test build
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path $env:OnnxRuntimeBuildDirectory "RelWithDebInfo"
+          $binaryDir = Join-Path $buildDir "RelWithDebInfo"
+          $testBinaries = @("onnxruntime_provider_test.exe", "onnxruntime_providers_cuda_ut.dll")
+          foreach ($binary in $testBinaries) {
+            $path = Join-Path $binaryDir $binary
+            if (Test-Path -LiteralPath $path) {
+              throw "The targeted-build check requires fresh outputs, but $path already exists."
+            }
+          }
+
+          cmake --build "$buildDir" --config RelWithDebInfo --target onnxruntime_provider_test --parallel
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          foreach ($binary in $testBinaries) {
+            $path = Join-Path $binaryDir $binary
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Building only onnxruntime_provider_test did not produce $path"
+            }
+          }
+
+      - name: Build and Clean Binaries
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
           }
 
           # Clean up the output directory before uploading artifacts
