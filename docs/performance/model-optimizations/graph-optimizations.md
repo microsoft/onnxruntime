@@ -56,7 +56,13 @@ These are semantics-preserving graph rewrites which remove redundant nodes and r
 
 ### Extended Graph Optimizations
 
-These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU or CUDA or ROCm execution provider. Available extended graph optimizations are as follows:
+These optimizations include complex node fusions. They are run after graph partitioning and are only applied
+to the nodes assigned to the CPU or CUDA or ROCm execution provider. Because extended optimizations run after
+graph partitioning, their results depend on the execution providers selected for the session. If you serialize
+an optimized model in offline mode with extended optimizations enabled, generate that model with the same
+execution providers and target hardware used for inference.
+
+Available extended graph optimizations are as follows:
 
 | Optimization                    | Execution Provider | Comment                                                                     |
 |---------------------------------|--------------------|-----------------------------------------------------------------------------|
