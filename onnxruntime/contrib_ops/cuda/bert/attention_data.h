@@ -7,6 +7,7 @@
 #include <iostream>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {

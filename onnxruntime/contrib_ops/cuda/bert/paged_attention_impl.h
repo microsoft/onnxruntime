@@ -22,6 +22,14 @@ Status QkvToContext(
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<T, TCACHE>& data);
 
+template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query);
+
 template <typename T>
 Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                                  const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
