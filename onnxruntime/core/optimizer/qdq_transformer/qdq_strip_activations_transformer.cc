@@ -23,7 +23,8 @@ namespace {
 // consumers. Handles graph outputs. Returns true if the pair was removed.
 // This handles Q -> multiple DQ (each DQ with single consumer), following the pattern in qdq_final_cleanup.cc.
 bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
-  if (!QDQ::MatchQNode(q_node) || q_node.GetOutputEdgesCount() < 1) {
+  if (!QDQ::MatchQNode(q_node) || q_node.GetOutputEdgesCount() < 1 ||
+      graph.NodeProducesGraphOutput(q_node)) {
     return false;
   }
 
@@ -202,13 +203,8 @@ Status QDQStripActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
       if (selection.has_value()) {
         NodesToOptimize nto(graph, *selection);
         if (nto.IsValid()) {
-          auto status = dq_matmul_action.Run(graph, nto);
-          if (status.IsOK()) {
-            modified = true;
-            continue;
-          }
-          LOGS(logger, WARNING) << "QDQStripActivationsTransformer: DQMatMulToMatMulNBits action failed: "
-                                << status.ErrorMessage();
+          ORT_RETURN_IF_ERROR(dq_matmul_action.Run(graph, nto));
+          modified = true;
         }
       }
     }

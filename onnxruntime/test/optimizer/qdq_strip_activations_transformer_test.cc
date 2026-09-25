@@ -210,6 +210,32 @@ TEST(QDQStripActivationsTransformerTests, RemoveQDQPairWithGraphOutput) {
                             true /*enable_strip_activations*/);
 }
 
+// Test: Q producing a graph output must not be removed, even if it also feeds a DQ.
+// Graph: Input -> Q -> (graph output)
+//                   -> DQ -> Relu -> (graph output)
+TEST(QDQStripActivationsTransformerTests, PreserveQDQPairWhenQProducesGraphOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 4, 8}, -1.f, 1.f);
+    auto* quantized_output = builder.MakeOutput();
+    auto* float_output = builder.MakeOutput();
+
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_arg, kTestScale, kTestZp, quantized_output);
+    builder.AddDequantizeLinearNode<uint8_t>(quantized_output, kTestScale, kTestZp, dq_output);
+    builder.AddNode("Relu", {dq_output}, {float_output});
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["Relu"], 1);
+  };
+
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
+}
+
 // Test: Multiple chained Q->DQ pairs all removed
 // Graph: Input -> Q -> DQ -> Relu -> Q -> DQ -> Sigmoid -> Output
 // Expected: Input -> Relu -> Sigmoid -> Output
