@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cstddef>
+#include <array>
 #include <cstdint>
 #include <optional>
 
 #include "gtest/gtest.h"
 
-#include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 
 namespace onnxruntime {
@@ -17,50 +16,60 @@ TEST(SubgroupMatrixConfigTest, RequiredSubgroupSizeCompatibility) {
   using webgpu::IsSubgroupSizeSupported;
 
   EXPECT_TRUE(IsSubgroupSizeSupported(32, 32, 32, false));  // NVIDIA and Apple fixed-size adapters
+  EXPECT_TRUE(IsSubgroupSizeSupported(64, 64, 64, false));  // Fixed wave64 adapters
   EXPECT_TRUE(IsSubgroupSizeSupported(32, 64, 32, true));   // AMD variable-size adapter
-  EXPECT_TRUE(IsSubgroupSizeSupported(16, 32, 32, true));   // Intel variable-size adapter
+  EXPECT_TRUE(IsSubgroupSizeSupported(32, 64, 64, true));
+  EXPECT_TRUE(IsSubgroupSizeSupported(16, 32, 32, true));  // Intel variable-size adapter
 
   EXPECT_FALSE(IsSubgroupSizeSupported(32, 64, 32, false));
+  EXPECT_FALSE(IsSubgroupSizeSupported(32, 64, 64, false));
   EXPECT_FALSE(IsSubgroupSizeSupported(64, 64, 32, true));
   EXPECT_FALSE(IsSubgroupSizeSupported(16, 16, 32, true));
   EXPECT_FALSE(IsSubgroupSizeSupported(64, 32, 32, true));
 }
 
-TEST(SubgroupMatrixConfigTest, OperationPreferenceSelectsFromAllCandidates) {
-  using webgpu::supported_subgroup_matrix_configs;
-  using webgpu::detail::SelectSubgroupMatrixConfigFromCandidates;
+TEST(SubgroupMatrixConfigTest, OperationPreferenceSelectsFromAdapterConfigs) {
+  using webgpu::SubgroupMatrixConfig;
+  using webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs;
 
-  const auto find_index = [](uint32_t m, uint32_t n, uint32_t k, uint32_t subgroup_size) {
-    for (size_t i = 0; i < supported_subgroup_matrix_configs.size(); ++i) {
-      const auto& config = supported_subgroup_matrix_configs[i];
-      if (config.Is(m, n, k) && config.subgroupSize == subgroup_size) {
-        return static_cast<int32_t>(i);
-      }
-    }
-    return int32_t{-1};
-  };
+  constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+  constexpr auto kF32 = wgpu::SubgroupMatrixComponentType::F32;
+  // Deliberately scramble adapter order. The operation preference must decide which valid kernel wins.
+  const std::array<wgpu::SubgroupMatrixConfig, 4> adapter_configs{{
+      {kF16, kF16, 8, 8, 8},
+      {kF16, kF16, 16, 16, 16},
+      {kF32, kF32, 8, 8, 8},
+      {kF16, kF16, 8, 16, 16},
+  }};
 
-  const int32_t matmul_nbits = find_index(16, 16, 16, 32);
-  const int32_t intel = find_index(8, 16, 16, 32);
-  const int32_t apple = find_index(8, 8, 8, 32);
-  ASSERT_GE(matmul_nbits, 0);
-  ASSERT_GE(intel, 0);
-  ASSERT_GE(apple, 0);
+  const auto prefer_wave64 = SelectSubgroupMatrixConfigFromAdapterConfigs(
+      adapter_configs, 32, 64, true,
+      {{kF16, kF16, 16, 16, 16, 64, true}, {kF16, kF16, 16, 16, 16, 32, false}});
+  ASSERT_TRUE(prefer_wave64.has_value());
+  EXPECT_EQ(prefer_wave64->subgroupSize, 64u);
+  EXPECT_TRUE(prefer_wave64->needsPrepack);
 
-  // Deliberately scramble candidate order. The operation preference, rather than candidate or
-  // global table order, must decide which valid kernel wins.
-  const InlinedVector<int32_t, 3> candidates{matmul_nbits, apple, intel};
-  const auto prefer_intel =
-      SelectSubgroupMatrixConfigFromCandidates(candidates, {{8, 16, 16, 32}, {16, 16, 16, 32}});
+  const auto prefer_wave32 = SelectSubgroupMatrixConfigFromAdapterConfigs(
+      adapter_configs, 32, 64, true,
+      {{kF16, kF16, 16, 16, 16, 32, false}, {kF16, kF16, 16, 16, 16, 64, true}});
+  ASSERT_TRUE(prefer_wave32.has_value());
+  EXPECT_EQ(prefer_wave32->subgroupSize, 32u);
+  EXPECT_FALSE(prefer_wave32->needsPrepack);
+
+  const auto prefer_intel = SelectSubgroupMatrixConfigFromAdapterConfigs(
+      adapter_configs, 32, 64, true,
+      {{kF16, kF16, 8, 16, 16, 32, true}, {kF16, kF16, 16, 16, 16, 32, true}});
   ASSERT_TRUE(prefer_intel.has_value());
-  EXPECT_EQ(*prefer_intel, intel);
+  EXPECT_TRUE(prefer_intel->Is(8, 16, 16));
 
-  const auto prefer_matmul_nbits =
-      SelectSubgroupMatrixConfigFromCandidates(candidates, {{16, 16, 16, 32}, {8, 16, 16, 32}});
-  ASSERT_TRUE(prefer_matmul_nbits.has_value());
-  EXPECT_EQ(*prefer_matmul_nbits, matmul_nbits);
+  const auto select_f32 = SelectSubgroupMatrixConfigFromAdapterConfigs(
+      adapter_configs, 32, 32, false, {{kF32, kF32, 8, 8, 8, 32, false}});
+  ASSERT_TRUE(select_f32.has_value());
+  EXPECT_EQ(select_f32->componentType, kF32);
 
-  EXPECT_EQ(SelectSubgroupMatrixConfigFromCandidates(candidates, {{8, 8, 8, 64}}), std::nullopt);
+  EXPECT_EQ(SelectSubgroupMatrixConfigFromAdapterConfigs(
+                adapter_configs, 32, 32, false, {{kF16, kF16, 16, 16, 16, 64, true}}),
+            std::nullopt);
 }
 
 }  // namespace test
