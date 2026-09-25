@@ -492,6 +492,10 @@ present. `ComputeInternal` then:
   remains named `onnxruntime_provider_test.exe`, and the CTest name remains
   `onnxruntime_provider_test`. The default build also includes both artifacts.
 
+  Windows CUDA CI requires the internal-test DLL to be produced and runs
+  `CUDA_EP_Unittest.All` explicitly. Its XML report must contain the completed
+  wrapper test; an absent or skipped test fails the check.
+
   This wrapper executes the internal CUDA-UT shared library and covers the
   fpA_intB / MatMulNBits groupwise GEMM tests under
   [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc)

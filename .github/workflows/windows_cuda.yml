@@ -121,6 +121,11 @@ jobs:
             exit $lastExitCode
           }
 
+          $cudaTestModule = Join-Path $env:OnnxRuntimeBuildDirectory "RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_cuda_ut.dll"
+          if (-not (Test-Path -LiteralPath $cudaTestModule -PathType Leaf)) {
+            throw "CUDA EP internal tests were requested, but the build did not produce $cudaTestModule"
+          }
+
           # Clean up the output directory before uploading artifacts
           $outputDir = "${{ runner.temp }}\build\RelWithDebInfo"
           Write-Host "Cleaning up files from $outputDir..."
@@ -229,6 +234,24 @@ jobs:
       - name: Verify GPU access
         shell: pwsh
         run: nvidia-smi
+
+      - name: Verify CUDA EP internal tests execute
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath cuda_ep_internal_ci.xml) {
+            Remove-Item -LiteralPath cuda_ep_internal_ci.xml
+          }
+          .\onnxruntime_provider_test.exe --gtest_filter=CUDA_EP_Unittest.All --gtest_output=xml:cuda_ep_internal_ci.xml
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          [xml]$results = Get-Content -LiteralPath cuda_ep_internal_ci.xml -Raw
+          $executedTest = $results.SelectNodes("/testsuites/testsuite[@name='CUDA_EP_Unittest']/testcase[@name='All' and @status='run' and @result='completed']")
+          if ($executedTest.Count -ne 1) {
+            throw "CUDA_EP_Unittest.All did not execute: the test must be present and must not be skipped."
+          }
 
       - name: Run Tests
         working-directory: ${{ runner.temp }}
