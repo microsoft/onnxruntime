@@ -6,13 +6,15 @@
 [Migrate onnxruntime-web from JSEP to the native WebGPU EP](onnxruntime_web_jsep_to_webgpu_ep_migration.md)
 — independent, but shares the `onnxruntime-web/all` bundle (§6) and the deprecation-warning utility (§7).
 
+**Tracking issue:** [microsoft/onnxruntime#32241](https://github.com/microsoft/onnxruntime/issues/32241)
+
 ---
 
 ## 1. Summary
 
 `onnxruntime-web` ships a legacy **WebGL** backend (the `onnxjs` implementation under `js/web/lib/onnxjs`,
-registered under the `'webgl'` key). It predates the WASM architecture, supports fewer operators, and has fp32/op
-drift relative to WebGPU.
+registered under the `'webgl'` key). It originated in the standalone ONNX.js project before ONNX Runtime's
+WebAssembly implementation, supports fewer operators, and has fp32/op drift relative to WebGPU.
 
 This document proposes deprecating and then deleting it, with an explicit migration message rather than a
 transparent redirect (§5.1):
@@ -25,8 +27,8 @@ transparent redirect (§5.1):
 
 ## 2. Motivation
 
-- **Legacy and unmaintained.** The `onnxjs` WebGL backend predates the WASM/EP architecture and does not receive
-  new operator or feature work.
+- **Legacy and unmaintained.** The `onnxjs` WebGL backend originated before ONNX Runtime's WebAssembly
+  implementation and does not receive new operator or feature work.
 - **Narrower op coverage and behavioral drift.** WebGL supports fewer operators than WebGPU and exhibits fp32/op
   differences, making it an inconsistent fallback.
 - **Build-matrix simplification.** Removing WebGL deletes the `ort.webgl` bundle variant and the
@@ -94,9 +96,8 @@ the WebGPU EP (`webgpu`) or the WASM/CPU backend (`wasm`).
 
 ### 5.2 Warning placement
 
-The warning fires in `OnnxjsBackend` (`js/web/lib/backend-onnxjs.ts`), in `init(backendName)` /
-`createInferenceSessionHandler`. Negative priority means it only fires when WebGL is explicitly requested — for
-both `ort.all` and `ort.webgl`.
+The warning fires in `OnnxjsBackend.init()` (`js/web/lib/backend-onnxjs.ts`). Negative priority means it only fires
+when WebGL is explicitly requested — for both `ort.all` and `ort.webgl`.
 
 ### 5.3 Removal ergonomics
 
@@ -119,12 +120,17 @@ breaking imports (see JSEP doc §5).
 
 ## 7. Phase 1 — Deprecation (this release)
 
-No behavior change.
+No inference behavior change.
 
-1. **WebGL warn-once.** In `OnnxjsBackend` (`js/web/lib/backend-onnxjs.ts`), `init(backendName)` /
-   `createInferenceSessionHandler`, gated on `logLevel` and deduped via a module flag. Uses the shared
-   deprecation-warning utility (from the JSEP effort, or here — whichever lands first).
-2. **Docs.** Deprecation banner + migration guidance in `js/web/README` (hand-authored), plus release notes.
+**Status (2026-08-24): implemented, pending review and merge.** The public
+[tracking issue](https://github.com/microsoft/onnxruntime/issues/32241) is open. The warn-once implementation and
+documentation updates are included in the current change; the deprecation release version remains TBD.
+
+1. **WebGL warn-once.** In `OnnxjsBackend.init()` (`js/web/lib/backend-onnxjs.ts`), gated on `logLevel` and deduped
+   via a module flag. Uses the shared deprecation-warning utility introduced by this effort and reusable by the JSEP
+   migration.
+2. **Docs.** Deprecation banner + migration guidance in `js/web/README` (hand-authored). Release-note-ready wording
+   is supplied in the implementing PR for the existing generated release-note workflow.
 
 ---
 
@@ -169,5 +175,5 @@ removing it in a minor release after a deprecation window is within policy and d
 - **`onnxruntime-web/all`:** continues to work, but no longer includes WebGL. If you relied on WebGL as a
   fallback via `/all`, add `wasm` to your `executionProviders` list.
 
-> A pinned tracking issue (link TBD) is the authoritative migration guidance. Warnings, docs, and CHANGELOG
-> entries link to it.
+> The pinned [tracking issue](https://github.com/microsoft/onnxruntime/issues/32241) is the authoritative migration
+> guidance. Warnings, docs, and release notes link to it.
