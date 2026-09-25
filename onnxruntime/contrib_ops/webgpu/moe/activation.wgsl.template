@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#use .getByOffset .setByOffset
+#use guardAgainstOutOfBoundsWorkgroupSizes .getByOffset .setByOffset
 
 #param activation
 #param swiglu_fusion
@@ -20,16 +20,15 @@ fn activate(value: f32) -> f32 {
 }
 
 $MAIN {
-  let row = global_id.y;
-  let col = global_id.x;
-  if (row >= uniforms.rows || col >= uniforms.cols) {
-    return;
-  }
-  let output_offset = row * uniforms.cols + col;
+  let total = uniforms.rows * uniforms.cols;
+  guardAgainstOutOfBoundsWorkgroupSizes(total);
+
+  let row = global_idx / uniforms.cols;
+  let col = global_idx % uniforms.cols;
 #if activation == 4
 #if has_fc3
-  var gate_value = f32(input.getByOffset(output_offset));
-  var linear_value = f32(fc3_input.getByOffset(output_offset));
+  var gate_value = f32(input.getByOffset(global_idx));
+  var linear_value = f32(fc3_input.getByOffset(global_idx));
 #elif swiglu_fusion == 1
   let input_offset = (row * uniforms.cols + col) * 2u;
   var gate_value = f32(input.getByOffset(input_offset));
@@ -42,12 +41,12 @@ $MAIN {
   gate_value = min(gate_value, uniforms.swiglu_limit);
   linear_value = clamp(linear_value, -uniforms.swiglu_limit, uniforms.swiglu_limit);
   let glu = gate_value / (1.0 + exp(-uniforms.alpha * gate_value));
-  output.setByOffset(output_offset, output_element_t(glu * (linear_value + uniforms.beta)));
+  output.setByOffset(global_idx, output_element_t(glu * (linear_value + uniforms.beta)));
 #else
-  var value = activate(f32(input.getByOffset(output_offset)));
+  var value = activate(f32(input.getByOffset(global_idx)));
 #if has_fc3
-  value *= f32(fc3_input.getByOffset(output_offset));
+  value *= f32(fc3_input.getByOffset(global_idx));
 #endif
-  output.setByOffset(output_offset, output_element_t(value));
+  output.setByOffset(global_idx, output_element_t(value));
 #endif
 } // MAIN
