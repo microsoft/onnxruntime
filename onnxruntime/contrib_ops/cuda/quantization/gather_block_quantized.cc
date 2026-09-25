@@ -186,7 +186,10 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   param.ind_dim = ind_dim;
   param.bits = bits_;
   param.block_size = effective_block_size;
-  param.gather_axis = gather_axis;
+  param.quantize_axis_dim = data_shape[quantize_axis];
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    param.quantize_axis_dim *= 8 / static_cast<int>(bits_);
+  }
   param.N = N;
   param.max_blocks_per_grid = GetDeviceProp().maxGridSize[0];
 
