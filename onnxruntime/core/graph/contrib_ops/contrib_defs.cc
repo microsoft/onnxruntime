@@ -127,6 +127,10 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   std::vector<int64_t> pads;
 
   // Infer output shape if 'pads' tensor is available
+  if (ctx.getNumInputs() <= 2) {
+    return;
+  }
+
   const auto* pads_initializer = ctx.getInputData(2);
   if (nullptr == pads_initializer) {
     return;
@@ -1865,6 +1869,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
+                                // Pads is required by the kernels, but v1 published it as optional.
+                                // Keep the schema compatible and reject a missing tensor at runtime.
                                 .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(

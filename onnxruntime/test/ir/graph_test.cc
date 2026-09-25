@@ -115,6 +115,15 @@ static bool RegisterCustomSchemas() {
         fail_shape_inference("try harder");
       });
 
+  OPERATOR_SCHEMA(ShapeInferenceInputDataOutOfBoundsOp)
+      .SetDoc("Access input data past the available inputs.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        ORT_ENFORCE(ctx.getInputData(ctx.getNumInputs()) == nullptr);
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   OPERATOR_SCHEMA(Fake_Sub)
       .SinceVersion(1)
       .SetDomain(kMSNchwcDomain)
@@ -1697,6 +1706,21 @@ TEST_F(GraphTest, ShapeInferenceErrorHandling) {
 
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(),
                                       "Node (node_1) Op (ShapeInferenceThrowsOp) [ShapeInferenceError] try harder");
+}
+
+TEST_F(GraphTest, ShapeInferenceInputDataOutOfBounds) {
+  Model model("graph", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_int32);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  graph.AddNode("node", "ShapeInferenceInputDataOutOfBoundsOp", "", {&input}, {&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
 }
 
 TEST_F(GraphTest, AddTensorAttribute) {
