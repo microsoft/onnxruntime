@@ -329,7 +329,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int64_t block_size_fc3 = block_size_fc1;
   Status status;
 
-  if (moe_params.num_rows == 1) {
+  if (moe_params.num_rows == 1 && router_weights == nullptr) {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
     // run a single batched MatMulNBits with M=k where each row uses a different expert's
     // weights via weight_index_indirect. A's single row is broadcast to all k rows.
@@ -538,7 +538,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       activation
           .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
           .SetWorkgroupSize(128)
-          .SetDispatchGroupSize((static_cast<uint32_t>(moe_params.inter_size) + 127) / 128, used_by)
+          .SetDispatchGroupSize(((used_by * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
           .AddUniformVariables({used_by, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
                                 activation_beta_, swiglu_limit_})
           .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());
