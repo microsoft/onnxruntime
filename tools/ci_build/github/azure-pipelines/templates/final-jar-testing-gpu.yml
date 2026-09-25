@@ -1,3 +1,7 @@
+parameters:
+- name: CudaVersion
+  type: string
+
 stages:
   - stage: GPU_JAR_Testing
     dependsOn: []
@@ -20,7 +24,7 @@ stages:
 
       - template: jobs/download_win_gpu_library.yml
         parameters:
-          CudaVersion: 12.8
+          CudaVersion: ${{ parameters.CudaVersion }}
           DownloadCUDA: true
           DownloadTRT: true
 
@@ -85,10 +89,19 @@ stages:
         name: 'Onnxruntime-Linux-GPU-A10'
         os: linux
       variables:
+      - template: common-variables.yml
       - name: runCodesignValidationInjection
         value: false
       - name: docker_base_image
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+        ${{ else }}:
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+      - name: linux_trt_version
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.linux_trt_version_cuda13 }}
+        ${{ else }}:
+          value: ${{ variables.linux_trt_version_cuda12 }}
       timeoutInMinutes: 60
       steps:
       - template: jobs/checkout-and-git-redirect.yml
