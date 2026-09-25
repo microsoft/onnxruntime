@@ -3363,6 +3363,10 @@ inline std::string GetBuildInfoString() {
   return GetApi().GetBuildInfoString();
 }
 
+inline void SetSeed(const int64_t seed) {
+  ThrowOnError(GetApi().SetSeed(seed));
+}
+
 inline std::vector<std::string> GetAvailableProviders() {
   char** providers;
   int len;
