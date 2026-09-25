@@ -67,6 +67,9 @@ jobs:
     clean: all
   pool:
     name: ${{ parameters.pool_name }}
+    ${{ if eq(parameters.pool_name, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64
     ${{ if or(contains(parameters.pool_name, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
       os: linux
     ${{ if contains(parameters.pool_name, 'win')}}:
