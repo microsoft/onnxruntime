@@ -257,6 +257,10 @@
       endif()
     endif()
 
+    if (DAWN_USE_AGILITY_SDK)
+      add_dependencies(onnxruntime_providers_webgpu copy_agility_sdk_dlls)
+    endif()
+
     # In the plugin/adapter build (onnxruntime_USE_EP_API_ADAPTERS) the WebGPU EP is its own DLL
     # (onnxruntime_providers_webgpu.dll) rather than being statically linked into onnxruntime.dll, so the
     # delay-load flags accumulated above (notably /DELAYLOAD:user32.dll) must be applied to THIS target.

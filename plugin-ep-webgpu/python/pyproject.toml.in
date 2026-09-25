@@ -41,4 +41,4 @@ Download = "https://github.com/microsoft/onnxruntime/tags"
 include = ["onnxruntime_ep_webgpu*"]
 
 [tool.setuptools.package-data]
-onnxruntime_ep_webgpu = ["*.dll", "*.so", "*.so.*", "*.dylib"]
+onnxruntime_ep_webgpu = ["*.dll", "*.so", "*.so.*", "*.dylib", "D3D12/*.dll"]

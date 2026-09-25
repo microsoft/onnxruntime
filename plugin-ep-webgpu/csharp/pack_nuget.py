@@ -36,8 +36,24 @@ from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
-    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxcompiler.dll")),
+    "win_x64": (
+        "win-x64",
+        (
+            "onnxruntime_providers_webgpu.dll",
+            "dxcompiler.dll",
+            "D3D12/D3D12Core.dll",
+            "D3D12/d3d12SDKLayers.dll",
+        ),
+    ),
+    "win_arm64": (
+        "win-arm64",
+        (
+            "onnxruntime_providers_webgpu.dll",
+            "dxcompiler.dll",
+            "D3D12/D3D12Core.dll",
+            "D3D12/d3d12SDKLayers.dll",
+        ),
+    ),
     "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
     "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_webgpu.so",)),
     "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),
@@ -213,7 +229,9 @@ def stage_binaries(
             src = source_dir / filename
             if not src.is_file():
                 raise PackError(f"expected binary not found: {src}")
-            shutil.copy2(src, target_dir / filename)
+            dst = target_dir / filename
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
             print(f"  {filename}")
         staged.add(name)
 

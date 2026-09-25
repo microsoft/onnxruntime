@@ -12,6 +12,9 @@ registered.
 
 On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
 
+On Windows, the wheel includes the D3D12 Agility SDK runtime used by Dawn to enable supported features such as Intel
+XMX acceleration. Actual feature availability depends on the GPU and driver.
+
 ## Supported Platforms
 
 | Platform |
