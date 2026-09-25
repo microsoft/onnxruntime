@@ -675,6 +675,14 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         }
       }
 
+      if (node->OpType() == "Cast") {
+        auto to_attribute = attributes.find("to");
+        if (to_attribute != attributes.end() &&
+            to_attribute->second.i() == TensorProto_DataType_FLOAT16) {
+          to_attribute->second.set_i(TensorProto_DataType_FLOAT);
+        }
+      }
+
       auto& outputs = node->MutableOutputDefs();
       for (auto output : outputs) {
         // TODO 1: Check if the kernel available
