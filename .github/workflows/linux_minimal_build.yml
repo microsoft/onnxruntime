@@ -40,6 +40,11 @@ jobs:
         with:
           node-version: 20
 
+      # This job builds with --use_coreml. The coremltools modelpackage sources include <uuid/uuid.h>,
+      # which is provided by uuid-dev on Ubuntu.
+      - name: Install libuuid development files
+        run: sudo apt-get update -y && sudo apt-get install -y uuid-dev
+
       - name: Setup CCache
         uses: actions/cache@v5
         with:
