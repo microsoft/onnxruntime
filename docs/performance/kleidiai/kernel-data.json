@@ -1,0 +1,4205 @@
+[
+  {
+    "name": "kai_dwconv_clamp_f16_f16_f16p1vlx1b_3x3_s1_4x4_sme2_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/dwconv/dwconv_f16_f16_f16p/kai_dwconv_clamp_f16_f16_f16p1vlx1b_3x3_s1_4x4_sme2_mla.c",
+    "operation": "Depthwise convolution + clamp",
+    "operationKey": "dwconv",
+    "output": "FP16",
+    "lhs": "FP16",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16 · F16P",
+    "extension": "SME2",
+    "tile": "4x4",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "3x3",
+    "stride": "1",
+    "inputPath": "Indirect",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_dwconv_pack_x16p1vlx1b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/dwconv/pack/kai_rhs_dwconv_pack_x16p1vlx1b_x16_x16_sme.c",
+        "orientation": null,
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_dwconv_clamp_f32_f32_f32p1vlx1b_3x3_s1_4xc_sme2_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p1vlx1b_3x3_s1_4xc_sme2_mla.c",
+    "operation": "Depthwise convolution + clamp",
+    "operationKey": "dwconv",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SME2",
+    "tile": "—",
+    "tileSource": "unavailable",
+    "tileKind": "Fixed",
+    "convKernelSize": "3x3",
+    "stride": "1",
+    "inputPath": "Planar",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/dwconv/pack/kai_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme.c",
+        "orientation": null,
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "status": "pr",
+    "statusLabel": "PR available",
+    "evidence": [
+      {
+        "label": "PR #29441",
+        "url": "https://github.com/microsoft/onnxruntime/pull/29441"
+      },
+      {
+        "label": "PR #26654",
+        "url": "https://github.com/microsoft/onnxruntime/pull/26654"
+      }
+    ],
+    "ortOps": []
+  },
+  {
+    "name": "kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_f16_f16p_f16p/kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_sme2_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "FP16",
+    "lhs": "FP16 (P)",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16P · F16P",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x16p2vlx2_x16p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x16p2vlx2_x16p_sme.c",
+        "orientation": null,
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/halfconv_kleidiai.cpp#L738"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L25"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      }
+    ]
+  },
+  {
+    "name": "kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2b_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_f16_f16p_f16p/kai_imatmul_clamp_f16_f16p2vlx2_f16p2vlx2b_2vlx2vl_sme_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "FP16",
+    "lhs": "FP16 (P)",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16P · F16P",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x16p2vlx2_x16p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x16p2vlx2_x16p_sme.c",
+        "orientation": null,
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/halfconv_kleidiai.cpp#L738"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L25"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      }
+    ]
+  },
+  {
+    "name": "kai_imatmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_f32_f32_f32p/kai_imatmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SVE",
+    "tile": "6x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p4vlx1b_x32_x32_sve.c",
+        "orientation": "K×N",
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "status": "pr",
+    "statusLabel": "PR available",
+    "evidence": [
+      {
+        "label": "PR #27643",
+        "url": "https://github.com/microsoft/onnxruntime/pull/27643"
+      }
+    ],
+    "ortOps": []
+  },
+  {
+    "name": "kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "FP32",
+    "lhs": "FP32 (P)",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32P · F32P",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.c",
+        "orientation": null,
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/convolve_kleidiai.cpp#L668"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/nn/conv.cc#L31"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/fused_conv.cc#L10"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/fused_conv.cc#L31"
+      }
+    ]
+  },
+  {
+    "name": "kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "FP32",
+    "lhs": "FP32 (P)",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32P · F32P",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.c",
+        "orientation": null,
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/convolve_kleidiai.cpp#L668"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/nn/conv.cc#L31"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/fused_conv.cc#L10"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/fused_conv.cc#L31"
+      }
+    ]
+  },
+  {
+    "name": "kai_imatmul_clamp_qai8_qai8p2vlx4_qsi8cxp2vlx4sb_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_qai8_qai8p_qsi8cxp/kai_imatmul_clamp_qai8_qai8p2vlx4_qsi8cxp2vlx4sb_2vlx2vl_sme_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x8p2vlx4_x8p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x8p2vlx4_x8p_sme.c",
+        "orientation": null,
+        "details": [
+          "8-bit → 8-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_imatmul_clamp_qai8_qai8p2vlx4_qsi8cxpsb2vlx4_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/imatmul_clamp_qai8_qai8p_qsi8cxp/kai_imatmul_clamp_qai8_qai8p2vlx4_qsi8cxpsb2vlx4_2vlx2vl_sme2_mopa.c",
+    "operation": "Indirect GEMM + clamp",
+    "operationKey": "imatmul",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_imatmul_pack_x8p2vlx4_x8p_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x8p2vlx4_x8p_sme.c",
+        "orientation": null,
+        "details": [
+          "8-bit → 8-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_imatmul_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "FP16",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16 · F16P",
+    "extension": "SVE2P1",
+    "tile": "6x16vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x16p16vsx2bx16_x16_x16_sve",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p16vsx2bx16_x16_x16_sve.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16_f16p2vlx2b_1x16vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p2vlx2b_1x16vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "FP16",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16 · F16P",
+    "extension": "SME2",
+    "tile": "1x16vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/halfgemm_kleidiai.cpp#L281"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L25"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16_f16p2vlx2b_1x8vl_sme_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p2vlx2b_1x8vl_sme_mla.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "FP16",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16 · F16P",
+    "extension": "SME",
+    "tile": "1x8vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/halfgemm_kleidiai.cpp#L281"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "Conv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L25"
+      },
+      {
+        "name": "FusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "NhwcFusedConv",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/fp16/fp16_conv.cc#L43"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16_f16p4vsx2bf16_1x32vs_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p4vsx2bf16_1x32vs_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "FP16",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16 · F16P",
+    "extension": "SME2",
+    "tile": "1x32vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x16p4vsx2bx16_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x16p4vsx2bx16_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16p_f16p/kai_matmul_clamp_f16_f16p2vlx2_f16p2vlx2_2vlx2vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "FP16 (P)",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16P · F16P",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_x16p2vlx2_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_x16p2vlx2_x16_sme.c",
+        "orientation": null,
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16p2vlx2_f16p2vlx2b_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16p_f16p/kai_matmul_clamp_f16_f16p2vlx2_f16p2vlx2b_2vlx2vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "FP16 (P)",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16P · F16P",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_x16p2vlx2_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_x16p2vlx2_x16_sme.c",
+        "orientation": null,
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "16-bit → 16-bit"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_f16p4vsx2_f16p4vsx2bf16_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_f16p_f16p/kai_matmul_clamp_f16_f16p4vsx2_f16p4vsx2bf16_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "FP16 (P)",
+    "rhs": "FP16 (P)",
+    "signature": "F16 · F16P · F16P",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "FP16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x16p4vsx2_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x16p4vsx2_x16_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x16p4vsx2bx16_x16_x16_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x16p4vsx2bx16_x16_x16_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qai8dxp1vlx8_qsi4cxp4vlx8_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qai8dxp_qsi4cxp/kai_matmul_clamp_f16_qai8dxp1vlx8_qsi4cxp4vlx8_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F16 · QAI8DXP · QSI4CXP",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f16_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f16_neon.c",
+        "orientation": null,
+        "details": [
+          "FP16 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme2_sdot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qai8dxp_qsi4cxp/kai_matmul_clamp_f16_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme2_sdot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F16 · QAI8DXP · QSI4CXP",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f16_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f16_neon.c",
+        "orientation": null,
+        "details": [
+          "FP16 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qai8dxp_qsi8cxp/kai_matmul_clamp_f16_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F16 · QAI8DXP · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qai8dxp_qsi8cxp/kai_matmul_clamp_f16_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F16 · QAI8DXP · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qsi8d32p_qai4c32p/kai_matmul_clamp_f16_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F16 · QSI8D32P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32pscalef32_f16_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f16_neon.c",
+        "orientation": null,
+        "details": [
+          "FP16 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f16_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f16_qsi8d32p_qai4c32p/kai_matmul_clamp_f16_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP16",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F16 · QSI8D32P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP16"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32pscalef32_f16_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f16_neon.c",
+        "orientation": null,
+        "details": [
+          "FP16 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f16p4vsx2_qai4c32p16vsx4s1s0sf16_4vsx16vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f16p_qai4c32p/kai_matmul_clamp_f32_f16p4vsx2_qai4c32p16vsx4s1s0sf16_4vsx16vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP16 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · F16P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "4vsx16vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_f16pmrx2_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_f16pmrx2_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → FP16"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_nxk_qai4c32p16vsx4s1s0sf16_qai4c32k256sf16s32s0_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_qai4c32p16vsx4s1s0sf16_qai4c32k256sf16s32s0_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f16p1vlx2_qsi4c32p4vlx2_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f16p_qsi4c32p/kai_matmul_clamp_f32_f16p1vlx2_qsi4c32p4vlx2_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP16 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · F16P · QSI4C32P",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP16"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_f16pmrx2_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_f16pmrx2_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → FP16"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SME2",
+    "tile": "1x16vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_f32p16vlx1b_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p16vlx1b_f32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "status": "referenced",
+    "statusLabel": "Referenced only",
+    "evidence": [
+      {
+        "label": "reference",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/kai_ukernel_interface.cpp#L48"
+      }
+    ],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SME2",
+    "tile": "1x16vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/sgemm_kleidiai.cpp#L290"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SME",
+    "tile": "1x8vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → FP32"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/sgemm_kleidiai.cpp#L290"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p4vlx1b_6x4vl_sve_mla.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SVE",
+    "tile": "6x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve.c",
+        "orientation": "K×N",
+        "details": [
+          "32-bit → 32-bit"
+        ]
+      }
+    ],
+    "status": "pr",
+    "statusLabel": "PR available",
+    "evidence": [
+      {
+        "label": "PR #31143",
+        "url": "https://github.com/microsoft/onnxruntime/pull/31143"
+      },
+      {
+        "label": "PR #27643",
+        "url": "https://github.com/microsoft/onnxruntime/pull/27643"
+      }
+    ],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32_f32p4vsx1bf32_1x32vs_sme2_mla",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p4vsx1bf32_1x32vs_sme2_mla.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "FP32",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32 · F32P",
+    "extension": "SME2",
+    "tile": "1x32vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x32p4vsx1bx32_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x32p4vsx1bx32_x32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_x32p4vsx1bx32_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_x32p4vsx1bx32_x32_x32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP32 (P)",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32P · F32P",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_f32p2vlx1_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.c",
+        "orientation": null,
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → FP32"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/sgemm_kleidiai.cpp#L682"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP32 (P)",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32P · F32P",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "get_m_step/get_n_step",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_f32p2vlx1_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.c",
+        "orientation": null,
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → FP32"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/sgemm_kleidiai.cpp#L682"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      },
+      {
+        "name": "Gemm",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/gemm.cc#L16"
+      },
+      {
+        "name": "MoE",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc#L25"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_f32p4vsx1_f32p4vsx1bf32_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p4vsx1_f32p4vsx1bf32_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "FP32 (P)",
+    "rhs": "FP32 (P)",
+    "signature": "F32 · F32P · F32P",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Variable",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "FP32"
+    ],
+    "rhsDetails": [
+      "FP32"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x32p4vsx1_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x32p4vsx1_x32_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x32p4vsx1bx32_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x32p4vsx1bx32_x32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_x32p4vsx1bx32_x32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_x32p4vsx1bx32_x32_x32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4C32P",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qnbitgemm_kleidiai.cpp#L522"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMulNBits",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L30"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4C32P",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4c32ps1s0nrx4_qsu4c32s1s0_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qnbitgemm_kleidiai.cpp#L522"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMulNBits",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L30"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4cxp4vlx4_1vlx4vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi4cxp4vlx4_1vlx4vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4CXP",
+    "extension": "SME",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp_qs4cxs1s0",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp_qs4cxs1s0.c",
+        "orientation": "N×K",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx8_qsi4cxp4vlx8_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4cxp/kai_matmul_clamp_f32_qai8dxp1vlx8_qsi4cxp4vlx8_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4CXP",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme2_sdot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme2_sdot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4CXP",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxps1s0_qsu4cxs1s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi4cxp4vlx4_1x4vl_sme_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QAI8DXP · QSI4CXP",
+    "extension": "SME",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp_qs4cxs1s0",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp_qs4cxs1s0.c",
+        "orientation": "N×K",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F32 · QAI8DXP · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qgemm_kleidiai.cpp#L236"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "DynamicQuantizeMatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc#L166"
+      },
+      {
+        "name": "MatMulIntegerToFloat",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc#L42"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F32 · QAI8DXP · QSI8CXP",
+    "extension": "SME",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qgemm_kleidiai.cpp#L236"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "DynamicQuantizeMatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc#L166"
+      },
+      {
+        "name": "MatMulIntegerToFloat",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/dynamic_quantize_matmul.cc#L42"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F32 · QAI8DXP · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "F32 · QAI8DXP · QSI8CXP",
+    "extension": "SME",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1vlx4_qsu2cxp4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsu2cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsu2cxp4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "UINT2 (P)",
+    "signature": "F32 · QAI8DXP · QSU2CXP",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "UINT2",
+      "Unsigned",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsu2cxp4vlx4_qsu2cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsu2cxp4vlx4_qsu2cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT2 → UINT2",
+          "Unsigned",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qai8dxp1x4_qsu2cxp4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsu2cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsu2cxp4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "UINT2 (P)",
+    "signature": "F32 · QAI8DXP · QSU2CXP",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "UINT2",
+      "Unsigned",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qai8dxp_f32",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output asymmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsu2cxp4vlx4_qsu2cx_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsu2cxp4vlx4_qsu2cx_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT2 → UINT2",
+          "Unsigned",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qai4c32p4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qnbitgemm_kleidiai.cpp#L522"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMulNBits",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L30"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p16vsx4s1s0sf16_1x16vs_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p16vsx4s1s0sf16_1x16vs_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "1x16vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_qsi8d32p1x4sf16_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_qsi8d32p1x4sf16_f32_neon.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_nxk_qai4c32p16vsx4s1s0sf16_qai4c32k256sf16s32s0_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_qai4c32p16vsx4s1s0sf16_qai4c32k256sf16s32s0_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qai4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qai4c32p4vlx4_1x4vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QAI4C32P",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32pscalef32_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s1s0_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Asymmetric"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/qnbitgemm_kleidiai.cpp#L522"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMulNBits",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L30"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SME2",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1vlx4_qsi4c32p4vlx4_1vlx4vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SME",
+    "tile": "1vlx4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps4s0sf16_qsu4c32s16s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps4s0sf16_qsu4c32s16s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p4vlx4_1x4vl_sme2_sdot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p4vlx4_1x4vl_sme2_sdot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SME2",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps1s0scalef16_qsu4c32s16s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p4vlx4_1x4vl_sme_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p4vlx4_1x4vl_sme_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SME",
+    "tile": "1x4vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32ps4s0sf16_qsu4c32s16s0_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32ps4s0sf16_qsu4c32s16s0_neon.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p8x4_1x8_sve_dotprod",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1x4_qsi4c32p8x4_1x8_sve_dotprod.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SVE",
+    "tile": "1x8",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p1x8_qsi4c32p8x8_1x8_sve_dotprod",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p1x8_qsi4c32p8x8_1x8_sve_dotprod.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SVE",
+    "tile": "1x8",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_qsi8d32p4x8_qsi4c32p8x8_16x8_sve_i8mm",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_qsi8d32p_qsi4c32p/kai_matmul_clamp_f32_qsi8d32p4x8_qsi4c32p8x8_16x8_sve_i8mm.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "F32 · QSI8D32P · QSI4C32P",
+    "extension": "SVE",
+    "tile": "16x8",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_quant_pack_qsi8d32p_f32_neon",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qsi8d32p_f32_neon.c",
+        "orientation": null,
+        "details": [
+          "FP32 → INT8",
+          "Output signed",
+          "Output symmetric"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32pscalef16_qsu4c32s16s0.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_u8p4vsx4_u8p4vsx4_i32_i32_f32_f32_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_f32_u8p_u8p/kai_matmul_clamp_f32_u8p4vsx4_u8p4vsx4_i32_i32_f32_f32_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "UINT8 (P)",
+    "rhs": "UINT8 (P)",
+    "signature": "F32 · U8P · U8P",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "UINT8",
+      "Unsigned"
+    ],
+    "rhsDetails": [
+      "UINT8",
+      "Unsigned"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x8p4vsx4_x8_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_x8p4vsx4_x8_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "pr",
+    "statusLabel": "PR available",
+    "evidence": [
+      {
+        "label": "PR #28745",
+        "url": "https://github.com/microsoft/onnxruntime/pull/28745"
+      }
+    ],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "BF16 (P)",
+    "rhs": "BF16 (P)",
+    "signature": "F32 · BF16P · BF16P",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "BF16"
+    ],
+    "rhsDetails": [
+      "BF16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_bf16p2vlx2_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.c",
+        "orientation": null,
+        "details": [
+          "FP32 → BF16"
+        ]
+      },
+      {
+        "name": "kai_lhs_pack_bf16p2vlx2_f32_sme2",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme2.c",
+        "orientation": null,
+        "details": [
+          "FP32 → BF16"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → BF16"
+        ]
+      }
+    ],
+    "status": "integrated",
+    "statusLabel": "Integrated",
+    "evidence": [
+      {
+        "label": "Invocation",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/mlas/lib/kleidiai/sbgemm_kleidiai.cpp#L420"
+      }
+    ],
+    "ortOps": [
+      {
+        "name": "MatMul",
+        "url": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/onnxruntime/core/providers/cpu/math/matmul.cc#L17"
+      }
+    ]
+  },
+  {
+    "name": "kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_fp32_bf16p_bf16p/kai_matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "FP32",
+    "lhs": "BF16 (P)",
+    "rhs": "BF16 (P)",
+    "signature": "F32 · BF16P · BF16P",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "FP32"
+    ],
+    "lhsDetails": [
+      "BF16"
+    ],
+    "rhsDetails": [
+      "BF16"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_bf16p2vlx2_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.c",
+        "orientation": null,
+        "details": [
+          "FP32 → BF16"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "FP32 → BF16"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8_qsi4cxp8vsx4sf32bi32_1x64vs_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8_qsi4cxp/kai_matmul_clamp_qai8_qai8_qsi4cxp8vsx4sf32bi32_1x64vs_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "INT8",
+    "lhs": "INT8",
+    "rhs": "INT4 (P)",
+    "signature": "QAI8 · QAI8 · QSI4CXP",
+    "extension": "SME2",
+    "tile": "1x64vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8_qsi8cxp2vlx4sb_1x16vl_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8_qsi8cxp/kai_matmul_clamp_qai8_qai8_qsi8cxp2vlx4sb_1x16vl_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "INT8",
+    "lhs": "INT8",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8 · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1x16vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8_qsi8cxp4vsx4bi32sf32_1x32vs_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8_qsi8cxp/kai_matmul_clamp_qai8_qai8_qsi8cxp4vsx4bi32sf32_1x32vs_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "INT8",
+    "lhs": "INT8",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8 · QSI8CXP",
+    "extension": "SME2",
+    "tile": "1x32vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8_qsu2cxp16vsx4sf32bi32_1x64vs_sme2_dot",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8_qsu2cxp/kai_matmul_clamp_qai8_qai8_qsu2cxp16vsx4sf32bi32_1x64vs_sme2_dot.c",
+    "operation": "GEMV + clamp",
+    "operationKey": "gemv",
+    "output": "INT8",
+    "lhs": "INT8",
+    "rhs": "UINT2 (P)",
+    "signature": "QAI8 · QAI8 · QSU2CXP",
+    "extension": "SME2",
+    "tile": "1x64vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "UINT2",
+      "Unsigned",
+      "Symmetric"
+    ],
+    "lhsPacks": [],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p8vsx4_qsi4cxp8vsx4sf32bi32_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsi4cxp/kai_matmul_clamp_qai8_qai8p8vsx4_qsi4cxp8vsx4sf32bi32_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT4 (P)",
+    "signature": "QAI8 · QAI8P · QSI4CXP",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT4",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsi4cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "INT4 → INT4",
+          "Signed",
+          "Symmetric"
+        ]
+      },
+      {
+        "name": "kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4cxp8vsx4sf32bi32_qsu4cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "UINT4 → INT4",
+          "Input unsigned",
+          "Output signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p2vlx4_qsi8cxp2vlx4sb_2vlx2vl_sme_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsi8cxp/kai_matmul_clamp_qai8_qai8p2vlx4_qsi8cxp2vlx4sb_2vlx2vl_sme_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_x8p2vlx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_x8p2vlx4_x8_sme.c",
+        "orientation": null,
+        "details": [
+          "8-bit → 8-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p2vlx4_qsi8cxpsb2vlx4_2vlx2vl_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsi8cxp/kai_matmul_clamp_qai8_qai8p2vlx4_qsi8cxpsb2vlx4_2vlx2vl_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME2",
+    "tile": "2vlx2vl",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_x8p2vlx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_x8p2vlx4_x8_sme.c",
+        "orientation": null,
+        "details": [
+          "8-bit → 8-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp2vlx4sb_qs8cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p4vsx4_qsi8cxp4vsx4bi32sf32_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsi8cxp/kai_matmul_clamp_qai8_qai8p4vsx4_qsi8cxp4vsx4bi32sf32_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p4vsx4_qsi8cxp4vsx4sf32bi32_8vsx8vs_sme2p1_mop4_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsi8cxp/kai_matmul_clamp_qai8_qai8p4vsx4_qsi8cxp4vsx4sf32bi32_8vsx8vs_sme2p1_mop4_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "INT8 (P)",
+    "signature": "QAI8 · QAI8P · QSI8CXP",
+    "extension": "SME2P1",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "INT8",
+      "Signed",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_qsi8cxp4vsx4bi32sf32_qsi8_i32_f32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "INT8 → INT8",
+          "Signed",
+          "Symmetric"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_clamp_qai8_qai8p8vsx4_qsu2cxp16vsx4sf32bi32_8vsx16vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_clamp_qai8_qai8p_qsu2cxp/kai_matmul_clamp_qai8_qai8p8vsx4_qsu2cxp16vsx4sf32bi32_8vsx16vs_sme2_mopa.c",
+    "operation": "GEMM + clamp",
+    "operationKey": "gemm",
+    "output": "INT8",
+    "lhs": "INT8 (P)",
+    "rhs": "UINT2 (P)",
+    "signature": "QAI8 · QAI8P · QSU2CXP",
+    "extension": "SME2",
+    "tile": "8vsx16vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "lhsDetails": [
+      "INT8",
+      "Signed",
+      "Asymmetric"
+    ],
+    "rhsDetails": [
+      "UINT2",
+      "Unsigned",
+      "Symmetric"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_lhs_pack_x8p2vlx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_lhs_pack_x8p2vlx4_x8_sme.c",
+        "orientation": null,
+        "details": [
+          "8-bit → 8-bit"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_qsu2cxp16vsx4sf32bi32_qsu2cx_f32_i32_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "not-integrated",
+    "statusLabel": "Not integrated",
+    "evidence": [],
+    "ortOps": []
+  },
+  {
+    "name": "kai_matmul_i32_u8p4vsx4_u8p4vsx4_i32_i32_8vsx8vs_sme2_mopa",
+    "source": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/matmul_i32_u8p_u8p/kai_matmul_i32_u8p4vsx4_u8p4vsx4_i32_i32_8vsx8vs_sme2_mopa.c",
+    "operation": "GEMM",
+    "operationKey": "gemm",
+    "output": "INT32",
+    "lhs": "UINT8 (P)",
+    "rhs": "UINT8 (P)",
+    "signature": "I32 · U8P · U8P",
+    "extension": "SME2",
+    "tile": "8vsx8vs",
+    "tileSource": "kernel symbol",
+    "tileKind": "Fixed",
+    "convKernelSize": "—",
+    "stride": "—",
+    "inputPath": "—",
+    "outputDetails": [
+      "INT32",
+      "Signed"
+    ],
+    "lhsDetails": [
+      "UINT8",
+      "Unsigned"
+    ],
+    "rhsDetails": [
+      "UINT8",
+      "Unsigned"
+    ],
+    "lhsPacks": [
+      {
+        "name": "kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme.c",
+        "orientation": "M×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "rhsPacks": [
+      {
+        "name": "kai_matmul_pack_rhs_kxn_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_kxn_x8p4vsx4_x8_sme.c",
+        "orientation": "K×N",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      },
+      {
+        "name": "kai_matmul_pack_rhs_nxk_x8p4vsx4_x8_sme",
+        "url": "https://github.com/ARM-software/kleidiai/blob/v1.31.0/kai/ukernels/matmul/pack/kai_matmul_pack_rhs_nxk_x8p4vsx4_x8_sme.c",
+        "orientation": "N×K",
+        "details": [
+          "PACK → MATMUL"
+        ]
+      }
+    ],
+    "status": "pr",
+    "statusLabel": "PR available",
+    "evidence": [
+      {
+        "label": "PR #28745",
+        "url": "https://github.com/microsoft/onnxruntime/pull/28745"
+      }
+    ],
+    "ortOps": []
+  }
+]
