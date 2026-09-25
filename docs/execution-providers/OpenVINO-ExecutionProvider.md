@@ -510,7 +510,7 @@ options[num_streams] = "8";
 options[cache_dir] = "";
 options[context] = "0x123456ff";
 options[enable_qdq_optimizer] = "True";
-options[load_config] = "config_path.json";
+options[load_config] = R"({"GPU":{"PERFORMANCE_HINT":"LATENCY"}})";
 session_options.AppendExecutionProvider_OpenVINO_V2(options);
 ```
 ---
