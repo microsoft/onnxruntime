@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -23,6 +24,9 @@ namespace onnxruntime {
 
 /**
 Class for managing lookup of the execution providers in a session.
+
+Add() must not run concurrently with accessors or iteration, except for
+GetProviderOptionsSnapshot(), which is explicitly synchronized for ETW capture-state callbacks.
 */
 class ExecutionProviders {
  public:
@@ -48,14 +52,8 @@ class ExecutionProviders {
           // Check if this callback is for capturing state
           if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
               ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-            for (size_t i = 0; i < exec_providers_.size(); ++i) {
-              const auto& provider_id = exec_provider_ids_[i];
-
-              auto it = exec_provider_options_.find(provider_id);
-              if (it != exec_provider_options_.end()) {
-                const auto& options = it->second;
-                LogProviderOptions(provider_id, options, true);
-              }
+            for (const auto& [provider_id, options] : GetProviderOptionsSnapshot()) {
+              LogProviderOptions(provider_id, options, true);
             }
           }
         });
@@ -79,28 +77,42 @@ class ExecutionProviders {
       return status;
     }
 
-    // make sure there are no issues before we change any internal data structures
-    if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
-      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-      return status;
+    const auto check_provider_not_registered = [&]() -> common::Status {
+      if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
+        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+        return status;
+      }
+
+      return Status::OK();
+    };
+
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      ORT_RETURN_IF_ERROR(check_provider_not_registered());
     }
 
-    // index that provider will have after insertion
-    auto new_provider_idx = exec_providers_.size();
+    ProviderOptions providerOptions = p_exec_provider->GetProviderOptions();
 
-    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+    {
+      std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+      // make sure there are no issues before we change any internal data structures
+      ORT_RETURN_IF_ERROR(check_provider_not_registered());
 
-    // update execution provider options
-    auto providerOptions = p_exec_provider->GetProviderOptions();
-    exec_provider_options_[provider_id] = providerOptions;
+      // index that provider will have after insertion
+      auto new_provider_idx = exec_providers_.size();
+
+      ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+
+      // update execution provider options
+      exec_provider_options_[provider_id] = providerOptions;
+      exec_provider_ids_.push_back(provider_id);
+      exec_providers_.push_back(p_exec_provider);
+    }
 
 #ifdef _WIN32
     LogProviderOptions(provider_id, providerOptions, false);
 #endif
-
-    exec_provider_ids_.push_back(provider_id);
-    exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
 
@@ -137,6 +149,22 @@ class ExecutionProviders {
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
   const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 
+  using ProviderOptionsSnapshot = std::vector<std::pair<std::string, ProviderOptions>>;
+
+  ProviderOptionsSnapshot GetProviderOptionsSnapshot() const {
+    std::lock_guard<std::mutex> lock(exec_providers_mutex_);
+    ProviderOptionsSnapshot provider_options_snapshot;
+    provider_options_snapshot.reserve(exec_provider_ids_.size());
+    for (const auto& provider_id : exec_provider_ids_) {
+      auto it = exec_provider_options_.find(provider_id);
+      if (it != exec_provider_options_.end()) {
+        provider_options_snapshot.emplace_back(provider_id, it->second);
+      }
+    }
+
+    return provider_options_snapshot;
+  }
+
   bool GetCpuProviderWasImplicitlyAdded() const { return cpu_execution_provider_was_implicitly_added_; }
 
   void SetCpuProviderWasImplicitlyAdded(bool cpu_execution_provider_was_implicitly_added) {
@@ -147,6 +175,9 @@ class ExecutionProviders {
   // Some compilers emit incomprehensive output if this is allowed
   // with a container that has unique_ptr or something move-only.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
+
+  // Synchronizes provider registration with ETW capture-state snapshots.
+  mutable std::mutex exec_providers_mutex_;
 
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
     const Env& env = Env::Default();

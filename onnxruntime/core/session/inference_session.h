@@ -229,6 +229,10 @@ class InferenceSession {
 
   virtual ~InferenceSession();
 
+#ifdef _WIN32
+  static void LogAllSessions();
+#endif
+
   /**
    * Register an execution provider. If you've one to register, call this before invoking Initialize().
    * The order of invocation indicates the preference order as well. In other words call this method
@@ -903,10 +907,6 @@ class InferenceSession {
   // OnSessionInitializationEnd for each EP, and SessionCreationEnd). Shared by the normal initialization path
   // and the compile-only early-return path. Returns status updated with any error from OnSessionInitializationEnd.
   common::Status RecordSessionCreationEndTelemetry(const TimePoint& tp, common::Status status);
-
-#ifdef _WIN32
-  static void LogAllSessions();
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(

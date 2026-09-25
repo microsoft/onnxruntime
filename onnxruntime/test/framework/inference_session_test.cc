@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cfloat>
 #include <filesystem>
 #include <functional>
@@ -1595,6 +1596,78 @@ TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   thread1.join();
   thread2.join();
 }
+
+#ifdef _WIN32
+class BlockingGetCapabilityExecutionProvider : public IExecutionProvider {
+ public:
+  BlockingGetCapabilityExecutionProvider(std::promise<void>& entered,
+                                         std::atomic<bool>& entered_signaled,
+                                         std::shared_future<void> release)
+      : IExecutionProvider{"BlockingGetCapabilityExecutionProvider"},
+        entered_{entered},
+        entered_signaled_{entered_signaled},
+        release_{std::move(release)} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&,
+      const IKernelLookup&,
+      const GraphOptimizerRegistry&,
+      IResourceAccountant*) const override {
+    if (!entered_signaled_.exchange(true)) {
+      entered_.set_value();
+    }
+
+    release_.wait();
+    return {};
+  }
+
+ private:
+  std::promise<void>& entered_;
+  std::atomic<bool>& entered_signaled_;
+  std::shared_future<void> release_;
+};
+
+TEST(InferenceSessionTests, LogAllSessionsDoesNotWaitForInitialization) {
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+
+  std::promise<void> initialization_entered;
+  auto initialization_entered_future = initialization_entered.get_future();
+  std::atomic<bool> initialization_entered_signaled{false};
+  std::promise<void> release_initialization;
+  auto release_initialization_future = release_initialization.get_future().share();
+
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<BlockingGetCapabilityExecutionProvider>(
+          initialization_entered, initialization_entered_signaled, release_initialization_future)));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+
+  auto initialize = std::async(std::launch::async, [&session]() {
+    return session.Initialize();
+  });
+
+  const auto initialization_wait_status = initialization_entered_future.wait_for(std::chrono::seconds{5});
+  if (initialization_wait_status != std::future_status::ready) {
+    release_initialization.set_value();
+    const auto initialize_status = initialize.get();
+    ASSERT_STATUS_OK(initialize_status);
+    FAIL() << "Initialization did not enter the execution provider";
+  }
+
+  auto log_all_sessions = std::async(std::launch::async, []() {
+    InferenceSession::LogAllSessions();
+  });
+  const auto log_wait_status = log_all_sessions.wait_for(std::chrono::seconds{5});
+
+  release_initialization.set_value();
+  const auto initialize_status = initialize.get();
+  log_all_sessions.get();
+
+  EXPECT_EQ(log_wait_status, std::future_status::ready);
+  ASSERT_STATUS_OK(initialize_status);
+}
+#endif
 
 TEST(InferenceSessionTests, PreAllocateOutputVector) {
   SessionOptions so;
