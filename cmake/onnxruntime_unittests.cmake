@@ -1450,6 +1450,12 @@ block()
   )
 
   set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
+  if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    # The module links against this executable's import library on Windows, so it must
+    # build after the executable. It remains part of the default build; for a targeted
+    # internal-test build, build onnxruntime_providers_cuda_ut to get both artifacts.
+    list(REMOVE_ITEM onnxruntime_provider_test_deps onnxruntime_providers_cuda_ut)
+  endif()
 
   AddTest(
     TARGET onnxruntime_provider_test
