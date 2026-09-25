@@ -27,6 +27,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
+#include "core/session/plugin_ep/ep_schema_compatibility.h"
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/partitioning_utils.h"
@@ -106,11 +107,17 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
 
   ORT_RETURN_IF_ERROR(SanityCheckOrtEp(*ort_ep));
 
+  std::shared_ptr<const PluginEpSchemaCompatibility> schema_compatibility;
+  ORT_RETURN_IF_ERROR(PluginEpSchemaCompatibility::Create(ep_factory_, *logger.ToInternal(),
+                                                          schema_compatibility));
+
   std::shared_ptr<KernelRegistry> kernel_registry;
-  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
+  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, *schema_compatibility,
+                                                *logger.ToInternal(), kernel_registry));
 
   plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                         session_options, ep_factory_, devices_,
+                                                        std::move(schema_compatibility),
                                                         kernel_registry,
                                                         *logger.ToInternal());
   return Status::OK();
@@ -176,6 +183,7 @@ static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
+                                                 std::shared_ptr<const PluginEpSchemaCompatibility> schema_compatibility,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
     : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
@@ -183,6 +191,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()),
+      schema_compatibility_(std::move(schema_compatibility)),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
@@ -325,6 +334,19 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
+    const auto incompatible_node = std::find_if(
+        node_grouping.nodes.begin(), node_grouping.nodes.end(),
+        [this](const EpNode* ep_node) {
+          return !schema_compatibility_->IsCompatible(ep_node->GetInternalNode());
+        });
+    if (incompatible_node != node_grouping.nodes.end()) {
+      const Node& node = (*incompatible_node)->GetInternalNode();
+      LOGS(logger, WARNING) << "Ignoring capability from " << Type() << " because "
+                            << node.Domain() << ":" << node.OpType() << "@" << node.SinceVersion()
+                            << " did not pass plugin schema compatibility negotiation.";
+      continue;
+    }
+
     // Skip this node grouping if any node has already been assigned to another EP.
     if (const Node* node_for_other_ep = FindFirstNodeAssignedToOtherEP(Type(), node_grouping.nodes);
         node_for_other_ep != nullptr) {
