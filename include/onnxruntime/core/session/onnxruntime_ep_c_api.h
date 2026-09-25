@@ -2905,10 +2905,13 @@ struct OrtEpFactory {
    * is an overall "no compatibility determination" result; it is not a required identity value for combining
    * per-device results.
    *
-   * \note This callback receives hardware devices but not the per-device EP metadata or session options passed to
-   * OrtEpFactory::CreateEp. An EP whose compatibility decision depends on configuration not represented by the hardware
-   * devices or compatibility string should avoid reporting a supported result unless it can make a reliable
-   * determination from the available information.
+   * \note Validation can be performed outside of a session. For example, OrtApi::GetModelCompatibilityForEpDevices
+   * does not require a session, and model package variant selection calls this function to exclude incompatible
+   * variants before a session is created. The session options and per-device EP metadata that may later be passed to
+   * OrtEpFactory::CreateEp may therefore be unknown when this is called, and are not provided to this callback. An EP
+   * whose compatibility decision depends on configuration not represented by the hardware devices or compatibility
+   * string should avoid reporting a supported result unless it can make a reliable determination from the available
+   * information.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices Ordered array of OrtHardwareDevice pointers for the intended EP configuration.
