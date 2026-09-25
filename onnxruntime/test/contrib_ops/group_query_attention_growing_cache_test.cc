@@ -59,6 +59,14 @@ struct ModelOptions {
   bool sliding_window_cache = false;
 };
 
+// Aggregate initialization with fewer members than the struct has trips -Wmissing-field-initializers.
+ModelOptions Options(PastSizedBuffer kind, const Dim& past_len = std::string("past_len")) {
+  ModelOptions options;
+  options.kind = kind;
+  options.past_len = past_len;
+  return options;
+}
+
 struct KvCacheModel {
   std::string data;
   // query, key, value, past_keys, past_values, seqlens_k, total_seq_len (empty when constant).
@@ -260,49 +268,52 @@ void RunOnWebGpu(PastSizedBuffer kind, const char* log_id) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
-  const KvCacheModel symbolic = BuildKvCacheModel({kind});
+  const KvCacheModel symbolic = BuildKvCacheModel(Options(kind));
   for (const Step& step : kSymbolicSteps) {
     SCOPED_TRACE("symbolic " + Describe(step));
     ExpectWebGpuMatchesCpu(symbolic, step, log_id);
   }
   for (const Step& step : kFixedSteps) {
     SCOPED_TRACE("fixed " + Describe(step));
-    ExpectWebGpuMatchesCpu(BuildKvCacheModel({kind, Dim{step.past_len}}), step, log_id);
+    ExpectWebGpuMatchesCpu(BuildKvCacheModel(Options(kind, Dim{step.past_len})), step, log_id);
   }
 }
 
 }  // namespace
 
 TEST(GroupQueryAttentionGrowingCacheTest, SymbolicPastLengthLeavesPresentDynamic) {
-  ExpectDynamic(InferredPresentLength(BuildKvCacheModel({})));
+  ExpectDynamic(InferredPresentLength(BuildKvCacheModel(ModelOptions{})));
 }
 
 TEST(GroupQueryAttentionGrowingCacheTest, FixedPastLengthLeavesPresentDynamic) {
-  ExpectDynamic(InferredPresentLength(BuildKvCacheModel({PastSizedBuffer::kPastItself, Dim{16}})));
+  ExpectDynamic(InferredPresentLength(BuildKvCacheModel(Options(PastSizedBuffer::kPastItself, Dim{16}))));
 }
 
 TEST(GroupQueryAttentionGrowingCacheTest, ConstantTotalLengthGivesExactPresentLength) {
-  ModelOptions grows{PastSizedBuffer::kPastItself, Dim{16}, 17};
+  ModelOptions grows = Options(PastSizedBuffer::kPastItself, Dim{16});
+  grows.constant_total_seq_len = 17;
   EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(grows)).dim_value(), 17);
-  ModelOptions fits{PastSizedBuffer::kPastItself, Dim{16}, 8};
+  ModelOptions fits = Options(PastSizedBuffer::kPastItself, Dim{16});
+  fits.constant_total_seq_len = 8;
   EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(fits)).dim_value(), 16);
 }
 
 // A windowed cache is capacity-sized and evicts internally, so present keeps the past length.
 TEST(GroupQueryAttentionGrowingCacheTest, SlidingWindowCacheKeepsPastLength) {
-  ModelOptions windowed{PastSizedBuffer::kPastItself, Dim{16}, std::nullopt, /*sliding_window_cache*/ true};
+  ModelOptions windowed = Options(PastSizedBuffer::kPastItself, Dim{16});
+  windowed.sliding_window_cache = true;
   EXPECT_EQ(InferredPresentLength(BuildKvCacheModel(windowed)).dim_value(), 16);
 }
 
 TEST(GroupQueryAttentionGrowingCacheTest, PresentKvMayGrowBeyondFreedPastSizedBuffer) {
-  const KvCacheModel symbolic = BuildKvCacheModel({PastSizedBuffer::kFreeList});
+  const KvCacheModel symbolic = BuildKvCacheModel(Options(PastSizedBuffer::kFreeList));
   for (const Step& step : kSymbolicSteps) {
     SCOPED_TRACE("symbolic " + Describe(step));
     ExpectCpuReuseMatchesNoReuse(symbolic, step);
   }
   for (const Step& step : kFixedSteps) {
     SCOPED_TRACE("fixed " + Describe(step));
-    ExpectCpuReuseMatchesNoReuse(BuildKvCacheModel({PastSizedBuffer::kFreeList, Dim{step.past_len}}), step);
+    ExpectCpuReuseMatchesNoReuse(BuildKvCacheModel(Options(PastSizedBuffer::kFreeList, Dim{step.past_len})), step);
   }
 }
 
