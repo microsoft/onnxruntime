@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <array>
 #include <sstream>
 
 #include "core/graph/onnx_protobuf.h"
@@ -629,6 +630,505 @@ TEST(FunctionTest, CallGraphAcyclic_SharedCallsDiamondNoCycle) {
   call_graph[c] = {d};
   call_graph[d] = {};
   ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphDepth_MaximumDepthAccepted) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  for (size_t i = 0; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  const std::array<std::string_view, 1> roots{function_ids[0]};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphDepth(call_graph, roots));
+}
+
+TEST(FunctionTest, CallGraphDepth_UnreachableExcessiveDepthAccepted) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth + 2);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth + 2; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[function_ids[0]] = {};
+  for (size_t i = 1; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  const std::array<std::string_view, 1> roots{function_ids[0]};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphDepth(call_graph, roots));
+}
+
+TEST(FunctionTest, CallGraphDepth_ExcessiveSharedTailRejected) {
+  std::vector<std::string> function_ids;
+  function_ids.reserve(onnxruntime::kMaxModelLocalFunctionCallDepth + 2);
+  for (size_t i = 0; i < onnxruntime::kMaxModelLocalFunctionCallDepth + 2; ++i) {
+    function_ids.push_back("function_" + std::to_string(i));
+  }
+
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[function_ids[0]] = {function_ids[2]};
+  call_graph[function_ids[1]] = {function_ids[0], function_ids[2]};
+  for (size_t i = 2; i < function_ids.size(); ++i) {
+    auto& callees = call_graph[function_ids[i]];
+    if (i + 1 < function_ids.size()) {
+      callees.push_back(function_ids[i + 1]);
+    }
+  }
+
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+  const std::array<std::string_view, 1> roots{function_ids[1]};
+  const auto status = onnxruntime::ValidateCallGraphDepth(call_graph, roots);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateLocalFunctionChainModel(size_t call_depth) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+
+  auto* graph = model_proto.mutable_graph();
+  graph->set_name("local_function_chain");
+  auto* graph_input = graph->add_input();
+  graph_input->set_name("x");
+  graph_input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* graph_output = graph->add_output();
+  graph_output->set_name("y");
+  graph_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* graph_node = graph->add_node();
+  graph_node->set_domain("local");
+  graph_node->set_op_type("function_0");
+  graph_node->add_input("x");
+  graph_node->add_output("y");
+
+  for (size_t i = 0; i < call_depth; ++i) {
+    auto* function = model_proto.add_functions();
+    function->set_domain("local");
+    function->set_name("function_" + std::to_string(i));
+    function->add_input("x");
+    function->add_output("y");
+    auto* function_onnx_opset = function->add_opset_import();
+    function_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+    function_onnx_opset->set_version(16);
+    auto* function_local_opset = function->add_opset_import();
+    function_local_opset->set_domain("local");
+    function_local_opset->set_version(1);
+
+    auto* node = function->add_node();
+    node->set_op_type(i + 1 < call_depth ? "function_" + std::to_string(i + 1) : "Identity");
+    if (i + 1 < call_depth) {
+      node->set_domain("local");
+    }
+    node->add_input("x");
+    node->add_output("y");
+  }
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateRepeatedLocalFunctionCallDagModel(size_t call_depth) {
+  auto model_proto = CreateLocalFunctionChainModel(call_depth);
+  for (int i = 0; i + 1 < model_proto.functions_size(); ++i) {
+    auto* function = model_proto.mutable_functions(i);
+    function->mutable_node(0)->set_output(0, "unused");
+
+    auto* repeated_call = function->add_node();
+    repeated_call->set_domain("local");
+    repeated_call->set_op_type("function_" + std::to_string(i + 1));
+    repeated_call->add_input("x");
+    repeated_call->add_output("y");
+  }
+
+  return model_proto;
+}
+
+static std::shared_ptr<OnnxRuntimeOpSchemaRegistry> CreateLocalFunctionCollisionRegistry() {
+  auto registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schemas{
+      ONNX_NAMESPACE::OpSchema()
+          .SetName("function_0")
+          .SetDomain("local")
+          .Input(0, "X", "", "T")
+          .Output(0, "Y", "", "T")
+          .TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types(), "")};
+  ORT_THROW_IF_ERROR(registry->RegisterOpSet(schemas, "local", 0, 1));
+  return registry;
+}
+
+TEST(FunctionTest, RegisteredSchemaTakesPrecedenceOverCollidingRootLocalFunction) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
+  Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
+TEST(FunctionTest, RegisteredSchemaTakesPrecedenceInsideLocalFunctionBody) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth + 1);
+  model_proto.mutable_graph()->mutable_node(0)->set_op_type("wrapper");
+
+  auto* wrapper = model_proto.add_functions();
+  wrapper->set_domain("local");
+  wrapper->set_name("wrapper");
+  wrapper->add_input("x");
+  wrapper->add_output("y");
+  auto* onnx_opset = wrapper->add_opset_import();
+  onnx_opset->set_domain(kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = wrapper->add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+  auto* collision_node = wrapper->add_node();
+  collision_node->set_domain("local");
+  collision_node->set_op_type("function_0");
+  collision_node->add_input("x");
+  collision_node->add_output("y");
+
+  IOnnxRuntimeOpSchemaRegistryList registries{CreateLocalFunctionCollisionRegistry()};
+  Model model(std::move(model_proto), &registries, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+}
+
+TEST(FunctionTest, RepeatedLocalFunctionCallDagDepthValidationCompletes) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateRepeatedLocalFunctionCallDagModel(30), nullptr, logger);
+  ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
+}
+
+static void WrapLocalFunctionChainInReferencedGraphAttribute(ONNX_NAMESPACE::ModelProto& model_proto) {
+  auto* graph = model_proto.mutable_graph();
+  auto* condition = graph->add_input();
+  condition->set_name("condition");
+  condition->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  auto* root_node = graph->mutable_node(0);
+  root_node->set_op_type("wrapper");
+  root_node->clear_input();
+  root_node->add_input("x");
+  root_node->add_input("condition");
+
+  auto* body_attr = root_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* body_graph = body_attr->mutable_g();
+  body_graph->set_name("body");
+  auto* function_call = body_graph->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+  function_call->add_input("x");
+  function_call->add_output("body_output");
+  auto* body_output = body_graph->add_output();
+  body_output->set_name("body_output");
+  body_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* wrapper = model_proto.add_functions();
+  wrapper->set_domain("local");
+  wrapper->set_name("wrapper");
+  wrapper->add_input("x");
+  wrapper->add_input("condition");
+  wrapper->add_output("y");
+  wrapper->add_attribute("body");
+  auto* wrapper_onnx_opset = wrapper->add_opset_import();
+  wrapper_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  wrapper_onnx_opset->set_version(16);
+  auto* wrapper_local_opset = wrapper->add_opset_import();
+  wrapper_local_opset->set_domain("local");
+  wrapper_local_opset->set_version(1);
+
+  auto* if_node = wrapper->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("y");
+  auto* then_attr = if_node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  then_attr->set_ref_attr_name("body");
+  auto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* else_graph = else_attr->mutable_g();
+  else_graph->set_name("else");
+  auto* identity = else_graph->add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("x");
+  identity->add_output("else_output");
+  auto* else_output = else_graph->add_output();
+  else_output->set_name("else_output");
+  else_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+}
+
+TEST(FunctionTest, ReferencedGraphAttributeContributesToLocalFunctionDepth) {
+  auto accepted_model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth - 1);
+  WrapLocalFunctionChainInReferencedGraphAttribute(accepted_model_proto);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model accepted_model(std::move(accepted_model_proto), nullptr, logger);
+  ASSERT_STATUS_OK(accepted_model.MainGraph().Resolve());
+
+  auto rejected_model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  WrapLocalFunctionChainInReferencedGraphAttribute(rejected_model_proto);
+  Model rejected_model(std::move(rejected_model_proto), nullptr, logger);
+  const auto status = rejected_model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, DefaultGraphAttributeContributesToLocalFunctionDepth) {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  WrapLocalFunctionChainInReferencedGraphAttribute(model_proto);
+
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  auto* wrapper = model_proto.mutable_functions(model_proto.functions_size() - 1);
+  *wrapper->add_attribute_proto() = root_node->attribute(0);
+  root_node->clear_attribute();
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateForwardedNestedGraphAttributeModel() {
+  auto model_proto = CreateLocalFunctionChainModel(kMaxModelLocalFunctionCallDepth);
+  auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+  root_call->set_op_type("F");
+
+  auto* forwarded_attr = root_call->add_attribute();
+  forwarded_attr->set_name("A");
+  forwarded_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* nested_if = forwarded_attr->mutable_g()->add_node();
+  nested_if->set_op_type("If");
+  auto* nested_ref = nested_if->add_attribute();
+  nested_ref->set_name("then_branch");
+  nested_ref->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  nested_ref->set_ref_attr_name("B");
+
+  auto* chain_attr = root_call->add_attribute();
+  chain_attr->set_name("B");
+  chain_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* chain_call = chain_attr->mutable_g()->add_node();
+  chain_call->set_domain("local");
+  chain_call->set_op_type("function_0");
+
+  auto* forwarder = model_proto.add_functions();
+  forwarder->set_domain("local");
+  forwarder->set_name("F");
+  forwarder->add_attribute("A");
+  forwarder->add_attribute("B");
+  auto* forwarder_onnx_opset = forwarder->add_opset_import();
+  forwarder_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  forwarder_onnx_opset->set_version(16);
+  auto* forwarder_local_opset = forwarder->add_opset_import();
+  forwarder_local_opset->set_domain("local");
+  forwarder_local_opset->set_version(1);
+  auto* forwarded_call = forwarder->add_node();
+  forwarded_call->set_domain("local");
+  forwarded_call->set_op_type("G");
+  auto* forwarded_binding = forwarded_call->add_attribute();
+  forwarded_binding->set_name("body");
+  forwarded_binding->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  forwarded_binding->set_ref_attr_name("A");
+
+  auto* consumer = model_proto.add_functions();
+  consumer->set_domain("local");
+  consumer->set_name("G");
+  consumer->add_attribute("body");
+  auto* consumer_onnx_opset = consumer->add_opset_import();
+  consumer_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  consumer_onnx_opset->set_version(16);
+  auto* consumer_local_opset = consumer->add_opset_import();
+  consumer_local_opset->set_domain("local");
+  consumer_local_opset->set_version(1);
+  auto* if_node = consumer->add_node();
+  if_node->set_op_type("If");
+  auto* body_ref = if_node->add_attribute();
+  body_ref->set_name("then_branch");
+  body_ref->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  body_ref->set_ref_attr_name("body");
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateDirectNestedGraphAttributeModel() {
+  auto model_proto = CreateForwardedNestedGraphAttributeModel();
+  auto* root_call = model_proto.mutable_graph()->mutable_node(0);
+  auto* forwarder = model_proto.mutable_functions(model_proto.functions_size() - 2);
+  auto* direct_binding = forwarder->mutable_node(0)->mutable_attribute(0);
+  direct_binding->clear_ref_attr_name();
+  *direct_binding->mutable_g() = root_call->attribute(0).g();
+  return model_proto;
+}
+
+TEST(FunctionTest, ForwardedGraphAttributePreservesNestedReferenceBindings) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateForwardedNestedGraphAttributeModel(), nullptr, logger);
+  const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, DirectGraphAttributePreservesNestedReferenceBindings) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateDirectNestedGraphAttributeModel(), nullptr, logger);
+  const auto status = model.ValidateLocalFunctionCallDepth(model.MainGraph());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+static ONNX_NAMESPACE::ModelProto CreateTerminatingCrossBoundGraphAttributeModel() {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+  onnx_opset->set_version(16);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+  auto* graph = model_proto.mutable_graph();
+  graph->set_name("terminating_cross_bound_graph_attributes");
+
+  for (const auto* function_name : {"F", "G"}) {
+    auto* function = model_proto.add_functions();
+    function->set_domain("local");
+    function->set_name(function_name);
+    function->add_attribute("body");
+    auto* function_onnx_opset = function->add_opset_import();
+    function_onnx_opset->set_domain(onnxruntime::kOnnxDomain);
+    function_onnx_opset->set_version(16);
+    auto* function_local_opset = function->add_opset_import();
+    function_local_opset->set_domain("local");
+    function_local_opset->set_version(1);
+
+    auto* if_node = function->add_node();
+    if_node->set_op_type("If");
+    auto* body_attr = if_node->add_attribute();
+    body_attr->set_name("then_branch");
+    body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    body_attr->set_ref_attr_name("body");
+  }
+
+  const auto add_bound_call = [&](const char* function_name, const char* nested_function_name) {
+    auto* call = graph->add_node();
+    call->set_domain("local");
+    call->set_op_type(function_name);
+    auto* body_attr = call->add_attribute();
+    body_attr->set_name("body");
+    body_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* nested_call = body_attr->mutable_g()->add_node();
+    nested_call->set_domain("local");
+    nested_call->set_op_type(nested_function_name);
+  };
+  add_bound_call("F", "G");
+  add_bound_call("G", "F");
+
+  return model_proto;
+}
+
+TEST(FunctionTest, CallSiteGraphBindingsDoNotCreateGlobalCycle) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(CreateTerminatingCrossBoundGraphAttributeModel(), nullptr, logger);
+  ASSERT_STATUS_OK(model.ValidateLocalFunctionCallDepth(model.MainGraph()));
+}
+
+TEST(FunctionTest, LoadFromBytes_ExcessiveLocalFunctionDepthReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  const auto status = Model::LoadFromBytes(static_cast<int>(serialized_model.size()), serialized_model.data(),
+                                           model, nullptr, logger);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, LocalFunctionDepthValidationPreservesGraphProtoSyncFlag) {
+  auto model_proto = CreateLocalFunctionChainModel(1);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, logger));
+
+  auto& graph = model->MainGraph();
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  ASSERT_STATUS_OK(graph.Resolve());
+  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+}
+
+TEST(FunctionTest, FailedLocalFunctionDepthValidationPreservesGraphProtoSyncFlag) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+
+  auto& graph = model.MainGraph();
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+}
+
+TEST(FunctionTest, ExcessiveLocalFunctionDepthInGraphsAttributeReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  root_node->set_domain(onnxruntime::kOnnxDomain);
+  root_node->set_op_type("Identity");
+  auto* graphs_attr = root_node->add_attribute();
+  graphs_attr->set_name("graphs");
+  graphs_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS);
+  auto* function_call = graphs_attr->add_graphs()->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, ExcessiveLocalFunctionDepthInUntypedGraphAttributeReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  root_node->set_domain(onnxruntime::kOnnxDomain);
+  root_node->set_op_type("Identity");
+  auto* graph_attr = root_node->add_attribute();
+  graph_attr->set_name("graph");
+  auto* function_call = graph_attr->mutable_g()->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 // --- Model-level integration tests ---
