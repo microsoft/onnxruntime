@@ -272,6 +272,8 @@ OrtAllocator (C struct)
 
 ### 3.3 Shared Arena Lifecycle and Reference Counting
 
+> **Update:** the device BFC arena is no longer shared. Each `CreateAllocator` call for device memory creates its own arena, stored in `DeviceCacheEntry::device_arenas` and destroyed by the matching `ReleaseAllocator`. A shared device arena let one session reuse chunks that another session's captured CUDA graph still reads and writes, which corrupted graph replay. The pinned arena and CUDA mempool allocator keep the reference-counted sharing described below.
+
 **Multi-GPU consideration.** A system may have multiple CUDA devices. Each GPU has its own device memory, so each needs its own arena. The CUDA plugin factory already maintains a per-device cache (`device_cache_`) mapping `HardwareDeviceKey → DeviceCacheEntry` that stores `OrtMemoryInfo` instances per GPU. The arena pointers and ref counts are added to this existing cache structure.
 
 **Per-device key correctness.** `HardwareDeviceKey` is `{type, vendor_id, device_id, cuda_ordinal}`. The `device_id` field is the PCI Device ID — it identifies the hardware *model* (e.g. 0x2684 for all RTX 4090s), **not** an individual physical device. On a host with two identical GPUs, `{type, vendor_id, device_id}` alone would produce the same key for both, causing them to share a single `DeviceCacheEntry` and a single arena — allocating memory on only one GPU. Including `cuda_ordinal` (assigned sequentially by the factory during `GetSupportedDevicesImpl`) ensures each physical GPU gets its own cache entry, arena, and `OrtMemoryInfo`.
@@ -347,7 +349,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
 
 This handles:
 - **Shared allocators** — `RegisterExecutionProviderLibrary` iterates over each `OrtEpDevice` and calls `CreateAllocator` for each device's memory infos. Each device gets its own shared arena.
-- **Per-session allocators** — each session calls `CreateAllocator` (returning the same shared arena for the device) and `ReleaseAllocator` on session teardown.
+- **Per-session allocators** — each session calls `CreateAllocator` (which creates a device arena owned by that session) and `ReleaseAllocator` on session teardown.
 - **External allocator sessions** — when a `CudaEp` instance is configured with `gpu_external_alloc` and `gpu_external_free`, it advertises `OrtEp::CreateAllocator` and creates a per-session `CudaExternalDeviceAllocator` from that EP's config. The factory's device cache does not store external allocator callbacks or a shared external allocator, so a later session on the same GPU without external allocator options still uses the factory's internal arena/mempool path. Release falls through to the raw allocator case above and uses `CudaAllocatorBase::IsExternalDeviceAllocator()` to delete it with the correct concrete type.
 
 The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`. When replacing, `ReleaseAllocator` is called on the old allocator first (dropping that device's arena if ref count hits zero), then `CreateAllocator` is called again with the new options — potentially creating a new arena with different config for that specific device.
@@ -395,7 +397,7 @@ The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be
 
 This means:
 - The factory's first `CreateAllocator` call (from `RegisterExecutionProviderLibrary` → shared allocators) uses env-level arena config (or defaults if none).
-- Subsequent calls from `CreatePreferredAllocators` pass session-level arena config. If the factory already holds a shared arena for that device (from the env-level path) and the incoming session options differ, the factory decides how to handle it — typically logging a warning and keeping the existing arena (since it's shared). If no shared arena exists yet (e.g. `use_env_allocators=0`), the factory creates a new arena with the session-provided config.
+- Subsequent calls from `CreatePreferredAllocators` pass session-level arena config, and the factory creates a new device arena with that config for the session.
 - The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`, allowing users to replace an existing arena with a new config at any time.
 
 ```
@@ -489,8 +491,7 @@ The generic `ep_factory.<ep_name>.` convention remains documented in the public 
 
 The EP factory may receive arena config from two sources: environment-level keys (via `RegisterExecutionProviderLibrary`) and session-level keys (via `PluginExecutionProvider::CreatePreferredAllocators`). The factory is unaware of conflicts between these two namespaces. This is acceptable because:
 - Shared allocators are created first (environment level) — only env config applies at that point.
-- Per-session `CreatePreferredAllocators` calls arrive later with session-level config. Since the factory typically holds a shared arena already, session options are only effective if: (a) no shared arena exists yet, or (b) the user explicitly calls `OrtApi::CreateSharedAllocator` with `replace_existing=true`.
-- When per-session config differs from the shared arena's config, the factory logs a warning but keeps the existing arena (it's shared across sessions and cannot be reconfigured mid-flight).
+- Per-session `CreatePreferredAllocators` calls arrive later with session-level config. Each call creates a device arena for that session, so session options always apply to the session's device arena. The shared pinned arena still keeps its first configuration.
 - The two config paths serve different lifecycle scopes and are independent.
 
 **Runtime validation (recommended):** When `CreateAllocatorImpl` receives `allocator_options` and the factory already holds a shared arena for that device, log a warning if the incoming keys differ from the keys used at first creation. This makes misconfiguration visible without silently ignoring the second set of options.

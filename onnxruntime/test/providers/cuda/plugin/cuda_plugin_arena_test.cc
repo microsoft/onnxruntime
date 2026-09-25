@@ -449,6 +449,34 @@ TEST_F(CudaPluginArenaTest, ExternalAllocator_IsSessionScoped) {
       << "A later session without external allocator options must not inherit callbacks from an earlier session.";
 }
 
+// A captured CUDA graph keeps writing to chunks its session freed, so sessions must not share a device arena.
+TEST_F(CudaPluginArenaTest, DeviceAllocator_IsSessionScoped) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> provider_options;
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  Ort::Session session_a(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  Ort::Session session_b(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  Ort::Allocator allocator_a(session_a, device_memory_info);
+  Ort::Allocator allocator_b(session_b, device_memory_info);
+  auto shared_allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(shared_allocator, nullptr);
+
+  const int64_t a_allocs_before = GetStatInt(allocator_a.GetStats(), "NumAllocs");
+  const int64_t b_allocs_before = GetStatInt(allocator_b.GetStats(), "NumAllocs");
+  const int64_t shared_allocs_before = GetStatInt(shared_allocator.GetStats(), "NumAllocs");
+
+  void* ptr = allocator_a.Alloc(1024);
+  ASSERT_NE(ptr, nullptr);
+  allocator_a.Free(ptr);
+
+  EXPECT_EQ(GetStatInt(allocator_a.GetStats(), "NumAllocs"), a_allocs_before + 1);
+  EXPECT_EQ(GetStatInt(allocator_b.GetStats(), "NumAllocs"), b_allocs_before);
+  EXPECT_EQ(GetStatInt(shared_allocator.GetStats(), "NumAllocs"), shared_allocs_before);
+}
+
 // Verify arena handles a large allocation.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_LargeAllocation) {
   auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
