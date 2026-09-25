@@ -130,41 +130,46 @@ TEST(QuantizeLinearPrecisionTest, Float8MixedTypes) {
 }
 #endif
 
-template <typename T, size_t elements_per_byte = 1>
+template <typename T, size_t elements_per_byte = 1, typename ScaleT>
 void TestQuantizeLinearBlockedPrecision(int granularity, int precision) {
   OpTester test("QuantizeLinear", 25);
   const std::vector<int64_t> dims{3, 5};
+  // a and b are exactly representable in FLOAT16, so only the rounding of the quotient differs.
+  const ScaleT a(0.39990234375f);  // fp16(0.4)
+  const ScaleT b(0.7998046875f);   // fp16(0.8)
   std::vector<int64_t> scale_dims;
-  std::vector<float> scales;
+  std::vector<ScaleT> scales;
   std::vector<int> values;
   switch (granularity) {
     case 0:
       test.AddAttribute<int64_t>("axis", 1);
       scale_dims = {5};
-      scales = {1.0003f, 2.0006f, 1.0003f, 2.0006f, 1.0003f};
+      scales = {a, b, a, b, a};
       values = {2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2};
       break;
     case 1:
       test.AddAttribute<int64_t>("axis", 1);
       test.AddAttribute<int64_t>("block_size", 3);
       scale_dims = {3, 2};
-      scales = {1.0003f, 2.0006f, 2.0006f, 1.0003f, 1.0003f, 2.0006f};
+      scales = {a, b, b, a, a, b};
       values = {2, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1};
       break;
     case 2:
       test.AddAttribute<int64_t>("axis", 0);
       test.AddAttribute<int64_t>("block_size", 2);
       scale_dims = {2, 5};
-      scales = {1.0003f, 2.0006f, 1.0003f, 2.0006f, 1.0003f,
-                2.0006f, 1.0003f, 2.0006f, 1.0003f, 2.0006f};
+      scales = {a, b, a, b, a, b, a, b, a, b};
       values = {2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1};
       break;
     default:
       FAIL() << "Unexpected quantization granularity: " << granularity;
   }
-  // 1.5 / 1.0003 rounds to 1 in FLOAT precision, but to 2 in FLOAT16.
-  if (precision == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    std::fill(values.begin(), values.end(), 1);
+  // 1.0 / fp16(0.4) is about 2.50061 and rounds to 3 in FLOAT precision. In FLOAT16 the quotient rounds
+  // to 2.5 and then to even, 2. An omitted precision uses the y_scale type. 1.0 / fp16(0.8) gives 1 either way.
+  const bool half = precision == ONNX_NAMESPACE::TensorProto::FLOAT16 ||
+                    (precision < 0 && std::is_same_v<ScaleT, MLFloat16>);
+  if (!half) {
+    std::replace(values.begin(), values.end(), 2, 3);
   }
   std::vector<T> expected((values.size() + elements_per_byte - 1) / elements_per_byte);
   for (size_t i = 0; i < values.size(); ++i) {
@@ -175,24 +180,33 @@ void TestQuantizeLinearBlockedPrecision(int granularity, int precision) {
       expected[i] = static_cast<T>(values[i]);
     }
   }
-  test.AddAttribute<int64_t>("precision", precision);
+  if (precision >= 0) {
+    test.AddAttribute<int64_t>("precision", precision);
+  }
   test.AddAttribute<int64_t>("output_dtype", utils::ToTensorProtoElementType<T>());
-  test.AddInput<MLFloat16>("x", dims, std::vector<MLFloat16>(15, MLFloat16(1.5f)));
-  test.AddInput<float>("y_scale", scale_dims, scales);
+  test.AddInput<MLFloat16>("x", dims, std::vector<MLFloat16>(15, MLFloat16(1.0f)));
+  test.AddInput<ScaleT>("y_scale", scale_dims, scales);
   test.AddOutput<T>("y", dims, expected);
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
-TEST(QuantizeLinearPrecisionTest, PerAxisAndBlockedPrecision) {
+template <typename ScaleT>
+void TestQuantizeLinearBlockedPrecisionForScaleType() {
   for (int granularity : {0, 1, 2}) {
-    for (int precision : {ONNX_NAMESPACE::TensorProto::FLOAT, ONNX_NAMESPACE::TensorProto::FLOAT16}) {
-      TestQuantizeLinearBlockedPrecision<int8_t>(granularity, precision);
-      TestQuantizeLinearBlockedPrecision<Int4x2, 2>(granularity, precision);
-      TestQuantizeLinearBlockedPrecision<UInt2x4, 4>(granularity, precision);
+    for (int precision : {-1, static_cast<int>(ONNX_NAMESPACE::TensorProto::FLOAT),
+                          static_cast<int>(ONNX_NAMESPACE::TensorProto::FLOAT16)}) {
+      TestQuantizeLinearBlockedPrecision<int8_t, 1, ScaleT>(granularity, precision);
+      TestQuantizeLinearBlockedPrecision<Int4x2, 2, ScaleT>(granularity, precision);
+      TestQuantizeLinearBlockedPrecision<UInt2x4, 4, ScaleT>(granularity, precision);
     }
   }
+}
+
+TEST(QuantizeLinearPrecisionTest, PerAxisAndBlockedPrecision) {
+  TestQuantizeLinearBlockedPrecisionForScaleType<float>();
+  TestQuantizeLinearBlockedPrecisionForScaleType<MLFloat16>();
 }
 
 // scalar zero & scale with uint8
