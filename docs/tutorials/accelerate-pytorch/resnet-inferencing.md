@@ -321,8 +321,8 @@ Siamese cat 0.012514038
 plastic bag 0.0056432663
 OpenVINO CPU Inference time = 31.83 ms
 ***** Verifying correctness *****
-PyTorch and ONNX Runtime output 0 are close: True
-PyTorch and ONNX Runtime output 1 are close: True
+OpenVINO and ONNX Runtime output 0 are close: True
+OpenVINO and ONNX Runtime output 1 are close: True
 ```
 
 ## Conclusion
