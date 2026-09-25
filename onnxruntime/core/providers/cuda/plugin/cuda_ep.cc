@@ -414,11 +414,17 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
     // capture is enabled - this branch is taken in both graph and non-graph runs. Use the caller's
     // intent flag rather than checking the handle for non-null: cudaStream_t(0) / nullptr is the
     // valid CUDA default stream and can be selected explicitly by the user. Wrap the external CUDA
-    // stream with full cuBLAS/cuDNN handles. When CUDA graph capture is also enabled,
-    // capture/replay run on this same user stream (see GetPerThreadContext), so kernels and graph
-    // capture share one stream.
-    RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
-        static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
+    // stream with EP-owned cuBLAS/cuDNN handles, matching the bundled CUDA EP. When CUDA graph
+    // capture is also enabled, capture/replay run on this same user stream (see GetPerThreadContext),
+    // so kernels and graph capture share one stream.
+    auto user_stream = static_cast<cudaStream_t>(ep->config_.user_compute_stream);
+    std::lock_guard<std::mutex> lock(ep->user_stream_handles_mutex_);
+    if (ep->user_stream_handles_ == nullptr) {
+      auto handles = std::make_unique<CudaLibraryHandles>();
+      RETURN_IF_ERROR(handles->Init(device_id, user_stream, ep->config_.enable_cudnn));
+      ep->user_stream_handles_ = std::move(handles);
+    }
+    cuda_stream->InitHandlesWithUserStream(user_stream, *ep->user_stream_handles_);
   } else if (ep->config_.enable_cuda_graph) {
     // When CUDA graph capture is enabled, all operations on this thread must go
     // through the thread's graph stream so capture/replay sees the same stream

@@ -306,6 +306,67 @@ TEST_F(CudaPluginUserStreamGraphTest, CaptureAndReplayOnUserStream) {
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
 
+// MatMul runs through cuBLAS, whose handle for a user stream is owned by the EP. Capture and
+// replay must keep producing correct results. matmul_1.onnx computes Y[3x1] = X[3x2] * W with
+// W = [1, 2].
+TEST_F(CudaPluginUserStreamGraphTest, CublasCaptureAndReplayOnUserStream) {
+  cudaStream_t user_stream = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
+
+  {
+    Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/matmul_1.onnx"), so);
+
+    auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+    auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+    ASSERT_NE(allocator, nullptr);
+
+    const std::array<int64_t, 2> x_shape = {3, 2};
+    const std::array<int64_t, 2> y_shape = {3, 1};
+    const std::array<float, 6> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const std::array<float, 3> expected = {5.0f, 11.0f, 17.0f};
+
+    void* input_gpu = allocator.Alloc(sizeof(x_values));
+    void* output_gpu = allocator.Alloc(sizeof(expected));
+    ASSERT_NE(input_gpu, nullptr);
+    ASSERT_NE(output_gpu, nullptr);
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(input_gpu, x_values.data(), sizeof(x_values),
+                                           cudaMemcpyHostToDevice, user_stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+
+    Ort::Value input_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(input_gpu), x_values.size(),
+        x_shape.data(), x_shape.size());
+    Ort::Value output_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(output_gpu), expected.size(),
+        y_shape.data(), y_shape.size());
+
+    Ort::IoBinding binding(session);
+    binding.BindInput("X", input_tensor);
+    binding.BindOutput("Y", output_tensor);
+
+    for (int i = 0; i < 5; ++i) {
+      ASSERT_EQ(cudaSuccess, cudaMemsetAsync(output_gpu, 0, sizeof(expected), user_stream));
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+      session.Run(Ort::RunOptions{}, binding);
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(user_stream));
+
+      std::array<float, 3> y{};
+      ASSERT_EQ(cudaSuccess, cudaMemcpy(y.data(), output_gpu, sizeof(y), cudaMemcpyDeviceToHost));
+      for (size_t j = 0; j < y.size(); ++j) {
+        EXPECT_FLOAT_EQ(y[j], expected[j]) << "mismatch at iteration " << i << " index " << j;
+      }
+    }
+
+    binding.ClearBoundInputs();
+    binding.ClearBoundOutputs();
+    allocator.Free(input_gpu);
+    allocator.Free(output_gpu);
+  }
+
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
 // Negative: a user_compute_stream combined with an external GPU allocator
 // (gpu_external_alloc/gpu_external_free) is not supported and must be rejected at session
 // creation with an error rather than silently ignored.

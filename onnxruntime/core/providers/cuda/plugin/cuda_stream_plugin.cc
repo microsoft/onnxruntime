@@ -37,6 +37,56 @@ std::atomic<uint64_t>& GetStreamMapGeneration() {
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// CudaLibraryHandles
+// ---------------------------------------------------------------------------
+
+OrtStatus* CudaLibraryHandles::Init(int device_id, cudaStream_t stream, bool enable_cudnn) {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id));
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasCreate(&cublas));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasSetStream(cublas, stream));
+  }
+  if (status.IsOK() && enable_cudnn && onnxruntime::cuda::CudnnLibrary::Get().Available()) {
+    status = StatusFromCudnnError(cudnnCreate(&cudnn));
+  }
+  if (status.IsOK() && cudnn != nullptr) {
+    status = StatusFromCudnnError(cudnnSetStream(cudnn, stream));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt));
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  return status.release();
+}
+
+void CudaLibraryHandles::Reset() noexcept {
+  if (cublas != nullptr) {
+    cublasDestroy(cublas);
+    cublas = nullptr;
+  }
+  if (cudnn != nullptr) {
+    cudnnDestroy(cudnn);
+    cudnn = nullptr;
+  }
+  if (cublas_lt != nullptr) {
+    cublasLtDestroy(cublas_lt);
+    cublas_lt = nullptr;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CudaSyncStream
 // ---------------------------------------------------------------------------
 
@@ -75,9 +125,10 @@ CudaSyncStream::~CudaSyncStream() {
     }
   }
 
-  if (cublas_handle_) cublasDestroy(cublas_handle_);
-  if (cudnn_handle_) cudnnDestroy(cudnn_handle_);
-  if (cublas_lt_handle_) cublasLtDestroy(cublas_lt_handle_);
+  cublas_handle_ = nullptr;
+  cudnn_handle_ = nullptr;
+  cublas_lt_handle_ = nullptr;
+  owned_handles_.Reset();
   // Unregister the stream from the global map *after* destroying handles but
   // *before* destroying the stream itself. This ordering ensures:
   //   1. No concurrent kernel can obtain cuBLAS/cuDNN handles from a destroyed
@@ -119,19 +170,12 @@ OrtStatus* CudaSyncStream::InitHandles() {
     status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
   }
   if (status.IsOK()) {
-    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
+    status = Ort::Status{owned_handles_.Init(device_id_, cuda_stream_, enable_cudnn_)};
   }
   if (status.IsOK()) {
-    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
-  }
-  if (status.IsOK() && enable_cudnn_ && onnxruntime::cuda::CudnnLibrary::Get().Available()) {
-    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
-  }
-  if (status.IsOK() && cudnn_handle_ != nullptr) {
-    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
+    cublas_handle_ = owned_handles_.cublas;
+    cudnn_handle_ = owned_handles_.cudnn;
+    cublas_lt_handle_ = owned_handles_.cublas_lt;
   }
 
   if (restore_prev_device) {
@@ -178,46 +222,16 @@ OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_s
   return status.release();
 }
 
-OrtStatus* CudaSyncStream::InitHandlesWithUserStream(cudaStream_t user_stream) {
-  int prev_device = -1;
-  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+void CudaSyncStream::InitHandlesWithUserStream(cudaStream_t user_stream, const CudaLibraryHandles& handles) {
+  cuda_stream_ = user_stream;
+  owns_stream_ = false;  // Do NOT destroy the user's stream.
+  cublas_handle_ = handles.cublas;
+  cudnn_handle_ = handles.cudnn;
+  cublas_lt_handle_ = handles.cublas_lt;
 
-  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
-  if (status.IsOK()) {
-    cuda_stream_ = user_stream;
-    owns_stream_ = false;  // Do NOT destroy the user's stream.
-  }
-  // Create cuBLAS/cuDNN/cuBLASLt handles bound to the user stream.
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
-  }
-  if (status.IsOK() && enable_cudnn_ && onnxruntime::cuda::CudnnLibrary::Get().Available()) {
-    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
-  }
-  if (status.IsOK() && cudnn_handle_ != nullptr) {
-    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
-  }
-  if (status.IsOK()) {
-    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
-  }
-
-  if (restore_prev_device) {
-    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
-    if (status.IsOK()) {
-      status = std::move(restore_status);
-    }
-  }
-
-  if (status.IsOK()) {
-    RegisterStream(cuda_stream_, this);
-    registered_ = true;
-    initialized_ = true;
-  }
-
-  return status.release();
+  RegisterStream(cuda_stream_, this);
+  registered_ = true;
+  initialized_ = true;
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {

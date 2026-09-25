@@ -3,8 +3,9 @@
 
 // CUDA stream and event-based synchronization primitives for the plugin EP.
 // CudaSyncStream wraps a cudaStream_t and, for owned streams, cuBLAS/cuDNN/
-// cuBLASLt handles. External graph streams are registered without owning
-// library handles and migrated kernels fall back to thread-local defaults.
+// cuBLASLt handles. User compute streams borrow library handles owned by the EP.
+// External graph streams are registered without library handles and migrated
+// kernels fall back to thread-local defaults.
 // CudaSyncNotification wraps a cudaEvent_t for cross-stream synchronization.
 // A global stream registry (with TLS-cached lookups) allows migrated kernels
 // to obtain their compute handles from a raw cudaStream_t.
@@ -22,6 +23,22 @@ namespace cuda_plugin {
 
 class CudaSyncNotification;
 class CudaEpFactory;
+
+/// Owns cuBLAS/cuDNN/cuBLASLt handles bound to a single CUDA stream.
+struct CudaLibraryHandles {
+  CudaLibraryHandles() = default;
+  ~CudaLibraryHandles() { Reset(); }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaLibraryHandles);
+
+  /// Create the handles on `device_id` and bind them to `stream`. The cuDNN handle is only
+  /// created when `enable_cudnn` is set and cuDNN is available.
+  OrtStatus* Init(int device_id, cudaStream_t stream, bool enable_cudnn);
+  void Reset() noexcept;
+
+  cublasHandle_t cublas = nullptr;
+  cudnnHandle_t cudnn = nullptr;
+  cublasLtHandle_t cublas_lt = nullptr;
+};
 
 /// CUDA stream implementation for the plugin EP.
 /// Owns a cudaStream_t and associated CUDA library handles for owned streams,
@@ -46,10 +63,10 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   /// resolved later from thread-local defaults when kernels dispatch.
   OrtStatus* InitHandlesWithExternalStream(cudaStream_t external_stream);
 
-  /// Initialize with a user-provided external CUDA stream, creating cuBLAS/cuDNN/
-  /// cuBLASLt handles bound to it. The stream is NOT owned (not destroyed on cleanup)
-  /// but library handles ARE owned. Use for user_compute_stream scenarios.
-  OrtStatus* InitHandlesWithUserStream(cudaStream_t user_stream);
+  /// Initialize with a user-provided external CUDA stream and library handles already bound
+  /// to it. Neither the stream nor the handles are owned; the EP keeps the handles alive for
+  /// its whole lifetime so captured CUDA graphs never outlive their cuBLAS workspace.
+  void InitHandlesWithUserStream(cudaStream_t user_stream, const CudaLibraryHandles& handles);
 
   /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
   /// Uses a thread-local TLS cache with a generation counter to avoid lock
@@ -77,6 +94,8 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   bool enable_cudnn_ = true;
   cudaStream_t cuda_stream_ = nullptr;
   bool owns_stream_ = true;  ///< False when wrapping an external stream (e.g., for CUDA graph).
+  CudaLibraryHandles owned_handles_;
+  // Views of either owned_handles_ or handles borrowed from the EP.
   cublasHandle_t cublas_handle_ = nullptr;
   cudnnHandle_t cudnn_handle_ = nullptr;
   cublasLtHandle_t cublas_lt_handle_ = nullptr;

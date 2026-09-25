@@ -18,6 +18,7 @@ namespace onnxruntime {
 namespace cuda_plugin {
 
 class CudaEpFactory;
+struct CudaLibraryHandles;
 
 /// CUDA execution provider implementation using public OrtEp interface.
 class CudaEp : public onnxruntime::ep::adapter::Ep {
@@ -122,6 +123,11 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
   std::string name_;
   Config config_;
   const OrtLogger& logger_;
+
+  // Shared by every stream wrapping the user compute stream so a captured CUDA graph never
+  // references cuBLAS workspace freed with a released stream wrapper. Created on first use.
+  std::mutex user_stream_handles_mutex_;
+  std::unique_ptr<CudaLibraryHandles> user_stream_handles_;
 
   mutable std::mutex per_thread_contexts_mutex_;
   // The thread-local cache owns contexts so they are released when a thread exits.
