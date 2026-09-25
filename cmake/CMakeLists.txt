@@ -70,13 +70,12 @@ option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
-# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
-# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
-# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
-cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
-
+cmake_dependent_option(onnxruntime_USE_CUDA_DIRECTSTORAGE "Build Microsoft DirectStorage CUDA loading support" OFF "onnxruntime_USE_CUDA;WIN32" OFF)
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
+if(onnxruntime_USE_CUDA_DIRECTSTORAGE AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  message(FATAL_ERROR "onnxruntime_USE_CUDA_DIRECTSTORAGE is not supported with onnxruntime_BUILD_CUDA_EP_AS_PLUGIN.")
+endif()
 option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
 option(onnxruntime_CUDA_MINIMAL "Build CUDA without any operations apart from memcpy ops. Useful for a very minimal TRT build" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
@@ -97,6 +96,12 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+# Declare both prerequisites before evaluating this dependent option on a fresh configure.
+# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
+# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
+# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
+cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
+
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
 # archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
@@ -1544,6 +1549,24 @@ if (onnxruntime_USE_CUDA)
     file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_CUDA_MINIMAL)
+    include(CheckCXXSourceCompiles)
+    include(CMakePushCheckState)
+    cmake_push_check_state(RESET)
+    set(CMAKE_REQUIRED_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
+    check_cxx_source_compiles("
+      #include <cufile.h>
+      using SetBoolParameterFn = decltype(&cuFileSetParameterBool);
+      int main() {
+        return CUFILE_PARAM_USE_PCIP2PDMA == CUFILE_PARAM_PROPERTIES_ALLOW_COMPAT_MODE;
+      }" onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+    cmake_pop_check_state()
+    if(onnxruntime_CUFILE_CONFIG_API_SUPPORTED)
+      set_property(SOURCE "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_external_data_loader_gds.cc"
+        APPEND PROPERTY COMPILE_DEFINITIONS ORT_CUDA_GDS_AVAILABLE)
+    endif()
+  endif()
 
   if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
           AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)

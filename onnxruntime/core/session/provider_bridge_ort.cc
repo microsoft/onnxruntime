@@ -2949,6 +2949,15 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (cuda_options->external_data_loader_use_directstorage != 0 &&
+      cuda_options->external_data_loader_use_directstorage != 1) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_use_directstorage got ",
+        cuda_options->external_data_loader_use_directstorage,
+        "; must be 0 or 1.");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
   if (cuda_options->external_data_loader_reading_threads >
       OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount) {
     const auto message = onnxruntime::MakeString(
@@ -2958,6 +2967,17 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
         ORT_INVALID_ARGUMENT,
         message.c_str());
   }
+  if (cuda_options->external_data_loader_use_gds != 0 &&
+      cuda_options->external_data_loader_use_gds != 1) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_use_gds got ",
+        cuda_options->external_data_loader_use_gds,
+        "; must be 0 or 1.");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+#endif
 
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {

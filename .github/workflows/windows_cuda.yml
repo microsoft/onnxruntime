@@ -116,13 +116,34 @@ jobs:
             exit $lastExitCode
           }
           # Execute the build process
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --update --build --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON onnxruntime_USE_CUDA_DIRECTSTORAGE=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
-          # Clean up the output directory before uploading artifacts
           $outputDir = "${{ runner.temp }}\build\RelWithDebInfo"
+          # DirectStorage resolves dstoragecore.dll relative to the process executable.
+          $testDir = Join-Path $outputDir "RelWithDebInfo"
+          $sdkManifest = Join-Path $outputDir "directstorage-source-dir.txt"
+          if (!(Test-Path -LiteralPath $sdkManifest -PathType Leaf)) {
+            throw "Missing DirectStorage SDK source manifest: $sdkManifest"
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $testDir "onnxruntime_provider_test.exe") -PathType Leaf)) {
+            throw "Missing CUDA provider test executable in $testDir"
+          }
+          $sdkDir = (Get-Content -LiteralPath $sdkManifest -Raw -ErrorAction Stop).Trim()
+          if ([string]::IsNullOrWhiteSpace($sdkDir)) {
+            throw "Empty DirectStorage SDK source manifest: $sdkManifest"
+          }
+          foreach ($dll in @("dstorage.dll", "dstoragecore.dll")) {
+            $source = Join-Path $sdkDir "native\bin\x64\$dll"
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Missing DirectStorage runtime: $source"
+            }
+            Copy-Item -LiteralPath $source -Destination $testDir -ErrorAction Stop
+          }
+
+          # Clean up the output directory before uploading artifacts
           Write-Host "Cleaning up files from $outputDir..."
 
           Remove-Item -Path "$outputDir\onnxruntime" -Recurse -Force -ErrorAction SilentlyContinue
@@ -243,7 +264,7 @@ jobs:
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --build_java --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --enable_transformers_tool_test --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON onnxruntime_USE_CUDA_DIRECTSTORAGE=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
