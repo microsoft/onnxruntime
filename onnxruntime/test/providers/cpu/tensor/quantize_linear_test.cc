@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <tuple>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -47,6 +49,116 @@ static void RunQuantizeLinearOp25CudaOnly(OpTester& test) {
   RunQDQOp25CudaOnly(test);
 }
 #endif  // USE_CUDA
+
+template <typename QuantT, typename ScaleT, typename OutT>
+void TestDequantizeLinearOutputType(int opset, int granularity, bool has_zero_point, int output_dtype_mode) {
+  OpTester test("DequantizeLinear", opset);
+  const std::vector<int64_t> dims{2, 3};
+  const std::vector<QuantT> x{0, 1, 2, 3, 4, 5};
+  std::vector<int64_t> scale_dims;
+  std::vector<ScaleT> scales;
+  InlinedVector<float> expected;
+  const float zp = has_zero_point ? 2.0f : 0.0f;
+  if (granularity == 0) {
+    scales = {ScaleT(0.5f)};
+    expected = {-zp * 0.5f, (1 - zp) * 0.5f, (2 - zp) * 0.5f,
+                (3 - zp) * 0.5f, (4 - zp) * 0.5f, (5 - zp) * 0.5f};
+  } else if (granularity == 1) {
+    test.AddAttribute<int64_t>("axis", -1);
+    scale_dims = {3};
+    scales = {ScaleT(0.25f), ScaleT(0.5f), ScaleT(2.0f)};
+    expected = {-zp * 0.25f, (1 - zp) * 0.5f, (2 - zp) * 2.0f,
+                (3 - zp) * 0.25f, (4 - zp) * 0.5f, (5 - zp) * 2.0f};
+  } else if (granularity == 2) {
+    test.AddAttribute<int64_t>("axis", -1);
+    test.AddAttribute<int64_t>("block_size", 2);
+    scale_dims = {2, 2};
+    scales = {ScaleT(0.25f), ScaleT(0.5f), ScaleT(1.0f), ScaleT(2.0f)};
+    expected = {-zp * 0.25f, (1 - zp) * 0.25f, (2 - zp) * 0.5f,
+                3 - zp, 4 - zp, (5 - zp) * 2.0f};
+  } else {
+    test.AddAttribute<int64_t>("axis", 0);
+    test.AddAttribute<int64_t>("block_size", 2);
+    scale_dims = {1, 3};
+    scales = {ScaleT(0.25f), ScaleT(0.5f), ScaleT(2.0f)};
+    expected = {-zp * 0.25f, (1 - zp) * 0.5f, (2 - zp) * 2.0f,
+                (3 - zp) * 0.25f, (4 - zp) * 0.5f, (5 - zp) * 2.0f};
+  }
+  if (output_dtype_mode >= 0) {
+    const int64_t output_type = std::is_same_v<OutT, float> ? ONNX_NAMESPACE::TensorProto::FLOAT
+                                                            : ONNX_NAMESPACE::TensorProto::FLOAT16;
+    test.AddAttribute<int64_t>("output_dtype", output_dtype_mode == 0 ? 0 : output_type);
+  }
+  test.AddInput<QuantT>("x", dims, x);
+  test.AddInput<ScaleT>("x_scale", scale_dims, scales);
+  if (has_zero_point) {
+    test.AddInput<QuantT>("x_zero_point", scale_dims, std::vector<QuantT>(scales.size(), QuantT(2)));
+  }
+  std::vector<OutT> output(expected.begin(), expected.end());
+  test.AddOutput<OutT>("y", dims, output);
+  test.SetOutputTolerance(0.0f, 0.0f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+class DequantizeLinearOutputTypeTest : public ::testing::TestWithParam<std::tuple<int, int, bool>> {};
+
+TEST_P(DequantizeLinearOutputTypeTest, Cpu) {
+  const auto [opset, granularity, zero_point] = GetParam();
+  TestDequantizeLinearOutputType<int8_t, float, MLFloat16>(opset, granularity, zero_point, 1);
+  TestDequantizeLinearOutputType<uint8_t, MLFloat16, float>(opset, granularity, zero_point, 1);
+  TestDequantizeLinearOutputType<uint8_t, float, MLFloat16>(opset, granularity, zero_point, 1);
+  TestDequantizeLinearOutputType<int8_t, MLFloat16, float>(opset, granularity, zero_point, 1);
+  for (int output_dtype : {-1, 0, 1}) {
+    TestDequantizeLinearOutputType<int8_t, float, float>(opset, granularity, zero_point, output_dtype);
+    TestDequantizeLinearOutputType<uint8_t, MLFloat16, MLFloat16>(opset, granularity, zero_point, output_dtype);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(DequantizeLinear, DequantizeLinearOutputTypeTest,
+                         ::testing::Combine(::testing::Values(23, 24, 25),
+                                            ::testing::Values(0, 1, 2, 3), ::testing::Bool()));
+
+TEST(DequantizeLinearOpTest, FloatScaleHalfOutputRounding) {
+  OpTester test("DequantizeLinear", 23);
+  test.AddAttribute<int64_t>("output_dtype", ONNX_NAMESPACE::TensorProto::FLOAT16);
+  test.AddInput<int8_t>("x", {4}, {-128, -1, 0, 127});
+  test.AddInput<float>("x_scale", {}, {1.0003f});
+  test.AddOutput<MLFloat16>("y", {4}, {MLFloat16(-128.0f), MLFloat16(-1.0f), MLFloat16(0.0f), MLFloat16(127.0625f)});
+  test.SetOutputTolerance(0.0f, 0.0f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(DequantizeLinearOpTest, MixedTypesInt4Blocked) {
+  OpTester test("DequantizeLinear", 23);
+  test.AddAttribute<int64_t>("output_dtype", ONNX_NAMESPACE::TensorProto::FLOAT);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<Int4x2>("x", {2, 3}, {Int4x2(-8, -1), Int4x2(0, 1), Int4x2(6, 7)});
+  test.AddInput<MLFloat16>("x_scale", {2, 2}, {MLFloat16(0.25f), MLFloat16(0.5f), MLFloat16(1.0f), MLFloat16(2.0f)});
+  test.AddInput<Int4x2>("x_zero_point", {2, 2}, {Int4x2(1, 2), Int4x2(3, 4)});
+  test.AddOutput<float>("y", {2, 3}, {-2.25f, -0.5f, -1.0f, -2.0f, 3.0f, 6.0f});
+  test.SetOutputTolerance(0.0f, 0.0f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+TEST(DequantizeLinearOpTest, MixedTypesFloat8) {
+  OpTester test("DequantizeLinear", 23);
+  test.AddAttribute<int64_t>("output_dtype", ONNX_NAMESPACE::TensorProto::FLOAT16);
+  test.AddInput<Float8E4M3FN>("x", {4}, {Float8E4M3FN(-2.0f, true), Float8E4M3FN(-0.5f, true), Float8E4M3FN(0.5f, true), Float8E4M3FN(2.0f, true)});
+  test.AddInput<float>("x_scale", {}, {0.25f});
+  test.AddOutput<MLFloat16>("y", {4}, {MLFloat16(-0.5f), MLFloat16(-0.125f), MLFloat16(0.125f), MLFloat16(0.5f)});
+  test.SetOutputTolerance(0.0f, 0.0f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+#endif
 
 // scalar zero & scale with uint8
 TEST(DequantizeLinearOpTest, Uint8) {
