@@ -72,14 +72,14 @@ pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackag
 
 ### Install ONNX Runtime GPU (CUDA or TensorRT)
 
-#### CUDA 12.x
-The default CUDA version for [onnxruntime-gpu in pypi](https://pypi.org/project/onnxruntime-gpu) is 12.x since 1.19.0.
+#### CUDA 13.x
+The default [onnxruntime-gpu package on PyPI](https://pypi.org/project/onnxruntime-gpu) uses CUDA 13.x starting with ONNX Runtime 1.27.
 
 ```bash
 pip install onnxruntime-gpu
 ```
 
-For previous versions, you can download here: [1.18.1](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.1), [1.18.0](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.0)
+For ONNX Runtime 1.21 through 1.26, the default GPU package uses CUDA 12.8. See the [CUDA Execution Provider requirements](../execution-providers/CUDA-ExecutionProvider.md#requirements) for the complete compatibility table.
 
 #### Nightly for CUDA 13.x
 
@@ -97,7 +97,7 @@ pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackag
 
 #### CUDA 11.x
 
-For Cuda 11.x, please use the following instructions to install from [ORT Azure Devops Feed](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11/PyPI/onnxruntime-gpu/overview) for 1.19.2 or later.
+For legacy CUDA 11.x packages for ONNX Runtime 1.19.2 and 1.20.x, install from the ORT Azure DevOps feed.
 
 ```bash
 pip install coloredlogs flatbuffers numpy packaging protobuf sympy
@@ -130,44 +130,14 @@ pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackag
 dotnet add package Microsoft.ML.OnnxRuntime
 ```
 
-#### Install ONNX Runtime GPU (CUDA 12.x)
+#### Install ONNX Runtime GPU (CUDA 13.x)
 
-The default CUDA version for ORT is 12.x
+Starting with ONNX Runtime 1.27, the default GPU package uses CUDA 13.x. See the [CUDA Execution Provider requirements](../execution-providers/CUDA-ExecutionProvider.md#requirements) for packages compatible with earlier CUDA versions.
 
 ```bash
 # GPU
 dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
-
-#### Install ONNX Runtime GPU (CUDA 11.8)
-
-1. Project Setup
-
-Ensure you have installed the latest version of the Azure Artifacts keyring from the
-its [Github Repo](https://github.com/microsoft/artifacts-credprovider#azure-artifacts-credential-provider). <br> Add
-a nuget.config file to your project in the same directory as your .csproj file.
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-    <packageSources>
-        <clear/>
-        <add key="onnxruntime-cuda-11"
-             value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/nuget/v3/index.json"/>
-    </packageSources>
-</configuration>
-```
-
-2. Restore packages
-
-Restore packages (using the interactive flag, which allows dotnet to prompt you for credentials)
-
-```bash
-dotnet add package Microsoft.ML.OnnxRuntime.Gpu
-```
-
-Note: You don't need --interactive every time. dotnet will prompt you to add --interactive if it needs updated
-credentials.
 
 #### DirectML (sustained engineering - use WinML for new projects)
 
@@ -180,8 +150,10 @@ dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 #### WinML (recommended for Windows)
 
 ```bash
-dotnet add package Microsoft.AI.MachineLearning
+dotnet add package Microsoft.WindowsAppSDK
 ```
+
+The Windows App SDK includes the Windows ML packages for framework-dependent deployment. See [Get started with ONNX Runtime for Windows](../get-started/with-windows.md) for self-contained and language-specific options.
 
 ## Install on web and mobile
 
@@ -201,6 +173,27 @@ npm install onnxruntime-web
 # install nightly build dev version
 npm install onnxruntime-web@dev
 ```
+
+#### Enable WebGPU Execution Provider
+
+The WebGPU execution provider is included in `onnxruntime-web`. To use it, import from `onnxruntime-web/webgpu` instead of `onnxruntime-web`:
+
+```js
+// Use the WebGPU-specific bundle
+import * as ort from 'onnxruntime-web/webgpu';
+
+const session = await ort.InferenceSession.create(modelPath, {
+  executionProviders: ['webgpu']
+});
+```
+
+For an HTML script tag, use `ort.webgpu.min.js`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.webgpu.min.js"></script>
+```
+
+Browser support varies by browser, operating system, and hardware. See the [WebGPU tutorial](../tutorials/web/ep-webgpu.md) and [WebGPU implementation status](https://webgpu.io/status/) for current details.
 
 #### Install ONNX Runtime Node.js binding (Node.js)
 
@@ -421,16 +414,6 @@ pod 'onnxruntime-training-objc'
   </tr>
 </table>
 
-## Large Model Training
-
-```bash
-pip install torch-ort
-python -m torch_ort.configure
-```
-
-**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to
-specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
-
 ## Inference install table for all languages
 
 The table below lists the build variants available as officially supported packages. Others can
@@ -443,7 +426,7 @@ below:
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | Python       | If using pip, run `pip install --upgrade pip` prior to downloading.                                                                               |                                                                                                                                               |                                                                                                |
 |              | CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)                                                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime/overview)                    |                                                                                                |
-|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [onnxruntime-gpu (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
+|              | GPU (CUDA/TensorRT) for CUDA 13.x: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [onnxruntime-gpu (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
 |              | GPU (DirectML) **sustained engineering**: [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [onnxruntime-directml (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
 |              | OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*                                         |                                                                                                                                               | [View](../build/eps.md#openvino)                                                               |
 |              | TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*                                                |                                                                                                                                               |                                                                                                |
@@ -451,7 +434,7 @@ below:
 | C#/C/C++     | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      |                                                                                                |
 |              | GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)                              | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      | [View](../execution-providers/CUDA-ExecutionProvider)                                          |
 |              | GPU (DirectML) **sustained engineering**: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)                         | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)           | [View](../execution-providers/DirectML-ExecutionProvider)                                      |
-| WinML **recommended for Windows**        | [**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)                                                   | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)  | [View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites) |
+| WinML **recommended for Windows**        | [**Microsoft.WindowsAppSDK.ML**](https://www.nuget.org/packages/Microsoft.WindowsAppSDK.ML)                                                   |                                                                                                                                                | [View](https://learn.microsoft.com/windows/ai/new-windows-ml/get-started) |
 | Java         | CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)                         |                                                                                                                                               | [View](../api/java)                                                                            |
 |              | GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) |                                                                                                                                               | [View](../api/java)                                                                            |
 | Android      | [**com.microsoft.onnxruntime:onnxruntime-android**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-android)              |                                                                                                                                               | [View](../install/index.md#install-on-android)                                                 |
