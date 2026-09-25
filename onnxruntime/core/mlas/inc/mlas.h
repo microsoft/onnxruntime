@@ -232,7 +232,7 @@ struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
     size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
     size_t nchwc_pointwise_conv_max_input_channel_batch = 0; /**< Optional NCHWc pointwise conv input channel batch override; 0 uses default (128) */
-    bool nchwc_depthwise_sliding_kernel = true; /**< Use the sliding window AVX-512 NCHWc depthwise kernel (bitwise identical) where it applies */
+    bool nchwc_depthwise_sliding_kernel = true; /**< Use the sliding window AVX-512 NCHWc depthwise kernel (bitwise identical apart from NaN payloads) where it applies */
 };
 
 //

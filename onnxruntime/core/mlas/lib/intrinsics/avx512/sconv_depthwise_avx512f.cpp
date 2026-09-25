@@ -32,8 +32,11 @@ Abstract:
         if RELU:       acc = vmaxps(0, acc)
 
     Taps that fall into the padding are skipped (merge masked FMA), not
-    multiplied by zero, so the result is bitwise identical, including for
-    non-finite filter values.
+    multiplied by zero, so every result that is not a NaN is bitwise
+    identical, including for infinite filter values. A NaN result is still a
+    NaN, but when several NaN operands meet, its payload and sign may differ:
+    which operand's NaN an FMA propagates depends on the instruction form the
+    compiler picks (vfmadd231ps or vfmadd132ps), which intrinsics cannot pin.
 
 --*/
 
@@ -277,7 +280,8 @@ Routine Description:
 
     This routine is a drop in replacement for
     MlasConvDepthwiseFloatKernelAvx512F (same arguments, bitwise identical
-    results). Unsupported geometries are forwarded to it.
+    results apart from NaN payloads). Unsupported geometries are forwarded to
+    it.
 
 --*/
 {

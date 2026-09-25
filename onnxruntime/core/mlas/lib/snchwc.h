@@ -32,8 +32,8 @@ Abstract:
 //
 // Returns the depthwise kernel to use in place of the platform kernel. The
 // sliding window AVX-512 kernel is bitwise identical to
-// MlasConvDepthwiseFloatKernelAvx512F and forwards unsupported geometries to
-// it.
+// MlasConvDepthwiseFloatKernelAvx512F apart from NaN payloads and forwards
+// unsupported geometries to it.
 //
 
 inline

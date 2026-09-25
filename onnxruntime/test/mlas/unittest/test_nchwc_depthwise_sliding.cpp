@@ -14,7 +14,8 @@ Abstract:
     bitwise identical to the assembly kernel, through MlasNchwcConv, across
     kernel sizes, padding, spatial shapes, strides/dilations (forwarded to the
     assembly kernel), Sum accumulation, bias, activations and non-finite
-    operands.
+    operands. NaN results must match as NaNs; their payload and sign may
+    differ (see sconv_depthwise_avx512f.cpp).
 
 --*/
 
@@ -28,6 +29,15 @@ Abstract:
 #include "test_util.h"
 
 namespace {
+
+// A quiet NaN with a payload and sign that vary with i, so NaNs meet each other and non-NaN operands
+// in the FMAs, the Sum accumulation and the activations.
+float QuietNaN(size_t i) {
+  const uint32_t bits = 0x7FC00000u | (uint32_t(i * 2654435761u) & 0x003FFFFFu) | ((i & 2) != 0 ? 0x80000000u : 0u);
+  float value;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
 
 void FillHostile(std::vector<float>& v, size_t count, std::mt19937& rng, bool non_finite) {
   std::uniform_int_distribution<int> kind(0, 19);
@@ -51,11 +61,23 @@ void FillHostile(std::vector<float>& v, size_t count, std::mt19937& rng, bool no
       case 4:
         value = non_finite ? std::numeric_limits<float>::infinity() : 1.0f;
         break;
+      case 5:
+        if (non_finite) {
+          v[i] = QuietNaN(i);  // sign is part of the payload; don't negate
+          continue;
+        }
+        value = normal(rng);
+        break;
       default:
         value = normal(rng);
         break;
     }
     v[i] = ((i & 1) != 0) ? -value : value;
+  }
+  // Guarantee NaNs of both signs regardless of the draw.
+  if (non_finite && count >= 2) {
+    v[0] = QuietNaN(0);
+    v[count - 1] = QuietNaN(2);
   }
 }
 
@@ -72,7 +94,8 @@ struct DepthwiseCase {
   bool bias;
   MLAS_ACTIVATION_KIND activation;
   bool sum;         // accumulate into the existing output (ZeroMode = false)
-  bool non_finite;  // Inf in filters (skipped padding taps must not become NaN)
+  bool non_finite;  // Inf and NaN in filters (skipped padding taps must not become NaN), and NaN
+                    // payloads/signs in inputs and the accumulated output
 };
 
 std::string Describe(const DepthwiseCase& c, size_t threads) {
@@ -114,6 +137,8 @@ std::vector<float> RunConv(const DepthwiseCase& c, const std::vector<float>& inp
   return output;
 }
 
+// Bitwise comparison, except that any NaN matches any NaN: when several NaN operands meet, which one's
+// payload and sign an FMA propagates depends on the instruction form the compiler picks.
 void ExpectBitwiseEqual(const std::vector<float>& expected, const std::vector<float>& actual,
                         const std::string& context) {
   ASSERT_EQ(expected.size(), actual.size()) << context;
@@ -123,12 +148,18 @@ void ExpectBitwiseEqual(const std::vector<float>& expected, const std::vector<fl
   size_t mismatches = 0;
   size_t first = expected.size();
   for (size_t i = 0; i < expected.size(); i++) {
+    if (std::isnan(expected[i]) && std::isnan(actual[i])) {
+      continue;
+    }
     if (std::memcmp(&expected[i], &actual[i], sizeof(float)) != 0) {
       if (first == expected.size()) {
         first = i;
       }
       mismatches++;
     }
+  }
+  if (mismatches == 0) {
+    return;
   }
   FAIL() << context << ": " << mismatches << " of " << expected.size() << " elements differ; first at " << first
          << " expected " << expected[first] << " actual " << actual[first];
@@ -151,11 +182,11 @@ class NchwcDepthwiseSlidingTest : public testing::Test {
   void Check(const DepthwiseCase& c, uint32_t seed, size_t threads = 1) {
     std::mt19937 rng(seed);
     std::vector<float> input, filter, bias, initial;
-    FillHostile(input, c.batch * c.channels * c.height * c.width, rng, false);
+    FillHostile(input, c.batch * c.channels * c.height * c.width, rng, c.non_finite);
     FillHostile(filter, c.channels * c.kh * c.kw, rng, c.non_finite);
     FillHostile(bias, c.channels, rng, false);
     // Large enough for any output shape; Run trims it.
-    FillHostile(initial, c.batch * c.channels * (c.height + 16) * (c.width + 16), rng, false);
+    FillHostile(initial, c.batch * c.channels * (c.height + 16) * (c.width + 16), rng, c.non_finite);
 
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
     std::unique_ptr<onnxruntime::concurrency::ThreadPool> pool;
