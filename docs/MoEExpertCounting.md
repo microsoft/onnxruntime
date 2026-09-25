@@ -20,8 +20,8 @@ The coefficients must satisfy `alpha + beta <= 1`; zero is allowed for either co
 
 It supports the CPU and built-in CUDA `MoE` and `QMoE` kernels. Minimal builds, the CUDA plugin EP, and CUDA graph
 capture are not supported when either counting or counter-update logging is enabled.
-Minimal builds omit the counter state and its initialization/run bookkeeping, and reject counter configuration
-except for explicitly disabling counting.
+Minimal builds omit the counter state, its initialization/run bookkeeping, and the CUDA routing-snapshot collector
+sources. They reject counter configuration except for explicitly disabling counting.
 
 Each node invocation updates every expert counter belonging to that node:
 
