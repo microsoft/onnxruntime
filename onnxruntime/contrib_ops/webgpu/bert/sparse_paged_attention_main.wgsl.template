@@ -16,9 +16,8 @@
 // selected_counts, and never truncated.
 //
 // The running softmax state (max, denominator) and the value accumulator are
-// kept in FP32 and are written out alongside the accumulator so the finalize
-// stage can merge this partial state with the auxiliary partial state into one
-// joint softmax.
+// kept in FP32. Single-source modes without a sink normalize directly into the
+// activation-typed output; other modes write a partial state for finalization.
 //
 // Every caller-owned i32 (selected index, block table entry) is validated
 // before conversion to u32, and invalid, out-of-range, non-causal, or unmapped
@@ -31,16 +30,15 @@
 //   block_table             : (batch_size, max_num_blocks_per_seq)
 //   selected_indices        : (token_count, max_selected_entries)
 //   selected_counts         : (token_count,)
-//   partial                 : (token_count, num_heads, head_size + 2)
+//   output                  : (token_count, num_heads * head_size), or
+//                             (token_count, num_heads, head_size + 2)
 //
-// selected_indices / selected_counts are only bound when the selection applies
-// to the main cache, so they are read with raw indexing.
-
 #param qkv_head_size
 #param is_causal
 #param use_local_window
 #param use_selected
 #param dedup_selected
+#param direct_output
 
 #use .getByOffset .setByOffset
 
@@ -50,6 +48,10 @@ const negative_infinity: f32 = -3.4028234663852886e38;
 var<workgroup> q_shared: array<f32, head_size>;
 var<workgroup> accumulator: array<f32, head_size>;
 var<workgroup> reduction: array<f32, workgroup_size_x>;
+var<workgroup> running_max: f32;
+var<workgroup> running_sum: f32;
+var<workgroup> old_weight: f32;
+var<workgroup> new_weight: f32;
 
 $MAIN {
   if (workgroup_idx >= uniforms.workgroup_count) {
@@ -105,9 +107,10 @@ $MAIN {
   // local_count is bounded by position_limit + 1 and selected_count by the
   // selected_indices width, so the u32 sum below cannot wrap.
   let candidate_count = u32(local_count) + u32(selected_count);
-  var running_max: f32 = negative_infinity;
-  var running_sum: f32 = 0.0;
-  var has_contribution = false;
+  if (local_idx == 0u) {
+    running_max = negative_infinity;
+    running_sum = 0.0;
+  }
   workgroupBarrier();
 
   for (var candidate: u32 = 0u; candidate < candidate_count; candidate = candidate + 1u) {
@@ -174,34 +177,47 @@ $MAIN {
       workgroupBarrier();
     }
 
-    if (valid) {
+    if (valid && local_idx == 0u) {
       var logit = reduction[0] * uniforms.scale;
       if (uniforms.softcap > 0.0) {
         logit = tanh(logit / uniforms.softcap) * uniforms.softcap;
       }
       let new_max = max(running_max, logit);
-      var old_weight = 0.0;
-      if (has_contribution) {
+      old_weight = 0.0;
+      if (running_sum > 0.0) {
         old_weight = exp(running_max - new_max);
       }
-      let new_weight = exp(logit - new_max);
+      new_weight = exp(logit - new_max);
+      running_sum = running_sum * old_weight + new_weight;
+      running_max = new_max;
+    }
+    workgroupBarrier();
+    if (valid) {
       for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
         accumulator[c] = accumulator[c] * old_weight +
                          f32(value_cache.getByOffset(cache_offset + c)) * new_weight;
       }
-      running_sum = running_sum * old_weight + new_weight;
-      running_max = new_max;
-      has_contribution = true;
     }
     workgroupBarrier();
   }
 
-  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+#if direct_output
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
   for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
-    partial.setByOffset(partial_base + c, accumulator[c]);
+    var result: f32 = 0.0;
+    if (running_sum > 0.0) {
+      result = accumulator[c] / running_sum;
+    }
+    output.setByOffset(output_base + c, output_value_t(result));
+  }
+#else
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    output.setByOffset(output_base + c, accumulator[c]);
   }
   if (local_idx == 0u) {
-    partial.setByOffset(partial_base + head_size, running_max);
-    partial.setByOffset(partial_base + head_size + 1u, running_sum);
+    output.setByOffset(output_base + head_size, running_max);
+    output.setByOffset(output_base + head_size + 1u, running_sum);
   }
+#endif
 }
