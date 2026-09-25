@@ -62,7 +62,8 @@ inline int GetProfileTimedRuns(float probe_ms, float best_ms) {
   if (probe_ms * kMaxRuns <= kTimedBudgetMs) {
     return kMaxRuns;
   }
-  if (probe_ms > kPruneRatio * best_ms) {
+  // best_ms can be FLT_MAX when no tactic has been profiled yet.
+  if (probe_ms > kPruneRatio * static_cast<double>(best_ms)) {
     return 0;
   }
   return std::max(1, static_cast<int>(kTimedBudgetMs / probe_ms));
