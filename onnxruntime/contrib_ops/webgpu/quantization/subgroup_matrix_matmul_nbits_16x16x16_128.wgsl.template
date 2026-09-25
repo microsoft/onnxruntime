@@ -1,21 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// SubgroupMatrix matmul_nbits kernel for 16x16x16 config with 128x128 tiles
+// SubgroupMatrix matmul_nbits kernel for the 16x16x16 config.
 // Uses subgroupMatrixLoad/Store/MultiplyAccumulate for hardware tensor core acceleration
 //
 // A: prepacked layout (from PrepackProgram) - elements arranged for subgroupMatrixLoad
 // B: 4-bit or 8-bit quantized, dequantized into SLM (buf_b) with padded stride
 //
-// Workgroup: 128 threads = 4 subgroups x 32 lanes, arranged 2x2
-// Tile: BM(128) x BN(128)
+// Workgroup: 4 wave32 subgroups for a 128x128 tile, or 2/4 wave64 subgroups for a
+// 64x128 / 128x64 / 256x64 tile.
 // Each subgroup handles WM(64) x WN(64) = 4x4 = 16 coopmat tiles of 16x16
-// K dimension iterated in BK(32) blocks
+// K dimension iterated in configurable BK blocks
 //
 // Key optimizations vs 64x64 shader:
-// - 4x larger tile (128x128 vs 64x64) reduces global memory traffic
+// - Multi-subgroup tiles reduce global memory traffic
 // - A loaded directly from global memory (prepacked), 4 rows per subgroup per k-step
-// - B dequantized to shared memory with padded stride (SHMEM_STRIDE=40) for bank conflict avoidance
+// - B dequantized to shared memory with a padded stride for bank conflict avoidance
 // - B tiles loaded once per k-step, reused across 4 A rows
 
 #param n_bits
@@ -26,6 +26,9 @@
 #param sg_mat_k
 #param sg_mat_m
 #param sg_mat_n
+#param tile_size_m
+#param tile_size_n
+#param tile_size_k
 
 #use .getByOffset .setByOffset
 
@@ -34,32 +37,32 @@
 const kQuantizationBlockSize: u32 = 32;
 
 // Tile parameters matching CM1 (cooperative matrix) layout
-const BM: u32 = 128;                            // Tile size along M
-const BN: u32 = 128;                            // Tile size along N
-const BK: u32 = 32;                             // Tile size along K
+const BM: u32 = u32(tile_size_m);               // Workgroup tile size along M
+const BN: u32 = u32(tile_size_n);               // Workgroup tile size along N
+const BK: u32 = u32(tile_size_k);               // Workgroup tile size along K
 const kSgMatM: u32 = u32(sg_mat_m);             // 16
 const kSgMatN: u32 = u32(sg_mat_n);             // 16
 const kSgMatK: u32 = u32(sg_mat_k);             // 16
-const WM: u32 = 64;                             // Per-subgroup M (BM/2)
-const WN: u32 = 64;                             // Per-subgroup N (BN/2)
+const WM: u32 = 64;                             // Per-subgroup M
+const WN: u32 = 64;                             // Per-subgroup N
+const kSubgroupsM: u32 = BM / WM;
+const kSubgroupsN: u32 = BN / WN;
+const kSubgroupsPerWorkgroup: u32 = kSubgroupsM * kSubgroupsN;
 const kSgMatSizeLeft: u32 = kSgMatM * kSgMatK;  // Elements per left (A) subgroup matrix
-const kSgMatCountM: u32 = BM / kSgMatM;         // 8 subgroup matrices per tile along M
+const kSgMatCountM: u32 = BM / kSgMatM;         // Subgroup matrices per tile along M
 
 // Padded shared memory stride to avoid bank conflicts during cooperative matrix loads
-const SHMEM_STRIDE: u32 = 40;  // BK + 8 padding (matches Vulkan CM1's BK/2+4 in vec2 units)
+const SHMEM_STRIDE: u32 = BK + 8;  // Matches Vulkan CM1's BK/2+4 in vec2 units
 
 // Shared memory for dequantized B weights [BN, BK] with padding
-var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;  // 128 * 40 = 5120 elements = 10240 bytes
+var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
-var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * 4>;  // 16*16*4 = 1024 elements = 2048 bytes
-// Total shared memory: 10240 + 2048 = 12288 bytes
+var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * kSubgroupsPerWorkgroup>;
 
 #if n_bits == 4
-// Dequantize 4-bit quantized B weights into buf_b with padded stride.
-// First half: rows 0..63, Second half: rows 64..127
-// 128 threads, 2 threads per N row, each handles 16 K elements.
-fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+// Dequantize one 16-element K chunk from one B row into buf_b.
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx: u32, k_chunk: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
     let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
@@ -74,57 +77,27 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 #endif
     let k_offset = k_chunk * 16u;
 
-    // First half: rows 0..63
-    {
-        let global_n = n_base + n_idx_0;
-        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
-        if (global_n < uniforms.N) {
-            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-            let scale = f16(scales_b.getByOffset(scale_idx));
-            let zero = mm_read_zero(
-                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
-                let packed_weights = input_b.getByOffset(packed_idx + step);
-                let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-                let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-                let b = buf_base + step * 8u;
-                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_hi[0];
-                buf_b[b + 2] = w_lo[1]; buf_b[b + 3] = w_hi[1];
-                buf_b[b + 4] = w_lo[2]; buf_b[b + 5] = w_hi[2];
-                buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
-            }
-        } else {
-            for (var i: u32 = 0; i < 16u; i++) {
-                buf_b[buf_base + i] = f16(0.0);
-            }
+    let global_n = n_base + n_idx;
+    let buf_base = n_idx * SHMEM_STRIDE + k_offset;
+    if (global_n < uniforms.N) {
+        let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+        let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+        let scale = f16(scales_b.getByOffset(scale_idx));
+        let zero = mm_read_zero(
+            global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+        for (var step: u32 = 0; step < 2u; step++) {
+            let packed_weights = input_b.getByOffset(packed_idx + step);
+            let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+            let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+            let b = buf_base + step * 8u;
+            buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_hi[0];
+            buf_b[b + 2] = w_lo[1]; buf_b[b + 3] = w_hi[1];
+            buf_b[b + 4] = w_lo[2]; buf_b[b + 5] = w_hi[2];
+            buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
         }
-    }
-    // Second half: rows 64..127
-    {
-        let n_idx_1 = n_idx_0 + 64u;
-        let global_n = n_base + n_idx_1;
-        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
-        if (global_n < uniforms.N) {
-            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-            let scale = f16(scales_b.getByOffset(scale_idx));
-            let zero = mm_read_zero(
-                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
-                let packed_weights = input_b.getByOffset(packed_idx + step);
-                let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-                let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-                let b = buf_base + step * 8u;
-                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_hi[0];
-                buf_b[b + 2] = w_lo[1]; buf_b[b + 3] = w_hi[1];
-                buf_b[b + 4] = w_lo[2]; buf_b[b + 5] = w_hi[2];
-                buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
-            }
-        } else {
-            for (var i: u32 = 0; i < 16u; i++) {
-                buf_b[buf_base + i] = f16(0.0);
-            }
+    } else {
+        for (var i: u32 = 0; i < 16u; i++) {
+            buf_b[buf_base + i] = f16(0.0);
         }
     }
 }
@@ -132,7 +105,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 
 #if n_bits == 8
 // Dequantize 8-bit quantized B weights into buf_b with padded stride.
-fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx: u32, k_chunk: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
     let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
@@ -147,57 +120,27 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 #endif
     let k_offset = k_chunk * 16u;
 
-    // First half: rows 0..63
-    {
-        let global_n = n_base + n_idx_0;
-        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
-        if (global_n < uniforms.N) {
-            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-            let scale = f16(scales_b.getByOffset(scale_idx));
-            let zero = mm_read_zero(
-                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
-                let packed_weights = input_b.getByOffset(packed_idx + step);
-                let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
-                let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
-                let b = buf_base + step * 8u;
-                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_lo[1];
-                buf_b[b + 2] = w_lo[2]; buf_b[b + 3] = w_lo[3];
-                buf_b[b + 4] = w_hi[0]; buf_b[b + 5] = w_hi[1];
-                buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
-            }
-        } else {
-            for (var i: u32 = 0; i < 16u; i++) {
-                buf_b[buf_base + i] = f16(0.0);
-            }
+    let global_n = n_base + n_idx;
+    let buf_base = n_idx * SHMEM_STRIDE + k_offset;
+    if (global_n < uniforms.N) {
+        let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+        let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+        let scale = f16(scales_b.getByOffset(scale_idx));
+        let zero = mm_read_zero(
+            global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+        for (var step: u32 = 0; step < 2u; step++) {
+            let packed_weights = input_b.getByOffset(packed_idx + step);
+            let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
+            let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
+            let b = buf_base + step * 8u;
+            buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_lo[1];
+            buf_b[b + 2] = w_lo[2]; buf_b[b + 3] = w_lo[3];
+            buf_b[b + 4] = w_hi[0]; buf_b[b + 5] = w_hi[1];
+            buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
         }
-    }
-    // Second half: rows 64..127
-    {
-        let n_idx_1 = n_idx_0 + 64u;
-        let global_n = n_base + n_idx_1;
-        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
-        if (global_n < uniforms.N) {
-            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-            let scale = f16(scales_b.getByOffset(scale_idx));
-            let zero = mm_read_zero(
-                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-            for (var step: u32 = 0; step < 2u; step++) {
-                let packed_weights = input_b.getByOffset(packed_idx + step);
-                let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
-                let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
-                let b = buf_base + step * 8u;
-                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_lo[1];
-                buf_b[b + 2] = w_lo[2]; buf_b[b + 3] = w_lo[3];
-                buf_b[b + 4] = w_hi[0]; buf_b[b + 5] = w_hi[1];
-                buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
-            }
-        } else {
-            for (var i: u32 = 0; i < 16u; i++) {
-                buf_b[buf_base + i] = f16(0.0);
-            }
+    } else {
+        for (var i: u32 = 0; i < 16u; i++) {
+            buf_b[buf_base + i] = f16(0.0);
         }
     }
 }
@@ -209,14 +152,11 @@ $MAIN {
 
     let sg_idx = u32(local_idx / sg_size);
     let sg_tid = local_idx % sg_size;
-    let warp_r = sg_idx % 2u;  // 0 or 1 (row in 2x2 grid)
-    let warp_c = sg_idx / 2u;  // 0 or 1 (col in 2x2 grid)
+    let warp_r = sg_idx % kSubgroupsM;
+    let warp_c = sg_idx / kSubgroupsM;
 
-    // Each subgroup's A starts at a different M offset in the prepacked layout
-    // Subgroup sg_idx handles rows: warp_r * WM .. warp_r * WM + WM (within the BM tile)
-    // But in the prepacked layout, the subgroups are numbered 0..7 (kSgMatCountM = BM/kSgMatM = 8)
-    // Subgroups 0,1 handle rows 0..63 (warp_r=0), subgroups 2,3 handle rows 64..127 (warp_r=1)
-    // Within each 64-row band, we have 4 coopmat rows of 16
+    // Prepacked A is arranged as 16-row subgroup matrices along M. warp_r selects one
+    // 64-row band (four matrices); column subgroups with the same warp_r share those A rows.
 
     // For prepacked A: sg_mat index = (workgroup_y * kSgMatCountM + first_coopmat_row_in_warp) * sg_mat_count_k
     let sg_mat_count_k = uniforms.K / kSgMatK;
@@ -250,7 +190,10 @@ $MAIN {
     // Main K-loop
     for (var k_block: u32 = 0; k_block < uniforms.K; k_block += BK) {
         // Load B (Q4_K/Q8 weights) to buf_b with padded stride
-        dequant_b_to_buf(global_base_n, k_block, local_idx / 2u, local_idx % 2u);
+        const kChunksPerRow: u32 = BK / 16u;
+        for (var task = local_idx; task < BN * kChunksPerRow; task += workgroup_size_x) {
+            dequant_b_to_buf(global_base_n, k_block, task / kChunksPerRow, task % kChunksPerRow);
+        }
         workgroupBarrier();
 
         // Compute: load B once per k-step, iterate 4 A rows
@@ -502,7 +445,7 @@ $MAIN {
 #else
     // Non-bias path
     if (tile_in_bounds) {
-        // Fast path: entire 128x128 tile is in bounds - direct store to global
+        // Fast path: entire workgroup tile is in bounds - direct store to global
         let base = dr * stride + dc;
         subgroupMatrixStore<row_major>(&output, base, c00, stride);
         subgroupMatrixStore<row_major>(&output, base + 16u, c01, stride);
