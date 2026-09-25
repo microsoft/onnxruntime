@@ -2221,6 +2221,28 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeDenseShape) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor dense dims expected to be non-negative"));
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExcessiveDenseSize) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  const size_t excessive_element_count = utils::kMaxEmbeddedInitializerSizeInBytes / sizeof(float) + 1;
+  sparse.add_dims(narrow<int64_t>(excessive_element_count));
+
+  auto* values = sparse.mutable_values();
+  values->set_name("test_tensor");
+  values->add_dims(1);
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_float_data(1.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->add_dims(1);
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("dense data size"));
+}
+
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InvalidValuesRank_Zero) {
   ONNX_NAMESPACE::SparseTensorProto sparse;
   sparse.mutable_values()->set_name("test_tensor_val_rank_0");
@@ -2815,6 +2837,28 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExternalValues_Extern
   ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
   std::vector<float> expected = {0.0f, 0.0f, 50.0f, 0.0f, 0.0f, 0.0f, 60.0f, 0.0f, 0.0f};
   EXPECT_EQ(unpacked, expected);
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_RejectsZeroElementStringValues) {
+  SparseTensorProto sparse;
+  sparse.add_dims(0);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_string");
+  values->set_data_type(TensorProto_DataType_STRING);
+  values->add_dims(0);
+  values->add_string_data("unexpected");
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(0);
+  indices->set_raw_data("");
+
+  TensorProto dense;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense),
+      "Unsupported sparse tensor data type");
 }
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)

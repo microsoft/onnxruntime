@@ -8,6 +8,9 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/moe_profiler.h"
+#endif
 #include <charconv>
 #include <type_traits>
 #include "core/common/float8.h"
@@ -21,6 +24,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
@@ -270,15 +274,46 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(row_tile_size_ == qmoe::kDisabledRowTileSize || qmoe::IsValidRowTileSize(row_tile_size_),
               row_tile_size_source, " must be 0 (disabled) or an integer in [1, ",
               std::numeric_limits<int>::max(), "], got ", row_tile_size_, ".");
+  const auto configured_int_dequant_max_scratch_bytes =
+      op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoEIntDequantMaxScratchBytesConfig);
+  const char* int_dequant_max_scratch_bytes_source = kQMoEIntDequantMaxScratchBytesConfig;
+  if (configured_int_dequant_max_scratch_bytes.has_value()) {
+    const auto& value = *configured_int_dequant_max_scratch_bytes;
+    const auto parse_result = std::from_chars(
+        value.data(), value.data() + value.size(), int_dequant_max_scratch_bytes_);
+    ORT_ENFORCE(parse_result.ec == std::errc{} && parse_result.ptr == value.data() + value.size(),
+                kQMoEIntDequantMaxScratchBytesConfig, " must be an integer, got '", value, "'.");
+  } else {
+    int_dequant_max_scratch_bytes_source = kQMoEIntDequantMaxScratchBytes;
+    int_dequant_max_scratch_bytes_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
+        kQMoEIntDequantMaxScratchBytes, int_dequant_max_scratch_bytes_);
+  }
+  ORT_ENFORCE(int_dequant_max_scratch_bytes_ > 0,
+              int_dequant_max_scratch_bytes_source, " must be greater than 0, got ",
+              int_dequant_max_scratch_bytes_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
-              "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4 || expert_weight_bits_ == 2,
+              "expert_weight_bits must be 2, 4, or 8, but got ", expert_weight_bits_);
+  fc1_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc1_expert_weight_bits", expert_weight_bits_);
+  fc2_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc2_expert_weight_bits", expert_weight_bits_);
+  fc3_expert_weight_bits_ = op_kernel_info.GetAttrOrDefault<int64_t>("fc3_expert_weight_bits", expert_weight_bits_);
+  ORT_ENFORCE((fc1_expert_weight_bits_ == 2 || fc1_expert_weight_bits_ == 4 || fc1_expert_weight_bits_ == 8) &&
+                  (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4 || fc2_expert_weight_bits_ == 8) &&
+                  (fc3_expert_weight_bits_ == 2 || fc3_expert_weight_bits_ == 4 || fc3_expert_weight_bits_ == 8),
+              "FC-specific expert weight bits must be 2, 4, or 8.");
+  ORT_ENFORCE(swiglu_fusion_ == 0 || fc3_expert_weight_bits_ == fc1_expert_weight_bits_,
+              "Fused SwiGLU requires FC1 and FC3 expert weight bits to match.");
+  const bool is_mixed_width = fc1_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc2_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc3_expert_weight_bits_ != expert_weight_bits_;
 
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "nvfp4" ||
                   quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
+  const bool use_int_dequant_fallback =
+      quant_type_ == "int" && (is_mixed_width || expert_weight_bits_ == 2);
   if (quant_type_ == "nvfp4") {
     constexpr int64_t kNvfp4BlockSize = 16;
     ORT_ENFORCE(block_size_ == -1 || block_size_ == kNvfp4BlockSize,
@@ -315,6 +350,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
               "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
+  if (use_int_dequant_fallback) {
+    ORT_ENFORCE(!weights_prepacked_,
+                "INT2 or mixed-width CUDA QMoE requires raw weights with weights_prepacked=0.");
+    ORT_ENFORCE(block_size_ >= 16 && block_size_ <= 256 &&
+                    (block_size_ & (block_size_ - 1)) == 0,
+                "INT2 or mixed-width CUDA QMoE requires block_size to be a power of two in [16, 256], got ",
+                block_size_, ".");
+  }
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "nvfp4", "QMoE quant_type='nvfp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -581,7 +624,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   } else {
     // Integer quantization (INT4/INT8)
     if (is_fp16) {
-      if (expert_weight_bits_ == 4) {
+      if (use_int_dequant_fallback) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, half, half>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -591,7 +637,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
     else {  // BFloat16
-      if (expert_weight_bits_ == 4) {
+      if (use_int_dequant_fallback) {
+        m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
@@ -626,12 +675,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool is_fp8 = (quant_type_ == "fp8");
   const bool is_wfp4afp8 = (quant_type_ == "wfp4afp8");
   const bool is_int = (quant_type_ == "int");
+  const bool is_mixed_width = fc1_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc2_expert_weight_bits_ != expert_weight_bits_ ||
+                              fc3_expert_weight_bits_ != expert_weight_bits_;
+  const bool use_int_dequant_fallback =
+      is_int && (is_mixed_width || expert_weight_bits_ == 2);
   // Modes that consume FP4 weight block scales (inputs 3/6) and per-expert global weight scales.
   const bool uses_fp4_weight_scales = is_fp4_family || is_wfp4afp8;
   // Modes that consume per-expert FP-format global weight scales (inputs 15/16).
   const bool uses_global_weight_scales = is_fp4_family || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const auto* instrumentation = context->GetRunInstrumentationContext();
+  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -658,7 +716,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // them. If PrePack never ran (e.g. ``session.disable_prepacking`` is set), the prepack
   // buffers stay null and falling through to the raw initializer pointers would feed
   // non-CUTLASS bytes to the runner, producing silently wrong output. Fail loudly instead.
-  if (is_int && !weights_prepacked_ &&
+  if (is_int && !use_int_dequant_fallback && !weights_prepacked_ &&
       (packed_fc1_weights_ == nullptr || packed_fc2_weights_ == nullptr)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "QMoE weights_prepacked=0 requires PrePack to run, but the int weight "
@@ -739,7 +797,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
-  int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
   bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
   MoEParameters moe_params;
   // Prefer the cached shapes when PrePack consumed the source initializer.
@@ -750,7 +807,63 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       fc1_experts_bias_optional, fc1_scales, fc1_zeros,
       &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
-      pack_size, is_fused_swiglu, block_size_));
+      moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
+                                fc2_expert_weight_bits_,
+                                fc3_expert_weight_bits_},
+      is_fused_swiglu, block_size_));
+  if (is_mixed_width) {
+    ORT_RETURN_IF_NOT(is_int, "Mixed-width QMoE execution is currently supported only for quant_type='int'.");
+  }
+  size_t int_dequant_fc1_bytes = 0;
+  size_t int_dequant_fc2_bytes = 0;
+  if (use_int_dequant_fallback) {
+    ORT_RETURN_IF_NOT(moe_params.hidden_size % block_size_ == 0,
+                      "INT2 or mixed-width CUDA QMoE requires hidden_size to be divisible by block_size, got hidden_size=",
+                      moe_params.hidden_size, " and block_size=", block_size_, ".");
+    ORT_RETURN_IF_NOT(moe_params.inter_size % block_size_ == 0,
+                      "INT2 or mixed-width CUDA QMoE requires inter_size to be divisible by block_size, got inter_size=",
+                      moe_params.inter_size, " and block_size=", block_size_, ".");
+
+    const int64_t fc1_n = is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size;
+    const int64_t fc1_k = moe_params.hidden_size;
+    const int64_t fc2_n = moe_params.hidden_size;
+    const int64_t fc2_k = moe_params.inter_size;
+    auto validate_fallback_input = [&](const TensorShape& weight_shape, const Tensor* scales,
+                                       const char* weight_name, const char* scales_name,
+                                       int64_t bits, int64_t n, int64_t k) -> Status {
+      const int64_t packed_k = k / (8 / bits);
+      ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 3 &&
+                            weight_shape[0] == moe_params.num_experts &&
+                            weight_shape[1] == n && weight_shape[2] == packed_k,
+                        "INT2 or mixed-width CUDA QMoE dense fallback requires canonical ", weight_name,
+                        " shape [E,N,K/pack]=[", moe_params.num_experts, ",", n, ",", packed_k,
+                        "], got ", weight_shape, ". Legacy transposed weight layouts are not supported.");
+      ORT_RETURN_IF_NOT(scales != nullptr, scales_name, " is required.");
+      const auto& scale_shape = scales->Shape();
+      const int64_t blocks_per_row = k / block_size_;
+      ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 3 &&
+                            scale_shape[0] == moe_params.num_experts &&
+                            scale_shape[1] == n && scale_shape[2] == blocks_per_row,
+                        "INT2 or mixed-width CUDA QMoE dense fallback requires block-wise ", scales_name,
+                        " shape [E,N,K/block_size]=[", moe_params.num_experts, ",", n, ",", blocks_per_row,
+                        "], got ", scale_shape, ".");
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(validate_fallback_input(fc1_shape, fc1_scales, "fc1_experts_weights", "fc1_scales",
+                                                fc1_expert_weight_bits_, fc1_n, fc1_k));
+    ORT_RETURN_IF_ERROR(validate_fallback_input(fc2_shape, fc2_scales, "fc2_experts_weights", "fc2_scales",
+                                                fc2_expert_weight_bits_, fc2_n, fc2_k));
+
+    const size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
+    int_dequant_fc1_bytes = SafeInt<size_t>(moe_params.num_experts) * fc1_n * fc1_k * element_size;
+    int_dequant_fc2_bytes = SafeInt<size_t>(moe_params.num_experts) * fc2_n * fc2_k * element_size;
+    const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
+    ORT_RETURN_IF_NOT(total_dequant_bytes <= static_cast<size_t>(int_dequant_max_scratch_bytes_),
+                      "INT2 or mixed-width CUDA QMoE dense fallback requires ", total_dequant_bytes,
+                      " bytes of dequantized weight scratch, exceeding the configured limit of ",
+                      int_dequant_max_scratch_bytes_, " bytes. Increase ",
+                      kQMoEIntDequantMaxScratchBytesConfig, " only for bounded correctness workloads.");
+  }
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
                     " and num_experts=", moe_params.num_experts);
@@ -761,7 +874,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // reduction dims are fc1.K == hidden_size and fc2.K == inter_size. A partial final K tile is read past
   // the valid range and silently yields garbage/NaN (the single-matrix fpA_intB GEMM throws on this; the
   // grouped MoE GEMM and the decode GEMV have no such guard), so reject it up front with a clear error.
-  if (quant_type_ == "int") {
+  if (quant_type_ == "int" && !use_int_dequant_fallback) {
     constexpr int64_t kInterleaveKTile = 64;
     ORT_RETURN_IF_NOT(moe_params.hidden_size % kInterleaveKTile == 0,
                       "QMoE int weight-only quantization requires hidden_size to be a multiple of ",
@@ -1064,6 +1177,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         wtype = use_wfp4afp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
       } else if (is_fp8) {
         wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
+      } else if (use_int_dequant_fallback) {
+        wtype = dtype;
       } else {
         wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
                                            : onnxruntime::llm::nvinfer::DataType::kINT8;
@@ -1231,7 +1346,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // For block-wise quantization, Cutlass expects scales laid out as [Experts, Blocks, N].
       // Input tensors are provided as [Experts, N, Blocks], so transpose when PrePack is not used.
       auto scale_shape = scales->Shape();
-      if (block_size_ > 0 && scale_shape.NumDimensions() == 3 && scale_shape[2] > 1) {
+      if (block_size_ > 0 && scale_shape.NumDimensions() == 3) {
         size_t rows = scale_shape[1];   // N
         size_t cols = scale_shape[2];   // Blocks
         size_t batch = scale_shape[0];  // Experts
@@ -1421,10 +1536,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
   };
 
-  prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
-                   transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp);
-  prepare_scale_zp(fc2_scales, fc2_zeros, packed_fc2_scales_, packed_fc2_bias_,
-                   transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp);
+  if (!use_int_dequant_fallback) {
+    prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
+                     transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp);
+    prepare_scale_zp(fc2_scales, fc2_zeros, packed_fc2_scales_, packed_fc2_bias_,
+                     transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp);
+  }
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params;
   if (is_fp4 && fp4_sm80_prefill) {
@@ -1540,6 +1657,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         nullptr,                                        // quant_final
         nullptr,                                        // dequant_input
         false);                                         // fc2_use_per_expert_act_scale
+  } else if (use_int_dequant_fallback) {
+    // Raw INT2 or mixed-width weights are dequantized below and consumed by the dense A16 runner.
   } else if (block_size_ > 0) {
     quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::GroupWise(
         block_size_,
@@ -1570,6 +1689,33 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  CudaMoeRoutingRecord* routing_record = nullptr;
+  const size_t routing_element_count =
+      SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  if (instrumentation != nullptr) {
+    ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
+                  "MoE expert statistics is not supported during CUDA graph capture.");
+    auto host_expert_ids = AllocateBufferOnCPUPinned<int>(routing_element_count);
+    auto host_router_weights = AllocateBufferOnCPUPinned<float>(routing_element_count);
+    ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
+                      "Failed to allocate pinned host memory for CUDA QMoE routing statistics.");
+
+    const TimePoint instrumentation_start = instrumentation->StartProfiling();
+    auto record = std::make_unique<CudaMoeRoutingRecord>(
+        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
+        std::move(host_expert_ids), std::move(host_router_weights),
+        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
+    ORT_RETURN_IF_ERROR(record->Start(stream));
+    routing_record = record.get();
+    instrumentation->AddDeferredRecord(std::move(record));
+  }
+#endif
+
   // The FP4 DeepGEMM path, when eligible, outranks the GEMV for the same shapes.
   if (!use_fp4_deep_gemm && use_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1785,6 +1931,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                expanded, expanded,
                                workspace_size, total_scratch_bytes);
     }
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, 0,
+          SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), true, stream));
+    }
+#endif
     return Status::OK();
   }
 
@@ -1827,6 +1980,51 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
+  if (use_int_dequant_fallback) {
+    ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr &&
+                    fc1_scales != nullptr && fc2_scales != nullptr,
+                "INT2 or mixed-width CUDA QMoE requires raw weights and scales for FC1 and FC2.");
+
+    const int fc1_n = static_cast<int>(is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size);
+    const int fc1_k = static_cast<int>(moe_params.hidden_size);
+    const int fc2_n = static_cast<int>(moe_params.hidden_size);
+    const int fc2_k = static_cast<int>(moe_params.inter_size);
+    const int num_experts = static_cast<int>(moe_params.num_experts);
+    dequant_fc1_weights = GetScratchBuffer<void>(int_dequant_fc1_bytes, GetComputeStream(context));
+    dequant_fc2_weights = GetScratchBuffer<void>(int_dequant_fc2_bytes, GetComputeStream(context));
+
+    const auto* fc1_zero_data = fc1_zeros ? static_cast<const uint8_t*>(fc1_zeros->DataRaw()) : nullptr;
+    const auto* fc2_zero_data = fc2_zeros ? static_cast<const uint8_t*>(fc2_zeros->DataRaw()) : nullptr;
+    if (is_fp16_) {
+      ORT_RETURN_IF_NOT(fc1_scales->IsDataType<MLFloat16>() && fc2_scales->IsDataType<MLFloat16>(),
+                        "INT2 or mixed-width CUDA QMoE with FP16 activations requires FP16 scales.");
+      ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
+          static_cast<int>(fc1_expert_weight_bits_), static_cast<half*>(dequant_fc1_weights.get()),
+          static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+          reinterpret_cast<const half*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
+          fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+      ORT_RETURN_IF_ERROR((DequantizeNBits<half, uint8_t>(
+          static_cast<int>(fc2_expert_weight_bits_), static_cast<half*>(dequant_fc2_weights.get()),
+          static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+          reinterpret_cast<const half*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
+          fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+    } else {
+      ORT_RETURN_IF_NOT(fc1_scales->IsDataType<BFloat16>() && fc2_scales->IsDataType<BFloat16>(),
+                        "INT2 or mixed-width CUDA QMoE with BF16 activations requires BF16 scales.");
+      ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
+          static_cast<int>(fc1_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc1_weights.get()),
+          static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+          reinterpret_cast<const __nv_bfloat16*>(fc1_scales->DataRaw()), fc1_zero_data, nullptr,
+          fc1_k, num_experts * fc1_n, static_cast<int>(block_size_), stream)));
+      ORT_RETURN_IF_ERROR((DequantizeNBits<__nv_bfloat16, uint8_t>(
+          static_cast<int>(fc2_expert_weight_bits_), static_cast<__nv_bfloat16*>(dequant_fc2_weights.get()),
+          static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+          reinterpret_cast<const __nv_bfloat16*>(fc2_scales->DataRaw()), fc2_zero_data, nullptr,
+          fc2_k, num_experts * fc2_n, static_cast<int>(block_size_), stream)));
+    }
+    fc1_weight_data = dequant_fc1_weights.get();
+    fc2_weight_data = dequant_fc2_weights.get();
+  }
   // FP4 (W4A16) and WFP4AFP8 (W4A8) share the MXFP4 weight format (Float8E8M0 block scales, block 32).
   // NVFP4 (W4A16) uses Float8E4M3FN block scales with block 16 and always runs the dequant fallback.
   // When the native CUTLASS path is unavailable on the current SM (always for NVFP4), or when native
@@ -2002,6 +2200,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         activation_params,
         fused_routing,
         stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_record != nullptr) {
+      const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
+      const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
+      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
+          expert_indices, expert_scales, destination_offset, tile_element_count,
+          tile_index + 1 == row_tile_plan.TileCount(), stream));
+    }
+#endif
   }
 
   if (enable_kernel_debug_info_) {
@@ -2018,6 +2226,13 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+
+  if ((quant_type_ == "int" && expert_weight_bits_ == 2) ||
+      fc1_expert_weight_bits_ != expert_weight_bits_ ||
+      fc2_expert_weight_bits_ != expert_weight_bits_ ||
+      fc3_expert_weight_bits_ != expert_weight_bits_) {
+    return Status::OK();
+  }
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
 

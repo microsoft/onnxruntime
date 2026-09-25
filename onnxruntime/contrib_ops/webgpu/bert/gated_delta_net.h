@@ -67,7 +67,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
  public:
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
                        bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
-                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params)
+                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool capture_state_updates)
       : Program{"GatedDeltaNet"},
         update_rule_(update_rule),
         has_cu_seqlens_(has_cu_seqlens),
@@ -77,7 +77,8 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
         qwen_gate_(qwen_gate),
         sigmoid_beta_(sigmoid_beta),
         qk_l2_norm_(qk_l2_norm),
-        use_packed_params_(use_packed_params) {}
+        use_packed_params_(use_packed_params),
+        capture_state_updates_(capture_state_updates) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -88,6 +89,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
       {"num_heads_v", ProgramUniformVariableDataType::Uint32},
       {"head_size_qk", ProgramUniformVariableDataType::Uint32},
       {"head_size_v", ProgramUniformVariableDataType::Uint32},
+      {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
       {"scale", ProgramUniformVariableDataType::Float32});
 
  private:
@@ -100,6 +102,17 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool sigmoid_beta_;
   bool qk_l2_norm_;
   bool use_packed_params_;
+  bool capture_state_updates_;
+};
+
+class GatedDeltaNetClearProgram final : public Program<GatedDeltaNetClearProgram> {
+ public:
+  GatedDeltaNetClearProgram() : Program{"GatedDeltaNetClear"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"element_count", ProgramUniformVariableDataType::Uint32});
 };
 
 class GatedDeltaNetPrefillPrepareProgram final : public Program<GatedDeltaNetPrefillPrepareProgram> {
@@ -203,6 +216,7 @@ class GatedDeltaNet final : public WebGpuKernel {
  private:
   GatedDeltaNetUpdateRule update_rule_;
   float scale_;
+  int state_update_capacity_;
   bool qwen_gate_;
   bool sigmoid_beta_;
   bool qk_l2_norm_;
