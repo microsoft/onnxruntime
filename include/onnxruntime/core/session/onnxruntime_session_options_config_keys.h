@@ -72,6 +72,7 @@ static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.di
 // run in float precision while preserving quantized compute where fused kernels are available. Also
 // enables DQ -> MatMul/Gemm -> MatMulNBits fusion for patterns that become eligible after activation
 // Q/DQ removal, and constant-folds any remaining weight DQ nodes into float initializers.
+// This is only supported in a full build. It has no effect in a minimal build.
 // The default value is "0"
 static const char* const kOrtSessionOptionsQDQStripActivations = "session.qdq_strip_activations";
 

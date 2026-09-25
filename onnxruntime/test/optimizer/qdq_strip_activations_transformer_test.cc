@@ -309,11 +309,12 @@ TEST(QDQStripActivationsTransformerTests, SkipDataMovementRules) {
                             true /*enable_strip_activations*/);
 }
 
-// Test: Conv with QDQ is fused into QLinearConv by Level1, while surrounding
-// activation Q->DQ pairs are removed by our Level2 transformer.
+// Test: Conv with QDQ is fused into QLinearConv by QDQSelectorActionTransformer, while surrounding
+// activation Q->DQ pairs are removed by QDQStripActivationsTransformer. Both run at Level2, with
+// QDQStripActivationsTransformer registered after QDQSelectorActionTransformer.
 // Graph: Input -> Q -> DQ -> Conv(QDQ weight) -> Q -> DQ -> Q -> DQ -> Identity -> Output
-// After Level1: Input -> Q -> QLinearConv -> DQ -> Q -> DQ -> Identity -> Output
-// After Level2: Input -> Q -> QLinearConv -> DQ -> Identity -> Output
+// After QDQSelectorActionTransformer: Input -> Q -> QLinearConv -> DQ -> Q -> DQ -> Identity -> Output
+// After QDQStripActivationsTransformer: Input -> Q -> QLinearConv -> DQ -> Identity -> Output
 TEST(QDQStripActivationsTransformerTests, ConvQDQFusionWithActivationRemoval) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 3, 8, 8}, -1.f, 1.f);
@@ -356,7 +357,7 @@ TEST(QDQStripActivationsTransformerTests, ConvQDQFusionWithActivationRemoval) {
 
   auto check_graph = [](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    // Conv should be fused to QLinearConv by Level1 QDQSelectorActionTransformer
+    // Conv should be fused to QLinearConv by QDQSelectorActionTransformer (runs at Level2)
     EXPECT_EQ(op_to_count["QLinearConv"], 1);
     EXPECT_EQ(op_to_count["Conv"], 0);
     // Q_input remains (feeds QLinearConv), DQ_conv_out remains (dequantizes QLinearConv output)

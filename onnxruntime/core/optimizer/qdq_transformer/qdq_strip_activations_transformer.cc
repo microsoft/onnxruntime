@@ -11,11 +11,9 @@
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/selectors_actions/helpers.h"
-#endif
 
 namespace onnxruntime {
 
@@ -94,9 +92,10 @@ bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
       // Remove edge: DQ -> downstream.
       graph.RemoveEdge(dq_node.Index(), downstream_idx, 0, downstream_arg_idx);
 
-      // Rewire: downstream now gets Q's input.
+      // Rewire: downstream now gets Q's input. Use the helper as downstream_arg_idx may refer to an
+      // implicit input (e.g. the DQ output is consumed by a subgraph).
       Node& downstream_node = *graph.GetNode(downstream_idx);
-      downstream_node.MutableInputDefs()[downstream_arg_idx] = q_node.MutableInputDefs()[0];
+      graph_utils::ReplaceNodeInput(downstream_node, downstream_arg_idx, *q_node.MutableInputDefs()[0]);
 
       // Add edge from Q's source to downstream (if Q's input came from a node).
       if (src_arg_idx >= 0) {
@@ -105,15 +104,38 @@ bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
     } else {
       // DQ produces a graph output.
       NodeArg* graph_output_nodearg = dq_node.MutableOutputDefs()[0];
+
+      // Renaming the source node's output def to the graph output name is only safe if nothing else
+      // refers to the source value, as the rename changes the value name seen by all its consumers.
+      bool replace_src_output_def = false;
       if (src_arg_idx >= 0 && dq_nodes.size() == 1) {
+        const Node& src_node = *graph.GetNode(src_node_idx);
+        const NodeArg* src_output_nodearg = src_node.OutputDefs()[src_arg_idx];
+        // The src->Q edge was already removed above, so any remaining output edge for this slot is
+        // another consumer of the source value.
+        bool has_other_consumers = false;
+        for (auto it = src_node.OutputEdgesBegin(), end = src_node.OutputEdgesEnd(); it != end; ++it) {
+          if (it->GetSrcArgIndex() == src_arg_idx) {
+            has_other_consumers = true;
+            break;
+          }
+        }
+        replace_src_output_def = !has_other_consumers && !graph.IsOutput(src_output_nodearg);
+      }
+
+      if (replace_src_output_def) {
         // Update source node to produce the graph output.
         Node& src_node = *graph.GetNode(src_node_idx);
         src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
       } else {
-        // Add Identity to connect graph input/initializer to graph output.
+        // Add Identity to connect the source value (node output, graph input or initializer) to the
+        // graph output.
         Node& id_node = graph.AddNode(graph.GenerateNodeName("QDQStripActivationsTransformer"),
                                       "Identity", "", {q_node.MutableInputDefs()[0]}, {graph_output_nodearg});
         id_node.SetExecutionProviderType(dq_node.GetExecutionProviderType());
+        if (src_arg_idx >= 0) {
+          graph.AddEdge(src_node_idx, id_node.Index(), src_arg_idx, 0);
+        }
       }
     }
 
@@ -149,7 +171,6 @@ Status QDQStripActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Sub-pass B: MatMulNBits fusion for newly eligible patterns.
   // After Q->DQ removal, DQ -> MatMul / Gemm patterns may now be eligible.
   // Re-get topological order since graph was modified.
@@ -192,7 +213,6 @@ Status QDQStripActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
       }
     }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // Sub-pass C: Constant-fold remaining weight DQ nodes.
   // After activation Q->DQ removal, weight DQ nodes on constant initializers can be folded into float

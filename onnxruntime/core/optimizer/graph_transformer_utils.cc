@@ -11,7 +11,6 @@
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
-#include "core/optimizer/qdq_transformer/qdq_strip_activations_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -20,6 +19,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "core/optimizer/dq_matmulnbits_fusion.h"
+// QDQStripActivationsTransformer is only available in a full build as it depends on ConstantFolding.
+#include "core/optimizer/qdq_transformer/qdq_strip_activations_transformer.h"
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"

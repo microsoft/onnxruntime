@@ -26,6 +26,9 @@ It works best when DropQDQNodesRules/SplitQDQRules are skipped (via
 session.qdq_strip_activations="1"), so that data-movement ops keep their Q/DQ wrappers, making
 all Q->DQ pairs directly adjacent.
 
+This transformer is only built and registered in a full (non-minimal) build, as sub-pass C
+relies on ConstantFolding which is not available in a minimal build.
+
 Sub-passes:
   A) Remove all adjacent Q->DQ pairs where all of Q's consumers are DQ nodes with matching
      scale/zp, and each such DQ has exactly one output edge (unless that edge goes directly
