@@ -263,6 +263,11 @@ DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdU4, UInt4x2, MlasQuantizeLi
       inp_start += num_boundary;                                                                              \
     }                                                                                                         \
                                                                                                               \
+    /* The leading partial byte may have consumed the entire interval. */                                     \
+    if (out_start == out_end) {                                                                               \
+      return;                                                                                                 \
+    }                                                                                                         \
+                                                                                                              \
     /* If ending at a 2-bit element not at the end of a byte, quantize those elements by themselves. */       \
     size_t end_offset = out_end & 0x3;                                                                        \
     if (end_offset != 0) {                                                                                    \
