@@ -193,7 +193,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     LOGS_DEFAULT(FATAL) << "MIGraphX: BF16 and FP16 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
-#if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR < 4)
+#if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
   LOGS_DEFAULT(WARNING) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
   fp8_enable_ = false;
 #endif
@@ -374,9 +374,213 @@ std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
   return result;
 }
 
+static const std::set<std::string> g_mgx_supported_ops = {"Abs",
+                                                    "Acos",
+                                                    "Acosh",
+                                                    "Add",
+                                                    "And",
+                                                    "ArgMax",
+                                                    "ArgMin",
+                                                    "Asin",
+                                                    "Asinh",
+                                                    "Atan",
+                                                    "Atanh",
+                                                    "ATen",
+                                                    "Attention",
+                                                    "AveragePool",
+                                                    "BatchNormalization",
+                                                    "BiasGelu",
+                                                    "Cast",
+                                                    "Ceil",
+                                                    "Celu",
+                                                    "Clip",
+                                                    "Concat",
+                                                    "Constant",
+                                                    "ConstantFill",
+                                                    "ConstantOfShape",
+                                                    "Conv",
+                                                    "ConvInteger",
+                                                    "ConvTranspose",
+                                                    "Cos",
+                                                    "Cosh",
+                                                    "CumSum",
+                                                    "DepthToSpace",
+                                                    "DequantizeLinear",
+                                                    "Div",
+                                                    "Dropout",
+                                                    "Einsum",
+                                                    "Elu",
+                                                    "Equal",
+                                                    "Erf",
+                                                    "Exp",
+                                                    "Expand",
+                                                    "EyeLike",
+                                                    "FastGelu",
+                                                    "Flatten",
+                                                    "Floor",
+                                                    "GRU",
+                                                    "Gather",
+                                                    "GatherElements",
+                                                    "GatherND",
+                                                    "Gelu",
+                                                    "Gemm",
+                                                    "GlobalAveragePool",
+                                                    "GlobalMaxPool",
+                                                    "Greater",
+                                                    "GreaterOrEqual",
+                                                    "GroupNormalization",
+                                                    "GroupNorm",
+                                                    "GroupQueryAttention",
+                                                    "HardSigmoid",
+                                                    "HardSwish",
+                                                    "Identity",
+                                                    "If",
+                                                    "ImageScaler",
+                                                    "InstanceNormalization",
+                                                    "IsNan",
+                                                    "LayerNormalization",
+                                                    "LeakyRelu",
+                                                    "Less",
+                                                    "LessOrEqual",
+                                                    "Log",
+                                                    "LogSoftmax",
+                                                    "Loop",
+                                                    "LpNormalization",
+                                                    "LRN",
+                                                    "LSTM",
+                                                    "MatMul",
+                                                    "MatMulInteger",
+                                                    "MatMulNBits",
+                                                    "Max",
+                                                    "MaxPool",
+                                                    "Mean",
+                                                    "Min",
+                                                    "Mod",
+                                                    "Mul",
+                                                    "Multinomial",
+                                                    "MultiHeadAttention",
+                                                    "Neg",
+                                                    "NegativeLogLikelihoodLoss",
+                                                    "NhwcConv",
+                                                    "NonMaxSuppression",
+                                                    "NonZero",
+                                                    "Not",
+                                                    "OneHot",
+                                                    "Or",
+                                                    "Pad",
+                                                    "Pow",
+                                                    "PRelu",
+                                                    "QLinearAdd",
+                                                    "QLinearConv",
+                                                    "QLinearMatMul",
+                                                    "QLinearAveragePool",
+                                                    "QLinearGlobalAveragePool",
+                                                    "QuantizeLinear",
+                                                    "QuickGelu",
+                                                    "DynamicQuantizeLinear",
+                                                    "RandomNormal",
+                                                    "RandomNormalLike",
+                                                    "RandomUniform",
+                                                    "RandomUniformLike",
+                                                    "Range",
+                                                    "Reciprocal",
+                                                    "ReduceL1",
+                                                    "ReduceL2",
+                                                    "ReduceLogSum",
+                                                    "ReduceLogSumExp",
+                                                    "ReduceMax",
+                                                    "ReduceMean",
+                                                    "ReduceMin",
+                                                    "ReduceProd",
+                                                    "ReduceSum",
+                                                    "ReduceSumSquare",
+                                                    "Relu",
+                                                    "Reshape",
+                                                    "Resize",
+                                                    "ReverseSequence",
+                                                    "RNN",
+                                                    "Roialign",
+                                                    "RotaryEmbedding",
+                                                    "Round",
+                                                    "Rsqrt",
+                                                    "Scan",
+                                                    "Scatter",
+                                                    "ScatterElements",
+                                                    "ScatterND",
+                                                    "Selu",
+                                                    "Shape",
+                                                    "Sigmoid",
+                                                    "Sign",
+                                                    "SimplifiedLayerNormalization",
+                                                    "Sin",
+                                                    "Sinh",
+                                                    "SkipLayerNormalization",
+                                                    "SkipSimplifiedLayerNormalization",
+                                                    "Slice",
+                                                    "Softmax",
+                                                    "SoftmaxCrossEntropyLoss",
+                                                    "Softplus",
+                                                    "Softsign",
+                                                    "SpaceToDepth",
+                                                    "Split",
+                                                    "Sqrt",
+                                                    "Squeeze",
+                                                    "Sub",
+                                                    "Sum",
+                                                    "Tan",
+                                                    "Tanh",
+                                                    "ThresholdedRelu",
+                                                    "Tile",
+                                                    "TopK",
+                                                    "Transpose",
+                                                    "Trilu",
+                                                    "Unsqueeze",
+                                                    "Upsample",
+                                                    "Where",
+                                                    "Xor"};
+
+static bool HasUnsupportedNestedSubnode(const onnxruntime::GraphViewer& graph_viewer) {
+  for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(node_idx);
+    if (node == nullptr) continue;
+
+    const auto& optype = node->OpType();
+    const auto& domain = node->Domain();
+
+    if (domain == kMSDomain || optype.rfind("MGXKernel_", 0) == 0 || g_mgx_supported_ops.count(optype) == 0) {
+      return true;
+    }
+
+    if (optype == "If" || optype == "Loop" || optype == "Scan") {
+      for (const auto& entry : node->GetAttributeNameToSubgraphMap()) {
+        const auto* subgraph = entry.second.get();
+        if (subgraph != nullptr) {
+          auto subgraph_viewer = subgraph->CreateGraphViewer();
+          if (subgraph_viewer && HasUnsupportedNestedSubnode(*subgraph_viewer)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node) {
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
+
+  if (optype == "If" || optype == "Loop" || optype == "Scan") {
+    for (const auto& entry : node->GetAttributeNameToSubgraphMap()) {
+      const auto* subgraph = entry.second.get();
+      if (subgraph != nullptr) {
+        auto subgraph_viewer = subgraph->CreateGraphViewer();
+        if (subgraph_viewer && HasUnsupportedNestedSubnode(*subgraph_viewer)) {
+          return true;
+        }
+      }
+    }
+  }
   if (optype == "ArgMax" || optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
@@ -666,6 +870,10 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   const auto& optype = node->OpType();
   const auto& domain = node->Domain();
 
+  if (domain == kMSDomain || optype.rfind("MGXKernel_", 0) == 0) {
+    return false;
+  }
+
   // Three types of checking:
   // 1. Check input and output data types are supported.
   // 2. Check op_type is implemented in migraphx
@@ -862,168 +1070,7 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-  static std::set<std::string> mgx_supported_ops = {"Abs",
-                                                    "Acos",
-                                                    "Acosh",
-                                                    "Add",
-                                                    "And",
-                                                    "ArgMax",
-                                                    "ArgMin",
-                                                    "Asin",
-                                                    "Asinh",
-                                                    "Atan",
-                                                    "Atanh",
-                                                    "ATen",
-                                                    "Attention",
-                                                    "AveragePool",
-                                                    "BatchNormalization",
-                                                    "BiasGelu",
-                                                    "Cast",
-                                                    "Ceil",
-                                                    "Celu",
-                                                    "Clip",
-                                                    "Concat",
-                                                    "Constant",
-                                                    "ConstantFill",
-                                                    "ConstantOfShape",
-                                                    "Conv",
-                                                    "ConvInteger",
-                                                    "ConvTranspose",
-                                                    "Cos",
-                                                    "Cosh",
-                                                    "CumSum",
-                                                    "DepthToSpace",
-                                                    "DequantizeLinear",
-                                                    "Div",
-                                                    "Dropout",
-                                                    "Einsum",
-                                                    "Elu",
-                                                    "Equal",
-                                                    "Erf",
-                                                    "Exp",
-                                                    "Expand",
-                                                    "EyeLike",
-                                                    "FastGelu",
-                                                    "Flatten",
-                                                    "Floor",
-                                                    "GRU",
-                                                    "Gather",
-                                                    "GatherElements",
-                                                    "GatherND",
-                                                    "Gelu",
-                                                    "Gemm",
-                                                    "GlobalAveragePool",
-                                                    "GlobalMaxPool",
-                                                    "Greater",
-                                                    "GreaterOrEqual",
-                                                    "GroupNormalization",
-                                                    "GroupNorm",
-                                                    "GroupQueryAttention",
-                                                    "HardSigmoid",
-                                                    "HardSwish",
-                                                    "Identity",
-                                                    "If",
-                                                    "ImageScaler",
-                                                    "InstanceNormalization",
-                                                    "IsNan",
-                                                    "LayerNormalization",
-                                                    "LeakyRelu",
-                                                    "Less",
-                                                    "LessOrEqual",
-                                                    "Log",
-                                                    "LogSoftmax",
-                                                    "Loop",
-                                                    "LpNormalization",
-                                                    "LRN",
-                                                    "LSTM",
-                                                    "MatMul",
-                                                    "MatMulInteger",
-                                                    "MatMulNBits",
-                                                    "Max",
-                                                    "MaxPool",
-                                                    "Mean",
-                                                    "Min",
-                                                    "Mod",
-                                                    "Mul",
-                                                    "Multinomial",
-                                                    "MultiHeadAttention",
-                                                    "Neg",
-                                                    "NegativeLogLikelihoodLoss",
-                                                    "NhwcConv",
-                                                    "NonMaxSuppression",
-                                                    "NonZero",
-                                                    "Not",
-                                                    "OneHot",
-                                                    "Or",
-                                                    "Pad",
-                                                    "Pow",
-                                                    "PRelu",
-                                                    "QLinearAdd",
-                                                    "QLinearConv",
-                                                    "QLinearMatMul",
-                                                    "QLinearAveragePool",
-                                                    "QLinearGlobalAveragePool",
-                                                    "QuantizeLinear",
-                                                    "QuickGelu",
-                                                    "DynamicQuantizeLinear",
-                                                    "RandomNormal",
-                                                    "RandomNormalLike",
-                                                    "RandomUniform",
-                                                    "RandomUniformLike",
-                                                    "Range",
-                                                    "Reciprocal",
-                                                    "ReduceL1",
-                                                    "ReduceL2",
-                                                    "ReduceLogSum",
-                                                    "ReduceLogSumExp",
-                                                    "ReduceMax",
-                                                    "ReduceMean",
-                                                    "ReduceMin",
-                                                    "ReduceProd",
-                                                    "ReduceSum",
-                                                    "ReduceSumSquare",
-                                                    "Relu",
-                                                    "Reshape",
-                                                    "Resize",
-                                                    "ReverseSequence",
-                                                    "RNN",
-                                                    "Roialign",
-                                                    "RotaryEmbedding",
-                                                    "Round",
-                                                    "Scatter",
-                                                    "ScatterElements",
-                                                    "ScatterND",
-                                                    "Selu",
-                                                    "Shape",
-                                                    "Sigmoid",
-                                                    "Sign",
-                                                    "SimplifiedLayerNormalization",
-                                                    "Sin",
-                                                    "Sinh",
-                                                    "SkipLayerNormalization",
-                                                    "SkipSimplifiedLayerNormalization",
-                                                    "Slice",
-                                                    "Softmax",
-                                                    "SoftmaxCrossEntropyLoss",
-                                                    "Softplus",
-                                                    "Softsign",
-                                                    "SpaceToDepth",
-                                                    "Split",
-                                                    "Sqrt",
-                                                    "Squeeze",
-                                                    "Sub",
-                                                    "Sum",
-                                                    "Tan",
-                                                    "Tanh",
-                                                    "ThresholdedRelu",
-                                                    "Tile",
-                                                    "TopK",
-                                                    "Transpose",
-                                                    "Trilu",
-                                                    "Unsqueeze",
-                                                    "Upsample",
-                                                    "Where",
-                                                    "Xor"};
+  const auto& mgx_supported_ops = g_mgx_supported_ops;
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -1064,7 +1111,7 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
     prev = ++it;
   }
 
-  // Tail
+  // Add the last supported cluster to return list.
   std::vector<NodeIndex> this_subgraph{prev, topological_order.end()};
   if (!this_subgraph.empty()) {
     mgx_subgraphx.push_back(std::move(this_subgraph));
@@ -1079,6 +1126,10 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
                                          const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                                          IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  if (graph_viewer.IsSubgraph()) {
+    return result;
+  }
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
@@ -1139,43 +1190,30 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 bool get_input_output_names(const GraphViewer& graph,
                             std::vector<std::string>& input_names,
                             std::vector<std::string>& output_names) {
-  input_names.clear();
-  output_names.clear();
   const auto& input_args = graph.GetInputs();
   std::transform(input_args.begin(), input_args.end(), std::back_inserter(input_names), [](auto& arg) {
     return arg->Name();
   });
 
-  bool no_input_shape = std::any_of(input_args.begin(), input_args.end(), [&](auto arg) {
-    if (arg == nullptr)
-      return true;
-
-    auto sptr = arg->Shape();
-    if (sptr == nullptr)
-      return true;
-
-    if (sptr->dim_size() == 0)
-      return true;
-
-    for (int i = 0; i < sptr->dim_size(); i++) {
-      if (sptr->dim(i).has_dim_param())
-        return true;
+  bool no_input_shape = std::any_of(input_args.begin(), input_args.end(), [](auto& arg) {
+    const auto& arg_s = arg->Shape();
+    if (arg_s == nullptr) return true;
+    const auto& tensor_dims = arg_s->dim();
+    std::vector<std::size_t> dims;
+    for (auto&& dim : tensor_dims) {
+      dims.emplace_back(dim.has_dim_value() ? dim.dim_value() : 0);
     }
-
-    return false;
+    return (dims == std::vector<std::size_t>{0});
   });
 
   const auto& out_args = graph.GetOutputs();
-  std::vector<std::string> tmp_out_names;
   std::transform(out_args.begin(),
                  out_args.end(),
-                 std::back_inserter(tmp_out_names),
+                 std::back_inserter(output_names),
                  [](auto& arg) { return arg->Name(); });
 
   std::copy_if(
-      tmp_out_names.begin(),
-      tmp_out_names.end(),
-      std::back_inserter(output_names),
+      output_names.begin(), output_names.end(), std::back_inserter(input_names),
       [&](const auto& name) { return !name.empty(); });
 
   return no_input_shape;
@@ -1216,36 +1254,20 @@ void calibrate_and_quantize(migraphx::program& prog,
                             bool fp8_enable,
                             bool int8_calibration_cache_available,
                             std::unordered_map<std::string, float>& dynamic_range_map) {
-  // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
   if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
-    LOGS_DEFAULT(WARNING) << "Quantizing input program";
-
-    auto param_shapes = prog.get_parameter_shapes();
-
     // Add all calibration data read in from int8 table
-    for (auto& [cal_key, cal_val] : dynamic_range_map) {
-      auto cal_val_shape = migraphx::shape(migraphx_shape_float_type);
-      quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
+    for (const auto& [name, val] : dynamic_range_map) {
+      quant_params.add(name, migraphx::argument(migraphx::shape{migraphx_shape_float_type}, const_cast<float*>(&val)));
     }
-
-    // perform static quantization on the programs
     if (int8_enable) {
       LOGS_DEFAULT(WARNING) << "Quantizing input program to int8";
-      migraphx::quantize_int8_options quant_opts;
-      quant_opts.add_calibration_data(quant_params);
-      // specify thing we want to int8 quantize
-      quant_opts.add_op_name("convolution");
-      quant_opts.add_op_name("dot");
-      migraphx::quantize_int8(prog, t, quant_opts);
+      migraphx::quantize_int8(prog, t, quant_params);
       LOGS_DEFAULT(WARNING) << "Quantizing int8: Complete";
-    } else if (fp8_enable) {
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
+    }
+    if (fp8_enable) {
       LOGS_DEFAULT(WARNING) << "Quantizing input program to fp8";
-      migraphx::quantize_fp8_options quant_opts;
-      quant_opts.add_calibration_data(quant_params);
-      migraphx::quantize_fp8(prog, t, quant_opts);
+      migraphx::quantize_fp8(prog, t, quant_params);
       LOGS_DEFAULT(WARNING) << "Quantizing fp8: Complete";
-#endif
     }
   }
 
@@ -1255,7 +1277,7 @@ void calibrate_and_quantize(migraphx::program& prog,
     LOGS_DEFAULT(WARNING) << "Quantizing fp16: Complete";
   }
 
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4 && HIP_VERSION_PATCH >= 2)
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR > 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH >= 2)))
   if (bf16_enable) {
     LOGS_DEFAULT(WARNING) << "Quantizing input program to bf16";
     migraphx::quantize_bf16(prog);
@@ -1319,7 +1341,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     }
 
     // empty cache path means the MXR caching is disabled - always compile
-    if (!model_cache_path_.empty()) {
+    if (!model_cache_path_.empty() && model_cache_path_.string() != "\"\"") {
       std::vector<std::int64_t> input_shapes;
       for (std::size_t i = 0; i < session_input_names.size(); ++i) {
         auto tensor_shape = input_tensor[i]->Shape();
@@ -1437,104 +1459,32 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         LOGS_DEFAULT(VERBOSE) << "Missing input shape setting input parameters again";
         for (auto& it : map_input_name_index) {
           auto& name = it.first;
-          auto& index = it.second;
-          auto input_tensor = ctx.GetInput(index);
+          auto input_tensor = ctx.GetInput(it.second);
           auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
           const auto tensor_shape = tensor_info.GetShape();
-          std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
-          cmp_options.set_input_parameter_shape(name, ort_lens);
-          input_shape_match = false;
-        }
-      } else {
-        LOGS_DEFAULT(VERBOSE) << "Assigning inputs, and parameters from compiled model";
-        param_shapes = prog.get_parameter_shapes();
-        auto prog_output_shapes = prog.get_output_shapes();
+          const auto tensor_type = tensor_info.GetElementType();
 
-        // check whether input shapes match with shapes of program inputs
-        // migraphx::onnx_options cmp_options;
-        if (param_shapes.size() > 0) {
-          for (auto&& name : param_shapes.names()) {
-            if (map_input_name_index.count(name) > 0) {
-              auto input_tensor = ctx.GetInput(map_input_name_index[name]);
-              auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-              const auto tensor_shape = tensor_info.GetShape();
-              std::vector<std::size_t> ort_lens(tensor_shape.begin(), tensor_shape.end());
+          migraphx_shape_datatype_t mgx_type;
+          getMIGraphXType(tensor_type, mgx_type);
 
-              auto mgx_s = param_shapes[name];
-              auto mgx_lens = mgx_s.lengths();
-              auto mgx_strides = mgx_s.strides();
-              if (mgx_lens.size() == 1 && mgx_lens[0] == 1 &&
-                  mgx_strides.size() == 1 && mgx_strides[0] == 0) {
-                mgx_lens.clear();
-              }
-
-              if (mgx_lens != ort_lens) {
-                cmp_options.set_input_parameter_shape(name, ort_lens);
-                input_shape_match = false;
-              }
-              input_shapes.insert(input_shapes.end(), tensor_shape.begin(), tensor_shape.end());
-            }
+          std::vector<std::size_t> tensor_dims;
+          for (auto j : tensor_shape) {
+            tensor_dims.push_back(static_cast<std::size_t>(j));
           }
-        }
-      }
 
-      // input shapes are different, needs to re-parse onnx and
-      // re-compile the program
-      if (!input_shape_match) {
-        std::filesystem::path model_cache_file;
-        // empty cache path means the MXR caching is disabled - always compile
-        if (!model_cache_path_.empty()) {
-          model_cache_file = mgx_state->model_cache_dir / (mxr_filename_prefix + make_hash(input_shapes) + ".mxr");
-        }
-        if (!load_precompiled_model(prog, model_cache_file)) {
-          LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling";
-#ifndef ENABLE_TRAINING_CORE
-#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
-          cmp_options.set_external_data_path(model_path_.parent_path().string());
-#endif
-#endif
-          prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
-          migraphx::program_parameters quant_params;
-
-          if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
-            auto local_param_shapes = prog.get_parameter_shapes();
-            // Add input parameter data and the values they're set to
-            for (auto&& name : local_param_shapes.names()) {
-              if (map_input_name_index.count(name) > 0) {
-                auto input_tensor = ctx.GetInput(map_input_name_index[name]);
-                auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-                const auto tensor_shape = tensor_info.GetShape();
-                const auto tensor_type = tensor_info.GetElementType();
-
-                migraphx_shape_datatype_t mgx_type;
-                getMIGraphXType(tensor_type, mgx_type);
-                auto mgx_s = local_param_shapes[name];
-
-                if (mgx_type != mgx_s.type()) {
-                  LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
-                }
-                quant_params.add(name, migraphx::argument(local_param_shapes[name], const_cast<void*>(input_tensor.GetTensorRawData())));
-              }
-            }
+          for (std::size_t j = 1; j < tensor_dims.size(); ++j) {
+            input_shapes.push_back(tensor_dims[j]);
           }
-          calibrate_and_quantize(prog, t, quant_params, fp16_enable, bf16_enable, int8_enable,
-                                 fp8_enable, int8_calibration_cache_available, map_dynamic_range);
-          compile_program(prog, t, exhaustive_tune_);
-          save_compiled_model(prog, model_cache_file);
+
+          cmp_options.set_input_parameter_shape(name, tensor_dims);
         }
 
-        mgx_state->prog = prog;
-        param_shapes = prog.get_parameter_shapes();
-        no_input_shape = false;
-      }
+        // Lock compile function so only one thread can compile at a time.
+        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
 
-      migraphx::program_parameters m;
-      auto prog_output_shapes = prog.get_output_shapes();
-      std::vector<std::size_t> prog_output_indices;
-      if (param_shapes.size() > 0) {
+        param_shapes = prog.get_parameter_shapes();
         for (auto&& name : param_shapes.names()) {
           if (map_input_name_index.count(name) > 0) {
-            LOGS_DEFAULT(VERBOSE) << "Setting parameters for:" << name;
             auto input_tensor = ctx.GetInput(map_input_name_index[name]);
             auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
             const auto tensor_shape = tensor_info.GetShape();
@@ -1548,62 +1498,137 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
             }
 
-            LOGS_DEFAULT(VERBOSE) << "Writing Raw tensor data ";
-            m.add(name, migraphx::argument(param_shapes[name],
-                                           const_cast<void*>(input_tensor.GetTensorRawData())));
-          }
-          // It is an output argument
-          else {
-            auto compute_output_index = [](const std::string_view sv) -> int {
-              constexpr std::string_view out_name_prefix = "#output_";
-              const auto pos = sv.find(out_name_prefix);
-              if (pos == std::string_view::npos) {
-                return -1;
+            auto mgx_lens = mgx_s.lengths();
+            auto mgx_strides = mgx_s.strides();
+            if (mgx_lens.size() == 1 && mgx_lens[0] == 1 &&
+                mgx_strides.size() == 1 && mgx_strides[0] == 0) {
+              if (tensor_shape.size() != 0) {
+                input_shape_match = false;
+                break;
+              }
+            } else {
+              if (mgx_lens.size() != tensor_shape.size()) {
+                input_shape_match = false;
+                break;
               }
 
-              const auto index_str = sv.substr(pos + out_name_prefix.length());
-              return ToInteger(Trim(index_str, std::isdigit));
-            };
-
-            int output_index = compute_output_index(name);
-            if (output_index != -1) {
-              prog_output_indices.push_back(output_index);
-              auto mgx_output_shape = prog_output_shapes[output_index];
-              auto lens = mgx_output_shape.lengths();
-              std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
-              auto output_tensor = ctx.GetOutput(output_index, ort_output_shape.data(), ort_output_shape.size());
-              void* output_data = output_tensor.GetTensorMutableRawData();
-
-              // argument shape
-              auto mgx_arg_shape = param_shapes[name];
-              m.add(name, migraphx::argument(mgx_arg_shape, output_data));
+              for (std::size_t i = 0; i < mgx_lens.size(); ++i) {
+                if (mgx_lens[i] != static_cast<std::size_t>(tensor_shape[i])) {
+                  input_shape_match = false;
+                  break;
+                }
+              }
             }
           }
         }
-      }
 
-      {
-        // lock to avoid race condition
-        std::lock_guard<std::mutex> lock(*(mgx_state->mgx_mu_ptr));
+        // input shapes are different, needs to re-parse onnx and
+        // re-compile the program
+        if (!input_shape_match) {
+          std::filesystem::path model_cache_file;
+          // empty cache path means the MXR caching is disabled - always compile
+          if (!model_cache_path_.empty() && model_cache_path_.string() != "\"\"") {
+            model_cache_file = mgx_state->model_cache_dir / (mxr_filename_prefix + make_hash(input_shapes) + ".mxr");
+          }
+          if (!load_precompiled_model(prog, model_cache_file)) {
+            LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling";
+#ifndef ENABLE_TRAINING_CORE
+#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
+            cmp_options.set_external_data_path(model_path_.parent_path().string());
+#endif
+#endif
+            prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+            migraphx::program_parameters quant_params;
 
-        void* rocm_stream;
-        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
-        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
+            if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
+              auto local_param_shapes = prog.get_parameter_shapes();
+              // Add input parameter data and the values they're set to
+              for (auto&& name : local_param_shapes.names()) {
+                if (map_input_name_index.count(name) > 0) {
+                  auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+                  auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+                  const auto tensor_shape = tensor_info.GetShape();
+                  const auto tensor_type = tensor_info.GetElementType();
 
-        // In case of input parameters are reused as output parameter call hipMemcpy
-        auto output_num = prog_outputs.size();
-        if (prog_output_indices.size() < output_num) {
-          for (std::size_t i = 0; i < output_num; ++i) {
-            if (std::find(prog_output_indices.begin(), prog_output_indices.end(), i) != prog_output_indices.end())
-              continue;
-            auto gpu_res = prog_outputs[i];
-            migraphx::shape res_shape = gpu_res.get_shape();
+                  migraphx_shape_datatype_t mgx_type;
+                  getMIGraphXType(tensor_type, mgx_type);
+
+                  if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                    quant_params.add(name, migraphx::argument(migraphx::shape{mgx_type, tensor_shape},
+                                                               const_cast<void*>(input_tensor.GetTensorRawData())));
+                  }
+                }
+              }
+            }
+            calibrate_and_quantize(prog, t, quant_params, fp16_enable, bf16_enable, int8_enable,
+                                   fp8_enable, int8_calibration_cache_available, map_dynamic_range);
+            compile_program(prog, t, exhaustive_tune_);
+            save_compiled_model(prog, model_cache_file);
+          }
+
+          mgx_state->prog = prog;
+          param_shapes = prog.get_parameter_shapes();
+          no_input_shape = false;
+        }
+
+        migraphx::program_parameters m;
+        auto prog_output_shapes = prog.get_output_shapes();
+        std::vector<std::size_t> prog_output_indices;
+        if (param_shapes.size() > 0) {
+          for (auto&& name : param_shapes.names()) {
+            if (map_input_name_index.count(name) > 0) {
+              LOGS_DEFAULT(VERBOSE) << "Setting parameters for:" << name;
+              auto input_tensor = ctx.GetInput(map_input_name_index[name]);
+              auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+              const auto tensor_shape = tensor_info.GetShape();
+              const auto tensor_type = tensor_info.GetElementType();
+
+              migraphx_shape_datatype_t mgx_type;
+              getMIGraphXType(tensor_type, mgx_type);
+              auto mgx_s = param_shapes[name];
+
+              if (mgx_type != mgx_s.type()) {
+                LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
+              }
+
+              LOGS_DEFAULT(VERBOSE) << "Writing Raw tensor data ";
+              m.add(name, migraphx::argument(param_shapes[name],
+                                             const_cast<void*>(input_tensor.GetTensorRawData())));
+            } else {
+              int output_index = compute_output_index(name);
+              prog_output_indices.push_back(output_index);
+            }
+          }
+        }
+
+        // Run MIGraphX Program
+        auto run_output = prog.eval(m);
+
+        if (run_output.size() > 0) {
+          std::vector<std::size_t> outputs_to_copy;
+          if (prog_output_shapes.size() == run_output.size()) {
+            outputs_to_copy.resize(run_output.size());
+            std::iota(outputs_to_copy.begin(), outputs_to_copy.end(), 0);
+          } else if (prog_output_indices.size() == run_output.size()) {
+            outputs_to_copy = prog_output_indices;
+          } else {
+            LOGS_DEFAULT(FATAL) << "MIGraphX: output count mismatch";
+          }
+
+          for (std::size_t i = 0; i < run_output.size(); ++i) {
+            auto res_shape = run_output[i].get_shape();
             auto res_lens = res_shape.lengths();
-            std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
-            auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
-            void* output_data = output_tensor.GetTensorMutableRawData();
+            std::vector<int64_t> ort_output_shape(res_lens.begin(), res_lens.end());
+
+            std::size_t ort_out_index = outputs_to_copy[i];
+
+            auto output_tensor = ctx.GetOutput(ort_out_index, ort_output_shape);
+            void* output_data = output_tensor.GetTensorMutableData<void>();
+
+            void* rocm_stream = nullptr;
+            Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
             HIP_CALL_THROW(hipMemcpyWithStream(output_data,
-                                               gpu_res.data(),
+                                               run_output[i].data(),
                                                res_shape.bytes(),
                                                hipMemcpyDeviceToDevice,
                                                static_cast<hipStream_t>(rocm_stream)));
@@ -1613,38 +1638,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
       return Status::OK();
     };
+
     node_compute_funcs.push_back(compute_info);
   }
 
-  return Status::OK();
-}
-
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
-                                                       AllocatorMap& allocators) const {
-  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
-}
-
-OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput)
-    return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
-                     default_device_.Id());
-  return default_device_;
-}
-
-Status MIGraphXExecutionProvider::Sync() const {
-  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
-
-  auto status = hipStreamQuery(stream_);
-  if (status != hipSuccess) {
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
-  }
-  return Status::OK();
-}
-
-Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   return Status::OK();
 }
 
