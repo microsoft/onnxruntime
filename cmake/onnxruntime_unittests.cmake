@@ -1056,7 +1056,12 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
   endif()
 
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
+  # On Windows, the module links against onnxruntime_provider_test's import library
+  # and must build after the executable. Adding the reverse dependency would create
+  # a cycle. The module remains part of the default build on all platforms.
+  if (NOT WIN32)
+    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
@@ -1450,12 +1455,6 @@ block()
   )
 
   set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
-  if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
-    # The module links against this executable's import library on Windows, so it must
-    # build after the executable. It remains part of the default build; for a targeted
-    # internal-test build, build onnxruntime_providers_cuda_ut to get both artifacts.
-    list(REMOVE_ITEM onnxruntime_provider_test_deps onnxruntime_providers_cuda_ut)
-  endif()
 
   AddTest(
     TARGET onnxruntime_provider_test
