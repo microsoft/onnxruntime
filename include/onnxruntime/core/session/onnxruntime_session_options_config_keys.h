@@ -447,6 +447,12 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. A larger M is computed
+/// in row chunks, which bounds the runtime GEMM workspace and the tactic-profiler scratch (both grow
+/// with M) by the chunk size. A power of two is recommended. "0" or unset (default) disables chunking.
+/// Overrides the process-wide ORT_MATMULNBITS_M_CHUNK_SIZE environment variable.
+static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.

@@ -236,7 +236,12 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def setUp(self):
         # Make sure no env override leaks in from the process / other tests.
-        for name in ("ORT_FPA_INTB_GEMM", "ORT_FPA_INTB_PROFILE_M"):
+        for name in (
+            "ORT_FPA_INTB_GEMM",
+            "ORT_FPA_INTB_PROFILE_M",
+            "ORT_MATMULNBITS_M_CHUNK_SIZE",
+            "ORT_MATMULNBITS_FORCE_CHUNKED",
+        ):
             os.environ.pop(name, None)
 
     def _quantize_weight(self, weight: np.ndarray, bits: int, block_size: int):
@@ -328,6 +333,37 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
             with set_env("ORT_FPA_INTB_GEMM", value):
                 out = self._run(model, a)
             np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"env={value}")
+
+    def test_m_chunk_size_matches_unchunked(self):
+        # M=100 with chunk 32 runs three CUTLASS chunks plus a 4-row trailing chunk on the GEMV;
+        # chunk 8 runs GEMV-only chunks; chunk >= M is a single launch. The shape is below the
+        # chunking size gate, so ORT_MATMULNBITS_FORCE_CHUNKED bypasses it.
+        model, a, _, _ = self._make_int4_case(m=100)
+        ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+        with set_env("ORT_MATMULNBITS_FORCE_CHUNKED", "1"):
+            for chunk in ("8", "32", "64", "100", "256", "0"):
+                out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": chunk})
+                np.testing.assert_allclose(out, ref, rtol=1e-2, atol=1e-2, err_msg=f"chunk={chunk}")
+
+            with set_env("ORT_MATMULNBITS_M_CHUNK_SIZE", "16"):
+                out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+            np.testing.assert_allclose(out, ref, rtol=1e-2, atol=1e-2, err_msg="env chunk=16")
+
+    def test_empty_input_returns_empty_output(self):
+        model, a, _, _ = self._make_int4_case(m=0)
+        for config in (
+            {},
+            {"ep.cuda.fpa_intb_gemm": "1"},
+            {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": "32"},
+        ):
+            out = self._run(model, a, config)
+            self.assertEqual(out.shape, (0, 512), msg=f"config={config}")
+
+    def test_invalid_m_chunk_size_rejected(self):
+        model, a, _, _ = self._make_int4_case()
+        for chunk in ("-1", "abc"):
+            with self.assertRaisesRegex(Exception, "Invalid MatMulNBits M chunk size"):
+                self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": chunk})
 
 
 if __name__ == "__main__":

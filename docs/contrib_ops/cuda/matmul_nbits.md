@@ -422,6 +422,92 @@ weight initializer into the fpA_intB layout during ORT prepacking. For
 `weight_prepacked=1`, the initializer is treated as already preprocessed and is
 copied directly after a byte-size check.
 
+### 6.2 M chunking
+
+The fpA_intB path launches a single GEMM over all `M` rows by default. Two
+buffers grow with `M`:
+
+- the runtime CUTLASS workspace, `ceil(M/16) * ceil(N/64) * 28` bytes on the
+  SM80 kernel (the native SM90 kernel reserves a fixed stream-K workspace), and
+- the tactic-profiler scratch for an `M` bucket, which holds `A` (`M x K`), a
+  weight-sized buffer, scales, and a full output `C` (`M x N`). It is allocated
+  once at kernel construction (largest initial bucket, 2048 by default) and again
+  on first use of any `M` whose rounded bucket was not profiled.
+
+For a large-vocabulary LM head this scratch is dominated by `C`. With
+Qwen3.8-27B (`N=248320`, `K=5120`, INT4, `block_size=32`), the profiler scratch is
+~1.72 GiB at `M=2048` and ~4.7 GiB for a lazily profiled `M=8192` prefill chunk.
+
+Setting `ep.cuda.matmul_nbits_m_chunk_size` (or `ORT_MATMULNBITS_M_CHUNK_SIZE`)
+to a positive value `Mc` computes `Y` in row chunks of at most `Mc` rows when
+both of these hold:
+
+- `M > Mc`, and
+- `M * (N + K) * sizeof(T) > 256 MiB`, i.e. the profiler's `A` and `C` buffers
+  for an unchunked `M` would be large. Small layers are never split, because the
+  extra launches cost time and save almost nothing.
+
+`ORT_MATMULNBITS_FORCE_CHUNKED=1` bypasses the size condition (it also forces
+the §5 fallback's N chunking). For Qwen3.8-27B in FP16/BF16 the size condition
+means:
+
+| node | `N` | `K` | chunked when `M` > |
+|---|---|---|---|
+| LM head | 248320 | 5120 | 529 |
+| MLP gate/up | 17408 | 5120 | 5957 |
+| MLP down | 5120 | 17408 | 5957 |
+| any node with `N + K <= 16384` | | | >= 8192 |
+
+Each chunk reuses one workspace sized for `Mc`, looks up its own tactic (a
+trailing partial chunk may pick a different tactic, including the GEMV for fewer
+than 16 rows). Constructor profiling is capped at the largest `M` that can still
+run unchunked, `max(Mc, 256 MiB / ((N + K) * sizeof(T)))`, so a large node never
+profiles a bucket above that. At `Mc=256` the LM-head profiler scratch above
+drops to ~0.86 GiB; the remainder is the weight-sized and scale buffers, which do
+not depend on `M`. Prefer a power of two so trailing chunks round to an
+already-profiled bucket.
+
+Measured on H200 for that LM-head node alone (FP16, fpA_intB SM80 kernel,
+`arena_extend_strategy=kSameAsRequested`, NVML sampled from a separate process):
+
+| `M` | chunk | session-creation peak | run peak | session creation | first run | steady run |
+|---|---|---|---|---|---|---|
+| 2048 | off | 3112 MiB | 3080 MiB | 17.5 s | 584 ms | 78.4 ms |
+| 2048 | 256 | 2234 MiB | 3080 MiB | 8.2 s | 619 ms | 79.0 ms |
+| 8192 | off | | 10762 MiB | 18.5 s | 21716 ms | 464-480 ms |
+| 8192 | 2048 | | 5990 MiB | 18.3 s | 2239 ms | 316-324 ms |
+| 8192 | 256 | | 5990 MiB | 9.0 s | 2208-2362 ms | 313-390 ms |
+
+When `M` exceeds the largest profiled bucket, chunking removes the lazy
+profiling of the large bucket: -4.7 GiB peak and a ~10x faster first run. The
+remaining 5990 MiB is mostly the `Y` output itself (3.8 GiB at `M=8192`).
+
+When `M` is within the profiled range, chunking only lowers the session-creation
+peak (the profiler's `M x N` output buffer), and the run peak is about as high:
+
+| component (M=2048), from the NVML timeline | MiB | depends on M chunk |
+|---|---|---|
+| CUDA context and other runtime allocations | 658 | no |
+| raw `B` + scales initializers, kept after prepack | 692 | no |
+| prepacked `B` + scales | 684 | no |
+| `A` and other run allocations | 64 | no |
+| output `Y` (969 MiB) + CUTLASS workspace (13 MiB) | 980 | workspace only (13 -> 2 MiB) |
+
+The raw initializer stays resident because it is freed into the BFC arena.
+With `session.use_device_allocator_for_initializers=1` it is released, and the
+peaks become 3114 -> 2568 MiB (chunk off -> 256; run peak 2430 / 2416 MiB). In a
+full model the session-creation peak also overlaps other nodes' initializers, so
+the saving applies per profiled node.
+
+The Level-2 `DeclareWorkspaceRequirements` estimate uses the chunk size. The
+Level-1 (partition-time) estimate ignores it and stays a conservative upper
+bound.
+
+M chunking applies only to the fpA_intB path. The dequantize + cuBLAS fallback
+(§5) needs no `M`-proportional scratch; its dequantized-weight buffer is bounded
+by `N` chunking (`ORT_MATMULNBITS_CHUNK_SIZE`). The fused GEMV (§4) handles
+`M <= 16` and needs no workspace.
+
 Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
@@ -460,8 +546,9 @@ present. `ComputeInternal` then:
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
-| `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
+| `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic, and bypass the fpA_intB M-chunking size condition (§6.2). |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
+| `ORT_MATMULNBITS_M_CHUNK_SIZE` | int, `0` | Max rows of `A` per fpA_intB launch (§6.2). `0` disables M chunking. Overridden by the `ep.cuda.matmul_nbits_m_chunk_size` session config entry. Also applies to the CUDA plugin EP. |
 
 > Environment variables are read with ORT's cross-platform
 > `ParseEnvironmentVariableWithDefault` helper (safe on Windows), not

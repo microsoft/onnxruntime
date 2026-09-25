@@ -779,6 +779,59 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
 }
 
 // ---------------------------------------------------------------------------
+// M chunking is size-gated: this small node (M x (N + K) far below 256 MiB) keeps the unchunked
+// workspace even with a chunk size set; ORT_MATMULNBITS_FORCE_CHUNKED bypasses the gate.
+// ---------------------------------------------------------------------------
+TEST(MatMulNBitsWorkspace, MChunkSizeGate) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "MatMulNBits fpA_intB path requires a CUDA device with sm >= " << kMinFpAIntBSm;
+  }
+
+  const std::string model_bytes = BuildMatMulNBitsModelBytes();
+  for (const bool force : {false, true}) {
+    SCOPED_TRACE(force ? "forced" : "size-gated");
+    ScopedEnvironmentVariables scoped_env(
+        EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}},
+                  {"ORT_MATMULNBITS_M_CHUNK_SIZE", optional<std::string>{"16"}},
+                  {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{force ? "1" : "0"}}});
+
+    SessionOptions so;
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+    ASSERT_NE(op_kernel, nullptr);
+
+    const std::array<WorkspaceInputShape, 1> shapes{
+        WorkspaceInputShape::PresentWithShape(TensorShape({kE2eM, kE2eK}))};
+    InlinedVector<WorkspaceRequirement> requirements;
+    ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(shapes), requirements));
+    ASSERT_EQ(requirements.size(), 1u);
+
+    std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    std::vector<OrtValue> fetches;
+    const std::vector<std::string> output_names{"Y"};
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    const size_t runtime = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+
+    // SM80 formula ceil(M / 16) * ceil(N / 64) * 7 * 4: 256 rows -> 1792 bytes, one 16-row chunk -> 112.
+    const size_t expected = force ? 112u : 1792u;
+    EXPECT_EQ(requirements[0].size_bytes, expected);
+    EXPECT_EQ(runtime, expected);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Test C - fixed-shape specialization via free-dimension override.
 // Input A is declared with a symbolic leading dim ("seq"); SessionOptions overrides "seq" -> 512
 // before Initialize(). The override rewrites the NodeArg shape into a concrete value that flows into

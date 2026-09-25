@@ -1459,6 +1459,22 @@ TEST(MatMulNBits, BFloat16_Int4_BlockSize32_FpAIntB) {
   }
 }
 
+// fpA_intB with M chunking: M=100 in 32-row chunks runs three CUTLASS chunks and a 4-row trailing
+// chunk on the GEMV; 8-row chunks run the GEMV only. The shape is below the chunking size gate, so
+// ORT_MATMULNBITS_FORCE_CHUNKED bypasses it.
+TEST(MatMulNBits, Fp16_Int4_BlockSize32_FpAIntB_MChunked) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  for (const char* chunk : {"8", "32"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"},
+                                                         {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+                                                         {"ORT_MATMULNBITS_M_CHUNK_SIZE", chunk}}};
+    RunTest<MLFloat16>(100, 1024, 2048, 32, has_zeropoint, zp_is_4bit, abs_error);
+  }
+}
+
 // Fused bias with the fpA_intB path. Exercises both the GEMV path (M=1) and the CUTLASS GEMM path
 // (M=32), for fp16 and bf16, with block_size 64/128. This is the gpt-oss qkv_proj/o_proj scenario
 // where MatMulNBitsFusion folds the Add(bias) into MatMulNBits input[5].
