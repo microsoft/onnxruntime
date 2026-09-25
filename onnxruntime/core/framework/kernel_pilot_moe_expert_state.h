@@ -78,9 +78,6 @@ class KernelPilotMoeExpertState {
   // Returns the pilot owned by a registered kernel, or nullptr for any other kernel.
   KernelPilot* GetKernelPilot(const OpKernel* kernel);
 
-  // Commit the kernel's collected usage after a successful invocation.
-  Status RecordUsage(const OpKernel* kernel);
-
   // During a Run, only this kernel may read its counters.
   Status GetCounters(const OpKernel* kernel, InlinedVector<double>& counters) const;
 
@@ -101,13 +98,17 @@ class KernelPilotMoeExpertState {
   size_t TotalExpertCount() const noexcept { return counters_.size(); }
 
  private:
+  friend class KernelPilot;
+  Status RecordUsage(const OpKernel* kernel);
+
   using Key = std::pair<std::string, size_t>;
   struct ExpertRange {
     size_t begin;
     size_t count;
   };
   struct KernelState {
-    KernelState(Key key, ExpertRange range) : key(std::move(key)), experts(range) {}
+    KernelState(Key key, ExpertRange range, KernelPilotMoeExpertState& owner, const OpKernel* kernel)
+        : key(std::move(key)), experts(range), pilot(owner, kernel) {}
     Key key;
     ExpertRange experts;
     KernelPilot pilot;

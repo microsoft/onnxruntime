@@ -3595,6 +3595,11 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF(session_state_->GetMoeExpertState() != nullptr,
+                  "MoE expert counting and statistics are not supported by the deprecated PartialRun path.");
+#endif
+
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }

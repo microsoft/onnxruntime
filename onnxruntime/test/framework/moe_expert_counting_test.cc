@@ -362,6 +362,7 @@ TEST(MoeExpertCountingTest, ContextExposesSessionOwnedCollector) {
   EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));
 
   OpKernelContextInternal unused_context(session_state, frame, *kernel, session_state.Logger(), terminate, nullptr);
+  ASSERT_NE(unused_context.GetKernelPilot(), nullptr);
   ASSERT_STATUS_OK(unused_context.RecordKernelUsage());
   ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
   EXPECT_EQ(counters, (InlinedVector<double>{0.1, 0, 0.1, 0}));

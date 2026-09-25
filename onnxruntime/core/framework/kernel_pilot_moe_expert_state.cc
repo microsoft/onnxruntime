@@ -71,9 +71,10 @@ Status KernelPilotMoeExpertState::RegisterNode(const OpKernel* kernel, std::stri
     expert_ids_.emplace(std::make_pair(kernel, static_cast<int>(expert)), counters_.size());
     counters_.push_back(0.0);
   }
-  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range);
+  auto [entry, inserted] = kernels_.try_emplace(kernel, key, range, *this, kernel);
   ORT_ENFORCE(inserted);
   ORT_RETURN_IF_ERROR(entry->second.pilot.Moe().BeginInvocation(expert_count));
+  entry->second.pilot.FinishRegistration();
   return Status::OK();
 }
 

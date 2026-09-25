@@ -63,7 +63,7 @@ class OpKernelContextInternal : public OpKernelContext {
     if (kernel_pilot_ == nullptr) {
       return Status::OK();
     }
-    return session_state_.GetMoeExpertState()->RecordUsage(GetKernel());
+    return kernel_pilot_->RecordUsage();
   }
 #endif
 

@@ -15,6 +15,7 @@ Status KernelPilotMoeExpertSelection::BeginInvocation(size_t expert_count) {
   // Unlike clear(), erasing preserves InlinedVector's allocated storage.
   selected_experts_.erase(selected_experts_.begin(), selected_experts_.end());
   selected_experts_.reserve(expert_count);
+  invocation_pending_ = true;
   return Status::OK();
 }
 
@@ -44,6 +45,14 @@ Status KernelPilotMoeExpertSelection::GetSelectedExperts(gsl::span<const int>& e
   ORT_RETURN_IF_NOT(IsInitialized(), "MoE expert selection was not initialized.");
   expert_ids = selected_experts_;
   return Status::OK();
+}
+
+bool KernelPilotMoeExpertSelection::HasPendingInvocation() const noexcept {
+  return invocation_pending_;
+}
+
+void KernelPilotMoeExpertSelection::FinishInvocation() noexcept {
+  invocation_pending_ = false;
 }
 
 }  // namespace onnxruntime

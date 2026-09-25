@@ -31,6 +31,10 @@
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -1026,6 +1030,32 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
 }
+
+#ifdef ENABLE_TRAINING
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+
+  RunOptions run_options;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  PartialGraphExecutionState state;
+  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
+  const Status status = session.PartialRun(
+      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
+                                         "MoE expert counting and statistics are not supported by the deprecated "
+                                         "PartialRun path."));
+}
+#endif
 
 class CudaPluginTestExecutionProvider final : public IExecutionProvider {
  public:

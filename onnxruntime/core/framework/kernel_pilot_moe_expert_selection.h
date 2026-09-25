@@ -22,7 +22,7 @@ namespace onnxruntime {
 // 2. Routing selects local expert IDs. CPU kernels call Collect() directly; CUDA kernels transfer
 //    IDs through KernelPilotMoeExpertSelectionCuda, which delegates collection to this interface.
 // 3. Tiled routing may call Collect() repeatedly; the selection retains each expert only once.
-// 4. If Compute() succeeds, the executor calls KernelPilotMoeExpertState::RecordUsage().
+// 4. If Compute() succeeds, the executor calls KernelPilot::RecordUsage().
 // 5. RecordUsage() reads GetSelectedExperts(), decays that kernel's persistent counters, and adds
 //    the configured contribution for every selected expert. Failed kernel invocations are not
 //    committed.
@@ -79,8 +79,13 @@ class KernelPilotMoeExpertSelection final : public IKernelPilotMoeExpertSelectio
   Status GetSelectedExperts(gsl::span<const int>& expert_ids) const override;
 
  private:
+  friend class KernelPilot;
+  bool HasPendingInvocation() const noexcept;
+  void FinishInvocation() noexcept;
+
   size_t expert_count_{0};
   InlinedVector<int> selected_experts_;
+  bool invocation_pending_{false};
 };
 
 }  // namespace onnxruntime

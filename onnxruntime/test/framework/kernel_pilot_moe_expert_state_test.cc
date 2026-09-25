@@ -65,7 +65,7 @@ class KernelPilotMoeExpertStateTest : public testing::Test {
     ORT_RETURN_IF_NOT(pilot, "Missing test kernel collector.");
     ORT_RETURN_IF_ERROR(pilot->Moe().BeginInvocation(pilot->Moe().ExpertCount()));
     ORT_RETURN_IF_ERROR(pilot->Moe().Collect(ids));
-    return state.RecordUsage(kernel);
+    return pilot->RecordUsage();
   }
 
   static InlinedVector<double> Counters(const KernelPilotMoeExpertState& state, const OpKernel* kernel) {
@@ -283,7 +283,8 @@ TEST_F(KernelPilotMoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "Add", 2).IsOK());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "QMoE", 0).IsOK());
   EXPECT_EQ(state.TotalExpertCount(), 2U);
-  EXPECT_FALSE(state.RecordUsage(kernels_[0]).IsOK());
+  ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->Moe().BeginInvocation(2));
+  EXPECT_FALSE(state.GetKernelPilot(kernels_[0])->RecordUsage().IsOK());
   ASSERT_STATUS_OK(state.FinalizeInitialization());
   EXPECT_FALSE(state.RegisterNode(kernels_[1], "main", 1, "MoE", 2).IsOK());
   std::istringstream initial("moe_expert_state 1\n");
@@ -293,12 +294,10 @@ TEST_F(KernelPilotMoeExpertStateTest, RejectsInvalidRegistrationAndUpdates) {
   const int negative[] = {0, -1};
   EXPECT_FALSE(CollectAndRecord(state, kernels_[0], out_of_bounds).IsOK());
   EXPECT_FALSE(CollectAndRecord(state, kernels_[0], negative).IsOK());
-  EXPECT_FALSE(state.RecordUsage(kernels_[1]).IsOK());
-  EXPECT_FALSE(state.RecordUsage(nullptr).IsOK());
   EXPECT_EQ(state.GetKernelPilot(kernels_[1]), nullptr);
   EXPECT_EQ(state.GetKernelPilot(nullptr), nullptr);
   ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->Moe().BeginInvocation(3));
-  EXPECT_FALSE(state.RecordUsage(kernels_[0]).IsOK());
+  EXPECT_FALSE(state.GetKernelPilot(kernels_[0])->RecordUsage().IsOK());
   ASSERT_STATUS_OK(state.GetKernelPilot(kernels_[0])->Moe().BeginInvocation(2));
   InlinedVector<double> counters{7};
   EXPECT_FALSE(state.GetCounters(kernels_[1], counters).IsOK());
