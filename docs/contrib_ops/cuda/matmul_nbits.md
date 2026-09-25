@@ -481,15 +481,16 @@ present. `ComputeInternal` then:
 
   For the non-plugin CUDA EP, configure with `onnxruntime_USE_CUDA=ON`,
   `onnxruntime_BUILD_UNIT_TESTS=ON`, and `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`.
-  On Windows, a targeted build must use the module target:
+  For a targeted build, explicitly build both the executable and the module:
 
-  ```powershell
-  cmake --build <build-directory> --config Release --target onnxruntime_providers_cuda_ut
+  ```bash
+  cmake --build <build-directory> --config Release --target onnxruntime_provider_test onnxruntime_providers_cuda_ut
   ```
 
-  This builds `onnxruntime_provider_test.exe` first, then links the internal-test
-  DLL against its import library. Building only the executable does not build
-  the DLL on Windows. The default build includes both artifacts.
+  Building only the executable does not build the dynamically loaded module on
+  any platform. The default build includes both artifacts. On Windows, the module
+  links against the executable's import library, so CMake builds the executable
+  first even when only the module target is requested.
 
   This wrapper executes the internal CUDA-UT shared library and covers the
   fpA_intB / MatMulNBits groupwise GEMM tests under

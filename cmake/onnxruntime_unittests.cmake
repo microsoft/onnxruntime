@@ -1056,12 +1056,6 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
   endif()
 
-  # On Windows, the module links against onnxruntime_provider_test's import library
-  # and must build after the executable. Adding the reverse dependency would create
-  # a cycle. The module remains part of the default build on all platforms.
-  if (NOT WIN32)
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
-  endif()
 endif()
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
