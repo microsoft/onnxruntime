@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"

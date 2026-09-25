@@ -188,6 +188,22 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Counter completion footer mismatch"):
                 list(iter_counter_events(log_path))
 
+    def test_truncated_trace_is_rejected_even_with_valid_completion_footer(self):
+        trace = _complete_trace([[_counter_event()]])
+        summary = 'moe_expert_counters_truncated {"request_id":"request","max_records":1024}\n'
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "counters.log"
+            for truncated in (
+                trace.replace("[qmoe_prompt_runner] 1/1 prompt_end", summary + "[qmoe_prompt_runner] 1/1 prompt_end"),
+                trace + summary,
+            ):
+                with self.subTest(trace=truncated):
+                    log_path.write_text(truncated, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "counter logging was truncated"):
+                        list(iter_counter_events(log_path))
+                    with self.assertRaisesRegex(ValueError, "counter logging was truncated"):
+                        analyze_counter_trace(log_path, num_experts=2)
+
     def test_initializer_size_without_external_length(self):
         float_weight = onnx.helper.make_tensor("float_weight", onnx.TensorProto.FLOAT16, [2, 4], [0.0] * 8)
         packed_weight = onnx.helper.make_tensor("packed_weight", onnx.TensorProto.UINT4, [2, 4], [0] * 8)

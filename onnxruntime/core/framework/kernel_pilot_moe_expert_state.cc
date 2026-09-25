@@ -26,6 +26,7 @@ Status KernelPilotMoeExpertState::BeginRun(std::string request_id, const logging
   run_active_ = true;
   logging_request_id_ = std::move(request_id);
   logging_logger_ = logger;
+  logging_record_count_.store(0, std::memory_order_relaxed);
   return Status::OK();
 }
 
@@ -156,7 +157,24 @@ Status KernelPilotMoeExpertState::RecordUsage(const OpKernel* kernel) {
     counters_[expert_ids_.at({kernel, expert})] += beta_;
   }
 
-  if (logging_logger_ != nullptr) {
+  if (logging_logger_ != nullptr &&
+      logging_logger_->OutputIsEnabled(logging::Severity::kINFO, logging::DataType::SYSTEM)) {
+    // Reserve across parallel nodes before formatting. Counters remain independent of the log budget.
+    if (logging_record_count_.load(std::memory_order_relaxed) > kMaxCounterLogRecordsPerRun) {
+      return Status::OK();
+    }
+    const size_t record_index = logging_record_count_.fetch_add(1, std::memory_order_relaxed);
+    if (record_index >= kMaxCounterLogRecordsPerRun) {
+      if (record_index == kMaxCounterLogRecordsPerRun) {
+        std::ostringstream summary;
+        summary.imbue(std::locale::classic());
+        summary << "{\"request_id\":";
+        common::WriteJsonString(summary, logging_request_id_);
+        summary << ",\"max_records\":" << kMaxCounterLogRecordsPerRun << "}";
+        LOGS(*logging_logger_, WARNING) << "moe_expert_counters_truncated " << summary.str();
+      }
+      return Status::OK();
+    }
     std::ostringstream event;
     event.imbue(std::locale::classic());
     event << "{\"request_id\":";

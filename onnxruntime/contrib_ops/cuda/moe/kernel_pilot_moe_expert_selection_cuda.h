@@ -19,7 +19,9 @@ class KernelPilotMoeExpertSelectionCuda final : public IKernelPilotMoeExpertSele
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertSelectionCuda);
 
+  // Attaches a session-owned selection for subsequent selection calls and starts an invocation.
   Status BeginInvocation(IKernelPilotMoeExpertSelection& usage, size_t expert_count);
+  // Starts another invocation using the selection attached by the two-argument overload.
   Status BeginInvocation(size_t expert_count) override;
   bool IsInitialized() const noexcept override;
   size_t ExpertCount() const noexcept override;

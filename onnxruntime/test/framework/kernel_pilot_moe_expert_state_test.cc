@@ -191,6 +191,119 @@ TEST_F(KernelPilotMoeExpertStateTest, LogsGraphScopeForSubgraphNode) {
   EXPECT_EQ(event["node_index"], 0);
 }
 
+TEST_F(KernelPilotMoeExpertStateTest, LimitsLogsWithoutLimitingCountersAndResetsBudgetPerRun) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto sink = std::make_unique<CapturingSink>();
+  auto* sink_ptr = sink.get();
+  logging::LoggingManager manager(std::move(sink), logging::Severity::kINFO, false,
+                                  logging::LoggingManager::InstanceType::Temporal);
+  auto logger = manager.CreateLogger("moe_log_budget");
+  constexpr size_t limit = KernelPilotMoeExpertState::kMaxCounterLogRecordsPerRun;
+  for (int run = 0; run < 2; ++run) {
+    const std::string request_id = MakeString("request \"", run, "\"");
+    ASSERT_STATUS_OK(state.BeginRun(request_id, logger.get()));
+    const size_t start = sink_ptr->Messages().size();
+    const int selected[] = {0};
+    for (size_t i = 0; i < limit; ++i) {
+      ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+    }
+    ASSERT_EQ(sink_ptr->Messages().size(), start + limit);
+    for (size_t i = start; i < start + limit; ++i) {
+      EXPECT_NE(sink_ptr->Messages()[i].find("moe_expert_counters "), std::string::npos);
+    }
+    const int suppressed[] = {1};
+    for (int i = 0; i < 3; ++i) {
+      ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], suppressed));
+    }
+    ASSERT_STATUS_OK(state.EndRun());
+    EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 1}));
+    ASSERT_EQ(sink_ptr->Messages().size(), start + limit + 1);
+    const auto& message = sink_ptr->Messages().back();
+    constexpr std::string_view marker{"moe_expert_counters_truncated "};
+    const auto position = message.find(marker);
+    ASSERT_NE(position, std::string::npos);
+    const auto summary = nlohmann::json::parse(message.substr(position + marker.size()));
+    EXPECT_EQ(summary["request_id"], request_id);
+    EXPECT_EQ(summary["max_records"], limit);
+  }
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, DisabledInfoDoesNotConsumeLogBudget) {
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0, 1));
+  ASSERT_STATUS_OK(state.RegisterNode(kernels_[0], "main", 0, "MoE", 2));
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto sink = std::make_unique<CapturingSink>();
+  auto* sink_ptr = sink.get();
+  logging::LoggingManager manager(std::move(sink), logging::Severity::kWARNING, false,
+                                  logging::LoggingManager::InstanceType::Temporal);
+  auto logger = manager.CreateLogger("moe_disabled_info");
+  ASSERT_STATUS_OK(state.BeginRun("request", logger.get()));
+  const int selected[] = {1};
+  for (size_t i = 0; i <= KernelPilotMoeExpertState::kMaxCounterLogRecordsPerRun; ++i) {
+    ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  }
+  EXPECT_TRUE(sink_ptr->Messages().empty());
+  EXPECT_EQ(Counters(state, kernels_[0]), (InlinedVector<double>{0, 1}));
+  logger->SetSeverity(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(CollectAndRecord(state, kernels_[0], selected));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_EQ(sink_ptr->Messages().size(), 1U);
+  EXPECT_NE(sink_ptr->Messages()[0].find("moe_expert_counters "), std::string::npos);
+}
+
+TEST_F(KernelPilotMoeExpertStateTest, ParallelNodesShareLogBudget) {
+  class SynchronizedCapturingSink : public CapturingSink {
+   public:
+    void SendImpl(const logging::Timestamp& timestamp, const std::string& logger_id,
+                  const logging::Capture& message) override {
+      std::lock_guard<std::mutex> lock(mutex_);
+      CapturingSink::SendImpl(timestamp, logger_id, message);
+    }
+
+   private:
+    std::mutex mutex_;
+  };
+  KernelPilotMoeExpertState state;
+  ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.5));
+  for (size_t i = 0; i < 3; ++i) {
+    ASSERT_STATUS_OK(state.RegisterNode(kernels_[i], MakeString("main/", i, "/4:body"), 0, "MoE", 2));
+  }
+  ASSERT_STATUS_OK(state.FinalizeInitialization());
+  auto sink = std::make_unique<SynchronizedCapturingSink>();
+  auto* sink_ptr = sink.get();
+  logging::LoggingManager manager(std::move(sink), logging::Severity::kINFO, false,
+                                  logging::LoggingManager::InstanceType::Temporal);
+  auto logger = manager.CreateLogger("moe_parallel_log_budget");
+  ASSERT_STATUS_OK(state.BeginRun("request", logger.get()));
+  InlinedVector<std::thread> workers;
+  for (const auto* kernel : kernels_) {
+    workers.emplace_back([this, &state, kernel]() {
+      const int selected[] = {1};
+      for (size_t i = 0; i < KernelPilotMoeExpertState::kMaxCounterLogRecordsPerRun; ++i) {
+        ASSERT_STATUS_OK(CollectAndRecord(state, kernel, selected));
+      }
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+  ASSERT_STATUS_OK(state.EndRun());
+  size_t records = 0, summaries = 0;
+  for (const auto& message : sink_ptr->Messages()) {
+    records += message.find("moe_expert_counters ") != std::string::npos;
+    summaries += message.find("moe_expert_counters_truncated ") != std::string::npos;
+  }
+  EXPECT_EQ(records, KernelPilotMoeExpertState::kMaxCounterLogRecordsPerRun);
+  EXPECT_EQ(summaries, 1U);
+  for (const auto* kernel : kernels_) {
+    EXPECT_EQ(Counters(state, kernel), (InlinedVector<double>{0, 1}));
+  }
+}
+
 TEST_F(KernelPilotMoeExpertStateTest, AppliesExponentialUpdateToEveryExpert) {
   KernelPilotMoeExpertState state;
   ASSERT_STATUS_OK(state.SetCounterParameters(0.5, 0.25));

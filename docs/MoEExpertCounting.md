@@ -8,7 +8,8 @@ session.enable_moe_expert_counting=1
 
 The default is `0`. Counting alone does not emit logs, enable profiling, change expert placement, or swap weights.
 `session.enable_moe_expert_statistics=1` enables the same counter updates and emits one structured
-`moe_expert_counters` log after each successful MoE kernel invocation. Configure the update with:
+`moe_expert_counters` log after each successful MoE kernel invocation, subject to the per-Run logging limit below.
+Configure the update with:
 
 ```text
 session.moe_expert_counter_alpha=<finite non-negative value> # default: 0.9
@@ -49,6 +50,13 @@ dictionary directly, without atomic counters, graph-name lookup, or per-invocati
 the same method emits one `moe_expert_counters` JSON record containing the request ID, node identity, deduplicated
 selected experts, and the updated counters. The node identity includes its graph scope so equal node indices in
 different subgraphs remain distinguishable.
+Logging is limited to 1024 counter records per `Run()`, shared across all nodes and subgraphs.
+On the first omitted record, a single WARNING `moe_expert_counters_truncated` JSON marker reports
+`request_id` and `max_records`. Later records are omitted without formatting their JSON.
+Counter updates continue unchanged after the limit, and the logging budget resets on the next Run.
+The Python analyzer rejects any trace containing this marker, even with an otherwise valid completion footer.
+When INFO output is disabled, counter records are neither formatted nor charged against the logging budget.
+Only logging-budget reservation uses an atomic; counting-only updates remain unsynchronized across disjoint kernel ranges.
 A `KernelPilot` is allocated for each kernel at initialization; its `KernelPilotMoeExpertSelection` member counts repeated routing IDs only once.
 Each counter is updated in place. The coefficient constraints keep it bounded by the larger of its initial value
 and `1`, so no next-value buffer or overflow-validation pass is needed.

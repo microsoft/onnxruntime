@@ -21,6 +21,7 @@
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
 // Log MoE expert-counter updates at INFO severity. This enables counter updates even when expert counting is disabled.
+// At most 1024 updates are logged per Run; further updates emit one WARNING truncation marker but still count.
 // "0": disable (default); "1": enable.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";

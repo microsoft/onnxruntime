@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <istream>
 #include <mutex>
 #include <string>
@@ -29,6 +30,8 @@ class KernelPilotMoeExpertState {
 
   KernelPilotMoeExpertState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelPilotMoeExpertState);
+
+  static constexpr size_t kMaxCounterLogRecordsPerRun = 1024;
 
   // Starts one Run and optionally enables counter-update logging for it.
   // A second Run is rejected because selections and counters are session-owned state.
@@ -120,6 +123,7 @@ class KernelPilotMoeExpertState {
   bool run_active_{false};
   std::string logging_request_id_;
   const logging::Logger* logging_logger_{nullptr};
+  std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.9};
   double beta_{0.1};
   bool initialized_{false};

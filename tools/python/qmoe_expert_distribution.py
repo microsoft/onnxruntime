@@ -13,6 +13,7 @@ import onnx
 
 COUNTER_MARKER = "moe_expert_counters "
 COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
+COUNTER_TRUNCATED_MARKER = "moe_expert_counters_truncated "
 PROMPT_START = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 PROMPT_END = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_end$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
@@ -144,6 +145,8 @@ def parse_counter_trace(log_path, on_event=None):
 
     with log_path.open(encoding="utf-8", errors="replace") as stream:
         for line_number, line in enumerate(stream, start=1):
+            if COUNTER_TRUNCATED_MARKER in line:
+                raise ValueError(f"Incomplete counter trace: counter logging was truncated at line {line_number}.")
             stripped_line = line.strip()
             prompt_start = PROMPT_START.fullmatch(stripped_line)
             if prompt_start:

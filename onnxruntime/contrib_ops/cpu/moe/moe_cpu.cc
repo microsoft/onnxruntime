@@ -4,8 +4,6 @@
 #include "contrib_ops/cpu/moe/moe_cpu.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#endif
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/gemm_helper.h"

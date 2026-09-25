@@ -59,6 +59,9 @@ class OpKernelContextInternal : public OpKernelContext {
     return kernel_pilot_;
   }
 
+  // Called by the executor only after successful Compute(). To commit usage, Compute() must obtain
+  // the pilot via GetKernelPilot(), then BeginInvocation() and collect its selection before returning.
+  // Without a lookup this is a no-op; KernelPilot::RecordUsage() also checks for a pending invocation.
   Status RecordKernelUsage() const {
     if (kernel_pilot_ == nullptr) {
       return Status::OK();
