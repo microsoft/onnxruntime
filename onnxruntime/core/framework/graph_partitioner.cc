@@ -1489,7 +1489,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   {
     const GraphViewer graph_viewer(ep_graph);
     for (const auto& ep : execution_providers) {
-      try {
+      ORT_TRY {
         // Generate the compatibility string for this EP
         std::string compatibility_string = ep->GetCompiledModelCompatibilityInfo(graph_viewer);
         if (!compatibility_string.empty()) {
@@ -1505,8 +1505,11 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
           }
           LOGS(logger, VERBOSE) << "Added EP compatibility info for " << ep->Type() << " with key: " << metadata_key;
         }
-      } catch (const std::exception& ex) {
-        LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+        });
       }
     }
   }

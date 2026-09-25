@@ -2592,7 +2592,7 @@ void DeviceBasedPartitioner::Initialize() {
   }
   std::ifstream if_stream(config_file_);
   if (if_stream.is_open()) {
-    try {
+    ORT_TRY {
       json json_config = json::parse(if_stream);
       if (json_config["type"] != Type()) {
         EXIT_ON_ERR("Partitioner type is not DeviceBasedPartitioner");
@@ -2607,8 +2607,14 @@ void DeviceBasedPartitioner::Initialize() {
         const std::string type_str = device_type;
         device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(type_str.c_str())));
       }
-    } catch (const std::exception& ex) {
-      EXIT_ON_ERR(ex.what());
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        LOGS(logger_, WARNING) << ex.what();
+      });
+      node_names_by_stream_.clear();
+      if_stream.close();
+      return;
     }
     if_stream.close();
     ORT_ENFORCE(node_names_by_stream_.size() == device_types_.size(),
@@ -2646,7 +2652,9 @@ void DeviceBasedPartitioner::SaveConfig() const {
     }
   }
   ORT_CATCH(const std::exception& ex) {
-    LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
+    });
   }
 }
 
@@ -2658,7 +2666,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
   if (!config_file.empty()) {
     std::ifstream f(config_file);
     if (f.is_open()) {
-      try {
+      ORT_TRY {
         json json_config = json::parse(f);
         if (json_config.contains("type")) {
           auto type = json_config["type"];
@@ -2666,8 +2674,11 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
             partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
           }
         }
-      } catch (const std::exception& ex) {
-        LOGS(logger, WARNING) << "Caught exception when reading partition config file: " << ex.what();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger, WARNING) << "Caught exception when reading partition config file: " << ex.what();
+        });
       }
       f.close();
     }
