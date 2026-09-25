@@ -658,7 +658,8 @@ def quantize_static(
                 CalibMaxIntermediateOutputs = Optional[int] :
                     Default is None. If set to an integer, during calculation of the min-max range of the tensors
                     it will load at max value number of outputs before computing and merging the range. This will
-                    produce the same result as all computing with None, but is more memory efficient.
+                    produce the same result as computing with None when CalibMovingAverage is False, but is more
+                    memory efficient. When CalibMovingAverage is True, the moving average is updated per buffer.
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
