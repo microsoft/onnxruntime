@@ -84,10 +84,11 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
 // the model package API can pre-resolve EP selection (see ModelPackageOptions::ResolveEpSelection).
 //
 /// Constraints (matching the standard path):
-//   - Only one EP is selected (CPU EP is skipped in favor of the first non-CPU EP if available).
+//   - Only the first EP is selected.
 //   - All devices are expected to be supported by the same EP.
 Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                                 std::vector<VariantSelectionEpInfo>& ep_infos);
+                                 std::vector<VariantSelectionEpInfo>& ep_infos,
+                                 gsl::span<const OrtEpDevice* const> selected_devices = {});
 
 // Logs available environment EP devices and the ones selected for variant selection. Informational only.
 Status PrintAvailableAndSelectedEpInfos(const Environment& env,

@@ -15,6 +15,8 @@
 /// `ModelPackageStatus_Code`, and `ModelPackageStatus_Release` to inspect and
 /// release statuses.
 ///
+/// All strings, including filesystem paths, are UTF-8 encoded.
+///
 /// Object lifetime: every `const char*` and every `const ModelPackageInfo*`
 /// (and its sub-arrays) returned by this API is owned by the `ModelPackage`
 /// handle and remains valid until the next mutation of that scope or until

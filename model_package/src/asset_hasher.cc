@@ -20,7 +20,8 @@ using model_package::MakeStatus;
 namespace {
 
 std::string ToPosix(const fs::path& rel) {
-  std::string s = rel.generic_string();  // generic_string uses '/'
+  // Preserve the existing hash input bytes so published asset URIs do not change.
+  std::string s = rel.generic_string();
   // Strip leading "./" if any (lexical normalization edge case).
   if (s.size() >= 2 && s[0] == '.' && s[1] == '/') s.erase(0, 2);
   return s;
@@ -36,7 +37,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::error_code ec;
   if (!fs::exists(source_dir, ec) || !fs::is_directory(source_dir, ec)) {
     return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
-                      "ComputeDirectoryAssetUri: '" + source_dir.string() + "' is not a directory.");
+                      "ComputeDirectoryAssetUri: '" + source_dir.u8string() + "' is not a directory.");
   }
 
   // Collect (relative_posix_path, absolute_path) pairs.
@@ -46,7 +47,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
       source_dir, fs::directory_options::none, ec);
   if (ec) {
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "ComputeDirectoryAssetUri: cannot iterate '" + source_dir.string() +
+                      "ComputeDirectoryAssetUri: cannot iterate '" + source_dir.u8string() +
                           "': " + ec.message());
   }
   for (; walker != fs::recursive_directory_iterator(); walker.increment(ec)) {
@@ -57,7 +58,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
     const fs::directory_entry& de = *walker;
     if (de.is_symlink(ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        "ComputeDirectoryAssetUri: symlink not allowed: '" + de.path().string() + "'.");
+                        "ComputeDirectoryAssetUri: symlink not allowed: '" + de.path().u8string() + "'.");
     }
     if (de.is_regular_file(ec)) {
       fs::path rel = fs::relative(de.path(), source_dir, ec);
@@ -69,7 +70,7 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
     } else if (!de.is_directory(ec)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "ComputeDirectoryAssetUri: unsupported file kind: '" +
-                            de.path().string() + "' (only regular files and directories allowed).");
+                            de.path().u8string() + "' (only regular files and directories allowed).");
     }
   }
 
@@ -79,10 +80,10 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   std::string manifest_text;
   manifest_text.reserve(entries.size() * 96);
   for (const auto& entry : entries) {
-    std::string file_hex = Sha256::HashFileHex(entry.second.string());
+    std::string file_hex = Sha256::HashFileHex(entry.second.u8string());
     if (file_hex.empty()) {
       return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "ComputeDirectoryAssetUri: failed to hash file '" + entry.second.string() + "'.");
+                        "ComputeDirectoryAssetUri: failed to hash file '" + entry.second.u8string() + "'.");
     }
     manifest_text.append(file_hex);
     manifest_text.append("  ");

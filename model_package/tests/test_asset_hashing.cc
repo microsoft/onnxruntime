@@ -13,8 +13,10 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
 #include <string>
+#include <system_error>
 
 namespace fs = std::filesystem;
 using model_package::Sha256;
@@ -62,7 +64,7 @@ class Sandbox {
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
   void Write(const std::string& relpath, const std::string& contents) {
-    fs::path full = root_ / relpath;
+    fs::path full = root_ / fs::u8path(relpath);
     fs::create_directories(full.parent_path());
     std::ofstream f(full, std::ios::binary);
     f << contents;
@@ -100,7 +102,7 @@ bool test_directory_hash_basic() {
   s.Write("b.txt", "beta");
 
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().c_str(), &uri));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri));
   CHECK(uri != nullptr);
   std::string u(uri);
   CHECK(u.substr(0, 7) == "sha256:");
@@ -118,11 +120,11 @@ bool test_directory_hash_reproducible() {
   s2.Write("nested/b.txt", "beta");
 
   const char* u1 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().u8string().c_str(), &u1));
   std::string copy1(u1);
 
   const char* u2 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().u8string().c_str(), &u2));
   CHECK(copy1 == std::string(u2));
   return true;
 }
@@ -136,9 +138,9 @@ bool test_directory_hash_name_change_differs() {
 
   const char* u1 = nullptr;
   const char* u2 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().u8string().c_str(), &u1));
   std::string copy1(u1);
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().u8string().c_str(), &u2));
   CHECK(copy1 != std::string(u2));
   return true;
 }
@@ -154,9 +156,9 @@ bool test_directory_hash_swapped_names_differ() {
 
   const char* u1 = nullptr;
   const char* u2 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().u8string().c_str(), &u1));
   std::string copy1(u1);
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().u8string().c_str(), &u2));
   CHECK(copy1 != std::string(u2));
   return true;
 }
@@ -169,9 +171,9 @@ bool test_directory_hash_content_change_differs() {
 
   const char* u1 = nullptr;
   const char* u2 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().u8string().c_str(), &u1));
   std::string copy1(u1);
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().u8string().c_str(), &u2));
   CHECK(copy1 != std::string(u2));
   return true;
 }
@@ -185,9 +187,9 @@ bool test_directory_hash_empty_dirs_ignored() {
 
   const char* u1 = nullptr;
   const char* u2 = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().u8string().c_str(), &u1));
   std::string copy1(u1);
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().u8string().c_str(), &u2));
   CHECK(copy1 == std::string(u2));
   return true;
 }
@@ -204,7 +206,7 @@ bool test_directory_hash_rejects_symlink() {
     return true;
   }
   const char* uri = nullptr;
-  ModelPackageStatus* st = ModelPackage_ComputeDirectoryHash(s.root().c_str(), &uri);
+  ModelPackageStatus* st = ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri);
   CHECK(st != nullptr);
   CHECK(ModelPackageStatus_Code(st) == MODEL_PACKAGE_ERR_SCHEMA);
   ModelPackageStatus_Release(st);
@@ -222,7 +224,7 @@ bool test_directory_hash_known_value_single_file() {
   std::string expected = "sha256:" + Sha256::HashStringHex(manifest);
 
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().c_str(), &uri));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri));
   CHECK(std::string(uri) == expected);
   return true;
 }
@@ -244,7 +246,7 @@ bool test_directory_hash_sorted_order_independent_of_walk() {
   std::string expected = "sha256:" + Sha256::HashStringHex(manifest);
 
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().c_str(), &uri));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri));
   CHECK(std::string(uri) == expected);
   return true;
 }
@@ -259,7 +261,7 @@ bool test_directory_hash_uses_forward_slash() {
   std::string expected = "sha256:" + Sha256::HashStringHex(manifest);
 
   const char* uri = nullptr;
-  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().c_str(), &uri));
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri));
   CHECK(std::string(uri) == expected);
   return true;
 }
@@ -270,6 +272,57 @@ bool test_missing_directory_errors() {
   CHECK(s != nullptr);
   CHECK(ModelPackageStatus_Code(s) == MODEL_PACKAGE_ERR_NOT_FOUND);
   ModelPackageStatus_Release(s);
+  return true;
+}
+
+bool test_directory_hash_unicode_paths() {
+  Sandbox s;
+  const std::string directory = u8"\u6743\u91cd_\U0001F9EA";
+  const std::string filename = "weights.bin";
+  s.Write(directory + "/" + filename, "weights");
+  const std::string expected = "sha256:" + Sha256::HashStringHex(
+                                               Sha256::HashStringHex("weights") + "  " + filename + "\n");
+  const std::string root = (s.root() / fs::u8path(directory)).u8string();
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(root.c_str(), &uri));
+  CHECK(std::string(uri) == expected);
+  return true;
+}
+
+bool test_existing_asset_hash_survives_validation_and_commit() {
+  Sandbox s;
+  const std::string filename = u8"caf\u00e9.bin";
+  std::string native_filename;
+  try {
+    const auto path = fs::u8path(filename);
+    native_filename = path.generic_string();
+    if (fs::path(native_filename) != path) {
+      std::printf("[SKIP] %s: filename is not representable in the native encoding\n", g_current);
+      return true;
+    }
+  } catch (const std::system_error&) {
+    std::printf("[SKIP] %s: filename is not representable in the native encoding\n", g_current);
+    return true;
+  }
+
+  const std::string content = "weights\n";
+  const std::string digest = Sha256::HashStringHex(
+      Sha256::HashStringHex(content) + "  " + native_filename + "\n");
+  const std::string asset = "package/shared_assets/sha256-" + digest;
+  s.Write(asset + "/" + filename, content);
+  s.Write("package/manifest.json", R"({"schema_version":"1.0","components":{}})");
+
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open((s.root() / "package").u8string().c_str(), nullptr, &raw));
+  std::unique_ptr<ModelPackage, decltype(&ModelPackage_Close)> pkg(raw, ModelPackage_Close);
+  const char* report = nullptr;
+  CHECK_OK(ModelPackage_Validate(pkg.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report));
+  CHECK_OK(ModelPackage_Commit(pkg.get(), (s.root() / "saved").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_Validate(pkg.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report));
+  const auto* info = ModelPackage_Info(pkg.get());
+  CHECK(info->num_shared_assets == 1);
+  CHECK(std::string(info->shared_assets[0].uri) == "sha256:" + digest);
   return true;
 }
 
@@ -292,6 +345,8 @@ const Test kTests[] = {
     {"directory_hash_sorted_order_independent_of_walk", test_directory_hash_sorted_order_independent_of_walk},
     {"directory_hash_uses_forward_slash", test_directory_hash_uses_forward_slash},
     {"missing_directory_errors", test_missing_directory_errors},
+    {"directory_hash_unicode_paths", test_directory_hash_unicode_paths},
+    {"existing_asset_hash_survives_validation_and_commit", test_existing_asset_hash_survives_validation_and_commit},
 };
 
 }  // namespace
