@@ -234,18 +234,14 @@ stages:
                 Write-Host "Created version.json:"
                 Write-Host $json
 
-                # Collect the binaries (dll, so, dylib), version.json, and any runtime subdirectories.
-                $itemsToZip = @(Get-ChildItem -Path $binDir -File | Where-Object {
+                # Collect the binaries (dll, so, dylib) and version.json
+                $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
                   $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
-                })
-                $d3d12Dir = Join-Path $binDir "D3D12"
-                if (Test-Path $d3d12Dir) {
-                  $itemsToZip += Get-Item $d3d12Dir
                 }
 
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
-                if ($itemsToZip) {
-                  $itemsToZip | Compress-Archive -DestinationPath $zipPath -Force
+                if ($filesToZip) {
+                  $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
                   Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
                 } else {
                   throw "No files found to zip for $platformName in $binDir"

@@ -468,7 +468,7 @@ else:
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     # WebGPU/Dawn Libs
-    libs.extend(["dxcompiler.dll"])
+    libs.extend(["dxcompiler.dll", "D3D12/D3D12Core.dll", "D3D12/d3d12SDKLayers.dll"])
     # QNN V68/V73/V81 dependencies
     qnn_deps = [
         "QnnCpu.dll",

@@ -37,9 +37,9 @@ python plugin-ep-webgpu\python\build_wheel.py `
 ```
 
 This option supports Windows desktop x86, x64, and ARM64 targets. Windows ARM32, ARM64EC, and WindowsStore/UWP targets
-are not supported. Python wheels and WebGPU Plugin EP builds are supported. C#, NuGet, Java, and Node.js packaging
-through `build.py` is not supported because those paths do not deploy the required DLLs. Custom Dawn checkouts selected
-with `onnxruntime_CUSTOM_DAWN_SRC_PATH` are not supported.
+are not supported. Standard and WebGPU Plugin EP Python wheels are supported. C#, NuGet, Java, and Node.js packaging
+through `build.py` is not supported because those paths do not deploy the required DLLs. Custom Dawn checkouts
+selected with `onnxruntime_CUSTOM_DAWN_SRC_PATH` are not supported.
 
 The pinned SDK requires Windows 10 version 1909 or newer. For versions 1909, 2004, and 20H2, the minimum OS build
 revisions are:

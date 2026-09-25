@@ -837,8 +837,8 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_dawn_agility_sdk",
         action="store_true",
         help=(
-            "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows desktop x86, x64, or ARM64 only; Python wheel and WebGPU plugin EP builds are supported; "
+            "Build Dawn's D3D12 backend with the Agility SDK "
+            "(Windows desktop x86, x64, or ARM64 only; standard and WebGPU plugin EP Python wheels are supported; "
             "C#, NuGet, Java, and Node.js packaging is unsupported)."
         ),
     )
