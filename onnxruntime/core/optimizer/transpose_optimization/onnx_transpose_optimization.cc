@@ -3121,8 +3121,7 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 /// falls through to the regular push logic.
 /// </summary>
 /// <returns>True if the Transpose was folded into the initializer and removed.</returns>
-static bool TryFoldTransposeIntoInitializer(OptimizerCtx& ctx, api::NodeRef& transpose,
-                                            api::NodeRef& node, size_t input_idx,
+static bool TryFoldTransposeIntoInitializer(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
                                             const std::vector<int64_t>& perm) {
   if (!CanModifyNode(ctx, transpose)) {
     return false;
@@ -3167,8 +3166,15 @@ static bool TryFoldTransposeIntoInitializer(OptimizerCtx& ctx, api::NodeRef& tra
     return false;
   }
 
+  // 'node' may consume the Transpose output in more than one input slot.
+  const std::string transpose_output(transpose.Outputs()[0]);
   ctx.graph.TransposeInitializer(init_name, perm);
-  node.SetInput(input_idx, init_name);
+  const std::vector<std::string_view> node_inputs = node.Inputs();
+  for (size_t i = 0; i < node_inputs.size(); ++i) {
+    if (node_inputs[i] == transpose_output) {
+      node.SetInput(i, init_name);
+    }
+  }
   ctx.graph.RemoveNode(transpose);
   return true;
 }
@@ -3664,8 +3670,10 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
         if (perm != std::nullopt) {
           // Prefer folding a Transpose on a constant initializer over pushing it. See
-          // TryFoldTransposeIntoInitializer for details.
-          if (TryFoldTransposeIntoInitializer(ctx, *transpose, node, j, *perm)) {
+          // TryFoldTransposeIntoInitializer for details. Transpose and Reshape consumers go through their
+          // handlers first so a cancel/merge with the consumer still removes both nodes.
+          const bool try_handler_first = node.IsOp("Transpose") || node.IsOp("Reshape");
+          if (!try_handler_first && TryFoldTransposeIntoInitializer(ctx, *transpose, node, *perm)) {
             changed = true;
             // Subsequent inputs may have changed and the Transpose was removed.
             break;
@@ -3674,6 +3682,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
             // Subsequent inputs may have changed and node may have been removed.
+            break;
+          }
+
+          if (try_handler_first && TryFoldTransposeIntoInitializer(ctx, *transpose, node, *perm)) {
+            changed = true;
             break;
           }
         }

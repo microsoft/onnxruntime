@@ -6807,5 +6807,107 @@ TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerString) {
   EXPECT_THAT(folded->string_data(), testing::ElementsAre("a", "d", "b", "e", "c", "f"));
 }
 
+TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerRepeatedInput) {
+  // The Transpose output feeds both inputs of the same Add. Both input slots must be rewired.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("FoldTransposeIntoInitializerRepeatedInput", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* const_init = builder.MakeInitializer<float>({2, 2}, {0.f, 1.f, 2.f, 3.f});
+  const std::string init_name = const_init->Name();
+  auto* transpose_out = builder.MakeIntermediate();
+  auto* add_out = builder.MakeOutput();
+
+  auto& transpose = builder.AddNode("Transpose", {const_init}, {transpose_out});
+  transpose.AddAttribute("perm", std::vector<int64_t>{1, 0});
+  builder.AddNode("Add", {transpose_out, transpose_out}, {add_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(RunTransposeOptimizerWithAggressiveCostCheck(graph));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+
+  std::vector<float> data;
+  std::vector<int64_t> dims;
+  ReadInitializerFloats(graph, init_name, data, dims);
+  EXPECT_THAT(data, testing::ElementsAre(0.f, 2.f, 1.f, 3.f));
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Add") {
+      EXPECT_EQ(node.InputDefs()[0]->Name(), init_name);
+      EXPECT_EQ(node.InputDefs()[1]->Name(), init_name);
+    }
+  }
+}
+
+TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerCancelingTransposeGraphOutput) {
+  // const -> Transpose -> inverse Transpose -> graph output. The Transposes cancel, so none should remain.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("FoldTransposeIntoInitializerCancel", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  std::vector<float> const_data(60);
+  for (size_t i = 0; i < const_data.size(); ++i) {
+    const_data[i] = static_cast<float>(i);
+  }
+  auto* const_init = builder.MakeInitializer<float>({1, 3, 4, 5}, const_data);
+  auto* transpose0_out = builder.MakeIntermediate();
+  auto* transpose1_out = builder.MakeOutput();
+
+  auto& transpose0 = builder.AddNode("Transpose", {const_init}, {transpose0_out});
+  transpose0.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  auto& transpose1 = builder.AddNode("Transpose", {transpose0_out}, {transpose1_out});
+  transpose1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(RunTransposeOptimizerWithAggressiveCostCheck(graph));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+}
+
+TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerCancelingReshapeGraphOutput) {
+  // const {1,1,4,5} -> Transpose {0,2,3,1} -> {1,4,5,1} -> Reshape to {1,1,4,5} -> graph output. The Reshape is
+  // equivalent to the inverse Transpose, so no Transpose/Reshape should remain.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("FoldTransposeIntoInitializerCancelReshape", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  std::vector<float> const_data(20);
+  for (size_t i = 0; i < const_data.size(); ++i) {
+    const_data[i] = static_cast<float>(i);
+  }
+  auto* const_init = builder.MakeInitializer<float>({1, 1, 4, 5}, const_data);
+  auto* shape = builder.MakeInitializer<int64_t>({4}, {1, 1, 4, 5});
+  auto* transpose_out = builder.MakeIntermediate();
+  auto* reshape_out = builder.MakeOutput();
+
+  auto& transpose = builder.AddNode("Transpose", {const_init}, {transpose_out});
+  transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  builder.AddNode("Reshape", {transpose_out, shape}, {reshape_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(RunTransposeOptimizerWithAggressiveCostCheck(graph));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 0);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
