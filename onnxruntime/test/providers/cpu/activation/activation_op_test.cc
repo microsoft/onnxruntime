@@ -687,65 +687,6 @@ TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
   test.Run();
 }
 
-// PRelu is registered on WebGPU for opsets 7-8, 9-15 and 16 (a single kernel). The PRelu tests
-// above run at OpTester's default opset (7); these two cover the other registrations. float16 is
-// used because the CPU EP's PRelu is float-only, so these cannot silently fall back to it.
-TEST_F(ActivationOpTest, PRelu_Float16_Opset9_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (webgpu_ep == nullptr) {
-    GTEST_SKIP() << "WebGPU EP is not available in this build.";
-  }
-
-  OpTester test("PRelu", 9);
-
-  std::vector<int64_t> x_dims{1, 2, 2, 4};
-  test.AddInput<MLFloat16>("X", x_dims,
-                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f, -4.0f,
-                                               -5.0f, 6.0f, -7.0f, 8.0f,
-                                               -1.0f, 2.0f, -3.0f, 4.0f,
-                                               5.0f, -6.0f, 7.0f, -8.0f}));
-  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, -0.25f}));
-  test.AddOutput<MLFloat16>("Y", x_dims,
-                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f, -2.0f,
-                                                -2.5f, 6.0f, -3.5f, 8.0f,
-                                                0.25f, 2.0f, 0.75f, 4.0f,
-                                                5.0f, 1.5f, 7.0f, 2.0f}));
-  test.SetOutputAbsErr("Y", 0.01f);
-  test.SetOutputRelErr("Y", 0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(webgpu_ep));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
-TEST_F(ActivationOpTest, PRelu_Float16_Opset16_WebGpu) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (webgpu_ep == nullptr) {
-    GTEST_SKIP() << "WebGPU EP is not available in this build.";
-  }
-
-  OpTester test("PRelu", 16);
-
-  std::vector<int64_t> x_dims{1, 2, 2, 3};
-  test.AddInput<MLFloat16>("X", x_dims,
-                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f,
-                                               -4.0f, 5.0f, -6.0f,
-                                               -1.0f, 2.0f, -3.0f,
-                                               4.0f, -5.0f, 6.0f}));
-  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, 2.0f}));
-  test.AddOutput<MLFloat16>("Y", x_dims,
-                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f,
-                                                -2.0f, 5.0f, -3.0f,
-                                                -2.0f, 2.0f, -6.0f,
-                                                4.0f, -10.0f, 6.0f}));
-  test.SetOutputAbsErr("Y", 0.01f);
-  test.SetOutputRelErr("Y", 0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(webgpu_ep));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,

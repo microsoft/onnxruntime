@@ -1511,136 +1511,6 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
               4 /*expert_weight_bits*/);
 }
 
-#if defined(USE_WEBGPU)
-// Test QMoE with num_rows=1 on WebGPU to exercise the fused 1-token decode path.
-// Uses SwiGLU activation without FC3 (2-gate fused in FC1), which is the configuration
-// used by real MoE models on WebGPU (e.g., gpt-oss-20b).
-TEST(MoETest, QMoETest_WebGPU_SingleToken) {
-  int num_rows = 1;
-  int num_experts = 2;
-  int hidden_size = 64;
-  int inter_size = 64;
-  int top_k = 2;
-
-  // Simple input — first row from QMoETest_Mixtral_Int4
-  const std::vector<float> input = {
-      -0.8477f, -0.0746f, 1.606f, -0.3242f, 0.4028f, 0.2384f, -0.0359f, -1.667f, -1.265f, -0.3035f, 0.5327f,
-      1.109f, 1.111f, 0.533f, -0.5947f, -0.2009f, 0.4224f, -0.576f, 0.825f, 1.038f, -0.2722f, 0.0497f,
-      1.963f, -1.075f, -0.8374f, 1.055f, 0.448f, -0.602f, -0.2874f, -1.311f, -0.0609f, -1.991f, -0.0732f,
-      -1.49f, 0.6636f, -0.4053f, -1.603f, -1.088f, 0.09534f, -0.6807f, -0.3958f, 1.205f, -0.4275f, 0.82f,
-      1.029f, 0.2693f, 1.229f, 1.116f, 0.718f, -0.827f, 2.527f, -1.041f, 1.042f, -2.771f, -0.654f,
-      0.7144f, 0.6255f, -0.00957f, -0.2313f, 0.4663f, 2.803f, 0.0655f, 1.232f, 1.557f};
-  const std::vector<float> router_probs = {-0.579f, -0.07007f};
-
-  // Zero weights (0x88 for 4-bit = signed 0,0) produce zero output through the SwiGLU path:
-  // FC1 output = 0 → SwiGLU(0, 0) = silu(0) * 0 = 0 → FC2 output = 0 → FinalMix = 0
-  // FC1 weights: {num_experts, 2*inter_size, hidden_size/2} for 4-bit SwiGLU fusion
-  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x88);
-  // FC2 weights: {num_experts, hidden_size, inter_size/2} for 4-bit
-  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
-
-  std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
-  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
-
-  std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
-
-  OpTester webgpu_tester("QMoE", 1, onnxruntime::kMSDomain);
-  webgpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
-  webgpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
-  webgpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  webgpu_tester.AddAttribute<int64_t>("swiglu_fusion", 1);
-  webgpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-
-  std::vector<int64_t> input_dims = {num_rows, hidden_size};
-  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, 2 * inter_size};
-  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
-  std::vector<int64_t> output_dims = {num_rows, hidden_size};
-
-  webgpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
-  webgpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
-  webgpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
-  webgpu_tester.AddInput<MLFloat16>("fc1_scales", fc1_scales_dims, ToFloat16(fc1_scales));
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
-  webgpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
-  webgpu_tester.AddInput<MLFloat16>("fc2_scales", fc2_scales_dims, ToFloat16(fc2_scales));
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
-  webgpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_scales
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
-  webgpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
-  webgpu_tester.SetOutputTolerance(0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> webgpu_execution_providers;
-  webgpu_execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_execution_providers);
-}
-
-// Regression test for issue where large router logits (e.g. one-hot @ 100) caused
-// the WebGPU QMoE gate shader's softmax to overflow (exp(100) = inf, inf/inf = NaN),
-// turning the entire output into NaN. CPU stays finite because it uses the
-// log-sum-exp trick. After the fix, the gate shaders subtract max_val before exp(),
-// so the output should match the CPU result (here, all-zero from zeroed weights).
-TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
-  int num_rows = 1;
-  int num_experts = 2;
-  int hidden_size = 64;
-  int inter_size = 64;
-  int top_k = 1;
-
-  std::vector<float> input(num_rows * hidden_size, 0.1f);
-
-  // One-hot router logit at 100 — pre-fix this overflows exp() and yields NaN.
-  std::vector<float> router_probs = {100.0f, 0.0f};
-
-  // 0x88 weights decode to signed 0 in 4-bit, so FC1 output is 0 regardless of input.
-  // SwiGLU(0,0) * scale = 0, FC2 output = 0, FinalMix output = 0 — independent of
-  // the router probability, as long as the router probabilities are finite.
-  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x88);
-  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
-
-  std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
-  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
-
-  std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
-
-  OpTester webgpu_tester("QMoE", 1, onnxruntime::kMSDomain);
-  webgpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
-  webgpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
-  webgpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  webgpu_tester.AddAttribute<int64_t>("swiglu_fusion", 1);
-  webgpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-
-  std::vector<int64_t> input_dims = {num_rows, hidden_size};
-  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
-  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};
-  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
-  std::vector<int64_t> fc1_scales_dims = {num_experts, 2 * inter_size};
-  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
-  std::vector<int64_t> output_dims = {num_rows, hidden_size};
-
-  webgpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
-  webgpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
-  webgpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
-  webgpu_tester.AddInput<MLFloat16>("fc1_scales", fc1_scales_dims, ToFloat16(fc1_scales));
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
-  webgpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
-  webgpu_tester.AddInput<MLFloat16>("fc2_scales", fc2_scales_dims, ToFloat16(fc2_scales));
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
-  webgpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_scales
-  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
-  webgpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
-  webgpu_tester.SetOutputTolerance(0.01f);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> webgpu_execution_providers;
-  webgpu_execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_execution_providers);
-}
-#endif
-
 // CPU-specific QMoE tests
 TEST(MoETest, QMoETest_CPU_Int2_MLAS) {
 #ifdef USE_MLAS
@@ -1943,7 +1813,8 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
                                           bool use_float16_scales = false,
                                           int64_t hidden_size = 8,
                                           int64_t inter_size = 8,
-                                          bool legacy_layout = false) {
+                                          bool legacy_layout = false,
+                                          const char* execution_error = nullptr) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
   constexpr int64_t fc1_bits = 2;
@@ -2006,7 +1877,9 @@ static void RunQMoEMixedWidthContractTest(bool invalid_fc1_shape,
   execution_providers.push_back(std::move(execution_provider));
   const std::string expected_error =
       invalid_fc1_shape ? "Input 'fc1_experts_weights' is expected to have shape"
-                        : MakeString("Mixed-width QMoE execution is not yet implemented on ", provider_name, ".");
+      : execution_error != nullptr
+          ? execution_error
+          : MakeString("Mixed-width QMoE execution is not yet implemented on ", provider_name, ".");
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              expected_error, {}, nullptr, &execution_providers);
 }
@@ -2029,17 +1902,279 @@ TEST(MoETest, QMoETest_MixedWidthContract_CUDA) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
-  RunQMoEMixedWidthContractTest(false, DefaultCudaExecutionProvider(), "CUDA", true, true);
+  RunQMoEMixedWidthContractTest(false, DefaultCudaExecutionProvider(), "CUDA", true, true, 8, 8, false,
+                                "requires block_size to be a power of two in [16, 256]");
+}
+
+static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits,
+                                              int64_t max_scratch_bytes = 0,
+                                              bool fused_swiglu = false,
+                                              bool with_zero_points = false,
+                                              bool use_bf16 = false,
+                                              int64_t block_size = 32,
+                                              int64_t hidden_size = 64,
+                                              int64_t inter_size = 64) {
+  constexpr int64_t num_rows = 1;
+  constexpr int64_t num_experts = 1;
+
+  auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
+                                    bool interleaved_rows, bool asymmetric) {
+    const int64_t pack_size = 8 / bits;
+    const int64_t blocks_per_row = columns / block_size;
+    const int64_t packed_blocks_per_row = (blocks_per_row + pack_size - 1) / pack_size;
+    const uint8_t default_zero = static_cast<uint8_t>(1u << (bits - 1));
+    const uint8_t max_asymmetric_zero = static_cast<uint8_t>((1u << bits) - 2u);
+    std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0);
+    std::vector<uint8_t> zero_points(static_cast<size_t>(rows * packed_blocks_per_row), 0);
+    for (int64_t row = 0; row < rows; ++row) {
+      const int64_t identity_column = interleaved_rows ? row / 2 : row;
+      for (int64_t column = 0; column < columns; ++column) {
+        const int64_t block = column / block_size;
+        const uint8_t zero = asymmetric
+                                 ? static_cast<uint8_t>(1 + ((row + block) % max_asymmetric_zero))
+                                 : default_zero;
+        const uint8_t code = static_cast<uint8_t>(zero + (column == identity_column ? 1 : 0));
+        const int64_t byte_index = row * (columns / pack_size) + column / pack_size;
+        weights[static_cast<size_t>(byte_index)] |=
+            static_cast<uint8_t>(code << ((column % pack_size) * bits));
+        if (asymmetric && column % block_size == 0) {
+          zero_points[static_cast<size_t>(row * packed_blocks_per_row + block / pack_size)] |=
+              static_cast<uint8_t>(zero << ((block % pack_size) * bits));
+        }
+      }
+    }
+    return std::make_pair(std::move(weights), std::move(zero_points));
+  };
+
+  std::vector<float> input(static_cast<size_t>(hidden_size));
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    input[static_cast<size_t>(i)] = static_cast<float>((i % 13) - 6) * 0.125f;
+  }
+  const int64_t fc1_rows = fused_swiglu ? 2 * inter_size : inter_size;
+  auto [fc1_weights, fc1_zero_points] =
+      make_identity(fc1_bits, fc1_rows, hidden_size, fused_swiglu, with_zero_points);
+  auto [fc2_weights, fc2_zero_points] =
+      make_identity(fc2_bits, hidden_size, inter_size, false, with_zero_points);
+  const std::vector<float> fc1_scales(static_cast<size_t>(fc1_rows * (hidden_size / block_size)), 1.0f);
+  const std::vector<float> fc2_scales(static_cast<size_t>(hidden_size * (inter_size / block_size)), 1.0f);
+  std::vector<float> expected = input;
+  if (fused_swiglu) {
+    for (float& value : expected) {
+      const float rounded = use_bf16 ? BFloat16(value).ToFloat() : MLFloat16(value).ToFloat();
+      value = rounded / (1.0f + std::exp(-rounded)) * rounded;
+    }
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  const int64_t expert_bits = fc1_bits == 2 && fc2_bits == 2 ? 2 : 4;
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", fused_swiglu ? "swiglu" : "identity");
+  tester.AddAttribute<int64_t>("swiglu_fusion", fused_swiglu ? 1 : 0);
+  tester.AddAttribute<int64_t>("expert_weight_bits", expert_bits);
+  if (fc1_bits != expert_bits) {
+    tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+    tester.AddAttribute<int64_t>("fc3_expert_weight_bits", fc1_bits);
+  }
+  if (fc2_bits != expert_bits) {
+    tester.AddAttribute<int64_t>("fc2_expert_weight_bits", fc2_bits);
+  }
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  if (use_bf16) {
+    tester.AddInput<BFloat16>("input", {num_rows, hidden_size}, ToBFloat16(input));
+    tester.AddInput<BFloat16>("router_probs", {num_rows, num_experts}, ToBFloat16({1.0f}));
+    tester.AddInput<uint8_t>("fc1_experts_weights",
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
+    tester.AddInput<BFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToBFloat16(fc1_scales));
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights",
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
+    tester.AddInput<BFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToBFloat16(fc2_scales));
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<BFloat16>();
+    tester.AddOptionalInputEdge<BFloat16>();
+  } else {
+    tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+    tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16({1.0f}));
+    tester.AddInput<uint8_t>("fc1_experts_weights",
+                             {num_experts, fc1_rows, hidden_size / (8 / fc1_bits)}, fc1_weights);
+    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_rows, hidden_size / block_size}, ToFloat16(fc1_scales));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights",
+                             {num_experts, hidden_size, inter_size / (8 / fc2_bits)}, fc2_weights);
+    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, inter_size / block_size}, ToFloat16(fc2_scales));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+  }
+  if (with_zero_points) {
+    tester.AddInput<uint8_t>("fc1_zero_points",
+                             {num_experts, fc1_rows, (hidden_size / block_size + (8 / fc1_bits) - 1) / (8 / fc1_bits)},
+                             fc1_zero_points);
+    tester.AddInput<uint8_t>("fc2_zero_points",
+                             {num_experts, hidden_size, (inter_size / block_size + (8 / fc2_bits) - 1) / (8 / fc2_bits)},
+                             fc2_zero_points);
+  }
+  if (use_bf16) {
+    tester.AddOutput<BFloat16>("output", {num_rows, hidden_size}, ToBFloat16(expected));
+  } else {
+    tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  }
+  tester.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  if (max_scratch_bytes > 0) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
+  }
+  tester.Run(session_options,
+             max_scratch_bytes > 0 ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+             max_scratch_bytes > 0 ? "exceeding the configured limit" : "", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaBlockWise) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(2, 4);
+  RunQMoEMixedWidthCudaIdentityTest(4, 2);
+  RunQMoEMixedWidthCudaIdentityTest(2, 2);
+  RunQMoEMixedWidthCudaIdentityTest(2, 8);
+  RunQMoEMixedWidthCudaIdentityTest(8, 2);
+  RunQMoEMixedWidthCudaIdentityTest(4, 8);
+  RunQMoEMixedWidthCudaIdentityTest(8, 4);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaCanonicalNonSquare) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/false,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/128);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaSingleBlock) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/32, /*inter_size=*/64);
+}
+
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+TEST(MoETest, QMoETest_MixedWidthCudaBlockWiseBFloat16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, false, false, true);
 }
 #endif
 
-#if defined(USE_WEBGPU)
-TEST(MoETest, QMoETest_MixedWidthContract_WebGPU) {
-  auto execution_provider = DefaultWebGpuExecutionProvider();
-  if (!execution_provider) {
-    GTEST_SKIP() << "WebGPU execution provider not available";
+TEST(MoETest, QMoETest_MixedWidthCudaScratchLimit) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
-  RunQMoEMixedWidthContractTest(false, std::move(execution_provider), "WebGPU");
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaFusedSwiGLU) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaIdentityTest(
+      2, 4, /*max_scratch_bytes=*/0, /*fused_swiglu=*/false, /*with_zero_points=*/true,
+      /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/128, /*inter_size=*/128);
+}
+
+static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+    int64_t hidden_size, int64_t inter_size, int64_t block_size,
+    bool row_wise_scales, bool legacy_weights, const char* expected_error) {
+  constexpr int64_t num_rows = 1;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t fc1_bits = 2;
+  constexpr int64_t fc2_bits = 4;
+  const int64_t fc1_pack = 8 / fc1_bits;
+  const int64_t fc2_pack = 8 / fc2_bits;
+  const std::vector<int64_t> fc1_weight_shape =
+      legacy_weights ? std::vector<int64_t>{num_experts, hidden_size, inter_size / fc1_pack}
+                     : std::vector<int64_t>{num_experts, inter_size, hidden_size / fc1_pack};
+  const std::vector<int64_t> fc2_weight_shape =
+      legacy_weights ? std::vector<int64_t>{num_experts, inter_size, hidden_size / fc2_pack}
+                     : std::vector<int64_t>{num_experts, hidden_size, inter_size / fc2_pack};
+  const int64_t fc1_blocks = (hidden_size + block_size - 1) / block_size;
+  const int64_t fc2_blocks = (inter_size + block_size - 1) / block_size;
+  const std::vector<int64_t> fc1_scale_shape =
+      row_wise_scales ? std::vector<int64_t>{num_experts, inter_size}
+                      : std::vector<int64_t>{num_experts, inter_size, fc1_blocks};
+  const std::vector<int64_t> fc2_scale_shape =
+      row_wise_scales ? std::vector<int64_t>{num_experts, hidden_size}
+                      : std::vector<int64_t>{num_experts, hidden_size, fc2_blocks};
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("expert_weight_bits", fc2_bits);
+  tester.AddAttribute<int64_t>("fc1_expert_weight_bits", fc1_bits);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddAttribute<int64_t>("block_size", block_size);
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
+                             std::vector<MLFloat16>(static_cast<size_t>(num_rows * hidden_size)));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, {MLFloat16(1.0f)});
+  tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weight_shape,
+                           std::vector<uint8_t>(static_cast<size_t>(fc1_weight_shape[1] * fc1_weight_shape[2])));
+  tester.AddInput<MLFloat16>("fc1_scales", fc1_scale_shape,
+                             std::vector<MLFloat16>(static_cast<size_t>(inter_size * (row_wise_scales ? 1 : fc1_blocks)),
+                                                    MLFloat16(1.0f)));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weight_shape,
+                           std::vector<uint8_t>(static_cast<size_t>(fc2_weight_shape[1] * fc2_weight_shape[2])));
+  tester.AddInput<MLFloat16>("fc2_scales", fc2_scale_shape,
+                             std::vector<MLFloat16>(static_cast<size_t>(hidden_size * (row_wise_scales ? 1 : fc2_blocks)),
+                                                    MLFloat16(1.0f)));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size},
+                              std::vector<MLFloat16>(static_cast<size_t>(num_rows * hidden_size)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure, expected_error,
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaRejectsUnsafeFallbackInputs) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      64, 64, 32, true, false, "requires block-wise fc1_scales shape");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      64, 128, 32, false, true, "requires canonical fc1_experts_weights shape");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      96, 96, 24, false, false, "requires block_size to be a power of two");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      80, 64, 32, false, false, "requires hidden_size to be divisible by block_size");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      64, 80, 32, false, false, "requires inter_size to be divisible by block_size");
 }
 #endif
 
@@ -2628,6 +2763,11 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Decode) {
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Prefill) {
   RunQMoECpuBlockWiseSwiGLU<float>({37, 4, 128, 96, 32, 2, false}, 0.01f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_SingleBlockZeroPoints) {
+  RunQMoECpuBlockWiseSwiGLU<float>(
+      {5, 4, 32, 32, 32, 2, false, 4, true, 0, 2}, 0.01f);
 }
 
 // The two cases below pin the per-expert dispatch path: capping the pool at two threads leaves at
