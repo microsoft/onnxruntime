@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <onnxruntime_config.h>
+#include <algorithm>
+
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -206,6 +208,68 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  using _mlas_fp16 = uint16_t;
+  if (MlasHGemmSupported(trans_a, trans_b)) {
+
+    bool bias_ok = false;
+    if (c_data == nullptr) {
+      bias_ok = true;
+    } else if (c_shape != nullptr) {
+      const auto ndim = c_shape->NumDimensions();
+      if (ndim == 0) {
+        bias_ok = true;
+      } else if (ndim == 1 && (*c_shape)[0] == N) {
+        bias_ok = true;
+      } else if (ndim == 2 &&
+                 (*c_shape)[0] == 1 && (*c_shape)[1] == N) {
+        bias_ok = true;
+      } else if (ndim == 2 &&
+                 (*c_shape)[0] == M && (*c_shape)[1] == N) {
+        bias_ok = true;
+      }
+    } else {
+      bias_ok = true;
+    }
+
+    if (bias_ok) {
+      // GemmBroadcastBias doesn't scale C, MLAS applies beta.
+      if (c_data != nullptr && beta != onnxruntime::MLFloat16::Zero) {
+        GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+      } else {
+        // The fp16 kernels don't special-case beta == 0, so y_data can't be left uninitialized.
+        beta = MLFloat16(0.0f);
+        std::fill_n(y_data, static_cast<size_t>(M) * static_cast<size_t>(N), MLFloat16::Zero);
+      }
+
+      const size_t lda = (trans_a == CblasNoTrans)
+                             ? static_cast<size_t>(K)
+                             : static_cast<size_t>(M);
+      const size_t ldb = (trans_b == CblasTrans)
+                             ? static_cast<size_t>(K)
+                             : static_cast<size_t>(N);
+
+      MLAS_HGEMM_DATA_PARAMS data;
+      data.A = reinterpret_cast<const MLAS_FP16*>(a_data);
+      data.lda = lda;
+      data.B = reinterpret_cast<const MLAS_FP16*>(b_data);
+      data.ldb = ldb;
+      data.C = reinterpret_cast<MLAS_FP16*>(y_data);
+      data.ldc = static_cast<size_t>(N);
+      data.alpha = *reinterpret_cast<const _mlas_fp16*>(&alpha);
+      data.beta = *reinterpret_cast<const _mlas_fp16*>(&beta);
+
+      MlasGemmBatch(trans_a, trans_b,
+                    static_cast<size_t>(M),
+                    static_cast<size_t>(N),
+                    static_cast<size_t>(K),
+                    &data,
+                    /*BatchSize=*/1,
+                    thread_pool);
+      return;
+    }
+  }
+
   const bool has_accelerated_half_gemm =
       MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config);
   bool support_mlas_bias = false;
@@ -235,16 +299,26 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
     MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
     return;
   }
+
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
   // Fallback to Eigen
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif
-  math::Gemm<Eigen::half>(trans_a, trans_b, M, N, K, *reinterpret_cast<Eigen::half*>(&alpha),
-                          reinterpret_cast<const Eigen::half*>(a_data), reinterpret_cast<const Eigen::half*>(b_data), *reinterpret_cast<Eigen::half*>(&beta),
-                          reinterpret_cast<Eigen::half*>(y_data), thread_pool, mlas_backend_kernel_selector_config);
+  math::Gemm<Eigen::half>(
+      trans_a, trans_b, M, N, K,
+      *reinterpret_cast<const Eigen::half*>(&alpha),
+      reinterpret_cast<const Eigen::half*>(a_data),
+      reinterpret_cast<const Eigen::half*>(b_data),
+      *reinterpret_cast<const Eigen::half*>(&beta),
+      reinterpret_cast<Eigen::half*>(y_data),
+      thread_pool,
+      mlas_backend_kernel_selector_config);
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

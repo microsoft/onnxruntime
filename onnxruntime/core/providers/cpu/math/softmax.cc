@@ -58,6 +58,31 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Softmax<double>);
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Softmax,
+    1,
+    10,
+    MLFloat16,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Softmax<MLFloat16>);
+
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Softmax,
+    11,
+    12,
+    MLFloat16,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Softmax<MLFloat16>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Softmax,
+    13,
+    MLFloat16,
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Softmax<MLFloat16>);
+#endif
+
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     LogSoftmax,
     1,
