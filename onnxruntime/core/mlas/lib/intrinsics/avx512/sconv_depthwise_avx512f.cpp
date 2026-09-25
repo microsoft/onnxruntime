@@ -73,9 +73,15 @@ struct MLAS_DW_SLIDING_ARGS {
 };
 
 //
-// Computes OutputCount consecutive outputs. Input addresses the input column
-// read by the first kernel column of the first output; Column is its column
-// index within the row (negative inside the left padding).
+// Computes OutputCount consecutive outputs. InputRow addresses the first
+// column of the first kernel row; Column is the index of the input column
+// read by the first kernel column of the first output (negative inside the
+// left padding).
+//
+// A masked load does not access memory for a padding column, but forming a
+// pointer outside the input is still undefined behavior, so the load
+// addresses are computed as integers and only converted to pointers for the
+// loads themselves.
 //
 
 template <size_t KernelWidth, size_t OutputCount, bool Masked>
@@ -83,7 +89,7 @@ MLAS_FORCEINLINE
 void
 DepthwiseTile(
     const MLAS_DW_SLIDING_ARGS& Args,
-    const float* Input,
+    const float* InputRow,
     ptrdiff_t Column,
     float* Output
     )
@@ -106,6 +112,17 @@ DepthwiseTile(
         }
     }
 
+    constexpr size_t BlockBytes = BlockSize * sizeof(float);
+
+    //
+    // The address of the first input column, as an integer. Unsigned
+    // arithmetic wraps modulo 2^N, so a negative Column gives the right
+    // address, and stepping past the last kernel row is well defined.
+    //
+
+    uintptr_t Input = reinterpret_cast<uintptr_t>(InputRow) + uintptr_t(Column) * BlockBytes;
+    const uintptr_t InputRowStrideBytes = Args.InputRowStride * sizeof(float);
+
     const float* filter = Args.Filter;
 
     for (size_t kh = 0; kh < Args.KernelHeight; kh++) {
@@ -114,10 +131,11 @@ DepthwiseTile(
 
         MLAS_DW_UNROLL
         for (size_t j = 0; j < InputCount; j++) {
+            const void* Address = reinterpret_cast<const void*>(Input + j * BlockBytes);
             if constexpr (Masked) {
-                InputVector[j] = _mm512_maskz_loadu_ps(Valid[j], Input + j * BlockSize);
+                InputVector[j] = _mm512_maskz_loadu_ps(Valid[j], Address);
             } else {
-                InputVector[j] = _mm512_loadu_ps(Input + j * BlockSize);
+                InputVector[j] = _mm512_loadu_ps(Address);
             }
         }
 
@@ -137,7 +155,7 @@ DepthwiseTile(
             }
         }
 
-        Input += Args.InputRowStride;
+        Input += InputRowStrideBytes;
         filter += KernelWidth * BlockSize;
     }
 
@@ -177,7 +195,7 @@ MLAS_FORCEINLINE
 void
 DepthwiseTileRemainder(
     const MLAS_DW_SLIDING_ARGS& Args,
-    const float* Input,
+    const float* InputRow,
     ptrdiff_t Column,
     float* Output,
     size_t OutputCount
@@ -185,9 +203,9 @@ DepthwiseTileRemainder(
 {
     if constexpr (Count > 0) {
         if (OutputCount == Count) {
-            DepthwiseTile<KernelWidth, Count, Masked>(Args, Input, Column, Output);
+            DepthwiseTile<KernelWidth, Count, Masked>(Args, InputRow, Column, Output);
         } else {
-            DepthwiseTileRemainder<KernelWidth, Masked, Count - 1>(Args, Input, Column, Output, OutputCount);
+            DepthwiseTileRemainder<KernelWidth, Masked, Count - 1>(Args, InputRow, Column, Output, OutputCount);
         }
     }
 }
@@ -196,7 +214,7 @@ template <size_t KernelWidth>
 void
 DepthwiseRow(
     const MLAS_DW_SLIDING_ARGS& Args,
-    const float* Input,
+    const float* InputRow,
     ptrdiff_t Column,
     float* Output,
     size_t OutputCount
@@ -213,19 +231,18 @@ DepthwiseRow(
 
         if (Count == MaximumCount) {
             if (Masked) {
-                DepthwiseTile<KernelWidth, MaximumCount, true>(Args, Input, Column, Output);
+                DepthwiseTile<KernelWidth, MaximumCount, true>(Args, InputRow, Column, Output);
             } else {
-                DepthwiseTile<KernelWidth, MaximumCount, false>(Args, Input, Column, Output);
+                DepthwiseTile<KernelWidth, MaximumCount, false>(Args, InputRow, Column, Output);
             }
         } else {
             if (Masked) {
-                DepthwiseTileRemainder<KernelWidth, true>(Args, Input, Column, Output, Count);
+                DepthwiseTileRemainder<KernelWidth, true>(Args, InputRow, Column, Output, Count);
             } else {
-                DepthwiseTileRemainder<KernelWidth, false>(Args, Input, Column, Output, Count);
+                DepthwiseTileRemainder<KernelWidth, false>(Args, InputRow, Column, Output, Count);
             }
         }
 
-        Input += Count * BlockSize;
         Column += ptrdiff_t(Count);
         Output += Count * BlockSize;
         OutputCount -= Count;
@@ -283,13 +300,20 @@ Routine Description:
     Args.Bias = Bias;
     Args.KernelFlags = KernelFlags;
 
-    const ptrdiff_t Column = (Input - InputBase) / ptrdiff_t(BlockSize);
+    //
+    // Input points PaddingLeft columns before InputBase, outside the input, so
+    // subtracting the pointers would be undefined. Compare the addresses as
+    // integers instead; all load addresses below are derived from InputBase.
+    //
+
+    const ptrdiff_t Column = ptrdiff_t(reinterpret_cast<uintptr_t>(Input) -
+        reinterpret_cast<uintptr_t>(InputBase)) / ptrdiff_t(BlockBytes);
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
     switch (KernelWidth) {
-        case 3: DepthwiseRow<3>(Args, Input, Column, Output, TotalOutputCount); break;
-        case 5: DepthwiseRow<5>(Args, Input, Column, Output, TotalOutputCount); break;
-        case 7: DepthwiseRow<7>(Args, Input, Column, Output, TotalOutputCount); break;
+        case 3: DepthwiseRow<3>(Args, InputBase, Column, Output, TotalOutputCount); break;
+        case 5: DepthwiseRow<5>(Args, InputBase, Column, Output, TotalOutputCount); break;
+        case 7: DepthwiseRow<7>(Args, InputBase, Column, Output, TotalOutputCount); break;
         default: break;
     }
 }
