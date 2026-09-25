@@ -565,13 +565,18 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
     };
   }
 
+  // Two chained MatMulNBits accumulate rounding differences against the unfused fp32
+  // baseline; the CUDA kernel's accumulation order differs further from CPU's, so it
+  // needs the wider tolerance already used by the per-tensor tests in this file for
+  // blockwise accumulation reordering.
+  const bool is_cuda = ep != nullptr;
   TransformerTester(build_test_case,
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
                     21 /*opset_version*/,
-                    1e-5 /*per_sample_tolerance*/,
-                    2e-5 /*relative_per_sample_tolerance*/,
+                    is_cuda ? 0.01 : 1e-5 /*per_sample_tolerance*/,
+                    is_cuda ? 5e-5 : 2e-5 /*relative_per_sample_tolerance*/,
                     nullptr,
                     add_session_options_fn,
                     {},
