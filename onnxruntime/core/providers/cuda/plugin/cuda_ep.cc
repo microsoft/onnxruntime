@@ -140,6 +140,15 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   // disables only that optional capability while the EP stays fully functional.
   const uint32_t ort_version = ::onnxruntime::ep::CurrentOrtApiVersion();
 
+  if (config_.enable_cuda_graph) {
+    Ort::Status log_status(factory_.GetOrtApi().Logger_LogMessage(
+        &logger_, ORT_LOGGING_LEVEL_WARNING,
+        "CUDA graph capture is temporarily disabled for the CUDA Plugin EP because replay can "
+        "produce incorrect outputs. The provider will execute eagerly.",
+        ORT_FILE, __LINE__, __FUNCTION__));
+    config_.enable_cuda_graph = false;
+  }
+
   // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
