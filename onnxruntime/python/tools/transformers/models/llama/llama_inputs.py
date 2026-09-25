@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
+from models.torch_export_patches.cache_helper import get_dynamic_cache_key_value
 from transformers import AutoConfig, AutoTokenizer
 from transformers.cache_utils import DynamicCache
 
@@ -240,8 +241,12 @@ def get_past_kv_inputs(config: AutoConfig, batch_size: int, past_seq_len: int, u
 # Convert list of past_key_values to dict of past_key and past_value
 def flatten_past_kv_inputs(past_key_values: list[tuple[torch.Tensor, torch.Tensor]]):
     past_kv = {}
+    is_dynamic_cache = isinstance(past_key_values, DynamicCache)
+    if is_dynamic_cache:
+        key_cache, value_cache = get_dynamic_cache_key_value(past_key_values)
+        past_key_values = list(zip(key_cache, value_cache, strict=False))
     for i, (past_k, past_v) in enumerate(past_key_values):
-        if isinstance(past_key_values, DynamicCache):
+        if is_dynamic_cache:
             past_kv[f"past_key_values_key_cache_{i}"] = past_k.detach().cpu().numpy()
             past_kv[f"past_key_values_value_cache_{i}"] = past_v.detach().cpu().numpy()
         else:
@@ -412,7 +417,7 @@ def get_initial_inputs_and_outputs(
     engine: str,
 ):
     tokenizer.pad_token = tokenizer.eos_token
-    encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
+    encodings_dict = tokenizer(prompt, padding=True)
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 
     # input_ids:      pad token id is 0

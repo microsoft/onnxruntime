@@ -23,7 +23,12 @@ from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
+from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model
+
+try:
+    from transformers import TFGPT2Model
+except ImportError:
+    TFGPT2Model = None
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +51,20 @@ class GPT2ModelNoPastState(GPT2Model):
         return super().forward(input_ids, use_cache=False, return_dict=False)
 
 
-class TFGPT2ModelNoPastState(TFGPT2Model):
-    """Here we wrap a class to disable past state output."""
+if TFGPT2Model is not None:
 
-    def __init__(self, config):
-        config.use_cache = False
-        super().__init__(config)
+    class TFGPT2ModelNoPastState(TFGPT2Model):
+        """Here we wrap a class to disable past state output."""
 
-    def forward(self, input_ids):
-        return super().call(input_ids, use_cache=False)
+        def __init__(self, config):
+            config.use_cache = False
+            super().__init__(config)
+
+        def forward(self, input_ids):
+            return super().call(input_ids, use_cache=False)
+
+else:
+    TFGPT2ModelNoPastState = None
 
 
 class MyGPT2Model(GPT2Model):

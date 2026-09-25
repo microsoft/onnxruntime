@@ -1,6 +1,6 @@
-huggingface_hub==0.25.2
-diffusers==0.28.0
-transformers==4.50.0
+huggingface_hub>=1.23.0,<2.0
+diffusers==0.40.0
+transformers==5.3.0
 numpy>=1.24.1
 accelerate
 onnx==1.18.0
@@ -14,8 +14,7 @@ torchvision==0.15.2
 tensorrt==8.5.1.7
 mediapipe
 controlnet_aux==0.0.9
-# The following are for SDXL
-optimum==1.20.0
+# Optimum ONNX currently requires transformers<4.58 and must be installed separately.
 safetensors
 invisible_watermark
 opencv-python-headless

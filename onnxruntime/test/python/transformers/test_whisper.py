@@ -11,7 +11,6 @@ import onnx
 import torch
 from parameterized import parameterized
 from parity_utilities import find_transformers_source
-from transformers import EncoderDecoderCache
 
 if find_transformers_source():
     from fusion_options import FusionOptions
@@ -72,8 +71,6 @@ class WhisperHFAttention(torch.nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None, tuple[torch.Tensor] | None]:
         """Input shape: Batch x Time x Channel"""
         is_updated = past_key_value is not None
-        past_key_value = EncoderDecoderCache.from_legacy_cache(past_key_value)
-        past_key_value.is_updated[self.layer_idx] = is_updated
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
@@ -85,32 +82,24 @@ class WhisperHFAttention(torch.nn.Module):
         query_states = query_states.view(bsz, tgt_len, self.num_heads, self.head_dim)
         query_states = query_states.transpose(1, 2).contiguous()
 
-        if past_key_value is not None:
-            is_updated = past_key_value.is_updated.get(self.layer_idx)
-            if is_cross_attention:
-                # after the first generated id, we can subsequently re-use all key/value_states from cache
-                past_key_value.is_updated[self.layer_idx] = True
-                past_key_value = past_key_value.cross_attention_cache
-            else:
-                past_key_value = past_key_value.self_attention_cache
+        layer_past = past_key_value[self.layer_idx] if past_key_value is not None else None
+        cached_key_value = layer_past[2:] if is_cross_attention and layer_past is not None else layer_past
 
         # use key_value_states if cross attention
         current_states = key_value_states if key_value_states is not None else hidden_states
-        if is_cross_attention and past_key_value and is_updated:
+        if is_cross_attention and cached_key_value and is_updated:
             # reuse k,v, cross_attentions
-            key_states = past_key_value.key_cache[self.layer_idx]
-            value_states = past_key_value.value_cache[self.layer_idx]
+            key_states, value_states = cached_key_value
         else:
             key_states = self.k_proj(current_states).view(bsz, -1, self.num_heads, self.head_dim)
             value_states = self.v_proj(current_states).view(bsz, -1, self.num_heads, self.head_dim)
             key_states = key_states.transpose(1, 2).contiguous()
             value_states = value_states.transpose(1, 2).contiguous()
-            if past_key_value is not None:
+            if cached_key_value is not None:
                 # save all key/value_states to cache to be re-used for fast auto-regressive generation
-                cache_position = cache_position if not is_cross_attention else None
-                key_states, value_states = past_key_value.update(
-                    key_states, value_states, self.layer_idx, {"cache_position": cache_position}
-                )
+                if not is_cross_attention:
+                    key_states = torch.cat([cached_key_value[0], key_states], dim=-2)
+                    value_states = torch.cat([cached_key_value[1], value_states], dim=-2)
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3))
 
@@ -143,8 +132,7 @@ class WhisperHFAttention(torch.nn.Module):
 
         attn_output = self.out_proj(attn_output)
 
-        past_key_value = past_key_value.to_legacy_cache()
-        return attn_output, past_key_value
+        return attn_output, ((key_states, value_states),)
 
 
 # From https://github.com/huggingface/transformers/blob/31f8a0fe8a7e2db1ee30bf32ed5976cd11f3283c/src/transformers/models/whisper/modeling_whisper.py#L583
