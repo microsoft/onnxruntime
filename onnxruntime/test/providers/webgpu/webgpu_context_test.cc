@@ -47,6 +47,11 @@ ConfigOptions KvCacheQuantizationOptions(const char* value) {
   return options;
 }
 
+bool TimestampQueryFeatureIsEnabled(const webgpu::WebGpuContext& context) {
+  return context.Device().HasFeature(wgpu::FeatureName::TimestampQuery) ||
+         context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses);
+}
+
 template <typename TestBody>
 void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false) {
 #if GTEST_HAS_DEATH_TEST
@@ -281,6 +286,24 @@ TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
   EXPECT_TRUE(DeviceToggleIsEnabled(webgpu::WebGpuContextFactory::GetContext(0),
                                     "lazy_clear_resource_on_first_use"));
 #endif
+}
+
+TEST(WebGpuContextTest, TimestampQueriesAreDisabledWithoutProfiling) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+    EXPECT_FALSE(TimestampQueryFeatureIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+  });
+}
+
+TEST(WebGpuContextTest, TimestampQueriesAreEnabledForProfiling) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    auto ep = WebGpuProviderFactoryCreator::Create(options, true)->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+    EXPECT_TRUE(TimestampQueryFeatureIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+  });
 }
 
 TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {

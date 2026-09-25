@@ -2103,6 +2103,18 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Get whether profiling is enabled in session options.
+   *
+   * An EP can use this during CreateEp to configure profiling capabilities that must be enabled
+   * before the EP creates its device or other immutable resources.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \return true if session profiling is enabled, false otherwise.
+   *
+   * \since Version 1.31.
+   */
+  ORT_API_T(bool, SessionOptionsGetEnableProfiling, _In_ const OrtSessionOptions* session_options);
 };
 
 /**

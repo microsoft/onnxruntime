@@ -147,6 +147,7 @@ struct WebGpuContextConfig {
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
+  bool enable_profiling{false};
   uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   // Internal test hook. Provider-option parsing never populates this field.
@@ -418,6 +419,7 @@ class WebGpuContext final {
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
+  bool enable_profiling_ = false;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
