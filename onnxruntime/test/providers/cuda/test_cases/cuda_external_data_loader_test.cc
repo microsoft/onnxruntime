@@ -25,6 +25,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "cuda_runtime.h"
 #include "gtest/gtest.h"
+#include "test/providers/cuda/internal_testing/cuda_internal_test_helpers.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -243,16 +244,16 @@ TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
 
   for (int failure_mode = 0; failure_mode < 3; ++failure_mode) {
     SCOPED_TRACE(failure_mode);
-    std::unique_ptr<cuda::ExternalDataLoader> loader;
+    std::unique_ptr<IExternalDataLoader> loader;
     if (failure_mode == 1) {
-      loader = std::make_unique<cuda::ExternalDataLoader>(
+      loader = CreateCudaInternalTestExternalDataLoader(
           0, 4, FailPinnedBufferAllocation);
     } else if (failure_mode == 2) {
-      loader = std::make_unique<cuda::ExternalDataLoader>(
+      loader = CreateCudaInternalTestExternalDataLoader(
           0, 4, static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
           FailStreamCreation);
     } else {
-      loader = std::make_unique<cuda::ExternalDataLoader>(0, 4);
+      loader = CreateCudaInternalTestExternalDataLoader(0, 4);
     }
 
     Tensor tensor(DataTypeImpl::GetType<bool>(), TensorShape({static_cast<int64_t>(input.size())}), *allocator);

@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#include "test/providers/cuda/internal_testing/cuda_internal_test_helpers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -164,7 +165,7 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
   }
 }
 
-std::string BuildGroupQueryAttentionKernelModel() {
+std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -197,8 +198,10 @@ std::string BuildGroupQueryAttentionKernelModel() {
   };
   add_int_attribute("num_heads", 8);
   add_int_attribute("kv_num_heads", 2);
-  add_int_attribute("local_window_size", 256);
-  add_int_attribute("sliding_window_cache", 1);
+  if (sliding_window_cache) {
+    add_int_attribute("local_window_size", 256);
+    add_int_attribute("sliding_window_cache", 1);
+  }
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
@@ -284,7 +287,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   {
     InferenceSessionWrapper session(make_session_options(1024),
                                     GetEnvironment());
-    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+    auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
     if (cuda_ep->GetDeviceProp().major < 8) {
       GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
     }
@@ -337,7 +340,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     InferenceSessionWrapper session(make_session_options(accepted_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(provider_info)));
+        CreateCudaInternalTestExecutionProvider(provider_info)));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -357,7 +360,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     InferenceSessionWrapper session(make_session_options(rejected_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(provider_info)));
+        CreateCudaInternalTestExecutionProvider(provider_info)));
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
 
@@ -367,16 +370,34 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   }
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedTotalKvAndAliasingAreUnavailable) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedRequiresExplicitTotalKvBound) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   auto config = Config();
   config.sliding_window_cache = false;
   config.local_window_size = -1;
-  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
-                   config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/128),
-                   Device(), options)
-                   .has_value());
+  config.enable_xqa = false;
+  const auto shapes = SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/128);
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options).has_value());
+
+  config.max_total_sequence_length = 64;
+  const auto past_capacity_bound =
+      EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options);
+  ASSERT_TRUE(past_capacity_bound.has_value());
+
+  config.max_total_sequence_length = 128;
+  const auto matching_bound =
+      EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options);
+  ASSERT_TRUE(matching_bound.has_value());
+  EXPECT_EQ(matching_bound->total_workspace_bytes,
+            past_capacity_bound->total_workspace_bytes);
+
+  config.max_total_sequence_length = 256;
+  const auto larger_bound =
+      EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options);
+  ASSERT_TRUE(larger_bound.has_value());
+  EXPECT_GT(larger_bound->total_workspace_bytes,
+            matching_bound->total_workspace_bytes);
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {
@@ -550,6 +571,31 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PromptDecodeAndWindowRoutesAreBound
   bounds.sequence_length_bound = 4;
   const auto prompt = GetGQAWorkspaceAggregateForBounds(bounds);
   EXPECT_TRUE(prompt.status.IsOK());
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasAddsPastPreservationBuffer) {
+  auto bounds = Bounds();
+  bounds.reachable_backends = GQAReachableBackend::Unfused;
+  bounds.present_kv_cache_capacity_bound = 256;
+  bounds.past_kv_cache_capacity_bound = 128;
+  const auto shared_or_separate = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(shared_or_separate.status.IsOK()) << shared_or_separate.status.message;
+
+  bounds.partial_alias_reachable = true;
+  const auto partial_alias = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(partial_alias.status.IsOK()) << partial_alias.status.message;
+  ASSERT_GE(partial_alias.total_workspace_bytes,
+            shared_or_separate.total_workspace_bytes);
+  const size_t past_tensor_bytes =
+      static_cast<size_t>(bounds.batch_size_bound * bounds.kv_num_heads *
+                          bounds.past_kv_cache_capacity_bound * bounds.head_size_bound) *
+      bounds.cache_element_size;
+  EXPECT_GE(partial_alias.total_workspace_bytes -
+                shared_or_separate.total_workspace_bytes,
+            past_tensor_bytes);
+
+  bounds.past_kv_cache_capacity_bound = 0;
+  EXPECT_FALSE(GetGQAWorkspaceAggregateForBounds(bounds).status.IsOK());
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, WindowedBoundsUseFinalCapacityAndTransientExtent) {
@@ -840,7 +886,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
 
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
-  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
   if (cuda_ep->GetDeviceProp().major < 8) {
     GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
   }
@@ -885,6 +931,54 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
       gsl::make_span(shapes), requirements));
   EXPECT_TRUE(requirements.empty());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresBoundedNonWindowedRoot) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "512"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  auto cuda_ep = CreateCudaInternalTestExecutionProvider(provider_info);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  const std::string model_bytes =
+      BuildGroupQueryAttentionKernelModel(/*sliding_window_cache=*/false);
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+
+  auto shapes = SeparateShapes();
+  shapes[11] = Known({8});
+  auto expected_config = Config();
+  expected_config.sliding_window_cache = false;
+  expected_config.local_window_size = -1;
+  expected_config.max_total_sequence_length = 512;
+  expected_config.enable_xqa = false;
+  expected_config.head_sink_is_prepacked = true;
+  const auto expected = EstimateGroupQueryAttentionWorkspace(
+      expected_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(expected.has_value());
+
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements));
+  ASSERT_EQ(requirements.size(), 1U);
+  EXPECT_EQ(requirements[0].slot_id, 0);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes, 256U);
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CheckedOverflowIsUnavailable) {

@@ -1658,6 +1658,10 @@ struct ProviderHostImpl : ProviderHost {
         std::move(expert_ids_json), std::move(router_weights_json),
         num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
   }
+  Status OpKernelContext__GetPreallocatedWorkspace(OpKernelContext* p, int slot_id,
+                                                   size_t requested_bytes, void** workspace) override {
+    return p->GetPreallocatedWorkspace(slot_id, requested_bytes, workspace);
+  }
 
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }

@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ep_context_options.h"
+#include "core/framework/bfc_arena.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_experimental_c_api.h"
@@ -55,6 +56,39 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
   }
   *out = 12345;
   return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV31,
+                    _In_ const char* checkpoint,
+                    bool shrink,
+                    _Out_ int64_t* reclaimed_bytes,
+                    _Out_ size_t* arena_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (checkpoint == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "checkpoint is null");
+  }
+  if (reclaimed_bytes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "reclaimed_bytes is null");
+  }
+  if (arena_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "arena_count is null");
+  }
+  int64_t reclaimed = 0;
+  size_t count = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::LogAndShrinkRegisteredGpuArenas(
+      checkpoint, shrink, &reclaimed, &count));
+  *reclaimed_bytes = reclaimed;
+  *arena_count = count;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(checkpoint);
+  ORT_UNUSED_PARAMETER(shrink);
+  ORT_UNUSED_PARAMETER(reclaimed_bytes);
+  ORT_UNUSED_PARAMETER(arena_count);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GPU arena diagnostics are unavailable in minimal builds");
+#endif
   API_IMPL_END
 }
 

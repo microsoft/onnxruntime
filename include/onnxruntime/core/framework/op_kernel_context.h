@@ -33,6 +33,17 @@ class OpKernelContext {
   }
 #endif
 
+  // Returns a run-scoped planned workspace buffer when one is available. A nullptr result means
+  // the kernel must use its normal dynamic allocation path.
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual
+#endif
+      Status
+      GetPreallocatedWorkspace(int /*slot_id*/, size_t /*requested_bytes*/, void** workspace) {
+    *workspace = nullptr;
+    return Status::OK();
+  }
+
   /**
   Return the number of inputs for a variadic argument.
   @param arg_num The operator argument number.

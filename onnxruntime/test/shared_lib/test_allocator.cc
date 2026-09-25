@@ -78,6 +78,8 @@ TEST(CApiTest, CustomAllocator) {
     Ort::Allocator allocator(session, mocked_allocator.Info());
 
     auto stats = allocator.GetStats();
+    EXPECT_EQ(stats.GetKeyValuePairs().size(), 11u);
+    EXPECT_STREQ(stats.GetValue("ReservedBytes"), "0");
     ASSERT_EQ(mocked_allocator.NumAllocations(), std::stoll(stats.GetValue("NumAllocs")));
     ASSERT_EQ(mocked_allocator.NumReserveAllocations(), std::stoll(stats.GetValue("NumReserves")));
 
