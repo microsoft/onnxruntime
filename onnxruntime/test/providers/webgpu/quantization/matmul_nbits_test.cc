@@ -112,9 +112,18 @@ void RunMatMulNBitsTileTests(int64_t bits) {
     for (bool has_bias : {false, true}) {
       // AMD D3D12 wave64: small-M/BK=64, four-wave/BK=128 with an M tail,
       // and two-wave/BK=64. Other adapters validate their selected WebGPU path.
-      RunMatMulNBitsTileTest(bits, 32, 64, 64, has_zero_points, has_bias);
+      // N=128 checks valid output from both column subgroups of the wide tile.
+      RunMatMulNBitsTileTest(bits, 32, 128, 64, has_zero_points, has_bias);
       RunMatMulNBitsTileTest(bits, 400, 64, 128, has_zero_points, has_bias);
       RunMatMulNBitsTileTest(bits, 640, 64, 128, has_zero_points, has_bias);
+
+      // Retain the wide tile's partially populated N edge.
+      RunMatMulNBitsTileTest(bits, 32, 64, 64, has_zero_points, has_bias);
+
+      // Initial BK=128 does not divide K: reduce it to 64 for K=192 and
+      // to 32 for K=96 so no iteration reads beyond the prepacked K dimension.
+      RunMatMulNBitsTileTest(bits, 400, 64, 192, has_zero_points, has_bias);
+      RunMatMulNBitsTileTest(bits, 400, 64, 96, has_zero_points, has_bias);
     }
   }
 }
