@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -10,6 +11,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
@@ -49,6 +51,19 @@ KVQuantizationType StringToKVQuantizationType(std::string s) {
     return KVQuantizationType::PER_CHANNEL;
   }
   return KVQuantizationType::NONE;
+}
+
+int64_t ParsePositiveInt64Config(const OpKernelInfo& info, const char* key) {
+  const std::string value = info.GetConfigOptions().GetConfigOrDefault(key, "");
+  if (value.empty()) {
+    return 0;
+  }
+
+  int64_t parsed = 0;
+  const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), parsed);
+  ORT_ENFORCE(error == std::errc{} && end == value.data() + value.size() && parsed > 0,
+              key, " must be a positive int64 value, but got: ", value);
+  return parsed;
 }
 }  // namespace
 
@@ -131,6 +146,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+  max_total_sequence_length_ =
+      ParsePositiveInt64Config(info, kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength);
 
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
@@ -218,6 +235,7 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.causal = is_unidirectional_ ? 1 : 0;
   config.local_window_size = local_window_size_;
   config.sliding_window_cache = sliding_window_cache_;
+  config.max_total_sequence_length = max_total_sequence_length_;
   config.do_rotary = do_rotary_;
   config.smooth_softmax = use_smooth_softmax_;
   config.softcap = softcap_;
