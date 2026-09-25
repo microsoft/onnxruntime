@@ -432,8 +432,9 @@ TEST(MoETest, MoETest_WebGPU_ChunkBoundary) {
 
   constexpr int num_rows = 2049;
   constexpr int hidden_size = 1;
-  // The first 2,048-token chunk used to request 131,072 FC1 workgroups and
-  // 65,536 activation workgroups, exceeding the common per-dimension limit.
+  // The first 2,048-token chunk requests 131,072 FC1 workgroups and 65,536
+  // activation workgroups. This covers normalized dispatch indexing when ORT
+  // reshapes those logical 1-D counts into legal physical dimensions.
   constexpr int inter_size = 4096;
 
   std::vector<float> input(num_rows * hidden_size);
