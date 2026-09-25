@@ -850,15 +850,20 @@ TEST(HalfGemmKleidiAISVE2p1, RejectsKAboveKernelLimit) {
   constexpr size_t N = 1;
   constexpr size_t max_kernel_k = (std::numeric_limits<uint32_t>::max)();
   constexpr size_t unsupported_k = max_kernel_k + 1;
+  constexpr std::byte packed_b_initial_value{0xA5};
   MLAS_FP16 b{};
-  std::byte packed_b{};
+  std::array<std::byte, MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT> packed_b;
+  packed_b.fill(packed_b_initial_value);
 
   EXPECT_NE(
       ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, max_kernel_k), size_t{0});
   EXPECT_EQ(
       ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasNoTrans, N, unsupported_k), size_t{0});
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
-      CblasNoTrans, CblasNoTrans, N, unsupported_k, &b, N, &packed_b));
+      CblasNoTrans, CblasNoTrans, N, unsupported_k, &b, N, packed_b.data()));
+  for (const auto value : packed_b) {
+    EXPECT_EQ(value, packed_b_initial_value);
+  }
 #else
   GTEST_SKIP() << "SVE2.1 HalfGemm requires an ARM64 KleidiAI test-hook build.";
 #endif
