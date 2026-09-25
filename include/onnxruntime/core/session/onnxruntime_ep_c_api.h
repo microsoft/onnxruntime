@@ -2795,7 +2795,19 @@ struct OrtEpFactory {
    * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
-   * \return true if the factory can create an execution provider that uses `device`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \remarks Called during execution provider library registration. The OrtEpDevice instances returned are added to
+   *          the environment after this returns. An implementation should not depend on other OrtEpDevices returned by
+   *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
+   *
+   *          Environment configuration entries are populated before any library is registered, so
+   *          OrtEpApi::GetEnvConfigEntries may be called from this function.
+   *
+   *          ORT holds internal environment locks across this call. An implementation must not call
+   *          OrtApi::RegisterExecutionProviderLibrary or OrtApi::UnregisterExecutionProviderLibrary, as that
+   *          deadlocks, and should otherwise limit the ORT APIs it calls and the work it does.
    *
    * \since Version 1.22.
    */

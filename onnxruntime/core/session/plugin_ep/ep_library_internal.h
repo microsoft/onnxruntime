@@ -21,15 +21,11 @@ namespace onnxruntime {
 class EpLibraryInternal : public EpLibrary {
  public:
   EpLibraryInternal(std::unique_ptr<EpFactoryInternal> factory)
-      : factory_{std::move(factory)}, factory_ptrs_{factory_.get()} {
+      : factory_{std::move(factory)} {
   }
 
   const char* RegistrationName() const override {
     return factory_->GetName();  // same as EP name for internally registered libraries
-  }
-
-  const std::vector<OrtEpFactory*>& GetFactories() override {
-    return factory_ptrs_;
   }
 
   // there's only ever one currently
@@ -44,6 +40,15 @@ class EpLibraryInternal : public EpLibrary {
   static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps(bool allow_virtual_devices);
 
  private:
+  size_t GetFactoryCount() const override {
+    return 1;
+  }
+
+  OrtEpFactory* GetFactory(size_t index) const override {
+    ORT_ENFORCE(index == 0);
+    return factory_.get();
+  }
+
   static std::unique_ptr<EpLibraryInternal> CreateCpuEp();
 #if defined(USE_DML)
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
@@ -53,7 +58,6 @@ class EpLibraryInternal : public EpLibrary {
 #endif
 
   std::unique_ptr<EpFactoryInternal> factory_;  // all internal EPs register a single factory currently
-  std::vector<OrtEpFactory*> factory_ptrs_;     // for convenience
 };
 
 }  // namespace onnxruntime

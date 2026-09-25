@@ -40,12 +40,14 @@ struct Utils {
     using ResetPreallocatedOutputQueryFn = void (*)();
     using GetPreallocatedOutputQueryResultFn = int (*)();
     using GetPreallocatedOutputBadIndexRejectedFn = int (*)();
+    using SetCreateDataTransferFailureFn = void (*)(int enabled);
 
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
     ResetPreallocatedOutputQueryFn reset_preallocated_output_query{};
     GetPreallocatedOutputQueryResultFn get_preallocated_output_query_result{};
     GetPreallocatedOutputBadIndexRejectedFn get_preallocated_output_bad_index_rejected{};
+    SetCreateDataTransferFailureFn set_create_data_transfer_failure{};
   };
 
   using LoadExampleEpHooksPtr = std::unique_ptr<ExampleEpHooks, std::function<void(ExampleEpHooks*)>>;

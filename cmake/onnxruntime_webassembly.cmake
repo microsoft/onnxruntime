@@ -274,7 +274,7 @@ else()
     if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
       target_link_options(onnxruntime_webassembly PRIVATE
         "SHELL:-s JSPI=1"
-        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtAppendExecutionProviderV2,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
       )
     else()
       # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
