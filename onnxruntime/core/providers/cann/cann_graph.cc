@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "core/providers/cann/cann_graph.h"
+#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 namespace cann {
@@ -170,7 +171,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
   if (info.dump_om_model) {
-    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+    return SaveFile(file_name, model);
   }
 
   return Status::OK();
