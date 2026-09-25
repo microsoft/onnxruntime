@@ -99,6 +99,7 @@ stages:
             --build
             --enable_onnx_tests
             --use_webgpu shared_lib
+            --use_dawn_agility_sdk
             --wgsl_template static
             --disable_rtti
             --enable_lto
@@ -172,6 +173,7 @@ stages:
             onnxruntime_providers_webgpu.dll
             onnxruntime_providers_webgpu.pdb
             dxcompiler.dll
+            D3D12/**
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |

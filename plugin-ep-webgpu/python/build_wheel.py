@@ -35,6 +35,9 @@ BINARY_PATTERNS = [
     "libonnxruntime_providers_webgpu.dylib",
     # DXC dependencies (Windows)
     "dxcompiler.dll",
+    # D3D12 Agility SDK dependencies (Windows)
+    "D3D12/D3D12Core.dll",
+    "D3D12/d3d12SDKLayers.dll",
     # Dawn shared library (if built as shared)
     "webgpu_dawn.dll",
     "libwebgpu_dawn.so",
@@ -44,6 +47,11 @@ BINARY_PATTERNS = [
 # Libraries to exclude from auditwheel bundling (user-provided drivers)
 AUDITWHEEL_EXCLUDE = [
     "libvulkan.so.1",
+]
+
+WINDOWS_AGILITY_SDK_BINARIES = [
+    Path("D3D12/D3D12Core.dll"),
+    Path("D3D12/d3d12SDKLayers.dll"),
 ]
 
 
@@ -70,12 +78,25 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     copied = []
     for pattern in BINARY_PATTERNS:
         for src in binary_dir.glob(pattern):
-            dst = package_dir / src.name
+            dst = package_dir / src.relative_to(binary_dir)
+            dst.parent.mkdir(parents=True, exist_ok=True)
             print(f"Copying {src} -> {dst}")
             shutil.copy2(src, dst)
             copied.append(dst)
     if not copied:
         raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
+
+    if (package_dir / "onnxruntime_providers_webgpu.dll").is_file():
+        missing_agility_sdk_binaries = [
+            str(relative_path)
+            for relative_path in WINDOWS_AGILITY_SDK_BINARIES
+            if not (package_dir / relative_path).is_file()
+        ]
+        if missing_agility_sdk_binaries:
+            raise FileNotFoundError(
+                "Windows WebGPU plugin packages require the D3D12 Agility SDK binaries. "
+                f"Missing from {binary_dir}: {missing_agility_sdk_binaries}"
+            )
 
     # Substitute the minimum ORT version into the staged README in place.
     min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
