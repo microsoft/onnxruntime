@@ -99,6 +99,11 @@ static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimiz
 // Its default value is "0".
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
+// Limits cumulative model-local function expansion across AOT and fallback inlining.
+// Values must be positive decimal integers. Defaults are 1,000,000 nodes and 1 GiB of serialized node payload.
+static const char* const kOrtSessionOptionsFunctionExpansionNodeLimit = "session.function_expansion_node_limit";
+static const char* const kOrtSessionOptionsFunctionExpansionByteLimit = "session.function_expansion_byte_limit";
+
 #ifdef ENABLE_TRAINING
 // Specifies a path of the file containing a list of memory optimization configurations.
 // The value should be a string indicating the file path of the config file.
