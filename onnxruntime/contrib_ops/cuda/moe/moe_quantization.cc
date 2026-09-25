@@ -2385,6 +2385,24 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     return Status::OK();
   }
 
+  const auto int_weight_supports_packed_gemv = [&](int64_t weight_bits) {
+    if (!enable_int2_gemv_ ||
+        activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
+        swiglu_fusion_ != 1 || (block_size_ != 64 && block_size_ != 128)) {
+      return false;
+    }
+
+    const auto& shape = tensor.Shape();
+    const int64_t pack_factor = 8 / weight_bits;
+    if (shape.NumDimensions() != 3 || shape[2] > std::numeric_limits<int64_t>::max() / pack_factor) {
+      return false;
+    }
+
+    return onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
+        sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
+        static_cast<int>(weight_bits), static_cast<int>(block_size_));
+  };
+
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
 
   DUMP_TENSOR_INIT();
@@ -2531,9 +2549,11 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // satisfied without holding the original initializer alive, then
     // set ``is_packed = true`` to let ORT free it.
     if (is_mixed_width || expert_weight_bits_ == 2) {
-      bool local_packed = false;
-      PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, local_packed,
-                              fc1_expert_weight_bits_);
+      if (int_weight_supports_packed_gemv(fc1_expert_weight_bits_)) {
+        bool local_packed = false;
+        PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, local_packed,
+                                fc1_expert_weight_bits_);
+      }
       is_packed = false;
     } else {
       fc1_weights_shape_ = tensor.Shape();
@@ -2542,9 +2562,11 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
   } else if (input_idx == 5 && quant_type_ == "int" && !weights_prepacked_) {
     if (is_mixed_width || expert_weight_bits_ == 2) {
-      bool local_packed = false;
-      PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, local_packed,
-                              fc2_expert_weight_bits_);
+      if (int_weight_supports_packed_gemv(fc2_expert_weight_bits_)) {
+        bool local_packed = false;
+        PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, local_packed,
+                                fc2_expert_weight_bits_);
+      }
       is_packed = false;
     } else {
       fc2_weights_shape_ = tensor.Shape();

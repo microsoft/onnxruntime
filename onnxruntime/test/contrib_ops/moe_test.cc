@@ -2414,9 +2414,9 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeFallback) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
   RunQMoEMixedWidthCudaIdentityTest(
-      2, 2, /*max_scratch_bytes=*/0, /*fused_swiglu=*/true, /*with_zero_points=*/false,
+      2, 2, /*max_scratch_bytes=*/1, /*fused_swiglu=*/true, /*with_zero_points=*/false,
       /*use_bf16=*/false, /*block_size=*/32, /*hidden_size=*/64, /*inter_size=*/64,
-      /*expect_scratch_failure=*/false, /*use_initializers=*/true);
+      /*expect_scratch_failure=*/true, /*use_initializers=*/true);
 }
 
 #if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
