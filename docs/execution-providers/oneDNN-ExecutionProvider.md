@@ -123,7 +123,12 @@ In SubgraphPrimitve::Compute() method, we iterate thru Dnnl Kernels and bind inp
 
 **Supported backend**
 
-*	CPU
+* CPU
+
+The pre-built oneDNN EP package is CPU-oriented. If you build ONNX Runtime from source with oneDNN's OpenCL GPU
+runtime, pass `--use_dnnl --dnnl_gpu_runtime ocl --dnnl_opencl_root <OpenCL SDK path>` to the build script. This
+configures oneDNN with `DNNL_GPU_RUNTIME=OCL`. GPU coverage depends on the underlying oneDNN GPU implementation and
+the operators supported by the ONNX Runtime oneDNN EP, so validate the target model on the intended hardware.
 
 ## Additional Resources
 * [oneDNN documentation](https://oneapi-src.github.io/oneDNN/index.html)
