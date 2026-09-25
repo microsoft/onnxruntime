@@ -14,6 +14,7 @@
 #undef ORT_API_MANUAL_INIT
 
 #include "onnxruntime_c_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "ov_factory.h"
 #include "openvino/openvino.hpp"
 #include "weak_singleton.h"
@@ -135,6 +136,23 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
 
     if (IsMetaDeviceFactory()) {
       ort_api.AddKeyValuePair(ep_metadata, ov_meta_device_key_, device_type_.c_str());
+    }
+
+    bool supports_weightless = device_type != OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
+    if (!supports_weightless) {
+      try {
+        const auto supported_properties =
+            ov_core_->get_property(*matched_device, ov::supported_properties);
+        supports_weightless =
+            std::find(supported_properties.begin(), supported_properties.end(),
+                      ov::enable_weightless) != supported_properties.end();
+      } catch (const ov::Exception&) {
+        supports_weightless = false;
+      }
+    }
+
+    if (supports_weightless) {
+      ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
     }
 
     // Create EP device

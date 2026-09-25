@@ -23,7 +23,8 @@ EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& lo
 Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
                                            const std::string& graph_name,
                                            const bool embed_mode,
-                                           std::string&& model_blob_str) const {
+                                           std::string&& model_blob_str,
+                                           const std::string& source_model_filename) const {
   auto& graph = epctx_model_->MainGraph();
 
   // Get graph inputs and outputs
@@ -39,7 +40,7 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
 
   // Create EP context node attributes
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  node_attributes->reserve(6);
+  node_attributes->reserve(7);
   {
     // Create EP context node attributes
 
@@ -84,6 +85,14 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
     partition_name_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
     partition_name_attr->set_s(graph_name);
     node_attributes->emplace(PARTITION_NAME, std::move(*partition_name_attr));
+
+    if (!source_model_filename.empty()) {
+      auto source_model_attr = ONNX_NAMESPACE::AttributeProto::Create();
+      source_model_attr->set_name(ONNX_MODEL_FILENAME);
+      source_model_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
+      source_model_attr->set_s(source_model_filename);
+      node_attributes->emplace(ONNX_MODEL_FILENAME, std::move(*source_model_attr));
+    }
   }
 
   // Create EP context node
