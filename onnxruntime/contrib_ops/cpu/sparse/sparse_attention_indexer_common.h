@@ -67,12 +67,14 @@ enum OutputIndex : int {
   kSelectedIndices = 0,
   kPresentKey = 1,
   kPresentProjBuffer = 2,
-  kOutputCount = 3,
+  kStateUpdateRows = 3,
+  kOutputCount = 4,
 };
 
 // A "qsa" node declares selected_indices + present_key. A "csa" node additionally declares
 // present_proj_buffer.
 constexpr int kQsaOutputCount = 2;
+constexpr int kQsaStateUpdateOutputCount = 4;
 constexpr int kCsaOutputCount = 3;
 
 // Number of selected entries emitted per query. The capacity only depends on attributes, so it is
