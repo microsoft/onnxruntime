@@ -3,9 +3,29 @@ using Microsoft.ML.OnnxRuntime.EP.Cuda;
 
 class Program
 {
-    static int Main()
+    static int Main(string[] args)
     {
         string epLibPath = CudaEp.GetLibraryPath();
+        if (args.Length == 2 && args[0] == "--validate-package-assets")
+        {
+            string expectedNativeDirectory = Path.Combine("runtimes", args[1], "native");
+            if (!epLibPath.Contains(expectedNativeDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine(
+                    $"ERROR: Expected the CUDA EP library under {expectedNativeDirectory}, but resolved {epLibPath}");
+                return 1;
+            }
+
+            Console.WriteLine($"PASSED: Resolved CUDA EP package library: {epLibPath}");
+            return 0;
+        }
+
+        if (args.Length != 0)
+        {
+            Console.Error.WriteLine($"ERROR: Unsupported arguments: {string.Join(" ", args)}");
+            return 1;
+        }
+
         string epRegistrationName = "cuda_ep_registration";
         string epName = CudaEp.GetEpName();
 
