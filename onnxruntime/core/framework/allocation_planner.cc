@@ -286,8 +286,17 @@ class PlannerImpl {
   // Reuse/Alias/Share between two OrtValue indexes
   void Reuse(OrtValueIndex reused, OrtValueIndex reused_for, AllocKind alloc_kind) {
     ORT_ENFORCE(reused != reused_for);
-    // find original buffer underlying ml-value we want to reuse:
-    OrtValueIndex original = Buffer(reused);
+    // Find original buffer underlying ml-value we want to reuse. We chase AllocPlan().reused_buffer
+    // (not Buffer()) to the root, because Buffer() is reset to identity at the start of every stream's
+    // iteration in ComputeReusePlan(), so it can't resolve reuse chains built in an earlier stream.
+    // Stopping one hop short leaves a non-canonical (still-kReuse) origin, which GenerateDeallocationPlan()
+    // then silently ignores (it only recognizes kAllocate/kAllocatedExternally origins) -- causing a buffer
+    // to be released before its true last consumer has run.
+    OrtValueIndex original = reused;
+    while (AllocPlan(original).alloc_kind == AllocKind::kReuse &&
+           AllocPlan(original).reused_buffer != original) {
+      original = AllocPlan(original).reused_buffer;
+    }
     // record that the new buffer will reuse that original buffer
     Buffer(reused_for) = original;
     // adjust original buffer's usecount
