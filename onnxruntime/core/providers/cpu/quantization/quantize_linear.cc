@@ -964,8 +964,11 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   }
 
   if constexpr (boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2, Int2x4, UInt2x4>, T>::value) {
-    // Partial-byte writes preserve adjacent elements and leave unused tail bits zero.
-    std::fill_n(output, y.SizeInBytes() / sizeof(T), T{});
+    // Every element is written below, so only the unused lanes of a partial last byte need zeroing.
+    constexpr size_t elems_per_byte = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value ? 2 : 4;
+    if (static_cast<size_t>(x_shape.Size()) % elems_per_byte != 0) {
+      output[y.SizeInBytes() / sizeof(T) - 1] = T{};
+    }
   }
 
   constexpr int output_type_group_ =
