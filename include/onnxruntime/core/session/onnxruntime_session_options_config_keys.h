@@ -602,6 +602,16 @@ static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.
 // This option exists for perf experimentation; the default may be retuned in future releases.
 static const char* const kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch = "mlas.nchwc_pointwise_conv_max_input_channel_batch";
 
+// Selects the NCHWc depthwise convolution kernel on AVX-512 platforms. The sliding window kernel keeps
+// each input column of a kernel row in a register across the kernel columns and handles the padding
+// columns with masks. It supports stride 1, dilation 1 and kernel widths 3, 5 and 7 (other shapes use
+// the assembly kernel). Its results are bitwise identical to the assembly kernel, except that a NaN
+// result may carry a different NaN payload or sign.
+// Option values:
+// - "1": Use the sliding window kernel where it applies. [DEFAULT]
+// - "0": Always use the assembly kernel.
+static const char* const kOrtSessionOptionsMlasNchwcDepthwiseSliding = "mlas.nchwc_depthwise_sliding";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
