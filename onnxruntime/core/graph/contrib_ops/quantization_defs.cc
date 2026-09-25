@@ -1070,7 +1070,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("order_output", "cublasLt order of output matrix.", AttributeProto::INT)
         .Input(0, "input",
                "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as "
-               "(B, ROWS, COS)",
+               "(B, ROWS, COLS)",
                "F")
         .Input(1, "scale_input", "scale of the input", "S")
         .Output(0, "output", "output tensor", "Q")
@@ -1098,7 +1098,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT)
         .Input(0, "input",
                "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as "
-               "(B, ROWS, COS)",
+               "(B, ROWS, COLS)",
                "Q")
         .Input(1, "scale_input", "scale of the input", "S")
         .Output(0, "output", "output tensor", "F")
