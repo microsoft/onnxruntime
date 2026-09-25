@@ -54,6 +54,7 @@ struct OrtEnv {
   static OrtEnvPtr TryGetInstance();
 
   static void Release(OrtEnv* env_ptr);
+  static bool ShouldSkipShutdownCleanup() noexcept;
 
   const onnxruntime::Environment& GetEnvironment() const {
     return *value_;
