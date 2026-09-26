@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 
 
+import copy
 import logging
 import tempfile
 import traceback
@@ -134,9 +135,13 @@ def quant_pre_process(
                             "Please load external data before calling this function. "
                             "See https://onnx.ai/onnx/repo-docs/ExternalData.html for more information."
                         )
-                    external_names, external_values = extract_raw_data_from_model(input_model)
+                    # extract_raw_data_from_model clears the initializers' raw data in place and
+                    # points them at a placeholder external file. Work on a copy so that `model`
+                    # still holds the intact ModelProto if session creation fails below.
+                    session_model = copy.deepcopy(input_model)
+                    external_names, external_values = extract_raw_data_from_model(session_model)
                     sess_option.add_external_initializers(list(external_names), list(external_values))
-                    input_model = input_model.SerializeToString()
+                    input_model = session_model.SerializeToString()
                 # the saved optimized model otherwise points to the original external data file name
                 # which is not available relative to the optimized model file
                 elif skip_symbolic_shape and save_as_external_data:
