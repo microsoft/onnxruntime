@@ -31,10 +31,12 @@ namespace webgpu {
       DepthToSpace<is_nhwc>);
 
 WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(11, 12, kOnnxDomain, false)
-WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kOnnxDomain, false)
+WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(13, 27, kOnnxDomain, false)
+WEBGPU_DEPTH_TO_SPACE_KERNEL(28, kOnnxDomain, false)
 
 WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(11, 12, kMSInternalNHWCDomain, true)
-WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kMSInternalNHWCDomain, true)
+WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(13, 27, kMSInternalNHWCDomain, true)
+WEBGPU_DEPTH_TO_SPACE_KERNEL(28, kMSInternalNHWCDomain, true)
 
 void AppendPermFunction(OStringStream& os, const ShaderVariableHelper& input, const int64_t* perm) {
   os << "fn perm(i: input_indices_t) -> input_indices_t {\n"

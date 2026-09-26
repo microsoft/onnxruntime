@@ -83,9 +83,11 @@ class CUDA_NHWC_OP_TYPED_CLASS_NAME(15, double, BatchNormalization);
 class CUDA_NHWC_OP_TYPED_CLASS_NAME(15, MLFloat16, BatchNormalization);
 class CUDA_NHWC_OP_VERSIONED_CLASS_NAME(1, 10, DepthToSpace);
 class CUDA_NHWC_OP_VERSIONED_CLASS_NAME(11, 12, DepthToSpace);
-class CUDA_NHWC_OP_CLASS_NAME(13, DepthToSpace);
+class CUDA_NHWC_OP_VERSIONED_CLASS_NAME(13, 27, DepthToSpace);
+class CUDA_NHWC_OP_CLASS_NAME(28, DepthToSpace);
 class CUDA_NHWC_OP_VERSIONED_CLASS_NAME(1, 12, SpaceToDepth);
-class CUDA_NHWC_OP_CLASS_NAME(13, SpaceToDepth);
+class CUDA_NHWC_OP_VERSIONED_CLASS_NAME(13, 27, SpaceToDepth);
+class CUDA_NHWC_OP_CLASS_NAME(28, SpaceToDepth);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, float, LRN);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, double, LRN);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, MLFloat16, LRN);
@@ -152,9 +154,11 @@ Status RegisterCudaNhwcKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 10, MLFloat16, ConvTranspose)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_CLASS_NAME(1, 10, DepthToSpace)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_CLASS_NAME(11, 12, DepthToSpace)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_CLASS_NAME(13, DepthToSpace)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_CLASS_NAME(13, 27, DepthToSpace)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_CLASS_NAME(28, DepthToSpace)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_CLASS_NAME(1, 12, SpaceToDepth)>,
-      BuildKernelCreateInfo<CUDA_NHWC_OP_CLASS_NAME(13, SpaceToDepth)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_CLASS_NAME(13, 27, SpaceToDepth)>,
+      BuildKernelCreateInfo<CUDA_NHWC_OP_CLASS_NAME(28, SpaceToDepth)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, float, LRN)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, double, LRN)>,
       BuildKernelCreateInfo<CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(1, 12, MLFloat16, LRN)>,

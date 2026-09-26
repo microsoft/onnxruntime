@@ -113,5 +113,25 @@ TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
   CheckFastGelu<MLFloat16, false>(false);
 }
 
+void CheckSpaceDepthFunction(const char* op_type, std::vector<int64_t> input_shape,
+                             int64_t blocksize, const char* mode) {
+  FunctionTestCase test_case(op_type, kOnnxDomain);
+  test_case.AddOpset(kOnnxDomain, 28);
+  test_case.AddInput<float>("input", input_shape);
+  test_case.AddOutput("output");
+  test_case.AddAttribute("blocksize", blocksize);
+  test_case.AddAttribute("mode", mode);
+  test_case.RunTest();
+}
+
+TEST_F(ContribFunExpansionTest, SpaceDepthOpset28FunctionParity) {
+  for (const auto* mode : {"DCR", "CRD"}) {
+    CheckSpaceDepthFunction("SpaceToDepth", {1, 2, 4, 6}, 2, mode);
+    CheckSpaceDepthFunction("SpaceToDepth", {1, 2, 6, 9}, 3, mode);
+    CheckSpaceDepthFunction("DepthToSpace", {1, 8, 2, 3}, 2, mode);
+    CheckSpaceDepthFunction("DepthToSpace", {1, 18, 2, 3}, 3, mode);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
