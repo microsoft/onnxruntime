@@ -284,7 +284,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     program_mgr_ = std::make_unique<ProgramManager>(*this);
 
     // create split-k config
-    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
+    split_k_config_ = std::make_unique<SplitKConfig>(CreateSplitKConfig(adapter_info_));
 
     // set query type
 #if !defined(__wasm__)

@@ -13,13 +13,21 @@ namespace onnxruntime {
 namespace webgpu {
 class MatMulProgram final : public Program<MatMulProgram> {
  public:
-  MatMulProgram(const Activation& activation, bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread, bool is_channels_last = false, uint32_t split_dim_inner = 1) : Program{"MatMul"},
-                                                                                                                                                                                     activation_(activation),
-                                                                                                                                                                                     has_bias_{bias},
-                                                                                                                                                                                     is_vec4_{is_vec4},
-                                                                                                                                                                                     elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
-                                                                                                                                                                                     is_channels_last_(is_channels_last),
-                                                                                                                                                                                     split_dim_inner_(split_dim_inner) {}
+  MatMulProgram(const Activation& activation,
+                bool bias,
+                bool is_vec4,
+                const gsl::span<int64_t>& elements_per_thread,
+                bool is_channels_last = false,
+                uint32_t split_dim_inner = 1,
+                uint32_t tile_inner = 32)
+      : Program{"MatMul"},
+        activation_(activation),
+        has_bias_{bias},
+        is_vec4_{is_vec4},
+        elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
+        is_channels_last_(is_channels_last),
+        split_dim_inner_(split_dim_inner),
+        tile_inner_(tile_inner) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
@@ -40,6 +48,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
   const InlinedVector<int64_t> elements_per_thread_;
   bool is_channels_last_ = false;
   uint32_t split_dim_inner_ = 1;
+  uint32_t tile_inner_ = 32;
 };
 
 // The program to initialize the output with 0 or bias before doing MatMul with Split-K. In Split-K,

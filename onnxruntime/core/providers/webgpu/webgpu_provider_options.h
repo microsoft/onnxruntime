@@ -32,6 +32,8 @@ constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvC
 // Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
 // as follow-up work under the same option.
 constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
+// Internal test option for selecting a concrete unquantized MatMul implementation.
+constexpr const char* kForceMatMulAlgorithm = "ep.webgpuexecutionprovider.forceMatmulAlgorithm";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
