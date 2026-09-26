@@ -11,6 +11,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
+
 ONNX_OPERATOR_KERNEL_EX(
     LinearAttentionGate,
     kMSDomain,
@@ -164,7 +166,7 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << scale.GetByOffset("i") << ");\n"
       << "    "
       << output.SetByOffset("base + i", std::string("output_element_t(normalized * ") +
-                                            (activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") +
+                                                    (activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") +
                                             ")")
       << "\n"
       << "  }\n";

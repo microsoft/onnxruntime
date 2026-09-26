@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/bert/linear_attention_gates_common.h"
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -11,6 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 

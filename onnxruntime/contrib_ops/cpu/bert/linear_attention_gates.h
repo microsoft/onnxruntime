@@ -3,12 +3,14 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/bert/linear_attention_gates_common.h"
+#include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
+
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 
 // decay = decay_scale * Softplus(a + dt_bias), beta = Sigmoid(b).
 template <typename T>
