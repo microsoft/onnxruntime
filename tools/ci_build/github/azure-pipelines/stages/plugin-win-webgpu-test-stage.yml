@@ -41,20 +41,35 @@ stages:
         echo "activating test_venv"
         & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
 
+        python -m unittest discover -s "$(Build.SourcesDirectory)\plugin-ep-webgpu" -p test_packaging_utils.py
+        if ($LASTEXITCODE -ne 0) {
+          throw "WebGPU packaging policy tests failed"
+        }
+
         $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
         $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+        # Exact exceptions may use private/backported runtimes, not public PyPI wheels.
         echo "using minimum onnxruntime version $minOrtVersion from $minOrtVersionFile"
 
         echo "installing test dependencies"
         python -m pip install onnx "onnxruntime==$minOrtVersion" numpy
+        if ($LASTEXITCODE -ne 0) {
+          throw "Failed to install WebGPU test dependencies"
+        }
 
         $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
         $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
         echo "installing ${wheel}"
         python -m pip install $wheel.FullName
+        if ($LASTEXITCODE -ne 0) {
+          throw "Failed to install the WebGPU plugin wheel"
+        }
 
         echo "running test_webgpu_plugin_ep.py"
         python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+        if ($LASTEXITCODE -ne 0) {
+          throw "WebGPU plugin test failed with onnxruntime $minOrtVersion"
+        }
       displayName: 'Install and test Python package'
       env:
         ORT_TEST_VERBOSE: $(OrtTestVerbose)

@@ -801,6 +801,20 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
+if(onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS AND NOT IOS)
+  # A separate main keeps the plugin uninitialized until each isolated factory test.
+  AddTest(
+    TARGET onnxruntime_webgpu_version_policy_test
+    SOURCES "${TEST_SRC_DIR}/webgpu/version_policy_test.cc"
+    LIBS GTest::gtest_main ${CMAKE_DL_LIBS}
+    DEPENDS onnxruntime_providers_webgpu
+  )
+  target_include_directories(onnxruntime_webgpu_version_policy_test PRIVATE
+                             "${REPO_ROOT}/include/onnxruntime/core/session")
+  target_compile_definitions(onnxruntime_webgpu_version_policy_test PRIVATE
+                             ORT_WEBGPU_PLUGIN_LIBRARY_NAME="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>")
+endif()
+
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
 # or reduced op builds.
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)

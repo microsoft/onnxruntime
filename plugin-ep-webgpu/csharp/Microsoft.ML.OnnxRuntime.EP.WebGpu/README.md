@@ -5,7 +5,11 @@ WebGPU plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft
 ### Prerequisites
 
 This package provides the WebGPU plugin EP only. Your project must separately reference an ONNX Runtime
-core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_version@` or later.
+core package (e.g. `Microsoft.ML.OnnxRuntime`). Supported core ONNX Runtime versions are
+@supported_onnxruntime_versions@.
+
+Exact older-version exceptions require a runtime with the necessary plugin EP API backports.
+The version check does not supply those backports or establish runtime compatibility by itself.
 
 If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
 registered.
@@ -68,6 +72,7 @@ using var session = new InferenceSession("model.onnx", sessionOptions);
 - **`No WebGPU device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
   usually means the Vulkan loader (`libvulkan.so.1`) is not installed; install it via your distribution's package
   manager. On Windows it may indicate a missing or outdated GPU driver.
-- **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the
-  referenced `Microsoft.ML.OnnxRuntime` package is older than `@min_onnxruntime_version@`. Upgrade with
+- **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the referenced
+  `Microsoft.ML.OnnxRuntime` package is incompatible. Reference one of the supported versions listed above; the
+  recommended default is
   `dotnet add package Microsoft.ML.OnnxRuntime --version @min_onnxruntime_version@`.
