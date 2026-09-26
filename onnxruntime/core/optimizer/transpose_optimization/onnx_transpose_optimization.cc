@@ -3111,6 +3111,75 @@ static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node) {
 }
 
 /// <summary>
+/// If the Transpose consumes a local constant initializer with no other consumers, and the Transpose
+/// itself has a single consumer (the current node), evaluate the Transpose by permuting the initializer
+/// data in place instead of pushing the Transpose through its consumer.
+///
+/// Pushing a Transpose off a constant is never beneficial: it moves the Transpose onto dynamic tensors
+/// (typically duplicating it onto the consumer output as well), while folding removes it entirely.
+/// Anything that does not match the simple single-consumer chain of initializer -> Transpose -> consumer
+/// falls through to the regular push logic.
+/// </summary>
+/// <returns>True if the Transpose was folded into the initializer and removed.</returns>
+static bool TryFoldTransposeIntoInitializer(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
+                                            const std::vector<int64_t>& perm) {
+  if (!CanModifyNode(ctx, transpose)) {
+    return false;
+  }
+
+  // Materialize the name. RemoveNode below may invalidate the Transpose's internal strings.
+  const std::string init_name(transpose.Inputs()[0]);
+
+  std::unique_ptr<api::TensorRef> constant = ctx.graph.GetLocalConstant(init_name);
+  if (!constant) {
+    return false;
+  }
+
+  // The rank must match the perm. This also excludes 1D axis-like constants (e.g. Resize sizes)
+  // whose length happens to equal the perm size.
+  if (constant->Shape().size() != perm.size()) {
+    return false;
+  }
+
+  // Identity perm: nothing to fold.
+  bool is_identity = true;
+  for (size_t i = 0; i < perm.size(); ++i) {
+    if (perm[i] != static_cast<int64_t>(i)) {
+      is_identity = false;
+      break;
+    }
+  }
+  if (is_identity) {
+    return false;
+  }
+
+  // Sole-consumer chain on both sides. comprehensive==false covers graph outputs and subgraph uses,
+  // so no separate graph-output check is needed.
+  auto init_consumers = ctx.graph.GetValueConsumers(init_name);
+  if (!init_consumers->comprehensive || init_consumers->nodes.size() != 1) {
+    return false;
+  }
+
+  // The single consumer is provably 'node' (the edge being processed), so only the bool matters.
+  std::unique_ptr<api::NodeRef> single_consumer;
+  if (!OutputValueHasSingleConsumerNode(ctx.graph, transpose, 0, single_consumer)) {
+    return false;
+  }
+
+  // 'node' may consume the Transpose output in more than one input slot.
+  const std::string transpose_output(transpose.Outputs()[0]);
+  ctx.graph.TransposeInitializer(init_name, perm);
+  const std::vector<std::string_view> node_inputs = node.Inputs();
+  for (size_t i = 0; i < node_inputs.size(); ++i) {
+    if (node_inputs[i] == transpose_output) {
+      node.SetInput(i, init_name);
+    }
+  }
+  ctx.graph.RemoveNode(transpose);
+  return true;
+}
+
+/// <summary>
 /// Try to remove empty DQ -> Q pair that results from moving a Transpose downstream or a Transpose being canceled out.
 /// Handles the following scenarios:
 ///   - (DQ -> Q -> consumer node) => consumer node
@@ -3600,9 +3669,24 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
         if (perm != std::nullopt) {
+          // Prefer folding a Transpose on a constant initializer over pushing it. See
+          // TryFoldTransposeIntoInitializer for details. Transpose and Reshape consumers go through their
+          // handlers first so a cancel/merge with the consumer still removes both nodes.
+          const bool try_handler_first = node.IsOp("Transpose") || node.IsOp("Reshape");
+          if (!try_handler_first && TryFoldTransposeIntoInitializer(ctx, *transpose, node, *perm)) {
+            changed = true;
+            // Subsequent inputs may have changed and the Transpose was removed.
+            break;
+          }
+
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
             // Subsequent inputs may have changed and node may have been removed.
+            break;
+          }
+
+          if (try_handler_first && TryFoldTransposeIntoInitializer(ctx, *transpose, node, *perm)) {
+            changed = true;
             break;
           }
         }
