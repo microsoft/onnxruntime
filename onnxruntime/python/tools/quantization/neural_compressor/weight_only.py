@@ -210,6 +210,50 @@ def quant_tensor(data, num_bits=4, group_size=32, scheme="asym", dtype="int", ra
     return q_weight, scale, zero_point
 
 
+def _quant_tensor_k_quant(xp, data, num_bits, group_size):
+    """k-quant search for the per-group scale and integer zero point, on NumPy or CuPy arrays (``xp``).
+
+    Tries the candidate scales of llama.cpp's ``make_qkx2_quants`` and keeps, per group, the one with the lowest
+    weighted squared error on the grid that is stored: for each candidate the zero point is rounded to an integer
+    first, and the scale is refit by weighted least squares to the levels chosen for it.
+    """
+    data = data.reshape((-1, group_size)).astype(xp.float32)  # (nb, group_size)
+    maxq = 2**num_bits - 1
+    minq = 0
+    sum_x2 = xp.sum(data**2, axis=1, keepdims=True)  # (nb, 1)
+    av_x = xp.sqrt(sum_x2 / group_size)  # (nb, 1)
+    weights = xp.add(av_x, xp.abs(data))  # (nb, group_size)
+    # An unsigned zero point keeps 0 on the grid, so the range has to include it.
+    rmin = xp.minimum(xp.min(data, axis=1, keepdims=True), 0)  # (nb, 1)
+    rmax = xp.maximum(xp.max(data, axis=1, keepdims=True), 0)  # (nb, 1)
+    rrange = xp.where(rmax > rmin, rmax - rmin, 1)  # (nb, 1)
+    quant_data = xp.zeros_like(data)
+    scale = xp.ones_like(rrange)
+    zero_point = xp.zeros_like(rrange)
+    best_mad = xp.full_like(rrange, xp.inf)
+    nstep = 20
+    rdelta = 0.1
+    rrmin = -1
+    for factor in [maxq - minq] + [rrmin + rdelta * is_ + maxq - minq for is_ in range(nstep)]:
+        iscale = factor / rrange  # (nb, 1)
+        this_zero_point = xp.clip(xp.round(-rmin * iscale), minq, maxq)  # (nb, 1)
+        levels = xp.clip(xp.round(data * iscale) + this_zero_point, minq, maxq) - this_zero_point  # (nb, group_size)
+        sum_l2 = xp.sum(weights * levels**2, axis=1, keepdims=True)  # (nb, 1)
+        sum_xl = xp.sum(weights * levels * data, axis=1, keepdims=True)  # (nb, 1)
+        fit = (sum_l2 > 0) & (sum_xl > 0)
+        this_scale = xp.where(fit, sum_xl / xp.where(fit, sum_l2, 1), 1 / iscale)  # (nb, 1)
+        this_quant = xp.clip(xp.round(data / this_scale) + this_zero_point, minq, maxq)  # (nb, group_size)
+        diff = this_scale * (this_quant - this_zero_point) - data  # (nb, group_size)
+        mad = xp.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
+        idx_to_replace = xp.where(mad < best_mad)[0]
+        quant_data[idx_to_replace, :] = this_quant[idx_to_replace, :]
+        best_mad[idx_to_replace] = mad[idx_to_replace]
+        scale[idx_to_replace] = this_scale[idx_to_replace]
+        zero_point[idx_to_replace] = this_zero_point[idx_to_replace]
+
+    return quant_data.astype(xp.float64), scale.astype(xp.float64), zero_point.astype("uint8")
+
+
 def quant_tensor_k_quant_cpu(data, num_bits=4, group_size=32):
     """Quantize tensor per group based on k quant.
 
@@ -225,62 +269,7 @@ def quant_tensor_k_quant_cpu(data, num_bits=4, group_size=32):
         scale: scale
         zero_point: zero point
     """
-    data = np.reshape(data, (-1, group_size)).astype(np.float32)  # nb = data.shape[0], (nb, group_size)
-    maxq = 2**num_bits - 1
-    minq = 0
-    sum_x2 = np.sum(data**2, axis=1, keepdims=True)  # (nb, 1)
-    av_x = np.sqrt(sum_x2 / group_size)  # (nb, 1)
-    weights = np.add(av_x, np.abs(data))  # (nb, group_size)
-    rmin = np.min(data, axis=1, keepdims=True)  # (nb, 1)
-    rmax = np.max(data, axis=1, keepdims=True)  # (nb, 1)
-    sum_w = np.sum(weights, axis=1, keepdims=True)  # (nb, 1)
-    sum_x = np.sum(weights * data, axis=1, keepdims=True)  # (nb, group_size)
-    iscale = np.ones(rmax.shape, dtype=data.dtype)  # (nb, 1)
-    mask = rmin != rmax
-    iscale[mask] = (maxq - minq) / (rmax[mask] - rmin[mask])
-    scale = 1 / iscale
-    quant_data = np.clip(np.round(iscale * (data - rmin)), minq, maxq)  # (nb, group_size)
-    diff = scale * quant_data + rmin - data  # (nb, group_size)
-    best_mad = np.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
-    nstep = 20
-    rdelta = 0.1
-    # nstep * rdelta = -2 * rrmin, maxq - minq = 2**num_bits - 1
-    rrmin = -1
-    for is_ in range(nstep):
-        iscale_new = np.ones(rmax.shape, dtype=data.dtype)  # (nb, 1)
-        factor = np.array([rrmin + rdelta * is_ + maxq - minq]).astype(data.dtype)[0]
-        mask = rmin != rmax
-        iscale_new[mask] = factor / (rmax[mask] - rmin[mask])
-        quant_data_new = np.clip(np.round(iscale_new * (data - rmin)), minq, maxq)  # (nb, group_size)
-        mul_weights_quant_data_new = weights * quant_data_new
-        sum_l = np.sum(mul_weights_quant_data_new, axis=1, keepdims=True)  # (nb, 1)
-        sum_l2 = np.sum(mul_weights_quant_data_new * quant_data_new, axis=1, keepdims=True)  # (nb, 1)
-        sum_xl = np.sum(mul_weights_quant_data_new * data, axis=1, keepdims=True)  # (nb, 1)
-        D = np.subtract(sum_w * sum_l2, sum_l**2)  # noqa: N806
-
-        this_scale = (sum_w * sum_xl - sum_x * sum_l) / D  # (nb, 1)
-        this_min = (sum_l2 * sum_x - sum_l * sum_xl) / D  # (nb, 1)
-
-        diff = this_scale * quant_data_new + this_min - data  # (nb, group_size)
-        mad = np.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
-
-        mad_1 = np.array(mad)
-        best_mad_1 = np.array(best_mad)
-        idx_to_replace = np.where(mad_1 < best_mad_1)[0]
-        quant_data[idx_to_replace, :] = quant_data_new[idx_to_replace, :]
-        best_mad[idx_to_replace] = mad[idx_to_replace]
-        scale[idx_to_replace] = this_scale[idx_to_replace]
-        rmin[idx_to_replace] = this_min[idx_to_replace]
-
-    zero_point = np.clip(((-rmin) / scale).round(), 0, maxq).astype("uint8")
-    scale = scale.astype(np.float64)
-    q_weight = np.empty_like(data, dtype=scale.dtype)
-    np.divide(data, scale, out=q_weight)
-    np.add(q_weight, zero_point, out=q_weight)
-    np.round(q_weight, out=q_weight)
-    np.clip(q_weight, minq, maxq, out=q_weight)
-
-    return q_weight, scale, zero_point
+    return _quant_tensor_k_quant(np, np.asarray(data), num_bits, group_size)
 
 
 def quant_tensor_k_quant_cuda(data, num_bits=4, group_size=32):
@@ -303,61 +292,7 @@ def quant_tensor_k_quant_cuda(data, num_bits=4, group_size=32):
         import torch  # noqa: PLC0415
 
         if torch.cuda.is_available():
-            data = cp.asarray(data)
-            data = data.reshape((-1, group_size)).astype(cp.float32)  # nb = data.shape[0], (nb, group_size)
-            maxq = 2**num_bits - 1
-            minq = 0
-            sum_x2 = cp.sum(data**2, axis=1, keepdims=True)  # (nb, 1)
-            av_x = cp.sqrt(sum_x2 / group_size)  # (nb, 1)
-            weights = cp.add(av_x, cp.abs(data))  # (nb, group_size)
-            rmin = cp.min(data, axis=1, keepdims=True)  # (nb, 1)
-            rmax = cp.max(data, axis=1, keepdims=True)  # (nb, 1)
-            sum_w = cp.sum(weights, axis=1, keepdims=True)  # (nb, 1)
-            sum_x = cp.sum(weights * data, axis=1, keepdims=True)  # (nb, group_size)
-            iscale = cp.ones(rmax.shape, dtype=data.dtype)  # (nb, 1)
-            mask = rmin != rmax
-            iscale[mask] = (maxq - minq) / (rmax[mask] - rmin[mask])
-            scale = 1 / iscale
-            quant_data = cp.clip(cp.round(iscale * (data - rmin)), minq, maxq)  # (nb, group_size)
-            diff = scale * quant_data + rmin - data  # (nb, group_size)
-            best_mad = cp.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
-            nstep = 20
-            rdelta = 0.1
-            rrmin = -1
-            for is_ in range(nstep):
-                iscale_new = cp.ones(rmax.shape, dtype=data.dtype)  # (nb, 1)
-                factor = cp.array([rrmin + rdelta * is_ + maxq - minq]).astype(data.dtype)[0]
-                mask = rmin != rmax
-                iscale_new[mask] = factor / (rmax[mask] - rmin[mask])
-                quant_data_new = cp.clip(cp.round(iscale_new * (data - rmin)), minq, maxq)  # (nb, group_size)
-                mul_weights_quant_data_new = weights * quant_data_new
-                sum_l = cp.sum(mul_weights_quant_data_new, axis=1, keepdims=True)  # (nb, 1)
-                sum_l2 = cp.sum(mul_weights_quant_data_new * quant_data_new, axis=1, keepdims=True)  # (nb, 1)
-                sum_xl = cp.sum(mul_weights_quant_data_new * data, axis=1, keepdims=True)  # (nb, 1)
-                D = cp.subtract(sum_w * sum_l2, sum_l**2)  # noqa: N806
-
-                this_scale = (sum_w * sum_xl - sum_x * sum_l) / D  # (nb, 1)
-                this_min = (sum_l2 * sum_x - sum_l * sum_xl) / D  # (nb, 1)
-
-                diff = this_scale * quant_data_new + this_min - data  # (nb, group_size)
-                mad = cp.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
-
-                mad_1 = cp.array(mad)
-                best_mad_1 = cp.array(best_mad)
-                idx_to_replace = cp.where(mad_1 < best_mad_1)[0]
-                quant_data[idx_to_replace, :] = quant_data_new[idx_to_replace, :]
-                best_mad[idx_to_replace] = mad[idx_to_replace]
-                scale[idx_to_replace] = this_scale[idx_to_replace]
-                rmin[idx_to_replace] = this_min[idx_to_replace]
-
-            zero_point = cp.clip(((-rmin) / scale).round(), 0, maxq).astype("uint8")
-            scale = scale.astype(cp.float64)
-            q_weight = cp.empty_like(data, dtype=scale.dtype)
-            cp.divide(data, scale, out=q_weight)
-            cp.add(q_weight, zero_point, out=q_weight)
-            cp.round(q_weight, out=q_weight)
-            cp.clip(q_weight, minq, maxq, out=q_weight)
-
+            q_weight, scale, zero_point = _quant_tensor_k_quant(cp, cp.asarray(data), num_bits, group_size)
             return q_weight.get(), scale.get(), zero_point.get()
         else:
             logger.warning(
