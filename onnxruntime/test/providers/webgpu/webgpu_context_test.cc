@@ -13,6 +13,9 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+#include "absl/flags/reflection.h"
+#endif
 
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
@@ -53,8 +56,16 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
 #if GTEST_HAS_DEATH_TEST
   // Context 0 can outlive an individual test. Re-exec instead of forking its
   // initialized Dawn device or clearing state that another EP still owns.
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
+  ASSERT_NE(death_test_style_flag, nullptr);
+  const std::string previous_style = death_test_style_flag->CurrentValue();
+  std::string flag_error;
+  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
+#else
   const auto previous_style = GTEST_FLAG_GET(death_test_style);
   GTEST_FLAG_SET(death_test_style, "threadsafe");
+#endif
 
   // Exercise isolation even when running only this test, and ensure the child
   // does not disturb a live provider in the parent process.
@@ -80,7 +91,12 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
       testing::ExitedWithCode(EXIT_SUCCESS), "");
 
   EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  flag_error.clear();
+  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
+#else
   GTEST_FLAG_SET(death_test_style, previous_style);
+#endif
 #else
   ORT_UNUSED_PARAMETER(compile_only_parent);
   test_body();
