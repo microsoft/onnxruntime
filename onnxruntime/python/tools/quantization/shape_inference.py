@@ -148,13 +148,17 @@ def quant_pre_process(
                 # Close the session to avoid the cleanup error on Windows for temp folders
                 # https://github.com/microsoft/onnxruntime/issues/17627
                 del sess
+
+                # The optimized model is now the one to carry forward. Drop the in-memory
+                # copy so that later stages (and the final save) pick up the optimized file
+                # instead of the unoptimized model.
+                input_model = opt_model_path
+                model = None
             except Exception:
                 logger.error(
                     "ONNX Runtime Model Optimization Failed! Consider rerun with option `--skip_optimization'."
                 )
                 logger.error(traceback.format_exc())
-
-            input_model = opt_model_path
 
         if not skip_onnx_shape:
             # ONNX shape inference.
@@ -191,8 +195,10 @@ def quant_pre_process(
             onnx.shape_inference.infer_shapes_path(input_model, inferred_model_path)
             model = onnx.load(inferred_model_path)
 
-    if model is None:
-        model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
+        if model is None:
+            # The model may live in the temporary directory (e.g. the optimizer output),
+            # so it must be loaded before the directory is cleaned up.
+            model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
 
     add_pre_process_metadata(model)
 

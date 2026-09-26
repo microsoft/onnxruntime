@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import itertools
 import sys
 import tempfile
 import unittest
@@ -235,6 +236,67 @@ class TestSkipSymbolicShape(unittest.TestCase):
             sys.modules.update(saved)
 
         self.assertTrue(output_path.exists(), "Output model should be created even without sympy")
+
+
+class TestSkipShapeInferenceKeepsOptimization(unittest.TestCase):
+    """Regression test for https://github.com/microsoft/onnxruntime/issues/32802.
+
+    The ORT optimizer output must be carried through to the saved model regardless of
+    which of the (optional) shape inference stages are skipped.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="ort.quant_preprocess_skip_shape_")
+        self.temp_path = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def build_identity_add_model(self):
+        """Build Identity -> Add. The basic ORT optimizer removes the Identity node."""
+        input_tensor = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 4])
+        output_tensor = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 4])
+        bias = onnx.numpy_helper.from_array(np.ones((1, 4), dtype=np.float32), "bias")
+        nodes = [
+            onnx.helper.make_node("Identity", ["input"], ["identity_out"], name="identity_node"),
+            onnx.helper.make_node("Add", ["identity_out", "bias"], ["output"], name="add_node"),
+        ]
+        graph = onnx.helper.make_graph(nodes, "identity_add_graph", [input_tensor], [output_tensor], initializer=[bias])
+        opset_imports = [onnx.helper.make_opsetid("", 13)]
+        return onnx.helper.make_model(graph, opset_imports=opset_imports, ir_version=9)
+
+    def test_optimized_model_is_kept_for_all_skip_combinations(self):
+        model = self.build_identity_add_model()
+        input_path = self.temp_path / "identity_add.onnx"
+        onnx.save_model(model, str(input_path))
+
+        for skip_optimization, skip_onnx_shape, skip_symbolic_shape in itertools.product([False, True], repeat=3):
+            with self.subTest(
+                skip_optimization=skip_optimization,
+                skip_onnx_shape=skip_onnx_shape,
+                skip_symbolic_shape=skip_symbolic_shape,
+            ):
+                output_path = (
+                    self.temp_path
+                    / f"out_{int(skip_optimization)}{int(skip_onnx_shape)}{int(skip_symbolic_shape)}.onnx"
+                )
+
+                quant_pre_process(
+                    input_model=str(input_path),
+                    output_model_path=str(output_path),
+                    skip_optimization=skip_optimization,
+                    skip_onnx_shape=skip_onnx_shape,
+                    skip_symbolic_shape=skip_symbolic_shape,
+                )
+
+                self.assertTrue(output_path.exists())
+                preprocessed_model = onnx.load(str(output_path))
+                node_types = [node.op_type for node in preprocessed_model.graph.node]
+                self.assertIn("Add", node_types)
+                if skip_optimization:
+                    self.assertIn("Identity", node_types)
+                else:
+                    self.assertNotIn("Identity", node_types, "optimizer result was discarded")
 
 
 if __name__ == "__main__":
