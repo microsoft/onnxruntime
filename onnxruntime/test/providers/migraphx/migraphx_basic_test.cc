@@ -188,6 +188,17 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
 }
 
+TEST(MIGraphXExecutionProviderTest, ParseOutputIndex) {
+  EXPECT_EQ(ParseOutputIndex("main:#output_0"), 0);
+  EXPECT_EQ(ParseOutputIndex("main:#output_9"), 9);
+  // MIGraphX writes indices >= 10 as ':' plus zero-padded digits.
+  EXPECT_EQ(ParseOutputIndex("main:#output_:00010"), 10);
+  EXPECT_EQ(ParseOutputIndex("main:#output_:00123"), 123);
+  EXPECT_EQ(ParseOutputIndex("main:#output_12"), 12);
+  EXPECT_EQ(ParseOutputIndex("x"), -1);
+  EXPECT_THROW(ParseOutputIndex("main:#output_"), OnnxRuntimeException);
+}
+
 #if defined(WIN32)
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   // Access the underlying InferenceSession.
