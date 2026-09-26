@@ -264,6 +264,7 @@ class PagedAttention final : public WebGpuKernel {
   int num_heads_;
   int kv_num_heads_;
   int local_window_size_;
+  bool is_causal_;
   bool do_rotary_;
   bool rotary_interleaved_;
   float scale_;

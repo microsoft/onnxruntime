@@ -56,8 +56,9 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
   qk_l2_norm_ = info.GetAttrOrDefault<int64_t>("qk_l2_norm", 0) != 0;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   const auto state_update_capacity = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
-  ORT_ENFORCE(state_update_capacity == 0,
-              "WebGPU GatedDeltaNet does not support state_update_capacity > 0");
+  ORT_ENFORCE(state_update_capacity >= 0 && state_update_capacity <= 8,
+              "state_update_capacity must be in [0, 8], got ", state_update_capacity);
+  state_update_capacity_ = static_cast<int>(state_update_capacity);
 }
 
 Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -92,12 +93,17 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.AddOutput("output", ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias);
   const ShaderVariableHelper* final_state = &output;
   if (output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* capture_count = &query;
+  if (capture_state_updates_) capture_count = &shader.AddInput("capture_count", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* state_update = &output;
+  if (capture_state_updates_) state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
 
   int update_rule = 0;
   if (update_rule_ == GatedDeltaNetUpdateRule::Gated) update_rule = 1;
   if (update_rule_ == GatedDeltaNetUpdateRule::Delta) update_rule = 2;
   if (update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) update_rule = 3;
   return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(capture_state_updates, capture_state_updates_),
                              WGSL_TEMPLATE_PARAMETER(has_cu_seqlens, has_cu_seqlens_),
                              WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
                              WGSL_TEMPLATE_PARAMETER(initial_state_in_final_state, initial_state_in_final_state_),
@@ -111,6 +117,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(vectorized_value_io, vectorized_value_io_),
                              WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
                              WGSL_TEMPLATE_VARIABLE(beta, *beta),
+                             WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
                              WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens),
                              WGSL_TEMPLATE_VARIABLE(decay, *decay),
                              WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias),
@@ -120,7 +127,15 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(parameters, *parameters),
                              WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(state_update, *state_update),
                              WGSL_TEMPLATE_VARIABLE(value, value));
+}
+
+Status GatedDeltaNetClearProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.element_count")
+                            << "  " << output.SetByOffset("global_idx", "output_element_t(0.0)") << "\n";
+  return Status::OK();
 }
 
 Status GatedDeltaNetPrefillPrepareProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -261,10 +276,16 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
   ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr), "decay input presence must match update_rule");
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr), "beta input presence must match update_rule");
-  ORT_RETURN_IF_NOT(capture_count == nullptr, "WebGPU GatedDeltaNet does not support capture_count");
+  ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
+                    "capture_count must be present exactly when state_update_capacity is positive");
   if (state_update_active != nullptr) {
     ORT_RETURN_IF_NOT(state_update_active->Shape() == TensorShape({1}),
                       "state_update_active must have shape [1]");
+  }
+
+  if (capture_count != nullptr) {
+    ORT_RETURN_IF_NOT(capture_count->Shape().NumDimensions() == 1,
+                      "capture_count must be [batch]");
   }
 
   const auto& q_shape = query->Shape();
@@ -388,8 +409,30 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   output_dims.push_back(dv);
   auto* output = context.Output(0, TensorShape(output_dims));
   auto* final_state = context.Output(1, state_shape);
-  context.Output(2, TensorShape{batch, 0});
+  const uint64_t state_update_width_64 = static_cast<uint64_t>(state_update_capacity_) *
+                                         (static_cast<uint64_t>(hv) +
+                                          static_cast<uint64_t>(hq) * dk +
+                                          static_cast<uint64_t>(hv) * dv);
+  ORT_RETURN_IF_NOT(state_update_width_64 <= kMaxUint32 &&
+                        static_cast<uint64_t>(batch) * state_update_width_64 <= kMaxUint32,
+                    "GatedDeltaNet state_update is too large for WebGPU");
+  const int64_t state_update_width = static_cast<int64_t>(state_update_width_64);
+  auto* state_update = context.Output(2, TensorShape{batch, state_update_width});
   ORT_RETURN_IF_NOT(output != nullptr, "output is required");
+
+  ORT_RETURN_IF(capture_count != nullptr && capture_count->Shape()[0] != batch,
+                "capture_count must be [batch]");
+  const bool capture_state_updates = state_update != nullptr && state_update_capacity_ > 0 &&
+                                     (state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0);
+  if (state_update != nullptr && state_update->Shape().Size() > 0 && !capture_state_updates) {
+    GatedDeltaNetClearProgram clear_program;
+    clear_program.AddOutput({state_update, ProgramTensorMetadataDependency::Type})
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(state_update->Shape().Size()) + WORKGROUP_SIZE - 1) /
+                              WORKGROUP_SIZE)
+        .SetWorkgroupSize(WORKGROUP_SIZE)
+        .AddUniformVariable({onnxruntime::narrow<uint32_t>(state_update->Shape().Size())});
+    ORT_RETURN_IF_ERROR(context.RunProgram(clear_program));
+  }
 
   // A WebGPU storage buffer cannot be bound for both read-only and read-write access in one pass.
   const bool state_alias =
@@ -405,7 +448,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   uint32_t direct_binding_count = source_qkv_binding_count +
                                   binding_count(cu_seqlens) + binding_count(decay) + binding_count(beta) +
                                   binding_count(initial_state) + binding_count(a_log) + binding_count(dt_bias) +
-                                  binding_count(output) + binding_count(final_state);
+                                  binding_count(capture_state_updates ? capture_count : nullptr) +
+                                  binding_count(output) + binding_count(final_state) +
+                                  binding_count(capture_state_updates ? state_update : nullptr);
   if (state_alias) direct_binding_count -= binding_count(initial_state);
   const uint32_t max_storage_buffers = context.DeviceLimits().maxStorageBuffersPerShaderStage;
   const uint32_t qkv_binding_count = source_qkv_binding_count;
@@ -600,6 +645,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       !qwen_gate_ &&
       !qk_l2_norm_ &&
       !state_alias &&
+      !capture_state_updates &&
       !use_packed_params &&
       prefill_plan.has_value() &&
       prefill_dispatch_group_count <= kMaxUint32 &&
@@ -703,7 +749,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const int value_io_components = vectorized_value_io ? onnxruntime::narrow<int>(kValueChannelsPerWorkgroup) : 1;
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                                final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params,
-                               vectorized_value_io};
+                               vectorized_value_io, capture_state_updates};
   if (use_packed_qkv) {
     add_qkv_inputs(program);
   } else {
@@ -718,22 +764,25 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   if (qwen_gate_ && !use_packed_params) program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
                                                            {dt_bias, ProgramTensorMetadataDependency::None}});
   if (use_packed_params) program.AddInput({&*packed_params, ProgramTensorMetadataDependency::None});
+  if (capture_state_updates) program.AddInput({capture_count, ProgramTensorMetadataDependency::None});
   program.AddOutput({output, ProgramTensorMetadataDependency::Type, value_io_components});
   if (final_state != nullptr) {
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
   }
+  if (capture_state_updates) program.AddOutput({state_update, ProgramTensorMetadataDependency::None});
   program
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                  final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_qkv, use_packed_params,
-                 vectorized_value_io, workgroup_size, kValueChannelsPerWorkgroup)
+                 vectorized_value_io, capture_state_updates, workgroup_size, kValueChannelsPerWorkgroup)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},
                             {onnxruntime::narrow<uint32_t>(hv)},
                             {onnxruntime::narrow<uint32_t>(dk)},
                             {onnxruntime::narrow<uint32_t>(dv)},
+                            {onnxruntime::narrow<uint32_t>(state_update_capacity_)},
                             {scale}});
   return context.RunProgram(program);
 }

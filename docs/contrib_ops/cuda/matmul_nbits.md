@@ -6,7 +6,7 @@ chain, the fast / fallback / specialized kernels, the weight format they expect,
 and the environment variables that control routing.
 
 MatMulNBits computes `Y = A · dequant(B)ᵀ (+ bias)` where `B` is an `N × K`
-weight matrix quantized to 4 or 8 bits with block-wise (group) scales and
+weight matrix quantized to 2, 4, or 8 bits with block-wise (group) scales and
 optional zero points. It is the building block for weight-only quantized linear
 layers (including MoE routers and LM heads).
 
@@ -15,6 +15,8 @@ Source files:
 - [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc) — operator, `ComputeInternal`, dispatch chain, dequant+GEMM fallback.
 - [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h) — kernel class, constructor-time configuration, environment-variable parsing.
 - [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh) — `TryMatMulNBits` fast-path entry and bias-add launcher.
+- [onnxruntime/contrib_ops/cuda/quantization/matmul_2bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_2bits.cu) — 2-bit fast GEMV / small-batch dispatch.
+- [onnxruntime/contrib_ops/cuda/quantization/dequantize_blockwise_2bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/dequantize_blockwise_2bits.cu) — generic 2-bit fallback dequantization.
 - [onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu) — 4-bit fast GEMV kernels (generic + router specialization).
 
 ---
@@ -26,7 +28,9 @@ Source files:
 3. [Dispatch Chain](#3-dispatch-chain)
 4. [Fast Path — Fused GEMV](#4-fast-path--fused-gemv)
    - [4.1 Generic 4-bit GEMV kernel](#41-generic-4-bit-gemv-kernel)
-   - [4.2 Router GEMV specialization](#42-router-gemv-specialization)
+  - [4.2 Small-M batched GEMV](#42-small-m-batched-gemv)
+  - [4.3 Router GEMV specialization](#43-router-gemv-specialization)
+  - [4.4 2-bit fused kernels](#44-2-bit-fused-kernels)
 5. [Fallback Path — Dequantize + GEMM](#5-fallback-path--dequantize--gemm)
 6. [fpA_intB_gemm Path (CUTLASS weight-only)](#6-fpa_intb_gemm-path-cutlass-weight-only)
 7. [Bias Handling](#7-bias-handling)
@@ -41,18 +45,18 @@ Source files:
 |-----------|---------|
 | `K` | Input feature dimension (columns of `A`, columns of the logical `B`). |
 | `N` | Output feature dimension (rows of the logical `B`). |
-| `bits` | Quantization bit width: `4` or `8`. |
-| `block_size` | Quantization group size along `K` (16 / 32 / 64 / 128). One scale (and optional zero point) per group. |
+| `bits` | Quantization bit width: `2`, `4`, or `8`. |
+| `block_size` | Power-of-two quantization group size along `K`, at least 16. Fast-path support varies by bit width. One scale (and optional zero point) per group. |
 | `accuracy_level` | Minimum accuracy level for internal handling of `A`; default `0` means unset. |
 | `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). The native SM90 kernel is not compiled on Windows/MSVC builds (CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters — see [moe_qmoe.md §14.1](./moe_qmoe.md)); on those builds the default `0`/`1` layouts run the SM80 compatibility kernel on Hopper instead. |
 
 | Input | Index | Notes |
 |-------|-------|-------|
 | `A` | 0 | Activations, FP16 / BF16 / FP32. Shape `[M, K]`. |
-| `B` | 1 | Packed 4/8-bit weights. |
+| `B` | 1 | Packed 2/4/8-bit weights. |
 | `scales` | 2 | Per-group scales, same element type as `A`. |
 | `zero_points` | 3 | Optional. Packed integer (symmetric default) **or** same type as `A`. |
-| `g_idx` / `reorder_idx` | 4 | Optional group/reorder index (act-order). |
+| `g_idx` / `reorder_idx` | 4 | Optional group/reorder index (act-order). Not supported for 2-bit CUDA weights. |
 | `bias` | 5 | Optional `[N]` bias added to the output. |
 
 `M` is the (flattened) token count: `M = 1` is the decode / GEMV case that the
@@ -62,16 +66,23 @@ fast kernels target.
 
 ## 2. Weight Format
 
-For 4-bit, `B` is stored as `[N, ceil(K / block_size), block_size / 2]` bytes:
-each expert/output row `n` is a contiguous run of `K/2` bytes (two 4-bit weights
-per byte), preceded conceptually by `K / block_size` scales in the `scales`
-tensor. Quantization is **column-wise block** by default
+For `bits=b`, `B` is stored as
+`[N, ceil(K / block_size), block_size / (8 / b)]` bytes: each expert/output row
+`n` is a contiguous packed run with `8 / b` weights per byte, preceded
+conceptually by `K / block_size` scales in the `scales` tensor. Quantization is
+**column-wise block** by default
 (`column_wise_quant_blk_ = true`); row-wise layouts interleave `K` blocks across
 `N` and cannot be sliced along `N` (this disables the chunked fallback).
 
 Symmetric 4-bit weights store values `0..15` that dequantize to `(q − 8) ·
 scale`; the fast kernels hard-code the zero point of `8` when no `zero_points`
 input is present.
+
+For 2-bit weights, four codes are packed into each byte, low two-bit code first.
+Packed zero points use the same four-per-byte layout and default to `2` when the
+input is absent. The CUDA implementation supports power-of-two block sizes from
+16 through 256; fused kernels accept block sizes that divide their 512-element
+warp iteration. `g_idx` is rejected for 2-bit weights.
 
 ### 2.1 CUDA fpA_intB prepacked layout
 
@@ -117,7 +128,7 @@ falls through to progressively more general ones:
 
 ```mermaid
 flowchart TD
-  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 32/64/128, sm>=75}
+  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 32/64/128, FP16 sm>=75 / BF16 sm>=80}
   F -- yes --> FP[fpA_intB CUDA GEMV<br/>or CUTLASS grouped GEMM] --> R[return]
   F -- no --> G{reorder_idx == null<br/>and zero_points not typed-T?}
   G -- no --> DQ
@@ -126,7 +137,7 @@ flowchart TD
   T1 -- fail due to bias --> T2[TryMatMulNBits without bias]
   T2 -- success --> BIAS[MatMulNBitsBiasAdd] --> R
   T2 -- fail --> DQ
-  DQ[Dequantize blockwise 4b/8b] --> GEMM[cuBLAS GEMM<br/>full-N or chunked along N]
+  DQ[Dequantize blockwise 2b/4b/8b] --> GEMM[cuBLAS GEMM<br/>full-N or chunked along N]
   GEMM --> BIAS2[optional bias add] --> R
 ```
 
@@ -142,6 +153,7 @@ dispatches by bit width:
 
 - `bits == 8` → `TryMatMul8Bits` (no bias support; returns `false` if bias set).
 - `bits == 4` → `TryMatMul4Bits`.
+- `bits == 2` → `TryMatMul2Bits` (`1 <= M <= 8`; no fused bias support; larger `M` or bias falls through to §5).
 
 `TryMatMul4Bits` ([matmul_4bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu))
 first applies a guard common to all fused kernels:
@@ -214,6 +226,15 @@ Design notes:
 To add another router, extend `IsSupportedRouterGemvShape` with its `(N, K)`;
 no kernel change is required as long as `N % 8 == 0` and `K % block_size == 0`.
 
+### 4.4 2-bit fused kernels
+
+The 2-bit fast path handles `1 <= M <= 8`, `N % 8 == 0`, and `K % 16 == 0`.
+Each thread loads one aligned 32-bit word containing 16 codes. The M=1 kernel
+uses one warp per output column; M=2 through 8 use register-tiled batched
+kernels. The block size must be at least 16 and divide both `K` and the
+512-element warp iteration. FP16 half2 kernels require SM53 or newer; older
+devices decline the fused path and use generic dequantization plus cuBLAS.
+
 ---
 
 ## 5. Fallback Path — Dequantize + GEMM
@@ -222,8 +243,9 @@ When neither the fpA_intB path nor the fused GEMV applies (e.g. `M > 1`,
 `reorder_idx` present, typed zero points, or an unsupported shape), the operator
 dequantizes `B` into a scratch buffer and runs a dense cuBLAS GEMM:
 
-- `DequantizeBlockwise4b` / `DequantizeBlockwise8b` (or the column-wise helper)
-  expands packed weights to `T` into a `N × K_padded` scratch buffer, where
+- `DequantizeNBits` dispatches the column-wise 2/4/8-bit implementations; the
+  row-wise fallback uses `DequantizeBlockwise4b` / `DequantizeBlockwise8b`. These
+  expand packed weights to `T` into a `N × K_padded` scratch buffer, where
   `K_padded = ceil(K / block_size) · block_size`.
 - A single cuBLAS `GEMM` (`transb = true`) then produces `Y`.
 
@@ -246,16 +268,145 @@ tile saturates the SMs while keeping scratch ≲128 MB.
 for CUDA builds. Its default kernel set is intentionally compact, excludes the
 native Hopper kernel, and covers the SM80-layout RC model contract:
 
-- FP16 activations and INT4 or INT8 weights,
-- scale-only quantization with `block_size=32` and no zero-points, bias, or
-  `g_idx`,
-- `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`, and `sm_ >= 75`,
+- FP16 or BF16 activations and INT2, INT4 or INT8 weights,
+- scale-only quantization with no zero-points, bias, or `g_idx`, at
+  `block_size=32` for 4/8-bit and `block_size=64` for 2-bit (2-bit has no valid
+  `block_size=32`; see §6.1),
+- `N % (bits==8 ? 32 : bits==4 ? 64 : 128) == 0`, `K % block_size == 0`, and
+  `sm_ >= 75` for FP16 or `sm_ >= 80` for BF16,
 - unpacked weights or `weight_prepacked=1` (the SM80 layout).
 
 Set `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON` to build the legacy full kernel
-matrix. Full mode additionally supports BF16, block sizes 64 and 128,
-zero-points, bias, and the native SM90 layout (`weight_prepacked=2`). The
-native SM90 kernel supports only `block_size ∈ {64, 128}`; see §2.1.
+matrix. Full mode additionally supports `block_size=128`, `block_size=64` for
+4/8-bit, zero-points, bias, and the native SM90 layout
+(`weight_prepacked=2`). The native SM90 kernel supports only
+`block_size ∈ {64, 128}`; see §2.1.
+
+### 6.1 2-bit weights
+
+`bits=2` reuses the SM80 column-interleaved weight layout. The compact set
+carries the FP16/BF16 scale-only variants at `block_size=64`; `block_size=128`
+and zero-points need `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON`. Relative to 4-bit
+the eligibility rules add two constraints:
+
+- `N` must be a multiple of **128** rather than 64, because the 2-bit layout
+  interleaves 8 columns per 128-byte cache line instead of 4.
+- `block_size` must be **64 or 128**. At 2 bits a single `ldmatrix.x4` fills a
+  warp's whole B fragment for a complete 64-element K tile, and the fused GEMV
+  likewise applies one scale to each thread's 64-element run, so a 32-element
+  quantization group has no valid kernel.
+
+There is **no native SM90 (Hopper) 2-bit kernel**. `weight_prepacked=2` is
+rejected for `bits=2`, and on an SM90 device 2-bit weights run the SM80
+compatibility kernel. A native Hopper layout for 2-bit is future work.
+
+The layout parameters follow the same formulas as the other widths, evaluated at
+`sizeof_bits<ElementB> = 2`:
+
+| | 8-bit | 4-bit | 2-bit |
+|---|---|---|---|
+| `ThreadblockK` (fp16 activations) | 64 | 64 | 64 |
+| `ColumnsInterleaved` / `kInterleave` | 2 | 4 | 8 |
+| LDSM row-permutation tile (`kPerm_W*`) | 16 | 32 | 64 |
+| `kWarpGemmIterationsForB` (B smem loads per K tile) | 4 | 2 | 1 |
+| GEMV `kStepK` | 16 | 32 | 64 |
+| GEMV `CtaN` (no zero-points) | 8 | 8 | 4 |
+| Required `N` alignment | 32 | 64 | 128 |
+| Supported `block_size` | 32/64/128 | 32/64/128 | 64/128 |
+
+`CtaN` is halved for 2-bit so that the per-block register tile of dequantized
+weights (`CtaN * kStepK` halves) and the number of columns a block covers
+(`CtaN * kInterleave = 32`) both stay at the values the 4-bit kernel was tuned
+for.
+
+`kWarpGemmIterationsForB == 1` is what makes 2-bit the first width to exercise an
+odd B-load count per K tile. The dequantizing mainloops
+(`cutlass_extensions/gemm/threadblock/dq_mma_{multistage,pipelined}_{finegrained,percol}.h`)
+index the two-deep B register pipeline with the *within-tile* load index, which is
+only a valid cursor when that count is even. They now rotate the two buffers
+(`warp_frag_B[0] = warp_frag_B[1]`) after the last k-iteration when the count is
+odd, keeping both indices compile-time constants. A running read cursor also
+fixes the correctness bug but is not loop-invariant across the mainloop, so
+`warp_frag_B` becomes dynamically indexed and ptxas gives it a 64-byte per-thread
+stack frame; that cost 4-7% at `M >= 128`. The generated code is unchanged for 4-
+and 8-bit (verified by diffing PTX against the pre-2-bit baseline).
+
+The offline weight transform gains a `QuantType::W2_A16` that mirrors the 4-bit
+pipeline: row-permute, sub-byte transpose, 8-column interleave, then a
+`[e0,e2,...,e14,e1,e3,...,e15]` pair-interleave with the codes re-centred on the
+symmetric zero point 2. `FastInterleavedAndBiasedNumericArrayConverter<T,
+uint2b_t, N>` inverts exactly that pair-interleave, which is why its output
+comes back in logical order.
+
+#### The row-permutation map is forced, not tuned
+
+`kPerm_W2_A16` follows the same closed form as the existing 8- and 4-bit maps.
+With `tile = 8 * kInterleave` and `i = (tile/4)*q + r`:
+
+```
+perm[i] = 2q + 8*(r >> 1) + (r & 1)
+```
+
+which reproduces `kPerm_W8_A16` at `kInterleave = 2` and `kPerm_W4_A16` at
+`kInterleave = 4`, and gives the 64-entry 2-bit map at `kInterleave = 8`.
+
+This map is a **correctness requirement, not a bank-conflict optimization**, and
+it has no free parameters:
+
+- `ldmatrix` always moves 16-bit elements, so one of its element slots carries
+  `16/bits` weights (`= kInterleave`). The permutation is what puts the weight a
+  thread needs into the slot `ldmatrix` will hand that thread; it composes with
+  the fixed `ldmatrix` pattern and the fixed converter shuffle to the identity.
+- Measured on H200 with `ncu`: the 2-bit `CtaShape128x128x64` kernel executes
+  **0 shared-memory bank conflicts** on both loads and stores
+  (`l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_{ld,st}.sum = 0`, over 832
+  load and 128 store wavefronts); 4-bit is also 0. Bank-conflict avoidance is
+  already handled by the swizzled smem layout
+  (`layout::ColumnMajorTensorOpMultiplicandCrosswise<2, 64>`), which is a
+  separate mechanism from this map.
+- Perturbing the map fails `MatMulNBitsFpAIntBLayout.Int2WeightsRoundTripExactly`
+  immediately: swapping the two entries *within* one pair, or swapping two whole
+  pairs, both produce wrong results. Every position is pinned.
+
+So there is no A/B test to run on the map itself. Any bank-conflict work would
+have to change the shared-memory layout and the permutation together.
+
+`MatMulNBitsFpAIntBLayout` in
+[onnxruntime/test/contrib_ops/matmul_nbits_fpa_intb_layout_test.cc](../../../onnxruntime/test/contrib_ops/matmul_nbits_fpa_intb_layout_test.cc)
+pins this layout down: it runs the op with `A = I` so the output *is* the
+dequantized weight matrix, and compares it exactly.
+
+#### Measured behaviour (H200, FP16, `block_size=128`)
+
+Latencies in microseconds for the bonsai2-27B 2-bit shapes, from the benchmark
+table printed by `Fp16Int2GroupwiseTest`:
+
+| shape | `M` | fpA_intB GEMV | fpA_intB GEMM | fused 2-bit GEMV (§4) | dequant + cuBLAS (§5) |
+|---|---|---|---|---|---|
+| `N=17408, K=5120` | 1 | **15.03** | 40.17 | 21.79 | 138.55 |
+| `N=5120, K=6144` | 1 | **7.75** | 24.67 | 9.93 | 54.19 |
+| `N=1024, K=5120` | 1 | **5.41** | 18.25 | 5.67 | 16.19 |
+| `N=17408, K=5120` | 512 | n/a | 446.8 | n/a | **204.4** |
+| `N=17408, K=5120` | 2048 | n/a | 1703 | n/a | **556.2** |
+
+So the 2-bit fpA_intB path is a **decode** optimization: the fused GEMV is the
+fastest option at every production shape for `M <= 8` (1.05-1.45x over the
+hand-written 2-bit GEMV and 2.9-9.2x over dequant+cuBLAS), and the tactic
+profiler switches to the CUTLASS GEMM at around `M = 14`.
+
+Above roughly `M = 128` the 2-bit CUTLASS GEMM is **slower than dequant+cuBLAS**
+(2.2x at `M=512`, 3.1x at `M=2048`). This is specific to 2 bits, not to the
+weight-only path: under the same harness the 4-bit GEMM is 1.3x *faster* than
+dequant+cuBLAS at `M=512`. The warp B fragment is fixed at 32 bytes per thread by
+`ldmatrix.x4`, so at 2 bits it decodes to 128 halves where 4 bits decodes to 64,
+and one B load feeds 4 MMA k-steps instead of 2.
+
+Converting that fragment one k-step at a time — so only 32 halves are live rather
+than 128 — was implemented and measured, and it is a **loss**: 9-15% slower than
+the shipped kernel across every production shape at `M >= 128`. It saves 6
+registers (226 -> 220), but occupancy is 1 CTA/SM either way, so the saving buys
+nothing while the strided gather that rebuilds each k-step's converter word is
+pure added ALU. Do not retry it without first changing what limits occupancy.
 
 When enabled via `ORT_FPA_INTB_GEMM`, eligible MatMulNBits nodes use the
 TensorRT-LLM-derived CUTLASS weight-only kernels. Weight and scale inputs (and
@@ -279,9 +430,9 @@ Prepacked weights are intentionally strict:
   flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
   var) is ignored for prepacked weights — the layout choice was fixed at export
   time and cannot be turned off at run time.
-- Nonzero `weight_prepacked` requires FP16 input `A` in the default compact
-  build, or FP16/BF16 in a full build, because only the CUDA fpA_intB path
-  consumes this layout.
+- Nonzero `weight_prepacked` requires FP16 or BF16 input `A` in the default
+  compact build or a full build, because only the CUDA fpA_intB path consumes
+  this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
   the SM80 layout, `2` is the native SM90 (Hopper) layout. `2` additionally
   requires a compute-capability 9.0 device and `block_size ∈ {64, 128}` and is
@@ -292,7 +443,7 @@ Prepacked weights are intentionally strict:
 ## 7. Bias Handling
 
 Only the router specialization (§4.3) fuses bias inside the GEMV. For every other
-fast-path shape, `TryMatMul4Bits` / `TryMatMul8Bits` return `false` when bias is
+fast-path shape, `TryMatMul2Bits` / `TryMatMul4Bits` / `TryMatMul8Bits` return `false` when bias is
 present. `ComputeInternal` then:
 
 1. Retries `TryMatMulNBits` with `bias = nullptr`; on success it adds the bias
@@ -342,6 +493,10 @@ present. `ComputeInternal` then:
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in
   [onnxruntime/test/contrib_ops/matmul_4bits_test.cc](../../../onnxruntime/test/contrib_ops/matmul_4bits_test.cc).
+- CUDA 2-bit fused, fallback, chunked, and validation coverage lives in
+  [onnxruntime/test/contrib_ops/matmul_2bits_test.cc](../../../onnxruntime/test/contrib_ops/matmul_2bits_test.cc).
+  Run it from `onnxruntime_provider_test` with
+  `--gtest_filter=MatMul2BitsCuda.*`.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
 - To compare the router specialization against the generic path, run the same

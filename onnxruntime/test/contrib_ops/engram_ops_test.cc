@@ -147,6 +147,77 @@ void RunEngramGateTest(float tolerance) {
   RunOnSupportedProviders<T>(test);
 }
 
+// Verifies gated_value_normed: RMSNorm is applied independently to each hyper-connection branch
+// (each hidden_size-sized slice), not over the concatenated hc_mult * hidden_size dimension.
+template <typename T>
+void RunEngramGateNormedTest(float tolerance, bool packed = false) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t hc_mult = 2;
+  constexpr int64_t hidden_size = 2;
+  const std::vector<float> key{0.5f, 1.0f, -0.25f, 0.75f};
+  const std::vector<float> query{3.0f, 4.0f, -1.0f, 2.0f};
+  const std::vector<float> value{2.0f, -1.5f};
+  const std::vector<float> key_scale{1.0f, 1.0f, 1.5f, 0.5f};
+  const std::vector<float> query_scale{1.0f, 1.0f, 1.0f, 2.0f};
+  const std::vector<float> conv_scale{1.0f, 2.0f, 0.5f, 1.0f};
+
+  std::vector<float> gated_value(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      key_sum_sq += key[static_cast<size_t>(g * hidden_size + c)] * key[static_cast<size_t>(g * hidden_size + c)];
+      query_sum_sq +=
+          query[static_cast<size_t>(g * hidden_size + c)] * query[static_cast<size_t>(g * hidden_size + c)];
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      dot += key[i] * key_inv * key_scale[i] * query[i] * query_inv * query_scale[i];
+    }
+    dot /= std::sqrt(static_cast<float>(hidden_size));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      gated_value[static_cast<size_t>(g * hidden_size + c)] = gate * value[static_cast<size_t>(c)];
+    }
+  }
+
+  const std::vector<T> rounded_gated_value = ToTensorType<T>(gated_value);
+  std::vector<float> expected_normed(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const float gated = static_cast<float>(rounded_gated_value[static_cast<size_t>(g * hidden_size + c)]);
+      sum_sq += gated * gated;
+    }
+    const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      expected_normed[i] = static_cast<float>(rounded_gated_value[i]) * inv_rms * conv_scale[i];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{1, hc_mult, hidden_size}
+                                                 : std::vector<int64_t>{1, 1, hc_mult, hidden_size};
+  const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{1, hidden_size}
+                                                   : std::vector<int64_t>{1, 1, hidden_size};
+  test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
+  test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
+  test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(query_scale));
+  test.AddInput<T>("conv_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(conv_scale));
+  test.AddOutput<T>("output", key_shape, ToTensorType<T>(gated_value), false, tolerance, tolerance);
+  test.AddOutput<T>("gated_value_normed", key_shape, ToTensorType<T>(expected_normed), false, tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
 // Exercises hc_mult > 1 and non-unit norm scales for an arbitrary hidden_size. hidden_size == 4
 // selects the WebGPU vec4 component path through the gate reduction and the broadcast pass, and
 // hc_mult > 1 makes a per-row rather than per-token scale lookup observable.
@@ -155,7 +226,7 @@ void RunEngramGateTest(float tolerance) {
 // 64 over hidden_size / components), so only a hidden_size above those strides takes a second
 // iteration and actually accumulates into the per-thread partials.
 template <typename T>
-void RunEngramGateVectorizedTest(float tolerance, int64_t hidden) {
+void RunEngramGateVectorizedTest(float tolerance, int64_t hidden, bool packed = false) {
   if (!IsTypeSupported<T>()) {
     GTEST_SKIP() << "No execution provider available for this type";
   }
@@ -201,13 +272,16 @@ void RunEngramGateVectorizedTest(float tolerance, int64_t hidden) {
 
   OpTester test("EngramGate", 1, kMSDomain);
   test.AddAttribute<float>("epsilon", kEpsilon);
-  test.AddInput<T>("key", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(key));
-  test.AddInput<T>("query", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(query));
-  test.AddInput<T>("value", {kBatch, kSequence, hidden}, ToTensorType<T>(value));
+  const std::vector<int64_t> key_shape = packed ? std::vector<int64_t>{kBatch * kSequence, kHcMult, hidden}
+                                                 : std::vector<int64_t>{kBatch, kSequence, kHcMult, hidden};
+  const std::vector<int64_t> value_shape = packed ? std::vector<int64_t>{kBatch * kSequence, hidden}
+                                                   : std::vector<int64_t>{kBatch, kSequence, hidden};
+  test.AddInput<T>("key", key_shape, ToTensorType<T>(key));
+  test.AddInput<T>("query", key_shape, ToTensorType<T>(query));
+  test.AddInput<T>("value", value_shape, ToTensorType<T>(value));
   test.AddInput<T>("key_norm_scale", {kHcMult, hidden}, ToTensorType<T>(key_scale));
   test.AddInput<T>("query_norm_scale", {kHcMult, hidden}, ToTensorType<T>(query_scale));
-  test.AddOutput<T>("output", {kBatch, kSequence, kHcMult, hidden}, ToTensorType<T>(expected), false, tolerance,
-                    tolerance);
+  test.AddOutput<T>("output", key_shape, ToTensorType<T>(expected), false, tolerance, tolerance);
   RunOnSupportedProviders<T>(test);
 }
 
@@ -1266,6 +1340,14 @@ TEST(EngramOpsTest, EngramGateVectorizedFloat16) {
   RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4);
 }
 
+TEST(EngramOpsTest, EngramGatePackedFloat) {
+  RunEngramGateVectorizedTest<float>(1e-4f, 4, true);
+}
+
+TEST(EngramOpsTest, EngramGatePackedFloat16) {
+  RunEngramGateVectorizedTest<MLFloat16>(3e-3f, 4, true);
+}
+
 // 260 channels is the smallest multiple of 4 above both accumulation strides (CUDA's blockDim.x of
 // 256 and, with components == 4, the WGSL workgroup size of 64 over hidden_size / 4 == 65), so this
 // is the only case where either strided reduction loop runs more than once per thread.
@@ -1279,6 +1361,22 @@ TEST(EngramOpsTest, EngramGateMultiIterationReductionFloat16) {
 
 TEST(EngramOpsTest, EngramGateBFloat16) {
   RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat16) {
+  RunEngramGateNormedTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGatePackedNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f, true);
+}
+
+TEST(EngramOpsTest, EngramGateNormedBFloat16) {
+  RunEngramGateNormedTest<BFloat16>(2e-2f);
 }
 
 // A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make

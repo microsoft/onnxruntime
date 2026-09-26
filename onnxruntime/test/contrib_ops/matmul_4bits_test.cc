@@ -89,6 +89,8 @@ struct TestOptions {
   int64_t accuracy_level{0};
 
   bool disable_cpu_ep_fallback{false};
+  bool force_fp32{false};
+  bool use_lut_gemm{false};
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
@@ -296,18 +298,29 @@ void RunTest(const TestOptions& opts,
   if (opts.prepack_sharing_mode.has_value()) {
     // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
     // in two sessions and validates the sharing counters.
-    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals);
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals,
+                                opts.force_fp32);
     return;
   }
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  } else if (opts.force_fp32 || opts.use_lut_gemm) {
+    test.ConfigEp(DefaultCpuExecutionProvider());
   }
 
-  if (opts.disable_cpu_ep_fallback) {
+  if (opts.disable_cpu_ep_fallback || opts.force_fp32 || opts.use_lut_gemm) {
     SessionOptions session_options;
     session_options.use_per_session_threads = false;
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    if (opts.disable_cpu_ep_fallback) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    }
+    if (opts.force_fp32) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32, "1"));
+    }
+    if (opts.use_lut_gemm) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+    }
     test.Config(session_options);
   }
 
@@ -476,6 +489,53 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.N = 256;
+  opts.K = 256;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  for (bool use_lut_gemm : {false, true}) {
+    SCOPED_TRACE(MakeString("use_lut_gemm=", use_lut_gemm));
+    opts.use_lut_gemm = use_lut_gemm;
+    opts.batch_count = 1;
+    opts.M = 1;
+    RunTest<float>(opts);
+    opts.batch_count = 4;
+    opts.M = 64;
+    RunTest<float>(opts);
+  }
+#endif
+}
+
+TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32DynamicMetadata) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  TestOptions opts{};
+  opts.M = 256;
+  opts.N = 64;
+  opts.K = 64;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+
+  opts.scales_are_initializers = false;
+  RunTest<float>(opts);
+
+  opts.scales_are_initializers = true;
+  opts.has_zero_point = true;
+  opts.zero_points_are_initializers = false;
+  RunTest<float>(opts);
+#endif
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -737,6 +797,20 @@ TEST(MatMulNBits, SharedPrepackedWeights_DynamicScales_SymmetricCompInt8) {
   RunTest<float>(opts);
 }
 
+TEST(MatMulNBits, SharedPrepackedWeights_ForceFp32) {
+#if !defined(MLAS_TARGET_AMD64_IX86)
+  GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
+#else
+  auto opts = MakeSharingTestOptions(64, 64, /*block_size*/ 32, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ true,
+                                     PrepackSharingMode::kAddInitializer);
+  opts.M = 256;
+  opts.force_fp32 = true;
+  opts.output_abs_error = 0.02f;
+  RunTest<float>(opts);
+#endif
+}
+
 // Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
 // generated without them.
 TEST(MatMulNBits, DynamicZeroPoints_AsymmetricCompInt8) {
@@ -785,6 +859,81 @@ TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
                                             /*has_zero_point*/ false, /*has_bias*/ false,
                                             PrepackSharingMode::kNoSharing));
 }
+
+struct MatMulNBitsLutOptions {
+  int64_t bits;
+  int64_t block_size;
+  int64_t accuracy_level;
+};
+
+class MatMulNBitsLutOptionsTest : public testing::TestWithParam<MatMulNBitsLutOptions> {};
+
+TEST_P(MatMulNBitsLutOptionsTest, ForceFp32Eligibility) {
+  constexpr int64_t rows = 1;
+  constexpr int64_t columns = 128;
+  constexpr int64_t depth = 128;
+  const auto& configuration = GetParam();
+  if (!MlasIsLutGemmAvailable(columns, depth, configuration.bits, configuration.block_size)) {
+    GTEST_SKIP() << "LUT GEMM implementation is not available for this configuration.";
+  }
+  const int64_t blocks = depth / configuration.block_size;
+  const int64_t blob_size = configuration.block_size * configuration.bits / 8;
+  const std::unordered_map<std::string, int> domain_to_version{{"", 21}, {kMSDomain, 1}};
+  Model model("matmul_nbits_force_fp32_lut", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeArg* input = builder.MakeInput<float>({rows, depth}, std::vector<float>(rows * depth, 1.0f));
+  NodeArg* weight = builder.MakeInitializer<uint8_t>(
+      {columns, blocks, blob_size},
+      std::vector<uint8_t>(columns * blocks * blob_size, configuration.bits == 2 ? 0x55 : 0x11));
+  NodeArg* scales = builder.MakeInitializer<float>({columns, blocks}, std::vector<float>(columns * blocks, 0.25f));
+  NodeArg* zero_points = builder.MakeInitializer<float>({columns, blocks}, std::vector<float>(columns * blocks, 1.5f));
+  NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{rows, columns});
+  Node& node = builder.AddNode("MatMulNBits", {input, weight, scales, zero_points}, {output}, kMSDomain);
+  node.AddAttribute("K", depth);
+  node.AddAttribute("N", columns);
+  node.AddAttribute("bits", configuration.bits);
+  node.AddAttribute("block_size", configuration.block_size);
+  node.AddAttribute("accuracy_level", configuration.accuracy_level);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  for (bool force_fp32 : {false, true}) {
+    SCOPED_TRACE(MakeString("force_fp32=", force_fp32));
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasQNBitForceFp32,
+                                                                   force_fp32 ? "1" : "0"));
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    bool eligible = false;
+#if defined(MLAS_TARGET_AMD64_IX86)
+    eligible = configuration.bits == 4 && configuration.block_size == 32 && configuration.accuracy_level == 4 &&
+               MlasIsQNBitGemmAvailable(4, 32, SQNBIT_CompFp32);
+#endif
+    const size_t expected_prepacks = force_fp32 && eligible ? 0 : 1;
+    EXPECT_EQ(session.GetSessionState().GetNumberOfPrepacksCounter(), expected_prepacks)
+        << "Only LUT GEMM can prepack B with float zero points.";
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+    ASSERT_EQ(fetches.size(), size_t{1});
+    for (float value : fetches[0].Get<Tensor>().DataAsSpan<float>()) {
+      EXPECT_NEAR(value, -16.0f, 0.02f);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(MatMulNBits, MatMulNBitsLutOptionsTest,
+                         testing::Values(MatMulNBitsLutOptions{2, 32, 4},
+                                         MatMulNBitsLutOptions{4, 64, 4},
+                                         MatMulNBitsLutOptions{4, 32, 0},
+                                         MatMulNBitsLutOptions{4, 32, 4}));
 
 // Covers multiple concurrent PrePack calls, including two nodes sharing an initializer while a
 // third consumes a distinct initializer. Outputs and prepack counts must match the sequential path.
