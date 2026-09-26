@@ -134,9 +134,9 @@ if (strcmp(name, "Cuda") == 0) {
 }
 
 // Target: wrap in CudaArenaAllocator, following the example plugin pattern.
-// NOTE: The factory must maintain a separate arena per device_id, since each GPU
-// has its own memory space. The factory already has a device_cache_ mapping
-// HardwareDeviceKey → DeviceCacheEntry; the arena is stored there. Because
+// NOTE: The factory maintains a collection of independently owned device arenas
+// per device_id. The factory already has a device_cache_ mapping
+// HardwareDeviceKey → DeviceCacheEntry; the arenas are stored there. Because
 // CreateAllocatorImpl only knows the CUDA ordinal (from OrtMemoryInfoGetId),
 // the factory must also maintain an efficient ordinal → DeviceCacheEntry mapping
 // (e.g., a std::unordered_map<int, HardwareDeviceKey> built during
@@ -147,19 +147,18 @@ if (strcmp(name, "Cuda") == 0) {
 
   if (/* use_cuda_mempool option */) {
     // CudaMempoolArena path — see Section 4
-  } else if (!entry.device_arena) {
-    // Arena path — first call for this device:
+  } else {
     AllocatorUniquePtr raw_allocator(
         new CudaDeviceAllocator(memory_info, req_device_id),
         [](OrtAllocator* p) { delete static_cast<CudaDeviceAllocator*>(p); });
-    entry.device_arena_using_defaults = (allocator_options == nullptr);
+    std::unique_ptr<CudaArenaAllocator> arena;
     CudaArenaAllocator::Create(CudaAllocatorKind::kDevice, memory_info,
                                std::move(raw_allocator), allocator_options,
                                factory.ort_api_, factory.default_logger_,
-                               entry.device_arena);
+                               arena);
+    entry.device_arenas.push_back(DeviceArena{std::move(arena)});
+    *allocator = entry.device_arenas.back().allocator.get();
   }
-  ++entry.num_device_arena_users;
-  *allocator = entry.device_arena.get();
 }
 
 if (strcmp(name, "CudaPinned") == 0) {
@@ -232,7 +231,7 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
 };
 ```
 
-**Why this works.** `CudaAllocatorBase` is intentionally defined as a standard-layout type with the `OrtAllocator` base subobject at offset 0; it only adds plain data members (`kind_`, `memory_info_`) after the `OrtAllocator` C struct layout. Under this constraint, `OrtAllocator*` and `CudaAllocatorBase*` (and further-derived pointers) all share the same address. In production code this should be enforced with `static_assert(std::is_standard_layout_v<CudaAllocatorBase>)`, and pointer comparisons should use `static_cast<OrtAllocator*>(entry.device_arena.get())` rather than relying on implicit same-address assumptions. This means:
+**Why this works.** `CudaAllocatorBase` is intentionally defined as a standard-layout type with the `OrtAllocator` base subobject at offset 0; it only adds plain data members (`kind_`, `memory_info_`) after the `OrtAllocator` C struct layout. Under this constraint, `OrtAllocator*` and `CudaAllocatorBase*` (and further-derived pointers) all share the same address. In production code this should be enforced with `static_assert(std::is_standard_layout_v<CudaAllocatorBase>)`, and pointer comparisons should use `static_cast<OrtAllocator*>(arena.allocator.get())` rather than relying on implicit same-address assumptions. This means:
 
 - **`ReleaseAllocatorImpl`** can safely `static_cast<CudaAllocatorBase*>(allocator)` on arena pointers — `GetKind()` returns `kDevice` or `kPinned` correctly.
 - **`AllocOnStream`** is set to `nullptr` for pinned arenas at construction time; ORT's `AllocateBufferWithOptions` falls through to plain `Alloc()` when `AllocOnStream` is null.
@@ -270,9 +269,11 @@ OrtAllocator (C struct)
        └─ CudaMempoolOrtAllocator (CUDA native mempool — see Section 4.4)
 ```
 
-### 3.3 Shared Arena Lifecycle and Reference Counting
+### 3.3 Device Arena Lifecycle
 
-**Multi-GPU consideration.** A system may have multiple CUDA devices. Each GPU has its own device memory, so each needs its own arena. The CUDA plugin factory already maintains a per-device cache (`device_cache_`) mapping `HardwareDeviceKey → DeviceCacheEntry` that stores `OrtMemoryInfo` instances per GPU. The arena pointers and ref counts are added to this existing cache structure.
+> **Update:** the device BFC arena is no longer shared. Each `CreateAllocator` call for device memory creates its own arena, stored in `DeviceCacheEntry::device_arenas` and destroyed by the matching `ReleaseAllocator`. A shared device arena let one session reuse chunks that another session's captured CUDA graph still reads and writes, which corrupted graph replay. The pinned arena and CUDA mempool allocator keep the reference-counted sharing described below.
+
+**Multi-GPU consideration.** A system may have multiple CUDA devices. The CUDA plugin factory maintains a per-device cache (`device_cache_`) mapping `HardwareDeviceKey → DeviceCacheEntry` that stores `OrtMemoryInfo` instances and the allocators created for each GPU.
 
 **Per-device key correctness.** `HardwareDeviceKey` is `{type, vendor_id, device_id, cuda_ordinal}`. The `device_id` field is the PCI Device ID — it identifies the hardware *model* (e.g. 0x2684 for all RTX 4090s), **not** an individual physical device. On a host with two identical GPUs, `{type, vendor_id, device_id}` alone would produce the same key for both, causing them to share a single `DeviceCacheEntry` and a single arena — allocating memory on only one GPU. Including `cuda_ordinal` (assigned sequentially by the factory during `GetSupportedDevicesImpl`) ensures each physical GPU gets its own cache entry, arena, and `OrtMemoryInfo`.
 
@@ -283,21 +284,17 @@ struct DeviceCacheEntry {
   Ort::MemoryInfo device_memory_info{nullptr};      // GPU device memory
   Ort::MemoryInfo pinned_memory_info{nullptr};      // CPU pinned memory for this GPU
 
-  // Arena members (new):
+  // Arena members:
   std::mutex arena_mutex;
-  std::unique_ptr<CudaArenaAllocator> device_arena;
+  std::vector<DeviceArena> device_arenas;
   std::unique_ptr<CudaArenaAllocator> pinned_arena;
-  std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;  // alternative to device_arena (Section 4)
-  int num_device_arena_users = 0;
+  std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
   int num_pinned_arena_users = 0;
   int num_mempool_users = 0;
-  bool device_arena_using_defaults = true;
 };
 ```
 
-The factory's `device_cache_` is populated during `GetSupportedDevicesImpl` (one entry per GPU discovered). `CreateAllocatorImpl` extracts the `device_id` from the incoming `OrtMemoryInfo`, locates the corresponding `DeviceCacheEntry`, and creates/returns the arena for that device. Each GPU gets independent arena instances with independent lifecycle.
-
-`CreateAllocatorImpl` creates the arena on first call for a given device and increments its ref count. `ReleaseAllocatorImpl` decrements; when zero, the arena is destroyed:
+The factory's `device_cache_` is populated during `GetSupportedDevicesImpl` (one entry per GPU discovered). For device memory, every `CreateAllocatorImpl` call creates a new arena and appends it to `device_arenas`. `ReleaseAllocatorImpl` erases the matching arena by pointer identity. The pinned arena and CUDA mempool remain shared and reference counted:
 
 ```cpp
 // cuda_ep_factory.cc — ReleaseAllocatorImpl:
@@ -307,11 +304,14 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   if (!allocator) return;
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
 
-  // Check if allocator is a shared arena or mempool (pointer identity match).
+  // Match plugin-owned allocators by pointer identity.
   for (auto& [key, entry] : factory->device_cache_) {
     std::lock_guard<std::mutex> lock{entry.arena_mutex};
-    if (allocator == entry.device_arena.get()) {
-      if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
+    auto device_arena = std::find_if(
+        entry.device_arenas.begin(), entry.device_arenas.end(),
+        [allocator](const DeviceArena& arena) { return arena.allocator.get() == allocator; });
+    if (device_arena != entry.device_arenas.end()) {
+      entry.device_arenas.erase(device_arena);
       return;
     }
     if (allocator == entry.pinned_arena.get()) {
@@ -346,32 +346,27 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
 ```
 
 This handles:
-- **Shared allocators** — `RegisterExecutionProviderLibrary` iterates over each `OrtEpDevice` and calls `CreateAllocator` for each device's memory infos. Each device gets its own shared arena.
-- **Per-session allocators** — each session calls `CreateAllocator` (returning the same shared arena for the device) and `ReleaseAllocator` on session teardown.
+- **Environment allocators** — `RegisterExecutionProviderLibrary` creates one arena for each device memory info. Sessions may opt into these shared allocators only when CUDA graph capture is disabled.
+- **Per-session allocators** — each session receives a distinct device arena and releases that exact arena on teardown.
 - **External allocator sessions** — when a `CudaEp` instance is configured with `gpu_external_alloc` and `gpu_external_free`, it advertises `OrtEp::CreateAllocator` and creates a per-session `CudaExternalDeviceAllocator` from that EP's config. The factory's device cache does not store external allocator callbacks or a shared external allocator, so a later session on the same GPU without external allocator options still uses the factory's internal arena/mempool path. Release falls through to the raw allocator case above and uses `CudaAllocatorBase::IsExternalDeviceAllocator()` to delete it with the correct concrete type.
 
-The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`. When replacing, `ReleaseAllocator` is called on the old allocator first (dropping that device's arena if ref count hits zero), then `CreateAllocator` is called again with the new options — potentially creating a new arena with different config for that specific device.
+The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`. Replacing an environment allocator releases and erases the old arena, then creates a new arena with the requested options.
 
 **Note:** The example plugin EP uses single `arena_allocator_` / `num_arena_users_` members because it only registers for one device (`device_id=0`). The CUDA plugin must generalize this to per-device storage.
 
 ### 3.4 Stream Integration
 
-The CUDA plugin's `CudaSyncStream` (from `OrtSyncStreamImpl`) must call `ResetChunksUsingStream` on the device arena at session run end, following the example. Since there may be multiple GPUs, the stream must know which device's arena to reset. Each stream is created for a specific `OrtMemoryDevice`, which has a device_id — this maps to the corresponding `DeviceCacheEntry`:
+The CUDA plugin's `CudaSyncStream` calls `ResetDeviceArenaChunksUsingStream` at session run end. The helper holds `arena_mutex` while visiting the device's arenas; each arena ignores streams it has not used:
 
 ```cpp
 // cuda_stream_plugin.cc — OnSessionRunEndImpl:
 OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto& impl = *static_cast<CudaSyncStream*>(this_ptr);
-  // impl.device_id_ was set at stream creation from the OrtMemoryDevice
-  auto* arena = impl.factory_->GetDeviceArenaAllocator(impl.device_id_);
-  if (arena) {
-    arena->ResetChunksUsingStream(this_ptr);
-  }
-  return nullptr;
+  return impl.factory_->ResetDeviceArenaChunksUsingStream(impl.device_id_, this_ptr);
 }
 ```
 
-`GetDeviceArenaAllocator(device_id)` looks up the `DeviceCacheEntry` for the given device and returns its `device_arena.get()`.
+If stream completion cannot be established during teardown, the factory first abandons every device arena, then quarantines chunks associated with the stream. Device-wide abandonment is required because untagged allocations, including reserved initializers, may still be referenced by the undrained stream.
 
 The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be stream-aware, matching the in-tree EP where pinned uses plain `BFCArena` (not `StreamAwareBFCArena`). `CudaArenaAllocator`'s constructor handles this: it sets `AllocOnStream = nullptr` when `kind == CudaAllocatorKind::kPinned` (see Section 3.2). ORT's `AllocateBufferWithOptions` checks for a non-null `AllocOnStream` before calling it, so the pinned arena transparently falls through to plain `Alloc()`. Accordingly, `ResetChunksUsingStream` is not called for the pinned arena at session run end.
 
@@ -395,7 +390,7 @@ The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be
 
 This means:
 - The factory's first `CreateAllocator` call (from `RegisterExecutionProviderLibrary` → shared allocators) uses env-level arena config (or defaults if none).
-- Subsequent calls from `CreatePreferredAllocators` pass session-level arena config. If the factory already holds a shared arena for that device (from the env-level path) and the incoming session options differ, the factory decides how to handle it — typically logging a warning and keeping the existing arena (since it's shared). If no shared arena exists yet (e.g. `use_env_allocators=0`), the factory creates a new arena with the session-provided config.
+- Subsequent calls from `CreatePreferredAllocators` pass session-level arena config, and the factory creates a new device arena with that config for the session.
 - The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`, allowing users to replace an existing arena with a new config at any time.
 
 ```
@@ -489,8 +484,7 @@ The generic `ep_factory.<ep_name>.` convention remains documented in the public 
 
 The EP factory may receive arena config from two sources: environment-level keys (via `RegisterExecutionProviderLibrary`) and session-level keys (via `PluginExecutionProvider::CreatePreferredAllocators`). The factory is unaware of conflicts between these two namespaces. This is acceptable because:
 - Shared allocators are created first (environment level) — only env config applies at that point.
-- Per-session `CreatePreferredAllocators` calls arrive later with session-level config. Since the factory typically holds a shared arena already, session options are only effective if: (a) no shared arena exists yet, or (b) the user explicitly calls `OrtApi::CreateSharedAllocator` with `replace_existing=true`.
-- When per-session config differs from the shared arena's config, the factory logs a warning but keeps the existing arena (it's shared across sessions and cannot be reconfigured mid-flight).
+- Per-session `CreatePreferredAllocators` calls arrive later with session-level config. Each call creates a device arena for that session, so session options always apply to the session's device arena. The shared pinned arena still keeps its first configuration.
 - The two config paths serve different lifecycle scopes and are independent.
 
 **Runtime validation (recommended):** When `CreateAllocatorImpl` receives `allocator_options` and the factory already holds a shared arena for that device, log a warning if the incoming keys differ from the keys used at first creation. This makes misconfiguration visible without silently ignoring the second set of options.
@@ -648,9 +642,9 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `plugin/cuda_arena.h` | **New file.** Copied from `ep_arena.h` with namespace/include adaptations per 5.1. Contains `ArenaExtendStrategy`, `ArenaConfig`, `ArenaImpl`, `AllocatorUniquePtr` typedef, and `CudaArenaAllocator` (replaces example’s `ArenaAllocator`). |
 | `plugin/cuda_arena.cc` | **New file.** Copied from `ep_arena.cc` with namespace/include adaptations per 5.1. |
 | `plugin/cuda_allocator_plugin.h` | **(a)** Add `AllocatorStats` struct (POD with `ToKeyValuePairs` helper, copied from `ep_allocator.h`). **(b)** Add arena-support macros: `EP_ENFORCE` (ostringstream + throw), `LOG` (delegates to `OrtApi::Logger_LogMessage`), `RETURN_ERROR` (creates OrtStatus). These can go in `cuda_plugin_utils.h` instead if preferred. |
-| `plugin/cuda_ep_factory.h` | Extend `DeviceCacheEntry` with per-device arena and mempool members: `std::mutex arena_mutex; std::unique_ptr<CudaArenaAllocator> device_arena; std::unique_ptr<CudaArenaAllocator> pinned_arena; std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;` plus ref counts and `device_arena_using_defaults` flag (Section 3.3). Add `#include "cuda_arena.h"`. Add helper `CudaArenaAllocator* GetDeviceArenaForDevice(int device_id)` for stream integration. |
-| `plugin/cuda_ep_factory.cc` | Rewrite `CreateAllocatorImpl`: extract `device_id` from `OrtMemoryInfo`, find `DeviceCacheEntry`, create/return shared `CudaArenaAllocator` wrapping `CudaDeviceAllocator` or `CudaPinnedAllocator` per device (Section 3.1 pseudocode). Rewrite `ReleaseAllocatorImpl`: pointer identity match against `DeviceCacheEntry` arenas and mempool allocator, decrement ref count, destroy if zero; fall back to `CudaAllocatorBase`-based `delete` for raw allocators (Section 3.3 pseudocode). |
-| `plugin/cuda_stream_plugin.cc` | Update `CudaSyncStream::OnSessionRunEndImpl`: after stream synchronization and deferred buffer cleanup, call `factory.GetDeviceArenaForDevice(stream->device_id_)->ResetChunksUsingStream(this_ptr)` to release chunk-to-stream assignments (Section 3.4). |
+| `plugin/cuda_ep_factory.h` | Extend `DeviceCacheEntry` with `arena_mutex`, a `device_arenas` collection, the shared pinned arena and mempool allocator, and their ref counts (Section 3.3). Add `#include "cuda_arena.h"` and helpers that reset or quarantine matching stream assignments across the collection. |
+| `plugin/cuda_ep_factory.cc` | Rewrite `CreateAllocatorImpl`: extract `device_id` from `OrtMemoryInfo`, find `DeviceCacheEntry`, create a distinct `CudaArenaAllocator` for each device-memory request, and keep pinned/mempool allocators shared per device. Rewrite `ReleaseAllocatorImpl`: erase device arenas by pointer identity, reference count pinned/mempool allocators, and fall back to `CudaAllocatorBase`-based `delete` for raw allocators. |
+| `plugin/cuda_stream_plugin.cc` | Update `CudaSyncStream::OnSessionRunEndImpl` to reset matching stream assignments across the device's arenas. If stream completion is unknown during release, abandon every device arena before quarantining chunks associated with the stream (Section 3.4). |
 
 ### 5.3 ORT Core Changes (Minimal)
 
@@ -738,10 +732,10 @@ Plugin allocators that do not implement `Shrink` (e.g., read-only allocators) co
 2. **Add arena macros to `cuda_plugin_utils.h`:** Add `EP_ENFORCE` (ostringstream throw), `LOG` (delegates to `OrtApi::Logger_LogMessage`), `RETURN_ERROR` (creates OrtStatus). These are needed by the arena code copied from the example plugin.
 3. **Copy `ep_arena.h` → `plugin/cuda_arena.h`:** Wrap in `onnxruntime::cuda_plugin` namespace. Replace includes with `cuda_allocator_plugin.h` and `cuda_plugin_utils.h`. Replace `ArenaAllocator : BaseAllocator` with `CudaArenaAllocator : CudaAllocatorBase` (see Section 3.2). Add `AllocatorUniquePtr` typedef (type-erasing deleter). Set `AllocOnStream` conditionally by `CudaAllocatorKind` in the constructor.
 4. **Copy `ep_arena.cc` → `plugin/cuda_arena.cc`:** Wrap in `onnxruntime::cuda_plugin` namespace. Replace includes. No other changes needed.
-5. **Extend `DeviceCacheEntry` in `cuda_ep_factory.h`:** Add per-device arena members (`device_arena`, `pinned_arena`, ref counts, mutex) as described in Section 3.3. Add `#include "cuda_arena.h"`. Add `CudaArenaAllocator* GetDeviceArenaForDevice(int device_id)` accessor.
-6. **Rewrite `CreateAllocatorImpl` in `cuda_ep_factory.cc`:** Look up `DeviceCacheEntry` by `device_id`, create shared `CudaArenaAllocator` wrapping `CudaDeviceAllocator`/`CudaPinnedAllocator` on first call per device, return same pointer on subsequent calls (Section 3.1 pseudocode).
-7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Pointer identity match against device cache entries, decrement ref count, destroy if zero. Fall back to `CudaAllocatorBase`-based `delete` for non-arena types (Section 3.3 pseudocode).
-8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After existing stream sync and deferred buffer cleanup, call `arena->ResetChunksUsingStream(this_ptr)` for the device's arena (Section 3.4).
+5. **Extend `DeviceCacheEntry` in `cuda_ep_factory.h`:** Add a `device_arenas` collection, shared pinned/mempool allocators and ref counts, and `arena_mutex` as described in Section 3.3. Add `#include "cuda_arena.h"` and collection-level stream reset/quarantine helpers.
+6. **Rewrite `CreateAllocatorImpl` in `cuda_ep_factory.cc`:** Look up `DeviceCacheEntry` by `device_id`, create a distinct `CudaArenaAllocator` for each device-memory call, and preserve per-device sharing for pinned/mempool allocators (Section 3.1 pseudocode).
+7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Erase device arenas by pointer identity and reference count the shared pinned/mempool allocators. Fall back to `CudaAllocatorBase`-based `delete` for non-arena types (Section 3.3 pseudocode).
+8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After stream synchronization, reset matching stream assignments across the device's arenas; abandon every device arena before quarantining stream-tagged chunks when stream completion is unknown (Section 3.4).
 9. **No CMake changes needed:** The glob picks up new `.cc` files in `plugin/` automatically.
 10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `OrtSessionOptions::GetProviderOptionPrefix(factory->GetName(factory))` (with null-guard), obtain config snapshot via `GetConfigEntries()`, extract `ep.cuda.arena.*` keys for CUDA, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
 11. **Plumb session-level arena options in `PluginExecutionProvider`:** In the constructor (`ep_plugin_provider_interfaces.cc`), extract keys with the EP-specific arena prefix from `session_options.value.config_options`, strip the EP prefix, and store as bare `arena.*` keys. In `CreatePreferredAllocators()`, build `OrtKeyValuePairs` from the stored map and pass to `ep_factory_.CreateAllocator()` (see Section 3.5).
