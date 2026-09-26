@@ -45,6 +45,7 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
+class KernelPilot;
 class RunInstrumentationContext;
 
 struct ModelSavingOptions;
@@ -1425,7 +1426,7 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
 
-  // Run instrumentation support — appended at end to preserve vtable ABI compatibility.
+  // Retained for provider vtable ABI compatibility. Run instrumentation is no longer active.
   virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
       const OpKernelContext* p) = 0;
   virtual const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) = 0;
@@ -1450,6 +1451,9 @@ struct ProviderHost {
       int execution_device_id,
       int64_t completion_ns,
       const std::string& completion_timestamp_source) = 0;
+
+  // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
+  virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

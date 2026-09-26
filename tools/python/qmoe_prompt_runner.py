@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a list of prompts with ONNX Runtime GenAI and collect MoE routing logs."""
+"""Run prompts with ONNX Runtime GenAI and collect MoE expert counter logs."""
 
 import argparse
 import json
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import onnxruntime_genai as og
 
-ROUTING_MARKER = "moe_routing "
-ROUTING_COMPLETE_MARKER = "moe_routing_complete "
+COUNTER_MARKER = "moe_expert_counters "
+COUNTER_COMPLETE_MARKER = "moe_expert_counters_complete "
 
 
 def parse_args():
@@ -37,10 +37,10 @@ def parse_args():
         help="Generated-text and timing output.",
     )
     parser.add_argument(
-        "--routing-log",
+        "--counter-log",
         type=Path,
-        default=Path("qmoe-routing.log"),
-        help="Native ORT log receiving the MoE routing records.",
+        default=Path("qmoe-counters.log"),
+        help="Native ORT log receiving the MoE expert counter records.",
     )
     parser.add_argument(
         "--provider",
@@ -151,21 +151,21 @@ def generate(model, tokenizer, prompt, max_new_tokens, raw_prompt):
     }
 
 
-def count_routing_records(path):
+def count_counter_records(path):
     with path.open(encoding="utf-8", errors="replace") as stream:
-        return sum(ROUTING_MARKER in line for line in stream)
+        return sum(COUNTER_MARKER in line for line in stream)
 
 
 def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
-    if args.output.resolve() == args.routing_log.resolve():
-        raise ValueError("--output and --routing-log must refer to different files.")
+    if args.output.resolve() == args.counter_log.resolve():
+        raise ValueError("--output and --counter-log must refer to different files.")
     prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    with redirect_native_stderr(args.routing_log):
+    with redirect_native_stderr(args.counter_log):
         model = create_model(args.model, args.provider)
         tokenizer = og.Tokenizer(model)
         results = []
@@ -207,12 +207,12 @@ def main():
     completion = {
         "prompts": len(prompts),
         "prompt_runs": len(results),
-        "routing_records": count_routing_records(args.routing_log),
+        "counter_records": count_counter_records(args.counter_log),
     }
-    with args.routing_log.open("a", encoding="utf-8") as stream:
-        stream.write(f"{ROUTING_COMPLETE_MARKER}{json.dumps(completion, separators=(',', ':'))}\n")
+    with args.counter_log.open("a", encoding="utf-8") as stream:
+        stream.write(f"{COUNTER_COMPLETE_MARKER}{json.dumps(completion, separators=(',', ':'))}\n")
     print(args.output)
-    print(args.routing_log)
+    print(args.counter_log)
 
 
 if __name__ == "__main__":

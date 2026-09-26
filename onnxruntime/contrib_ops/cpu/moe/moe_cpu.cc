@@ -4,9 +4,6 @@
 #include "contrib_ops/cpu/moe/moe_cpu.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/moe_profiler.h"
-#endif
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/gemm_helper.h"
@@ -81,16 +78,9 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   const int64_t hidden_size = input_shape[input_shape.NumDimensions() - 1];
   const int64_t num_experts = router_shape[1];
 #if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count =
-      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
-  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
-  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-    instrumentation = nullptr;
-  }
-  const TimePoint instrumentation_start =
-      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+  const size_t routing_element_count = enable_moe_expert_tracking_
+                                           ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
+                                           : 0;
 #endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
@@ -445,11 +435,12 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     memcpy(out_ptr, final_output_float, output_buffer_size * sizeof(float));
   }
 #if !defined(ORT_MINIMAL_BUILD)
-  if (instrumentation != nullptr) {
-    RecordMoeRoutingEvent(*instrumentation, Node(),
-                          gsl::make_span(route_expert, routing_element_count),
-                          gsl::make_span(route_scale, routing_element_count),
-                          num_tokens, k_, instrumentation_start);
+  if (enable_moe_expert_tracking_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    auto& usage = pilot->Moe();
+    ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
+    ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
   }
 #endif
   return Status::OK();

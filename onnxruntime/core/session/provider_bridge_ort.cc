@@ -28,6 +28,7 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/framework/random_generator.h"
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/run_options.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -1618,47 +1619,45 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
   const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
-      const OpKernelContext* p) override {
-    return p->GetRunInstrumentationContext();
+      const OpKernelContext*) override {
+    return nullptr;
   }
-  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) override {
-    return p->RequestId();
+  const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext*) override {
+    static const std::string empty;
+    return empty;
   }
-  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) override {
-    return p->StartProfiling();
+  TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext*) override {
+    return {};
   }
-  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) override {
-    return p->ProfilerStartTimeNs();
+  uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext*) override {
+    return 0;
   }
   void RunInstrumentationContext__AddDeferredRecord(
-      const RunInstrumentationContext* p,
-      std::unique_ptr<DeferredRunInstrumentationRecord> record) override {
-    p->AddDeferredRecord(std::move(record));
+      const RunInstrumentationContext*,
+      std::unique_ptr<DeferredRunInstrumentationRecord>) override {
   }
   bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
-      const RunInstrumentationContext* p, size_t element_count) override {
-    return p->TryReserveMoeRoutingRecord(element_count);
+      const RunInstrumentationContext*, size_t) override {
+    return false;
   }
   void RunInstrumentationContext__RecordMoeRoutingEvent(
-      const RunInstrumentationContext* p,
-      const TimePoint& start_time,
-      const TimePoint& end_time,
-      const std::string& node_name,
-      NodeIndex node_index,
-      const std::string& node_type,
-      std::string expert_ids_json,
-      std::string router_weights_json,
-      int64_t num_rows,
-      int64_t top_k,
-      int execution_device_id,
-      int64_t completion_ns,
-      const std::string& completion_timestamp_source) override {
-    p->RecordMoeRoutingEvent(
-        start_time, end_time, node_name, node_index, node_type,
-        std::move(expert_ids_json), std::move(router_weights_json),
-        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+      const RunInstrumentationContext*,
+      const TimePoint&,
+      const TimePoint&,
+      const std::string&,
+      NodeIndex,
+      const std::string&,
+      std::string,
+      std::string,
+      int64_t,
+      int64_t,
+      int,
+      int64_t,
+      const std::string&) override {
   }
-
+  KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
+    return p->GetKernelPilot();
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

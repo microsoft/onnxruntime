@@ -9,7 +9,8 @@
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/cuda/moe/moe_profiler.h"
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
 #endif
 #include <charconv>
 #include <type_traits>
@@ -686,10 +687,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
-  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
-#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -1690,29 +1687,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  CudaMoeRoutingRecord* routing_record = nullptr;
-  const size_t routing_element_count =
-      SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-    instrumentation = nullptr;
-  }
-  if (instrumentation != nullptr) {
-    ORT_RETURN_IF(onnxruntime::llm::common::isCapturing(stream),
-                  "MoE expert statistics is not supported during CUDA graph capture.");
-    auto host_expert_ids = AllocateBufferOnCPUPinned<int>(routing_element_count);
-    auto host_router_weights = AllocateBufferOnCPUPinned<float>(routing_element_count);
-    ORT_RETURN_IF_NOT(host_expert_ids && host_router_weights,
-                      "Failed to allocate pinned host memory for CUDA QMoE routing statistics.");
-
-    const TimePoint instrumentation_start = instrumentation->StartProfiling();
-    auto record = std::make_unique<CudaMoeRoutingRecord>(
-        *instrumentation, Node().Name(), Node().Index(), Node().OpType(),
-        std::move(host_expert_ids), std::move(host_router_weights),
-        routing_element_count, moe_params.num_rows, k_, GetDeviceId(), instrumentation_start);
-    ORT_RETURN_IF_ERROR(record->Start(stream));
-    routing_record = record.get();
-    instrumentation->AddDeferredRecord(std::move(record));
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
   }
 #endif
 
@@ -1758,6 +1736,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto fused_routing = route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE FP4 GEMV does not support fused routing.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
+    }
+#endif
     ck::fusedBuildExpertMapsSortFirstToken(
         expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
         num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
@@ -1932,10 +1916,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                workspace_size, total_scratch_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_record != nullptr) {
-      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
-          expert_indices, expert_scales, 0,
-          SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), true, stream));
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
     }
 #endif
     return Status::OK();
@@ -2158,7 +2140,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(tile_config != nullptr,
                 "QMoE did not prepare a runner configuration for row tile size ", tile_rows, ".");
 
-    const auto fused_routing = route_tile(row_offset, tile_rows);
+    auto fused_routing = route_tile(row_offset, tile_rows);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_snapshot_) {
+      if (fused_routing.router_logits != nullptr) {
+        fused_routing.on_routing_ready = KernelPilotMoeExpertSelectionCuda::CaptureRouting;
+        fused_routing.routing_context = &*routing_snapshot_;
+      } else {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+            expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+      }
+    }
+#endif
     const size_t input_element_offset =
         SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
     const size_t input_byte_offset =
@@ -2202,12 +2195,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         stream);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_record != nullptr) {
-      const size_t tile_element_count = SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_);
-      const size_t destination_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(k_);
-      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
-          expert_indices, expert_scales, destination_offset, tile_element_count,
-          tile_index + 1 == row_tile_plan.TileCount(), stream));
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
     }
 #endif
   }

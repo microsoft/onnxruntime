@@ -28,8 +28,13 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -664,6 +669,8 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
 TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   // Intentionally do NOT call Initialize().
@@ -983,24 +990,35 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
   EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
 }
 
-TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
+TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
   auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
   logging::LoggingManager logging_manager(
       std::move(capturing_sink), logging::Severity::kINFO, false,
       logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
-  RunInstrumentationContext instrumentation{"request", *logger};
+  auto logger = logging_manager.CreateLogger("moe_logging_concurrency");
+  KernelPilotMoeExpertState state;
 
-  EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
-      RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
-  EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
+  ASSERT_STATUS_OK(state.BeginRun("first", logger.get()));
+  const Status concurrent_status = state.BeginRun("second", logger.get());
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
 
-  instrumentation.LogMoeStatisticsTruncation();
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("second", logger.get()));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
+TEST(InferenceSessionTests, MoeCountingRejectsConcurrentRuns) {
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const Status concurrent_status = state.BeginRun("", nullptr);
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
@@ -1012,6 +1030,32 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
 }
+
+#ifdef ENABLE_TRAINING
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+
+  RunOptions run_options;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  PartialGraphExecutionState state;
+  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
+  const Status status = session.PartialRun(
+      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
+                                         "MoE expert counting and statistics are not supported by the deprecated "
+                                         "PartialRun path."));
+}
+#endif
 
 class CudaPluginTestExecutionProvider final : public IExecutionProvider {
  public:
@@ -1057,33 +1101,19 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
 }
 
-TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
-  auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
-  logging::LoggingManager logging_manager(
-      std::move(capturing_sink), logging::Severity::kINFO, false,
-      logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_routing_json");
-  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
-  const TimePoint now = std::chrono::high_resolution_clock::now();
+TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
 
-  instrumentation.RecordMoeRoutingEvent(
-      now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
-
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  const std::string& message = capturing_sink_ptr->Messages()[0];
-  const size_t marker = message.find("moe_routing ");
-  ASSERT_NE(marker, std::string::npos);
-  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
-  EXPECT_EQ(event["request_id"], "request \"one\"");
-  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
-  EXPECT_EQ(event["node_index"], 42);
-  EXPECT_EQ(event["node_type"], "QMoE");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
-  EXPECT_EQ(event["num_rows"], 1);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], 0);
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
 }
 
 // See issue #27732 for details on why this is disabled.

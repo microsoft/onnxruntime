@@ -3339,8 +3339,8 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
 }
 
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(__ANDROID__)
-static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) {
-  constexpr std::string_view marker = "moe_routing ";
+static std::vector<nlohmann::json> ParseMoeCounterLogs(const std::string& logs) {
+  constexpr std::string_view marker = "moe_expert_counters ";
   std::vector<nlohmann::json> events;
   size_t position = 0;
   while ((position = logs.find(marker, position)) != std::string::npos) {
@@ -3409,24 +3409,17 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(
   testing::internal::CaptureStderr();
   tester.Run(session_options, expected_result, std::string(expected_error), {},
              &run_options, &execution_providers);
-  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
+TEST(MoETest, MoECpuLogHasCounterUpdateSchema) {
   const auto routing_events = RunMoECpuLoggingTest(
       true, {1, 2, 4}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6456563f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3543437f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.5986876f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.4013123f, 1e-6f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_TRUE(event.contains("node_index"));
   EXPECT_TRUE(event.contains("node_name"));
   EXPECT_EQ(event["node_type"], "MoE");
@@ -3434,11 +3427,6 @@ TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
 
 TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
   EXPECT_TRUE(RunMoECpuLoggingTest(false, {2, 1, 4}).empty());
-}
-
-TEST(MoETest, MoECpuRoutingLogRejectsBatchGreaterThanOne) {
-  RunMoECpuLoggingTest(true, {2, 1, 4}, OpTester::ExpectResult::kExpectFailure,
-                       "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 
 #ifdef USE_MLAS
@@ -3492,30 +3480,18 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
   testing::internal::CaptureStderr();
   tester.Run(session_options, expected_result, std::string(expected_error), {},
              &run_options, &execution_providers);
-  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  return ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, QMoECpuRoutingLogHasDecisionSchema) {
+TEST(MoETest, QMoECpuLogHasCounterUpdateSchema) {
   const auto routing_events = RunQMoECpuLoggingTest(
       {1, 2, 32}, OpTester::ExpectResult::kExpectSuccess, "", 2);
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cpu qmoe request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({1, 0, 0, 1}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.6899745f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.3100255f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.6456563f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.3543437f, 1e-3f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({1, 0}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "QMoE");
-}
-
-TEST(MoETest, QMoECpuRoutingLogRejectsBatchGreaterThanOne) {
-  RunQMoECpuLoggingTest({2, 1, 32}, OpTester::ExpectResult::kExpectFailure,
-                        "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 #endif
 
@@ -3548,7 +3524,7 @@ static void ConfigureCudaMoeRoutingTester(
                           std::vector<float>(num_rows * hidden_size, 0.0f));
 }
 
-TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
+TEST(MoETest, MoECudaLogHasCounterUpdateSchema) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -3571,49 +3547,17 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
-  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cuda request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0}));
-  ASSERT_EQ(event["router_weights"].size(), 4U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-6f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-6f);
-  EXPECT_EQ(event["num_rows"], 2);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_GE(event["execution_device_id"].get<int>(), 0);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "MoE");
 }
 
-TEST(MoETest, MoECudaRoutingLogRejectsBatchGreaterThanOne) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-  auto execution_provider = DefaultCudaExecutionProvider();
-  ASSERT_NE(execution_provider, nullptr);
-  if (execution_provider->GetOrtEp() != nullptr) {
-    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
-  }
-
-  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
-  ConfigureCudaMoeRoutingTester(tester, {2, 1, kMoEMinCudaDim});
-
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(execution_provider));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "MoE expert statistics logging only supports batch size 1; got batch size 2.",
-             {}, nullptr, &execution_providers);
-}
-
-TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
+TEST(MoETest, QMoECudaTiledLogHasOneCounterUpdate) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
@@ -3668,76 +3612,14 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
-  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+  const auto routing_events = ParseMoeCounterLogs(testing::internal::GetCapturedStderr());
 
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "qmoe tiled request");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 1, 0, 0, 1}));
-  ASSERT_EQ(event["router_weights"].size(), 6U);
-  EXPECT_NEAR(event["router_weights"][0].get<float>(), 0.7310586f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][1].get<float>(), 0.2689414f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][2].get<float>(), 0.8807971f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][3].get<float>(), 0.1192029f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][4].get<float>(), 0.9820138f, 1e-3f);
-  EXPECT_NEAR(event["router_weights"][5].get<float>(), 0.0179862f, 1e-3f);
-  EXPECT_EQ(event["num_rows"], 3);
-  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["selected_experts"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["counters"], nlohmann::json({0.1, 0.1}));
   EXPECT_EQ(event["node_type"], "QMoE");
-}
-
-TEST(MoETest, QMoECudaRoutingLogRejectsBatchGreaterThanOne) {
-  if (!HasCudaEnvironment(700)) {
-    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-  auto execution_provider = DefaultCudaExecutionProvider();
-  ASSERT_NE(execution_provider, nullptr);
-  if (execution_provider->GetOrtEp() != nullptr) {
-    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
-  }
-
-  constexpr int num_rows = 2;
-  constexpr int num_experts = 2;
-  constexpr int hidden_size = kMoEMinCudaDim;
-  constexpr int inter_size = kMoEMinCudaDim;
-  constexpr int pack_size = 2;
-  const std::vector<int64_t> input_shape = {2, 1, hidden_size};
-
-  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("k", 1);
-  tester.AddAttribute<std::string>("activation_type", "relu");
-  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
-  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-  tester.AddInput<MLFloat16>("input_ids", input_shape,
-                             ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
-  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
-                             ToFloat16({2.0f, 1.0f, 1.0f, 3.0f}));
-  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, hidden_size, inter_size / pack_size},
-                           std::vector<uint8_t>(num_experts * hidden_size * inter_size / pack_size, 0));
-  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size},
-                             ToFloat16(std::vector<float>(num_experts * inter_size, 1.0f)));
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, inter_size, hidden_size / pack_size},
-                           std::vector<uint8_t>(num_experts * inter_size * hidden_size / pack_size, 0));
-  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size},
-                             ToFloat16(std::vector<float>(num_experts * hidden_size, 1.0f)));
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<uint8_t>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOutput<MLFloat16>("output", input_shape,
-                              ToFloat16(std::vector<float>(num_rows * hidden_size, 0.0f)));
-
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsDisableCPUEPFallback, "1"));
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(execution_provider));
-  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
-             "MoE expert statistics logging only supports batch size 1; got batch size 2.",
-             {}, nullptr, &execution_providers);
 }
 
 TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {

@@ -17,46 +17,46 @@ if _TOOLS_PYTHON not in sys.path:
 
 from qmoe_expert_distribution import (  # noqa: E402
     aggregate_rank_thresholds_by_qmoe,
-    analyze_routing_trace,
+    analyze_counter_trace,
     calculate_qmoe_expert_bytes,
-    inference_expert_ids,
-    iter_routing_events,
+    iter_counter_events,
     rank_experts_by_frequency,
     read_distributions,
+    selected_expert_ids,
     write_qmoe_ranked_experts_csv,
 )
 
 
-def _routing_event(expert_ids=None, router_weights=None, num_rows=1, top_k=1):
-    expert_ids = [1] if expert_ids is None else expert_ids
-    router_weights = [1.0] * len(expert_ids) if router_weights is None else router_weights
+def _counter_event(selected_experts=None, counters=None):
+    selected_experts = [1] if selected_experts is None else selected_experts
+    counters = [0.0, 1.0] if counters is None else counters
     return {
+        "request_id": "",
+        "graph_scope": "main",
         "node_index": 17,
         "node_type": "QMoE",
         "node_name": "/layers.0/qmoe",
-        "expert_ids": expert_ids,
-        "router_weights": router_weights,
-        "num_rows": num_rows,
-        "top_k": top_k,
+        "selected_experts": selected_experts,
+        "counters": counters,
     }
 
 
 def _complete_trace(events_by_prompt):
     prompt_count = len(events_by_prompt)
     lines = []
-    routing_record_count = 0
+    counter_record_count = 0
     for prompt_index, events in enumerate(events_by_prompt, start=1):
         lines.append(f"[qmoe_prompt_runner] {prompt_index}/{prompt_count} prompt_start")
-        lines.extend(f"moe_routing {json.dumps(event)}" for event in events)
-        routing_record_count += len(events)
+        lines.extend(f"moe_expert_counters {json.dumps(event)}" for event in events)
+        counter_record_count += len(events)
         lines.append(f"[qmoe_prompt_runner] {prompt_index}/{prompt_count} prompt_end")
     lines.append(
-        "moe_routing_complete "
+        "moe_expert_counters_complete "
         + json.dumps(
             {
                 "prompts": prompt_count,
                 "prompt_runs": prompt_count,
-                "routing_records": routing_record_count,
+                "counter_records": counter_record_count,
             }
         )
     )
@@ -95,36 +95,28 @@ class TestQMoEExpertDistribution(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_truncated_routing_trace_is_rejected(self):
-        event = _routing_event()
-        warning = (
-            '[W:onnxruntime:, op_kernel_context_internal.h:114] moe_routing_truncated {"dropped_records":1,'
-            '"dropped_routing_elements":2,"max_records_per_run":10000,"max_routing_elements_per_run":1000000}'
-        )
+    def test_duplicate_selected_experts_are_rejected(self):
+        event = _counter_event([1, 1])
         with tempfile.TemporaryDirectory() as temp_dir:
-            log_path = Path(temp_dir) / "routing.log"
-            for warning_index in range(3):
-                with self.subTest(warning_index=warning_index):
-                    lines = _complete_trace([[event]]).splitlines()
-                    lines.insert(warning_index, warning)
-                    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                    with self.assertRaisesRegex(ValueError, f"Incomplete routing trace at line {warning_index + 1}"):
-                        read_distributions(log_path, num_experts=2)
+            log_path = Path(temp_dir) / "counters.log"
+            log_path.write_text(_complete_trace([[event]]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "selected_experts must not contain duplicates"):
+                read_distributions(log_path, num_experts=2)
 
     def test_prompt_marker_ignores_unrelated_fraction(self):
-        event = _routing_event()
+        event = _counter_event()
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text("unrelated diagnostic: 9/10\n" + _complete_trace([[event]]), encoding="utf-8")
 
-            self.assertEqual(list(iter_routing_events(log_path)), [(1, event)])
+            self.assertEqual(list(iter_counter_events(log_path)), [(1, event)])
 
     def test_out_of_range_expert_id_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             for expert_id in (-1, 2):
                 with self.subTest(expert_id=expert_id):
-                    event = _routing_event([expert_id])
+                    event = _counter_event([expert_id])
                     log_path.write_text(_complete_trace([[event]]), encoding="utf-8")
                     with self.assertRaisesRegex(
                         ValueError,
@@ -132,43 +124,43 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     ):
                         read_distributions(log_path, num_experts=2)
 
-    def test_unnamed_nodes_are_distinguished_by_index(self):
-        first_event = _routing_event([0])
+    def test_nodes_are_distinguished_by_graph_scope_and_index(self):
+        first_event = _counter_event([0])
         first_event.update(node_index=3, node_name="")
-        second_event = _routing_event([1])
-        second_event.update(node_index=4, node_name="")
+        second_event = _counter_event([1])
+        second_event.update(graph_scope="main/4/11:then_branch", node_index=3, node_name="")
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text(_complete_trace([[first_event, second_event]]), encoding="utf-8")
 
-            _, by_qmoe, _, event_count, completion = analyze_routing_trace(log_path, num_experts=2)
+            _, by_qmoe, _, event_count, completion = analyze_counter_trace(log_path, num_experts=2)
 
-        self.assertEqual(by_qmoe[(3, "QMoE", "")], {0: 1})
-        self.assertEqual(by_qmoe[(4, "QMoE", "")], {1: 1})
+        self.assertEqual(by_qmoe[("main", 3, "QMoE", "")], {0: 1})
+        self.assertEqual(by_qmoe[("main/4/11:then_branch", 3, "QMoE", "")], {1: 1})
         self.assertEqual(event_count, 2)
-        self.assertEqual(completion["routing_records"], 2)
+        self.assertEqual(completion["counter_records"], 2)
 
-    def test_router_weight_count_is_validated(self):
+    def test_counter_count_is_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text(
-                _complete_trace([[_routing_event([0, 1], [1.0], num_rows=2)]]),
+                _complete_trace([[_counter_event([0, 1], [1.0])]]),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "expected 2 router_weights, got 1"):
-                list(iter_routing_events(log_path))
+            with self.assertRaisesRegex(ValueError, "contains 1 counters, but the model has 2 experts"):
+                read_distributions(log_path, num_experts=2)
 
     def test_incomplete_and_nonsequential_prompt_traces_are_rejected(self):
-        event = _routing_event()
+        event = _counter_event()
         traces = {
             "missing prompt_end": (
-                f"[qmoe_prompt_runner] 1/1 prompt_start\nmoe_routing {json.dumps(event)}\n",
+                f"[qmoe_prompt_runner] 1/1 prompt_start\nmoe_expert_counters {json.dumps(event)}\n",
                 "has no prompt_end",
             ),
             "missing footer": (
-                f"[qmoe_prompt_runner] 1/1 prompt_start\nmoe_routing {json.dumps(event)}\n"
+                f"[qmoe_prompt_runner] 1/1 prompt_start\nmoe_expert_counters {json.dumps(event)}\n"
                 "[qmoe_prompt_runner] 1/1 prompt_end\n",
-                "missing moe_routing_complete footer",
+                "missing moe_expert_counters_complete footer",
             ),
             "overlapping prompts": (
                 "[qmoe_prompt_runner] 1/2 prompt_start\n[qmoe_prompt_runner] 2/2 prompt_start\n",
@@ -185,16 +177,32 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                 with self.subTest(name=name):
                     log_path.write_text(trace, encoding="utf-8")
                     with self.assertRaisesRegex(ValueError, expected_error):
-                        list(iter_routing_events(log_path))
+                        list(iter_counter_events(log_path))
 
     def test_completion_footer_counts_are_validated(self):
-        event = _routing_event()
-        trace = _complete_trace([[event]]).replace('"routing_records": 1', '"routing_records": 2')
+        event = _counter_event()
+        trace = _complete_trace([[event]]).replace('"counter_records": 1', '"counter_records": 2')
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "routing.log"
             log_path.write_text(trace, encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "Routing completion footer mismatch"):
-                list(iter_routing_events(log_path))
+            with self.assertRaisesRegex(ValueError, "Counter completion footer mismatch"):
+                list(iter_counter_events(log_path))
+
+    def test_truncated_trace_is_rejected_even_with_valid_completion_footer(self):
+        trace = _complete_trace([[_counter_event()]])
+        summary = 'moe_expert_counters_truncated {"request_id":"request","max_records":1024}\n'
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "counters.log"
+            for truncated in (
+                trace.replace("[qmoe_prompt_runner] 1/1 prompt_end", summary + "[qmoe_prompt_runner] 1/1 prompt_end"),
+                trace + summary,
+            ):
+                with self.subTest(trace=truncated):
+                    log_path.write_text(truncated, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "counter logging was truncated"):
+                        list(iter_counter_events(log_path))
+                    with self.assertRaisesRegex(ValueError, "counter logging was truncated"):
+                        analyze_counter_trace(log_path, num_experts=2)
 
     def test_initializer_size_without_external_length(self):
         float_weight = onnx.helper.make_tensor("float_weight", onnx.TensorProto.FLOAT16, [2, 4], [0.0] * 8)
@@ -284,13 +292,17 @@ class TestQMoEExpertDistribution(unittest.TestCase):
                     model_path=model_path,
                 )
 
+    def test_subgraph_expert_size_analysis_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "only supports nodes in the main graph"):
+            calculate_qmoe_expert_bytes({}, {}, [("main/4/11:then_branch", 0, "QMoE", "qmoe")], 2)
+
     def test_ranking_final_row_and_threshold_outputs(self):
-        identity = (17, "QMoE", "/layers.0/qmoe")
+        identity = ("main", 17, "QMoE", "/layers.0/qmoe")
         rankings = rank_experts_by_frequency({identity: {0: 2, 1: 2, 2: 1}}, 3)
         self.assertEqual(rankings, {identity: [0, 1, 2]})
 
-        event = _routing_event([2, 0, 1, 2], num_rows=2, top_k=2)
-        self.assertEqual(inference_expert_ids(event), [1, 2])
+        event = _counter_event([1, 2], [1.0, 2.0, 1.0])
+        self.assertEqual(selected_expert_ids(event), [1, 2])
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -305,8 +317,8 @@ class TestQMoEExpertDistribution(unittest.TestCase):
             self.assertEqual(
                 csv_path.read_text(encoding="utf-8").splitlines(),
                 [
-                    "node_index,node_type,node_name,expert_ids_by_decreasing_frequency",
-                    '17,QMoE,/layers.0/qmoe,"[0,1,2]"',
+                    "graph_scope,node_index,node_type,node_name,expert_ids_by_decreasing_frequency",
+                    'main,17,QMoE,/layers.0/qmoe,"[0,1,2]"',
                 ],
             )
 
