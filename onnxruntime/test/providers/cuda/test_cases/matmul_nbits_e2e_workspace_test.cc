@@ -836,7 +836,7 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGate) {
   }
 }
 
-// N+K gives a raw 256 MiB cutoff of 8176 rows, but M=4097 rounds to an 8192-row profiler bucket whose
+// N+K gives a raw 256 MiB cutoff of 8160 rows, but M=4097 rounds to an 8192-row profiler bucket whose
 // A/C scratch exceeds that limit. The launch must therefore use the 4096-row chunk and a 1-row tail.
 TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
@@ -846,7 +846,7 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
 
   constexpr int64_t kGateM = 4097;
   constexpr int64_t kGateN = 16384;
-  constexpr int64_t kGateK = 32;
+  constexpr int64_t kGateK = 64;  // The SM80 INT4 GEMM layout requires K to be a multiple of 64.
   constexpr int64_t kChunkRows = 4096;
   constexpr uint8_t kPackedWeightByte = 0x99;  // Every int4 value is 9; implicit zero point is 8.
 
@@ -895,8 +895,8 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
   feeds.emplace("A", a_value);
   std::vector<OrtValue> fetches;
   const std::vector<std::string> output_names{"Y"};
+  // CUDA graph replay reuses the captured output allocation.
   for (int run = 0; run < 3; ++run) {
-    fetches.clear();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
   EXPECT_TRUE(cuda_ep->IsGraphCaptured(0));
@@ -906,8 +906,8 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
   const Tensor& output = fetches[0].Get<Tensor>();
   ASSERT_EQ(output.Shape(), TensorShape({kGateM, kGateN}));
   const MLFloat16* output_data = output.Data<MLFloat16>();
-  for (const int64_t row : {0, kChunkRows - 1, kChunkRows, kGateM - 1}) {
-    for (const int64_t column : {0, kGateN / 2, kGateN - 1}) {
+  for (const int64_t row : std::array<int64_t, 4>{0, kChunkRows - 1, kChunkRows, kGateM - 1}) {
+    for (const int64_t column : std::array<int64_t, 3>{0, kGateN / 2, kGateN - 1}) {
       EXPECT_NEAR(static_cast<float>(output_data[row * kGateN + column]), static_cast<float>(kGateK), 0.1f)
           << "row=" << row << ", column=" << column;
     }

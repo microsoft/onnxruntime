@@ -290,12 +290,12 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
-    def _make_int4_case(self, m=32, k=256, n=512, block_size=32):
+    def _make_int4_case(self, m=32, k=256, n=512, block_size=32, weight_prepacked=0):
         rng = np.random.default_rng(2024)
         a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
         weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)
         q_weight, scales = self._quantize_weight(weight, 4, block_size)
-        model = self._make_model(m, k, n, q_weight, scales, 4, block_size)
+        model = self._make_model(m, k, n, q_weight, scales, 4, block_size, weight_prepacked=weight_prepacked)
         return model, a, q_weight, scales
 
     def test_config_key_enables_fpa_intb(self):
@@ -360,10 +360,17 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
             self.assertEqual(out.shape, (0, 512), msg=f"config={config}")
 
     def test_invalid_m_chunk_size_rejected(self):
-        model, a, _, _ = self._make_int4_case()
+        # Prepacked weights require fpA_intB support. Invalid config is rejected before the weight
+        # data is interpreted, so this test does not need the optional offline weight packer.
+        model, a, _, _ = self._make_int4_case(weight_prepacked=1)
         for chunk in ("-1", "abc"):
-            with self.assertRaisesRegex(Exception, "Invalid MatMulNBits M chunk size"):
+            with self.assertRaises(Exception) as error:
                 self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.matmul_nbits_m_chunk_size": chunk})
+            if "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON" in str(
+                error.exception
+            ):
+                self.skipTest("fpA_intB GEMM is not compiled in this build")
+            self.assertRegex(str(error.exception), "Invalid MatMulNBits M chunk size")
 
 
 if __name__ == "__main__":
