@@ -46,8 +46,8 @@ void SessionBufferPool::Donate(BufferManager& retiring_mgr) {
   }
 
   Slot slot;
-  slot.storage = retiring_mgr.StorageCache().ExtractCachedBuffers();
-  slot.uniform = retiring_mgr.UniformCache().ExtractCachedBuffers();
+  slot.storage = retiring_mgr.ExtractCachedBuffers(wgpu::BufferUsage::Storage);
+  slot.uniform = retiring_mgr.ExtractCachedBuffers(wgpu::BufferUsage::Uniform);
 
   // The caches are now empty either way; the retiring manager is about to be
   // destroyed, so the early-exit only avoids pushing an empty slot.
@@ -73,8 +73,8 @@ void SessionBufferPool::SeedInto(BufferManager& new_mgr) {
   }
   Slot slot = std::move(slots_.back());
   slots_.pop_back();
-  new_mgr.StorageCache().AbsorbCachedBuffers(std::move(slot.storage));
-  new_mgr.UniformCache().AbsorbCachedBuffers(std::move(slot.uniform));
+  new_mgr.AbsorbCachedBuffers(wgpu::BufferUsage::Storage, std::move(slot.storage));
+  new_mgr.AbsorbCachedBuffers(wgpu::BufferUsage::Uniform, std::move(slot.uniform));
 }
 
 void SessionBufferPool::Clear() {
