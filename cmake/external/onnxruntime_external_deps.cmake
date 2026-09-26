@@ -1081,6 +1081,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
     set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
     set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
     if(APPLE)
       set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
@@ -1099,22 +1100,13 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
-        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
     if(ANDROID)
       target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()

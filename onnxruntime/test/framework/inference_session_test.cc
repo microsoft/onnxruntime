@@ -255,14 +255,20 @@ class ProfileEventCapturingSink final : public logging::ISink {
 
   void SendProfileEvent(profiling::EventRecord& event) const override {
     event_ = event;
+    events_.push_back(event);
   }
 
   const std::optional<profiling::EventRecord>& Event() const noexcept {
     return event_;
   }
 
+  const std::vector<profiling::EventRecord>& Events() const noexcept {
+    return events_;
+  }
+
  private:
   mutable std::optional<profiling::EventRecord> event_;
+  mutable std::vector<profiling::EventRecord> events_;
 };
 
 TEST(InferenceSessionTests, NoTimeout) {
@@ -832,6 +838,55 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_FALSE(status.IsOK());
   ASSERT_EQ(status.Code(), common::StatusCode::MODEL_LOADED);
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
+}
+
+TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "invalid"));
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("failed_load_and_initialize_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  EXPECT_EQ(session.Load(MODEL_URI).Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "must be set to either");
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  const auto has_event = [&events](const char* name) {
+    return std::any_of(events.begin(), events.end(),
+                       [name](const auto& event) { return event.name == name; });
+  };
+  EXPECT_TRUE(has_event("model_loading_uri"));
+  EXPECT_TRUE(has_event("session_initialization"));
+  EXPECT_GE(std::count_if(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "model_loading_uri"; }),
+            2);
+}
+
+TEST(InferenceSessionTests, InitializeBeforeLoadRecordsProfilingEvent) {
+  SessionOptions so;
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("initialize_before_load_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Model was not loaded");
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  EXPECT_TRUE(std::any_of(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "session_initialization"; }));
 }
 
 TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {

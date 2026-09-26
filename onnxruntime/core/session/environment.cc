@@ -565,30 +565,30 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
-                                                     const std::vector<EpFactoryInternal*>& internal_factories) {
+                                                     const std::vector<EpFactoryInternal*>& internal_factories,
+                                                     const ORTCHAR_T* lib_path) {
   const Env& env = Env::Default();
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
 #endif
+  // Keep the Start/End calls without ORT_USE_TELEMETRY: Windows ETW still uses them.
+  // Only duration measurement is gated by ORT_USE_TELEMETRY.
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
-
-  if (ep_libraries_.count(registration_name) > 0) {
-    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
-#if defined(ORT_USE_TELEMETRY)
-    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(
-        registration_name, status, TimeDiffMicroSeconds(tp));
-#else
-    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
-#endif
-    return status;
-  }
 
   auto status = Status::OK();
 
   ORT_TRY {
-#if defined(ORT_USE_TELEMETRY)
+    // Contain early Status returns so they reach the End event.
     status = [&]() -> Status {
-#endif
+      std::vector<EpFactoryInternal*> loaded_factories;
+      if (lib_path != nullptr) {
+        ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, loaded_factories));
+      }
+
+      if (ep_libraries_.count(registration_name) > 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+      }
+
       // create the EpInfo which loads the library if required
       std::unique_ptr<EpInfo> ep_info = nullptr;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
@@ -622,20 +622,25 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
         }
       }
 
-      for (const auto& internal_factory : internal_factories) {
+      const auto& factories_to_register = lib_path != nullptr ? loaded_factories : internal_factories;
+      for (const auto& internal_factory : factories_to_register) {
         internal_ep_factories_.insert(internal_factory);
       }
 
       ep_libraries_[registration_name] = std::move(ep_info);
-#if defined(ORT_USE_TELEMETRY)
       return Status::OK();
     }();
-#endif
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to register EP library under '", registration_name, "' with unknown exception.");
     });
   }
 
@@ -671,9 +676,6 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
   Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
-  std::vector<EpFactoryInternal*> internal_factories = {};
-  std::unique_ptr<EpLibrary> ep_library;
-
   // An application can allow EP libraries to create virtual devices by using an EP library registration name that
   // ends in the suffix ".virtual". If so, ORT automatically sets the config key "allow_virtual_devices" to "1"
   // in the environment. We track the number of libraries that use virtual devices to be able to remove
@@ -687,11 +689,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     num_allow_virtual_device_uses_ += 1;
   }
 
-  // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
-  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
-                                                 internal_factories));
-
-  return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
+  return RegisterExecutionProviderLibrary(registration_name, nullptr, {}, lib_path);
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& registration_name) {
