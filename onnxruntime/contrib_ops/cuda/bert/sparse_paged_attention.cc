@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/sparse_paged_attention.h"
 
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
@@ -19,10 +20,11 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                           \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
           .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
-          .TypeConstraint("T_AUX", DataTypeImpl::GetTensorType<T>())          \
           .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())        \
-          .InputMemoryType(OrtMemTypeCPUInput, 21),                           \
+          .InputMemoryType(OrtMemTypeCPUInput, 21)                            \
+          .Alias(3, 1)                                                        \
+          .Alias(4, 2),                                                       \
       SparsePagedAttention<T, TCACHE>);
 
 REGISTER_SPARSE_KERNEL_TYPED(MLFloat16, MLFloat16)
@@ -49,8 +51,13 @@ SparsePagedAttention<T, TCACHE>::SparsePagedAttention(const OpKernelInfo& info)
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() &&
-              kv_num_heads > 0 && num_heads % kv_num_heads == 0);
+  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0);
+  ORT_ENFORCE(num_heads <= std::numeric_limits<int>::max(),
+              "num_heads must not exceed INT_MAX.");
+  ORT_ENFORCE(kv_num_heads <= std::numeric_limits<int>::max(),
+              "kv_num_heads must not exceed INT_MAX.");
+  ORT_ENFORCE(num_heads % kv_num_heads == 0,
+              "num_heads must be divisible by kv_num_heads.");
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ =
