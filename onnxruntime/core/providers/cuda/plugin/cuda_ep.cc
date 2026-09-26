@@ -151,7 +151,10 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
                         : nullptr;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
-  OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
+  // Always install the start callback so CUDA plugin builds can reject a caller-owned capture
+  // explicitly. The plugin EP ABI does not yet expose the external-capture query that the
+  // in-tree CUDA EP uses to enter record-only mode.
+  OnRunStart = OnRunStartImpl;
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
 
   // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
@@ -588,6 +591,24 @@ OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
   EXCEPTION_TO_STATUS_BEGIN
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    const auto status =
+        cudaStreamIsCapturing(static_cast<cudaStream_t>(ep->config_.user_compute_stream), &capture_status);
+    if (status != cudaSuccess) {
+      return Ort::GetApi().CreateStatus(
+          ORT_EP_FAIL,
+          (std::string("CUDA graph capture query error: ") + cudaGetErrorName(status) +
+           ": " + cudaGetErrorString(status))
+              .c_str());
+    }
+    if (capture_status != cudaStreamCaptureStatusNone) {
+      return Ort::GetApi().CreateStatus(
+          ORT_NOT_IMPLEMENTED,
+          "Caller-initiated CUDA graph capture is not supported when CUDA is loaded as a plugin EP.");
+    }
+  }
+
   if (!ep->config_.enable_cuda_graph) {
     return nullptr;
   }
