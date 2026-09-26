@@ -64,7 +64,7 @@ Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContex
   const auto* pre_mix = context.Input(1);
   hyper_connection::StreamShape params;
   ORT_RETURN_IF_ERROR(hyper_connection::ResolveStreamShape(streams->Shape(), num_branches_, params));
-  hyper_connection::GateLayout layout;
+  hyper_connection::GateLayout layout = hyper_connection::GateLayout::Scalar;
   ORT_RETURN_IF_ERROR(
       hyper_connection::ResolveGateShape(pre_mix->Shape(), streams->Shape(), params, false, layout, true));
   auto* y = context.Output(0, TensorShape(params.reduced_shape));
