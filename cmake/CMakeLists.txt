@@ -70,11 +70,6 @@ option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
-# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
-# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
-# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
-cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
-
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
@@ -97,6 +92,12 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+# Declare both prerequisites before evaluating this dependent option on a fresh configure.
+# Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
+# OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
+# use. If you hit any problem with that, please do not report it to GTest. Turn OFF the following build option instead.
+cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUDA unit tests" OFF "onnxruntime_USE_CUDA;onnxruntime_BUILD_UNIT_TESTS" OFF)
+
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
 # archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).

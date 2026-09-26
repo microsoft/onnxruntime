@@ -571,6 +571,25 @@ present. `ComputeInternal` then:
   ./onnxruntime_provider_test --gtest_filter=CUDA_EP_Unittest.*
   ```
 
+  For the non-plugin CUDA EP, configure with `onnxruntime_USE_CUDA=ON`,
+  `onnxruntime_BUILD_UNIT_TESTS=ON`, and `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`.
+  Building the provider-test target also builds the internal-test module:
+
+  ```bash
+  cmake --build <build-directory> --config Release --target onnxruntime_provider_test
+  ```
+
+  On Windows, this is an aggregate build target: it builds the executable first,
+  then the module that links against the executable's import library. The executable
+  remains named `onnxruntime_provider_test.exe`, and the CTest name remains
+  `onnxruntime_provider_test`. The default build also includes both artifacts.
+
+  Before the full build, Windows CUDA CI builds only `onnxruntime_provider_test`
+  and requires both the executable and internal-test DLL to be produced from
+  fresh outputs. It then runs `CUDA_EP_Unittest.All` explicitly on the GPU runner.
+  Its XML report must contain the completed wrapper test; an absent or skipped
+  test fails the check.
+
   This wrapper executes the internal CUDA-UT shared library and covers the
   fpA_intB / MatMulNBits groupwise GEMM tests under
   [onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/fpA_intB_gemm_kernel_test.cc)

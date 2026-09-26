@@ -58,7 +58,10 @@ function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
 endfunction()
 
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  if (NOT _UT_TEST_NAME)
+    set(_UT_TEST_NAME ${_UT_TARGET})
+  endif()
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   filter_test_srcs(_UT_SOURCES)
@@ -272,7 +275,7 @@ function(AddTest)
         if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
           list(APPEND TEST_NPM_FLAGS "--wasm-threads")
         endif()
-        add_test(NAME ${_UT_TARGET}
+        add_test(NAME ${_UT_TEST_NAME}
           COMMAND ${NPM_CLI} test -- ${TEST_NPM_FLAGS} --entry=${_UT_TARGET} ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
@@ -290,20 +293,20 @@ function(AddTest)
           set(NODE_EXECUTABLE node)
         endif()
 
-        add_test(NAME ${_UT_TARGET}
+        add_test(NAME ${_UT_TEST_NAME}
           COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
       endif()
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
     else()
-      add_test(NAME ${_UT_TARGET}
+      add_test(NAME ${_UT_TEST_NAME}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
+      set_tests_properties(${_UT_TEST_NAME} PROPERTIES TIMEOUT 10800)
     endif()
   endif()
 endfunction(AddTest)
@@ -998,6 +1001,7 @@ set(all_tests
     ${onnxruntime_test_lora_src}
 )
 
+set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
@@ -1055,8 +1059,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
   endif()
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
+  list(APPEND onnxruntime_test_providers_runtime_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
@@ -1127,7 +1130,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
   endif()
 endif()
 
-set(all_dependencies ${onnxruntime_test_providers_dependencies} )
+set(all_dependencies ${onnxruntime_test_providers_dependencies} ${onnxruntime_test_providers_runtime_dependencies})
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
@@ -1421,6 +1424,10 @@ endif()
 # Execution provider-related tests.
 # These also have some support for dynamically specified plugin EPs.
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+set(onnxruntime_provider_test_target onnxruntime_provider_test)
+if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+  set(onnxruntime_provider_test_target onnxruntime_provider_test_executable)
+endif()
 block()
   set(supporting_test_srcs
     ${TEST_SRC_DIR}/common/cuda_op_test_utils.cc
@@ -1450,15 +1457,29 @@ block()
   )
 
   set(onnxruntime_provider_test_deps ${onnxruntime_test_providers_dependencies})
+  if (onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
+    list(APPEND onnxruntime_provider_test_deps ${onnxruntime_test_providers_runtime_dependencies})
+  endif()
 
   AddTest(
-    TARGET onnxruntime_provider_test
+    TARGET ${onnxruntime_provider_test_target}
+    TEST_NAME onnxruntime_provider_test
     SOURCES ${onnxruntime_provider_test_srcs}
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
+  if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
+    # Keep the public build target responsible for both runtime artifacts without
+    # making the executable depend on the module that imports its symbols.
+    set_target_properties(${onnxruntime_provider_test_target} PROPERTIES OUTPUT_NAME onnxruntime_provider_test)
+    add_custom_target(onnxruntime_provider_test ALL)
+    add_dependencies(onnxruntime_provider_test
+      ${onnxruntime_provider_test_target} ${onnxruntime_test_providers_runtime_dependencies})
+    set_target_properties(onnxruntime_provider_test PROPERTIES FOLDER "ONNXRuntimeTest")
+  endif()
+
+  onnxruntime_apply_test_target_workarounds(${onnxruntime_provider_test_target})
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   # The CUDA EP internal unit tests (onnxruntime_providers_cuda_ut) are built as a shared-library
@@ -1467,7 +1488,7 @@ block()
   # InferenceSession, whose symbols are statically linked into this executable. Mirror
   # onnxruntime_test_all and export them so the dlopen'd module can resolve them at load time;
   # without this the module fails to load with an undefined-symbol error.
-  set_target_properties(onnxruntime_provider_test PROPERTIES ENABLE_EXPORTS 1)
+  set_target_properties(${onnxruntime_provider_test_target} PROPERTIES ENABLE_EXPORTS 1)
 
   # On Windows, ENABLE_EXPORTS makes CMake emit an import library (onnxruntime_provider_test.lib)
   # for the exported symbols, but a MODULE library (onnxruntime_providers_cuda_ut, built via
@@ -1478,17 +1499,17 @@ block()
   # On Linux the runtime -rdynamic export path (above) is sufficient, so this is Windows-only.
   # Note: onnxruntime_providers_cuda_ut only exists in the non-plugin CUDA-EP-internal-tests path.
   if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
-    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_provider_test)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE ${onnxruntime_provider_test_target})
   endif()
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    target_compile_definitions(onnxruntime_provider_test PRIVATE
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
       ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
       ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
   endif()
 
   if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    target_link_libraries(onnxruntime_provider_test PRIVATE
+    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE
       CUDA::cudart
       CUDA::cublas
       CUDA::cublasLt
@@ -1504,19 +1525,19 @@ block()
     target_include_directories(qnn_sdk_headers_include INTERFACE
       ${onnxruntime_QNN_HOME}/include
       ${onnxruntime_QNN_HOME}/include/QNN)
-    target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
+    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE qnn_sdk_headers_include)
   endif()
 
   # enable dynamic plugin EP usage
-  target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
-  onnxruntime_apply_emscripten_test_link_settings(onnxruntime_provider_test)
+  target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  onnxruntime_apply_emscripten_test_link_settings(${onnxruntime_provider_test_target})
 
   if (IOS)
     add_custom_command(
-      TARGET onnxruntime_provider_test POST_BUILD
+      TARGET ${onnxruntime_provider_test_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${TEST_DATA_SRC}
-      $<TARGET_FILE_DIR:onnxruntime_provider_test>/testdata)
+      $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>/testdata)
   endif()
 endblock()
 endif()
