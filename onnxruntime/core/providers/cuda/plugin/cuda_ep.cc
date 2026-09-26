@@ -212,6 +212,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
   adapter_config.enable_cudnn = config_.enable_cudnn;
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
+  adapter_config.enable_cuda_graph = config_.enable_cuda_graph;
+  adapter_config.enable_host_pageable_gather = config_.enable_host_pageable_gather;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
   adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;

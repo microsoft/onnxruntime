@@ -3485,11 +3485,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
   (`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
   `B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
-  
+
   When the optional scalar `a_scale` is provided, the activation values used in the multiplication
   are `A_scaled = fp8_e4m3(A / a_scale) * a_scale` (W8A8). Otherwise, A retains its FP16/BF16
   precision (weight-only W8A16).
-  
+
   The operator multiplies the activation by the transpose of B_scaled and adds the optional bias.
   The output has shape [..., N] and the same element type as A.
 

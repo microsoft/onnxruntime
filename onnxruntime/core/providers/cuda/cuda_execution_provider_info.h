@@ -83,6 +83,7 @@ struct CUDAExecutionProviderInfo {
   bool fuse_conv_bias{false};
 
   int sdpa_kernel{0};
+  bool enable_host_pageable_gather{false};
 
   // 0 disables the custom external-data loader and retains the framework's existing path.
   // 1 uses the pinned-buffer loader with synchronous reads. 2..64 use that many parallel read tasks per block.
@@ -121,6 +122,7 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
     onnxruntime::HashCombine(info.enable_cudnn, value);
+    onnxruntime::HashCombine(info.enable_host_pageable_gather, value);
     onnxruntime::HashCombine(info.external_data_loader_reading_threads, value);
 
     // Memory pointers
