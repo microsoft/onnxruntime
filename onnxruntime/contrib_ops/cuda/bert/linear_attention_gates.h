@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "contrib_ops/bert/linear_attention_gates_common.h"
+#include "contrib_ops/cpu/bert/linear_attention_gates_common.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
