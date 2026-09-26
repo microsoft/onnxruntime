@@ -118,6 +118,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
+  * <a href="#com.microsoft.SparseAttentionIndexer">com.microsoft.SparseAttentionIndexer</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -2941,29 +2942,29 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   This operator implements grouped-query attention with past state (KV cache) support.
   It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
-  
+
   **Cache Format:**
   The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
-  
+
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
-  
+
   After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
-  
+
   ```
   G = C - W + 1
   L(T) = T                            if T <= C
   L(T) = T - G * ceil((T - C) / G)    otherwise
   ```
-  
+
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
-  
+
     Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
-  
+
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
-  
+
   To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
-  
+
   **Quantization:**
   When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
   The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
@@ -3481,7 +3482,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulBlockQuantizedFp8Weight"></a><a name="com.microsoft.matmulblockquantizedfp8weight">**com.microsoft.MatMulBlockQuantizedFp8Weight**</a>
 
   Block-scaled FP8 (E4M3) matrix multiplication with optional FP8 activation quantization.
-  
+
   The weight tensor B has shape [N, K] with one FP32 scale per `block_size` consecutive K values
   (`b_scale` of shape [N, ceil(K / block_size)]). The scaled weight value is
   `B_scaled[n, k] = fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]`.
@@ -4336,9 +4337,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
   only when the whole operator call is unconditionally committed; a caller that may select a prefix or
   roll back must preserve past_ids.
-  
+
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
-  
+
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.
@@ -7053,6 +7054,131 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain integer type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SparseAttentionIndexer"></a><a name="com.microsoft.sparseattentionindexer">**com.microsoft.SparseAttentionIndexer**</a>
+
+  Selects, for every query token, the sparse-attention candidates that the following attention
+  operator is allowed to read. It covers the two indexer flavours used by recent sparse-attention
+  decoders, chosen with the policy_mode attribute:
+  
+    policy_mode = "qsa" ("query sparse attention" token indexer)
+      Groups the tokens that are visible to a query into complete blocks of compress_ratio tokens,
+      mean-pools the indexer keys of every block, normalizes and rotates the pooled key, scores it
+      against the query heads with sum_h ReLU(q_h . k), keeps the token_budget / compress_ratio
+      highest scoring blocks and emits the token indices of those blocks followed by the visible
+      tokens of the trailing incomplete block.
+  
+    policy_mode = "csa" ("compressed sparse attention" block indexer)
+      Compresses every compress_ratio consecutive tokens into one entry with a softmax-gated pooling
+      over a window of 2 * compress_ratio slots (the previous window contributes its "Ca" half and
+      the current window its "Cb" half), normalizes and rotates the entry, appends it to the
+      compressed-key state, scores the queries against every compressed entry with
+      sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
+      highest scoring entry indices.
+  
+  Common contract:
+    * selected_indices is int32 with a fixed capacity that only depends on attributes:
+      token_budget + compress_ratio - 1 for "qsa" and index_topk for "csa". Unused entries are -1,
+      so no output size depends on the data and no device-to-host synchronization is required.
+    * All state is explicit in the graph. Nothing is cached inside the operator.
+    * Rotary embeddings reuse the precomputed cos_cache / sin_cache tables, which are indexed by
+      absolute key position. "qsa" applies the half-rotation of the model's (M)RoPE to the leading
+      rotary_dim = cos_cache.shape[2] channels. "csa" applies its trailing rotary to the last
+      2 * cos_cache.shape[2] channels, with each cos/sin entry covering two consecutive channels.
+    * key_norm_weight is the effective RMSNorm multiplier. Models that store a zero-centered gamma
+      (the normalized value is multiplied by 1 + gamma) must fold the addition into this initializer.
+    * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
+      result is rounded once to the tensor element type.
+    * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
+      ordered by decreasing score, so the result is deterministic.
+  
+  State layout for policy_mode = "csa": the two slices of past_proj_buffer hold the key and gate
+  projections that have not been folded into a compressed entry yet. When their length is >=
+  compress_ratio, the first compress_ratio tokens are the previous complete window (the "Ca" operand
+  of the next window) and the remainder is the current incomplete window; when it is < compress_ratio
+  there is no previous complete window and the whole buffer is the incomplete window. The length is
+  therefore always in [0, 2 * compress_ratio), and the number of compressed entries emitted by a call
+  is known from the input shapes alone. position_bias is re-applied to the buffered gates, so the gate
+  projection plane stores the raw projection.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>compress_ratio</tt> : int (required)</dt>
+<dd>Number of consecutive tokens folded into one compressed block. Must be > 0.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.</dd>
+<dt><tt>head_weight_scale</tt> : float</dt>
+<dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>index_topk</tt> : int</dt>
+<dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>policy_mode</tt> : string (required)</dt>
+<dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
+<dt><tt>token_budget</tt> : int</dt>
+<dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
+</dl>
+
+#### Inputs (7 - 13)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Indexer queries with shape (batch_size, sequence_length, num_heads, head_size), already normalized but not yet rotated.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dt><tt>key_norm_weight</tt> : T</dt>
+<dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
+<dt><tt>cos_cache</tt> : T</dt>
+<dd>Cosine rotary table indexed by absolute key position, with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
+<dt><tt>sin_cache</tt> : T</dt>
+<dd>Sine rotary table with the same shape as cos_cache.</dd>
+<dt><tt>mask</tt> (optional) : TB</dt>
+<dd>Only for policy_mode 'qsa': INT64 padding mask with shape (batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. total_sequence_length is past_sequence_length + sequence_length.</dd>
+<dt><tt>past_key</tt> : T</dt>
+<dd>Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed keys. Shape is (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.</dd>
+<dt><tt>gate</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': gate projection of the new tokens with shape (batch_size, sequence_length, 2 * head_size).</dd>
+<dt><tt>position_bias</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).</dd>
+<dt><tt>head_weights</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': per-head score weights with shape (batch_size, sequence_length, num_heads).</dd>
+<dt><tt>position_ids</tt> (optional) : I</dt>
+<dd>Only for policy_mode 'csa': absolute position of every query with shape (batch_size, sequence_length).</dd>
+<dt><tt>past_sequence_length</tt> (optional) : M</dt>
+<dd>Optional one-element CPU tensor containing the number of valid rows in past_key. For policy_mode 'csa', the value is the number of compressed keys. When provided, past_key and present_key have the same max-capacity shape and may share their buffer.</dd>
+<dt><tt>past_proj_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': buffered key and gate projections packed along dimension 0, with shape (2, batch_size, buffer_length, 2 * head_size). Slice 0 contains keys and slice 1 contains gates. buffer_length is in [0, 2 * compress_ratio).</dd>
+</dl>
+
+#### Outputs (2 - 3)
+
+<dl>
+<dt><tt>selected_indices</tt> : M</dt>
+<dd>Selected entries with shape (batch_size, sequence_length, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices into the key cache, and index_topk for policy_mode 'csa', where the values are compressed entry indices. Unused entries are -1.</dd>
+<dt><tt>present_key</tt> : T</dt>
+<dd>Updated raw key cache for policy_mode 'qsa' or compressed-key cache for 'csa'. Without past_sequence_length its sequence dimension grows by the entries emitted by this call. When past_sequence_length is provided, its shape matches the max-capacity past_key and the two tensors may share a buffer.</dd>
+<dt><tt>present_proj_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': updated packed key/gate projection buffer with shape (2, batch_size, present_buffer_length, 2 * head_size).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain floating point tensors to float, float16 and bfloat16.</dd>
+<dt><tt>TB</tt> : tensor(int64)</dt>
+<dd>Constrain the mask to 64-bit integer tensors.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Constrain position ids to 64-bit integer tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain indices and cache lengths to 32-bit integer tensors.</dd>
 </dl>
 
 
