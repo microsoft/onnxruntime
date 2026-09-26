@@ -18,11 +18,34 @@ parameters:
 
 - name: cuda_version
   type: string
-  displayName: 'CUDA version. Windows Only.'
+  displayName: 'CUDA version for Windows and Linux x86_64.'
   default: '12.8'
   values:
    - 12.8
    - 13.0
+   - 13.3
+
+- name: linux_aarch64_cuda_version
+  type: string
+  displayName: 'CUDA version for Linux aarch64.'
+  values:
+   - 12.8
+   - 13.0
+
+- name: tensorrt_version
+  type: string
+  displayName: 'TensorRT version for Windows and Linux x86_64.'
+
+- name: tensorrt_cuda_version
+  type: string
+  displayName: 'CUDA version used to build TensorRT for Windows and Linux x86_64.'
+
+- name: tensorrt_major_version
+  type: string
+  displayName: 'TensorRT RPM package major version for Linux x86_64.'
+  values:
+   - '10'
+   - '11'
 
 - name: cudnn_folder
   type: string
@@ -82,8 +105,8 @@ parameters:
   default: []
 
 stages:
-    # Use separated cudnn folder for CUDA 13.0 on Windows.
-    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+    # Use a separate cuDNN folder for CUDA 13 on Windows.
+    - ${{ if startsWith(parameters.cuda_version, '13.') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
           parameters:
@@ -92,6 +115,7 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
+            TensorRTFolder: ${{ format('TensorRT-{0}.Windows.win10.cuda-{1}', parameters.tensorrt_version, parameters.tensorrt_cuda_version) }}
 
     - ${{ if eq(parameters.cuda_version, '12.8') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
@@ -102,6 +126,7 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
+            TensorRTFolder: ${{ format('TensorRT-{0}.Windows.win10.cuda-{1}', parameters.tensorrt_version, parameters.tensorrt_cuda_version) }}
 
     # Linux: one parallel stage per Python version
     - ${{ each config in parameters.LinuxPythonConfigurations }}:
@@ -113,6 +138,8 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
+          trt_version_override: ${{ format('{0}-1.cuda{1}', parameters.tensorrt_version, parameters.tensorrt_cuda_version) }}
+          trt_major_version: ${{ parameters.tensorrt_major_version }}
           cmake_cuda_archs: ${{ parameters.cmake_linux_x64_cuda_archs }}
           docker_base_image: ${{ parameters.docker_base_image }}
           python_version: ${{ config.python_version }}
@@ -131,7 +158,7 @@ stages:
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: ${{ parameters.cuda_version }}
+          cuda_version: ${{ parameters.linux_aarch64_cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_linux_aarch64_cuda_archs }}
           docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
           python_version: ${{ config.python_version }}
