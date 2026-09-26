@@ -23,7 +23,9 @@ class ComputeContextBase;
 
 class SubgroupMatrixMatMulImpl {
  public:
+  SubgroupMatrixMatMulImpl() = default;
   virtual ~SubgroupMatrixMatMulImpl() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SubgroupMatrixMatMulImpl);
 
   virtual bool CanApply(const ComputeContext& context,
                         const std::vector<const Tensor*>& inputs,

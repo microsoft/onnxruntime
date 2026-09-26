@@ -37,12 +37,16 @@ struct kernel_type_traits;
 
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int8Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int4Groupwise, true, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int2Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int8PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int4PerChannel, false, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::FP16Int2PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int8Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int4Groupwise, true, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int2Groupwise, true, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int8PerChannel, false, false);
 KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int4PerChannel, false, true);
+KERNEL_TYPE_TRAITS_REGISTRY(KernelType::BF16Int2PerChannel, false, false);
 #undef KERNEL_TYPE_TRAITS_REGISTRY
 
 // A generic memory iterator used for coalesced global memory access with optional enablement.
@@ -133,6 +137,10 @@ struct Int8DetailsW {
 
 struct Int4DetailsW {
   static constexpr int kElemBits = 4;
+};
+
+struct Int2DetailsW {
+  static constexpr int kElemBits = 2;
 };
 
 struct Fp4DetailsW {
@@ -234,9 +242,10 @@ struct I2FConverter;
 template <typename AType, int WElemBits>
 struct I2FConverter<AType, WElemBits, true> {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
-  static_assert(WElemBits == 4 || WElemBits == 8);
+  static_assert(WElemBits == 2 || WElemBits == 4 || WElemBits == 8);
   using CutlassAType = std::conditional_t<std::is_same_v<AType, half>, cutlass::half_t, cutlass::bfloat16_t>;
-  using CutlassWType = std::conditional_t<WElemBits == 4, cutlass::uint4b_t, uint8_t>;
+  using CutlassWType = std::conditional_t<WElemBits == 2, cutlass::uint2b_t,
+                                          std::conditional_t<WElemBits == 4, cutlass::uint4b_t, uint8_t>>;
   static constexpr int kConvertCount = 32 / WElemBits;
   using Converter = cutlass::FastInterleavedAndBiasedNumericArrayConverter<CutlassAType, CutlassWType, kConvertCount>;
   using CvtSrcType = typename Converter::source_type;

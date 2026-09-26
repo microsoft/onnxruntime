@@ -528,6 +528,19 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   RunMulModelWithPluginEp(session_options);
 }
 
+TEST(OrtEpLibrary, PluginEp_NullSessionAllocatorUsesDefaultCpuAllocator) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.example.use_default_cpu_allocator", "1");
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  RunMulModelWithPluginEp(session_options);
+}
+
 // Registers the example EP, appends it to session options, and loads its test hooks.
 static void SetUpPreallocatedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
                                         Ort::SessionOptions& session_options,

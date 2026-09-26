@@ -1,10 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #if !defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
@@ -22,36 +31,62 @@
 namespace onnxruntime {
 namespace test {
 
-// Reference matmul using MatMulComputeHelper for shape/offset computation.
-// Supports arbitrary-rank batched matmul with broadcasting.
-static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::vector<float>& b_vals,
-                                  std::vector<float>& out_vals,
-                                  const MatMulComputeHelper& helper) {
-  const auto M = helper.M();
-  const auto K = helper.K();
-  const auto N = helper.N();
-  if (K == 0) {
-    return;
+// Independent reference for ONNX MatMul, including vector promotion and
+// broadcasting of leading batch dimensions.
+static void ComputeExpectedResult(std::initializer_list<int64_t> a_dims,
+                                  std::initializer_list<int64_t> b_dims,
+                                  const std::vector<float>& a_vals, const std::vector<float>& b_vals,
+                                  TensorShapeVector& output_dims, std::vector<float>& out_vals) {
+  ASSERT_GT(a_dims.size(), 0u);
+  ASSERT_GT(b_dims.size(), 0u);
+  TensorShapeVector a_shape(a_dims), b_shape(b_dims);
+  const bool a_is_vector = a_shape.size() == 1;
+  const bool b_is_vector = b_shape.size() == 1;
+  if (a_is_vector) a_shape.insert(a_shape.begin(), 1);
+  if (b_is_vector) b_shape.push_back(1);
+  const size_t rank = std::max(a_shape.size(), b_shape.size());
+  a_shape.insert(a_shape.begin(), rank - a_shape.size(), 1);
+  b_shape.insert(b_shape.begin(), rank - b_shape.size(), 1);
+  const int64_t M = a_shape[rank - 2];
+  const int64_t K = a_shape.back();
+  const int64_t N = b_shape.back();
+  ASSERT_EQ(K, b_shape[rank - 2]);
+  output_dims.clear();
+  for (size_t axis = 0; axis + 2 < rank; ++axis) {
+    ASSERT_TRUE(a_shape[axis] == b_shape[axis] || a_shape[axis] == 1 || b_shape[axis] == 1);
+    output_dims.push_back(a_shape[axis] == 1 ? b_shape[axis] : a_shape[axis]);
   }
-  const auto& left_offsets = helper.LeftOffsets();
-  const auto& right_offsets = helper.RightOffsets();
-  const auto& output_offsets = helper.OutputOffsets();
-  const size_t num_batches = output_offsets.size();
-
-  for (size_t batch = 0; batch < num_batches; ++batch) {
-    const float* a = a_vals.data() + left_offsets[batch];
-    const float* b = b_vals.data() + right_offsets[batch];
-    float* out = out_vals.data() + output_offsets[batch];
-    for (ptrdiff_t m = 0; m < M; ++m) {
-      for (ptrdiff_t n = 0; n < N; ++n) {
+  const int64_t num_batches = std::accumulate(output_dims.begin(), output_dims.end(), int64_t{1},
+                                              std::multiplies<int64_t>());
+  out_vals.assign(static_cast<size_t>(num_batches * M * N), 0.0f);
+  for (int64_t batch = 0; batch < num_batches; ++batch) {
+    int64_t remaining = batch;
+    int64_t a_offset = 0, b_offset = 0;
+    int64_t a_stride = M * K, b_stride = K * N;
+    for (size_t i = output_dims.size(); i > 0; --i) {
+      const size_t axis = i - 1;
+      const int64_t coordinate = remaining % output_dims[axis];
+      remaining /= output_dims[axis];
+      if (a_shape[axis] != 1) a_offset += coordinate * a_stride;
+      if (b_shape[axis] != 1) b_offset += coordinate * b_stride;
+      a_stride *= a_shape[axis];
+      b_stride *= b_shape[axis];
+    }
+    const float* a = a_vals.data() + a_offset;
+    const float* b = b_vals.data() + b_offset;
+    float* out = out_vals.data() + batch * M * N;
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
         float sum = 0.0f;
-        for (ptrdiff_t k = 0; k < K; ++k) {
+        for (int64_t k = 0; k < K; ++k) {
           sum += a[m * K + k] * b[k * N + n];
         }
         out[m * N + n] = sum;
       }
     }
   }
+  if (!a_is_vector) output_dims.push_back(M);
+  if (!b_is_vector) output_dims.push_back(N);
 }
 
 #if defined(_WIN32) && defined(DAWN_ENABLE_VULKAN)
@@ -94,37 +129,13 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
 
       const auto& adapter_info = context.AdapterInfo();
       const auto& device_configs = context.SubgroupMatrixConfigs();
-      bool has_required_config = false;
-      for (const auto& required_config : webgpu::supported_subgroup_matrix_configs) {
-        if (!required_config.Is(8, 16, 16) ||
-            required_config.componentType != wgpu::SubgroupMatrixComponentType::F16 ||
-            required_config.resultComponentType != wgpu::SubgroupMatrixComponentType::F16) {
-          continue;
-        }
-        for (size_t i = 0; i < device_configs.configCount; ++i) {
-          const auto& device_config = device_configs.configs[i];
-          if (device_config.componentType == required_config.componentType &&
-              device_config.resultComponentType == required_config.resultComponentType &&
-              device_config.M == required_config.M &&
-              device_config.N == required_config.N &&
-              device_config.K == required_config.K &&
-              webgpu::IsSubgroupSizeSupported(
-                  adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
-                  required_config.subgroupSize,
-                  context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl))) {
-            has_required_config = true;
-            break;
-          }
-        }
-        if (has_required_config) {
-          break;
-        }
-      }
-      if (!has_required_config) {
+      constexpr auto kF16 = wgpu::SubgroupMatrixComponentType::F16;
+      if (!webgpu::detail::SelectSubgroupMatrixConfigFromAdapterConfigs(
+              {device_configs.configs, device_configs.configCount},
+              adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize,
+              context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl),
+              {{kF16, kF16, 8, 16, 16, 32, false}})) {
         return "subgroup_matrix requires an 8x16x16 F16 configuration with subgroup size 32.";
-      }
-      if (!context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
-        return "subgroup_matrix requires the WebGPU SubgroupSizeControl feature.";
       }
       break;
     }
@@ -171,21 +182,13 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   }
 #endif
 
-  TensorShape a_shape(a_dims);
-  TensorShape b_shape(b_dims);
-  MatMulComputeHelper helper;
-  ASSERT_STATUS_OK(helper.Compute(a_shape, b_shape));
-  const TensorShape& output_shape = helper.OutputShape();
-
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
   std::vector<float> b_vals(random.Gaussian<float>(AsSpan(b_dims), 0.0f, 0.25f));
 
-  std::vector<float> expected_vals(output_shape.Size());
-  ComputeExpectedResult(a_vals, b_vals, expected_vals, helper);
-
-  std::vector<int64_t> output_dims(output_shape.NumDimensions());
-  output_shape.CopyDims(output_dims.data(), output_shape.NumDimensions());
+  TensorShapeVector output_dims;
+  std::vector<float> expected_vals;
+  ASSERT_NO_FATAL_FAILURE(ComputeExpectedResult(a_dims, b_dims, a_vals, b_vals, output_dims, expected_vals));
 
   OpTester test("MatMul", version);
   if constexpr (std::is_same_v<T, float>) {

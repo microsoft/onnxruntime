@@ -52,6 +52,22 @@ constexpr int RoundUpProfileM(int value, int max_profile_m) {
   return std::min(rounded, max_profile_m);
 }
 
+// Number of averaged launches for a tactic whose single warm launch took probe_ms, given the best
+// average so far. Cheap tactics keep the full average. Expensive ones get a fixed time budget, and
+// zero (skip) when they are already clearly slower than the best, since they cannot win.
+inline int GetProfileTimedRuns(float probe_ms, float best_ms) {
+  constexpr int kMaxRuns = 10;
+  constexpr float kTimedBudgetMs = 20.0f;
+  constexpr float kPruneRatio = 1.5f;
+  if (probe_ms * kMaxRuns <= kTimedBudgetMs) {
+    return kMaxRuns;
+  }
+  if (probe_ms > kPruneRatio * best_ms) {
+    return 0;
+  }
+  return std::max(1, static_cast<int>(kTimedBudgetMs / probe_ms));
+}
+
 struct GemmDims {
   int64_t minM;
   int64_t maxM;
@@ -214,7 +230,8 @@ class GemmPluginProfiler {
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics,
                                                  char* workspace, cudaStream_t stream);
 
-  float profileTacticForProblem(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream);
+  float profileTacticForProblem(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream,
+                                float best_time);
 
  protected:
   RunnerPtr mRunner{nullptr};
@@ -489,7 +506,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         continue;
       }
       // Profile particular tactic for given M, N and K
-      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream);
+      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime);
 
 #if ORT_LLM_VERBOSE > 1
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
@@ -536,38 +553,36 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticForProblem(
-    int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream) {
-  constexpr int warmup = 5;
-  constexpr int runs = 10;
+    int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream, float best_time) {
+  // The untimed launch absorbs first-launch costs such as lazy module loading.
+  runTactic(m, n, k, tactic, workspace, stream);
 
-  // Warmup the execution
-  for (int i = 0; i < warmup; ++i) {
-    runTactic(m, n, k, tactic, workspace, stream);
-  }
+  struct Events {
+    cudaEvent_t start{};
+    cudaEvent_t stop{};
+    ~Events() {
+      if (start != nullptr) cudaEventDestroy(start);
+      if (stop != nullptr) cudaEventDestroy(stop);
+    }
+  } events;
+  CUDA_CALL_THROW(cudaEventCreate(&events.start));
+  CUDA_CALL_THROW(cudaEventCreate(&events.stop));
 
-  cudaEvent_t start;
-  cudaEvent_t stop;
-  CUDA_CALL_THROW(cudaEventCreate(&start));
-  CUDA_CALL_THROW(cudaEventCreate(&stop));
-  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-  CUDA_CALL_THROW(cudaEventRecord(start, stream));
+  auto time_runs = [&](int runs) {
+    CUDA_CALL_THROW(cudaEventRecord(events.start, stream));
+    for (int i = 0; i < runs; ++i) {
+      runTactic(m, n, k, tactic, workspace, stream);
+    }
+    CUDA_CALL_THROW(cudaEventRecord(events.stop, stream));
+    CUDA_CALL_THROW(cudaEventSynchronize(events.stop));
+    float elapsed = 0.0f;
+    CUDA_CALL_THROW(cudaEventElapsedTime(&elapsed, events.start, events.stop));
+    return elapsed / runs;
+  };
 
-  // Profile GEMM
-  for (int i = 0; i < runs; ++i) {
-    runTactic(m, n, k, tactic, workspace, stream);
-  }
-
-  CUDA_CALL_THROW(cudaEventRecord(stop, stream));
-
-  CUDA_CALL_THROW(cudaEventSynchronize(stop));
-
-  float elapsed;
-  CUDA_CALL_THROW(cudaEventElapsedTime(&elapsed, start, stop));
-
-  CUDA_CALL_THROW(cudaEventDestroy(start));
-  CUDA_CALL_THROW(cudaEventDestroy(stop));
-
-  return elapsed / runs;
+  const float probe = time_runs(1);
+  const int runs = GetProfileTimedRuns(probe, best_time);
+  return runs == 0 ? probe : time_runs(runs);
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only

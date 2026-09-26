@@ -48,6 +48,20 @@ TEST(GenerationCudaImplTest, EmptyCrossQKPairsSkipLaunches) {
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+TEST(GenerationCudaImplTest, ExpandBufferRejectsSequenceLengthExceedingMaximum) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 5, 1}), allocator, input);
+
+  OrtValue expanded;
+  const Status status = GenerationCudaDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, false, 4);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Input sequence length (5) exceeds max sequence length (4)"),
+            std::string::npos);
+}
+
 TEST(GenerationCudaImplTest, CrossQKPairsAllowDuplicatesAndZeroInvalidIndices) {
   constexpr int frames = 3;
   constexpr int pair_count = 6;
