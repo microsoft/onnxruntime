@@ -201,7 +201,11 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
         "a compile-only session (session.compile_only=1). Select a real GPU device to run inference.");
   }
 
-  auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
+  const bool enable_profiling =
+      onnxruntime::ep::CurrentOrtApiVersion() >= 31
+          ? Api().ep.SessionOptionsGetEnableProfiling(session_options)
+          : true;
+  auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options, enable_profiling);
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
   auto factory = static_cast<Factory*>(this_ptr);

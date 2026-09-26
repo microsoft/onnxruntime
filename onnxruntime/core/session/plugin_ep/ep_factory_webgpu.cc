@@ -93,7 +93,8 @@ OrtStatus* WebGpuEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
         "a compile-only session (session.compile_only=1). Select a real GPU device to run inference.");
   }
 
-  auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(session_options->value.config_options);
+  auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(session_options->value.config_options,
+                                                                session_options->value.enable_profiling);
   *ep = webgpu_ep_factory->CreateProvider();
   (*ep)->SetLogger(session_logger->ToInternal());
 

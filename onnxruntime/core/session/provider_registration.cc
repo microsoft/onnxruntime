@@ -265,7 +265,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     case EpID::WebGPU: {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-      options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
+      options->provider_factories.push_back(
+          WebGpuProviderFactoryCreator::Create(options->value.config_options, options->value.enable_profiling));
 #else
       status = create_not_supported_status();
 #endif

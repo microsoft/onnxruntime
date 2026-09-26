@@ -184,4 +184,6 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length);
 
+ORT_API(bool, SessionOptionsGetEnableProfiling, _In_ const OrtSessionOptions* session_options);
+
 }  // namespace OrtExecutionProviderApi

@@ -16,7 +16,8 @@ namespace onnxruntime {
 struct ConfigOptions;
 
 struct WebGpuProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options,
+                                                           bool enable_profiling = false);
   static std::shared_ptr<IExecutionProviderFactory> CreateForTesting(
       const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size);
 };

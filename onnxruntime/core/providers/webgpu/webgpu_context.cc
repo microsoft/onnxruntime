@@ -78,6 +78,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
+    enable_profiling_ = config.enable_profiling;
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
@@ -333,6 +334,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
           << "WebGPU context is already initialized with enableRobustness=" << enable_robustness_
           << ". Requested value " << config.enable_robustness << " will be ignored.";
     }
+  }
+
+  if (config.enable_profiling && !enable_profiling_) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized without profiling support. "
+        << "The profiling request will not include GPU timestamps.";
   }
 }
 
@@ -846,11 +853,7 @@ std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
 std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {
   std::vector<wgpu::FeatureName> required_features;
   constexpr wgpu::FeatureName features[]{
-#if !defined(__wasm__)
-      wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
-#endif
       wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
-      wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
       wgpu::FeatureName::SubgroupSizeControl,
@@ -861,6 +864,16 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   for (auto feature : features) {
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
+    }
+  }
+  if (enable_profiling_) {
+#if !defined(__wasm__)
+    if (adapter.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+      required_features.push_back(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses);
+    }
+#endif
+    if (adapter.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+      required_features.push_back(wgpu::FeatureName::TimestampQuery);
     }
   }
   return required_features;
