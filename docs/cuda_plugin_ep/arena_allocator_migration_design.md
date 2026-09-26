@@ -366,7 +366,7 @@ OrtStatus* ORT_API_CALL CudaSyncStream::OnSessionRunEndImpl(OrtSyncStreamImpl* t
 }
 ```
 
-If stream completion cannot be established during teardown, the factory quarantines chunks associated with the stream and abandons only arenas that used it. Other sessions' arenas remain available.
+If stream completion cannot be established during teardown, the factory first abandons every device arena, then quarantines chunks associated with the stream. Device-wide abandonment is required because untagged allocations, including reserved initializers, may still be referenced by the undrained stream.
 
 The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be stream-aware, matching the in-tree EP where pinned uses plain `BFCArena` (not `StreamAwareBFCArena`). `CudaArenaAllocator`'s constructor handles this: it sets `AllocOnStream = nullptr` when `kind == CudaAllocatorKind::kPinned` (see Section 3.2). ORT's `AllocateBufferWithOptions` checks for a non-null `AllocOnStream` before calling it, so the pinned arena transparently falls through to plain `Alloc()`. Accordingly, `ResetChunksUsingStream` is not called for the pinned arena at session run end.
 
@@ -644,7 +644,7 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `plugin/cuda_allocator_plugin.h` | **(a)** Add `AllocatorStats` struct (POD with `ToKeyValuePairs` helper, copied from `ep_allocator.h`). **(b)** Add arena-support macros: `EP_ENFORCE` (ostringstream + throw), `LOG` (delegates to `OrtApi::Logger_LogMessage`), `RETURN_ERROR` (creates OrtStatus). These can go in `cuda_plugin_utils.h` instead if preferred. |
 | `plugin/cuda_ep_factory.h` | Extend `DeviceCacheEntry` with `arena_mutex`, a `device_arenas` collection, the shared pinned arena and mempool allocator, and their ref counts (Section 3.3). Add `#include "cuda_arena.h"` and helpers that reset or quarantine matching stream assignments across the collection. |
 | `plugin/cuda_ep_factory.cc` | Rewrite `CreateAllocatorImpl`: extract `device_id` from `OrtMemoryInfo`, find `DeviceCacheEntry`, create a distinct `CudaArenaAllocator` for each device-memory request, and keep pinned/mempool allocators shared per device. Rewrite `ReleaseAllocatorImpl`: erase device arenas by pointer identity, reference count pinned/mempool allocators, and fall back to `CudaAllocatorBase`-based `delete` for raw allocators. |
-| `plugin/cuda_stream_plugin.cc` | Update `CudaSyncStream::OnSessionRunEndImpl` to reset matching stream assignments across the device's arenas. If stream completion is unknown during release, quarantine and abandon only arenas that used that stream (Section 3.4). |
+| `plugin/cuda_stream_plugin.cc` | Update `CudaSyncStream::OnSessionRunEndImpl` to reset matching stream assignments across the device's arenas. If stream completion is unknown during release, abandon every device arena before quarantining chunks associated with the stream (Section 3.4). |
 
 ### 5.3 ORT Core Changes (Minimal)
 
@@ -735,7 +735,7 @@ Plugin allocators that do not implement `Shrink` (e.g., read-only allocators) co
 5. **Extend `DeviceCacheEntry` in `cuda_ep_factory.h`:** Add a `device_arenas` collection, shared pinned/mempool allocators and ref counts, and `arena_mutex` as described in Section 3.3. Add `#include "cuda_arena.h"` and collection-level stream reset/quarantine helpers.
 6. **Rewrite `CreateAllocatorImpl` in `cuda_ep_factory.cc`:** Look up `DeviceCacheEntry` by `device_id`, create a distinct `CudaArenaAllocator` for each device-memory call, and preserve per-device sharing for pinned/mempool allocators (Section 3.1 pseudocode).
 7. **Rewrite `ReleaseAllocatorImpl` in `cuda_ep_factory.cc`:** Erase device arenas by pointer identity and reference count the shared pinned/mempool allocators. Fall back to `CudaAllocatorBase`-based `delete` for non-arena types (Section 3.3 pseudocode).
-8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After stream synchronization, reset matching stream assignments across the device's arenas; quarantine and abandon only affected arenas when stream completion is unknown (Section 3.4).
+8. **Update `OnSessionRunEndImpl` in `cuda_stream_plugin.cc`:** After stream synchronization, reset matching stream assignments across the device's arenas; abandon every device arena before quarantining stream-tagged chunks when stream completion is unknown (Section 3.4).
 9. **No CMake changes needed:** The glob picks up new `.cc` files in `plugin/` automatically.
 10. **Update `RegisterExecutionProviderLibrary` in `environment.cc`:** Construct prefix via `OrtSessionOptions::GetProviderOptionPrefix(factory->GetName(factory))` (with null-guard), obtain config snapshot via `GetConfigEntries()`, extract `ep.cuda.arena.*` keys for CUDA, pass as `allocator_options` to `CreateSharedAllocatorImpl` (see Section 3.6).
 11. **Plumb session-level arena options in `PluginExecutionProvider`:** In the constructor (`ep_plugin_provider_interfaces.cc`), extract keys with the EP-specific arena prefix from `session_options.value.config_options`, strip the EP prefix, and store as bare `arena.*` keys. In `CreatePreferredAllocators()`, build `OrtKeyValuePairs` from the stored map and pass to `ep_factory_.CreateAllocator()` (see Section 3.5).

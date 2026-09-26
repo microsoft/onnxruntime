@@ -1115,10 +1115,14 @@ OrtStatus* CudaEpFactory::QuarantineAndAbandonDeviceArena(
     std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
 
     for (auto& arena : entry->device_arenas) {
+      arena.allocator->Abandon();
+      arena.abandoned = true;
+    }
+
+    for (auto& arena : entry->device_arenas) {
       bool quarantined = false;
-      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined, true);
+      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined);
       arena.has_quarantine = arena.has_quarantine || quarantined;
-      arena.abandoned = arena.abandoned || quarantined;
       if (status != nullptr) return status;
     }
   }
