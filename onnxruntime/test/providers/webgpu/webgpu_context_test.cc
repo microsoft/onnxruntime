@@ -52,9 +52,22 @@ ConfigOptions KvCacheQuantizationOptions(const char* value) {
 }
 
 bool TimestampQueryFeatureIsEnabled(const webgpu::WebGpuContext& context) {
-  return context.Device().HasFeature(wgpu::FeatureName::TimestampQuery) ||
-         context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses);
+#if !defined(__wasm__)
+  if (context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+    return true;
+  }
+#endif
+  return context.Device().HasFeature(wgpu::FeatureName::TimestampQuery);
 }
+
+#if !defined(__wasm__)
+// timestamp-query is an optional adapter feature so it is only requested if the adapter provides it.
+bool TimestampQueryFeatureIsAvailable(const webgpu::WebGpuContext& context) {
+  wgpu::Adapter adapter = context.Device().GetAdapter();
+  return adapter.HasFeature(wgpu::FeatureName::TimestampQuery) ||
+         adapter.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses);
+}
+#endif
 
 template <typename TestBody>
 void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false) {
@@ -315,12 +328,17 @@ TEST(WebGpuContextTest, TimestampQueriesAreDisabledWithoutProfiling) {
 }
 
 TEST(WebGpuContextTest, TimestampQueriesAreEnabledForProfiling) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "Adapter feature inspection is unavailable.";
+#else
   RunWithFreshDefaultContext([]() {
     ConfigOptions options;
     auto ep = WebGpuProviderFactoryCreator::Create(options, true)->CreateProvider();
     ASSERT_NE(ep, nullptr);
-    EXPECT_TRUE(TimestampQueryFeatureIsEnabled(webgpu::WebGpuContextFactory::GetContext(0)));
+    const auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    EXPECT_EQ(TimestampQueryFeatureIsEnabled(context), TimestampQueryFeatureIsAvailable(context));
   });
+#endif
 }
 
 TEST(WebGpuContextTest, EnableRobustnessControlsDawnToggle) {
