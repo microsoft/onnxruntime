@@ -555,6 +555,41 @@ TEST(WebGpuContextTest, ExternalDeviceValueWarnsAndIsIgnored) {
 #endif
 }
 
+#if !defined(__wasm__)
+TEST(WebGpuContextTest, CanMapDeviceLocalMemory) {
+  using webgpu::detail::CanMapDeviceLocalMemory;
+
+  constexpr uint64_t kMiB = 1024 * 1024;
+  constexpr auto kDeviceLocal = wgpu::HeapProperty::DeviceLocal;
+  constexpr auto kHostMappable = wgpu::HeapProperty::HostVisible | wgpu::HeapProperty::HostCoherent;
+  const std::array<wgpu::MemoryHeapInfo, 3> small_bar{{
+      {kDeviceLocal, 20224 * kMiB},
+      {kHostMappable, 64353 * kMiB},
+      {kDeviceLocal | kHostMappable, 256 * kMiB},
+  }};
+  const std::array<wgpu::MemoryHeapInfo, 2> resizable_bar{{
+      {kDeviceLocal | kHostMappable, 12216 * kMiB},
+      {kHostMappable, 23781 * kMiB},
+  }};
+  const std::array<wgpu::MemoryHeapInfo, 1> unified_memory{{
+      {kDeviceLocal | kHostMappable, 5461 * kMiB},
+  }};
+  const std::array<wgpu::MemoryHeapInfo, 2> larger_mappable_heap{{
+      {kDeviceLocal, 256 * kMiB},
+      {kDeviceLocal | kHostMappable, 16384 * kMiB},
+  }};
+  const std::array<wgpu::MemoryHeapInfo, 1> host_only{{
+      {kHostMappable, 23781 * kMiB},
+  }};
+
+  EXPECT_FALSE(CanMapDeviceLocalMemory(small_bar));
+  EXPECT_TRUE(CanMapDeviceLocalMemory(resizable_bar));
+  EXPECT_TRUE(CanMapDeviceLocalMemory(unified_memory));
+  EXPECT_TRUE(CanMapDeviceLocalMemory(larger_mappable_heap));
+  EXPECT_FALSE(CanMapDeviceLocalMemory(host_only));
+}
+#endif  // !defined(__wasm__)
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime

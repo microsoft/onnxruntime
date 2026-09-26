@@ -843,6 +843,43 @@ std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
 
+#if !defined(__wasm__)
+namespace detail {
+
+bool CanMapDeviceLocalMemory(gsl::span<const wgpu::MemoryHeapInfo> heaps) {
+  uint64_t largest_device_local = 0;
+  uint64_t largest_mappable_device_local = 0;
+  for (const auto& heap : heaps) {
+    if (!(heap.properties & wgpu::HeapProperty::DeviceLocal)) {
+      continue;
+    }
+    largest_device_local = std::max(largest_device_local, heap.size);
+    if (heap.properties & wgpu::HeapProperty::HostVisible) {
+      largest_mappable_device_local = std::max(largest_mappable_device_local, heap.size);
+    }
+  }
+  return largest_device_local != 0 && largest_mappable_device_local >= largest_device_local;
+}
+
+}  // namespace detail
+
+namespace {
+
+bool AdapterCanMapDeviceLocalMemory(const wgpu::Adapter& adapter) {
+  // Without heap information keep the existing mapped upload.
+  if (!adapter.HasFeature(wgpu::FeatureName::AdapterPropertiesMemoryHeaps)) {
+    return true;
+  }
+  wgpu::AdapterPropertiesMemoryHeaps heaps;
+  wgpu::AdapterInfo info;
+  info.nextInChain = &heaps;
+  ORT_ENFORCE(adapter.GetInfo(&info) == wgpu::Status::Success);
+  return detail::CanMapDeviceLocalMemory({heaps.heapInfo, heaps.heapCount});
+}
+
+}  // namespace
+#endif  // !defined(__wasm__)
+
 std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {
   std::vector<wgpu::FeatureName> required_features;
   constexpr wgpu::FeatureName features[]{
@@ -859,6 +896,11 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 #endif
   };
   for (auto feature : features) {
+#if !defined(__wasm__)
+    if (feature == wgpu::FeatureName::BufferMapExtendedUsages && !AdapterCanMapDeviceLocalMemory(adapter)) {
+      continue;
+    }
+#endif
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
     }
