@@ -116,6 +116,7 @@ jobs:
             --build_csharp `
             --parallel `
             --use_binskim_compliant_compile_flags `
+            --enable_lto `
             --cmake_generator "Visual Studio 17 2022" `
             --build_shared_lib `
             --enable_onnx_tests `
