@@ -10,6 +10,7 @@
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
 namespace onnxruntime {
@@ -66,6 +67,13 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
 }
 
 static_assert(TensorElementTypeConversionIsConstexpr());
+
+TEST(TypeInfoTests, CApiElementTypeFromProtoTypeFloat6) {
+  EXPECT_EQ(utils::CApiElementTypeFromProtoType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3),
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3);
+  EXPECT_EQ(utils::CApiElementTypeFromProtoType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2),
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2);
+}
 
 TEST(TypeInfoTests, TensorProto) {
   mb::Type tensor_type = {1, 2, 3, 4};

@@ -1367,32 +1367,32 @@ inline T SafeShiftLeft(T value, T shift) {
   }
 
   using UnsignedT = std::make_unsigned_t<T>;
-  const auto result = static_cast<UnsignedT>(value) << static_cast<UnsignedT>(shift);
-  if constexpr (std::is_signed_v<T>) {
-    return FromUnsignedBits<T>(result);
-  }
-
-  return result;
+  const auto result = static_cast<UnsignedT>(
+      static_cast<UnsignedT>(value) << static_cast<UnsignedT>(shift));
+  return FromUnsignedBits<T>(result);
 }
 
 template <typename T>
 inline T SafeShiftRight(T value, T shift) {
   if (IsInvalidShift(shift)) {
-    return std::is_signed_v<T> && value < 0 ? T{-1} : T{0};
+    if constexpr (std::is_signed_v<T>) {
+      return value < 0 ? T{-1} : T{0};
+    } else {
+      return T{0};
+    }
   }
 
   using UnsignedT = std::make_unsigned_t<T>;
   constexpr UnsignedT bit_width = std::numeric_limits<UnsignedT>::digits;
   const auto shift_amount = static_cast<UnsignedT>(shift);
-  auto result = static_cast<UnsignedT>(value) >> shift_amount;
+  auto result = static_cast<UnsignedT>(static_cast<UnsignedT>(value) >> shift_amount);
   if constexpr (std::is_signed_v<T>) {
     if (value < 0 && shift_amount != 0) {
       result |= std::numeric_limits<UnsignedT>::max() << (bit_width - shift_amount);
     }
-    return FromUnsignedBits<T>(result);
   }
 
-  return result;
+  return FromUnsignedBits<T>(result);
 }
 
 template <typename T>
@@ -2158,9 +2158,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mod,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
+    Mod);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Mod,
+    28,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
@@ -2208,11 +2218,20 @@ void BroadCastFMod(OpKernelContext* context) {
 
 template <class T>
 inline T Modulus(T x, T y) {
-  auto res = x % y;
+  T res;
+  if constexpr (std::is_floating_point_v<T>) {
+    res = std::fmod(x, y);
+    if (res == T{0}) {
+      return std::copysign(T{0}, y);
+    }
+  } else {
+    res = x % y;
+  }
+
   if ((res < 0 && y > 0) || (res > 0 && y < 0)) {
     res += y;
   }
-  return static_cast<T>(res);
+  return res;
 }
 
 template <class T>
@@ -2290,6 +2309,42 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
   UntypedBroadcastTwo(*context, funcs);
 }
 
+void BroadCastMLFloat16Mod(OpKernelContext* context) {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const auto X = per_iter_bh.ScalarInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
+                         return MLFloat16(Modulus(X_fl, y.ToFloat()));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
+                         return MLFloat16(Modulus(x.ToFloat(), Y_fl));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<MLFloat16>();
+        auto Y = per_iter_bh.SpanInput1<MLFloat16>();
+        auto output = per_iter_bh.OutputSpan<MLFloat16>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
+                       [](const MLFloat16& x, const MLFloat16& y) {
+                         return MLFloat16(Modulus(x.ToFloat(), y.ToFloat()));
+                       });
+      }};
+
+  UntypedBroadcastTwo(*context, funcs);
+}
+
 template <class T, typename Enable = void>
 struct CallModImpl;
 
@@ -2324,8 +2379,11 @@ struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>
 template <class T>
 struct CallModImpl<T, typename std::enable_if<std::is_floating_point<T>::value, void>::type> {
   void operator()(bool fmod, OpKernelContext* ctx) const {
-    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
-    BroadCastFMod<T>(ctx);
+    if (fmod) {
+      BroadCastFMod<T>(ctx);
+    } else {
+      BroadCastMod<T>(ctx);
+    }
   }
 };
 
@@ -2333,8 +2391,11 @@ struct CallModImpl<T, typename std::enable_if<std::is_floating_point<T>::value, 
 template <>
 struct CallModImpl<MLFloat16> {
   void operator()(bool fmod, OpKernelContext* ctx) const {
-    ORT_ENFORCE(fmod, "fmod attribute must be true for floating point types");
-    BroadCastMLFloat16FMod(ctx);
+    if (fmod) {
+      BroadCastMLFloat16FMod(ctx);
+    } else {
+      BroadCastMLFloat16Mod(ctx);
+    }
   }
 };
 

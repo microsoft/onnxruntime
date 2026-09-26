@@ -774,12 +774,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
   // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
   // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
-  // FlashDecoding handles both single-token and multi-token decode (sequence_length > 1): its
-  // causal masking and split-KV reduction match regular FlashAttention (verified to fp16 tolerance,
-  // including MTP-style decode).
+  // Reusing seqlens_k directly avoids a sequence-length kernel launch for single-token decode,
+  // where the input T - 1 is also the cache append offset P. Multi-token decode requires
+  // LaunchGetSequenceLengths to derive P = T - sequence_length.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -825,19 +825,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
-  if (data.use_flash_attention_fast_decode && parameters.sequence_length == 1) {
-    // FlashDecoding Fast Path:
-    // - Uses Flash Attention's internal KV append logic, so total_seq_lens and padded_seq_lens are not needed.
-    // - The input seqlens_k from ONNX graph is (total_len - 1), which equals past_seq_len when seq_len == 1.
-    // - This optimization avoids launching GetSequenceLengths kernel for single-token decoding.
+  auto cuda_stream = Stream(context);
+
+  if (data.use_flash_attention_fast_decode) {
+    // FlashAttention clamps this device input to the cache capacity before deriving offsets.
     data.past_seq_lens = const_cast<int*>(total_seq_lens_minus_one->Data<int>());
   } else {
-    // Compute sequence length buffers (past_seq_lens and total_seq_lens).
-    // Allocate buffer for both: first half is past_seq_lens, second half is total_seq_lens.
-    // A windowed cache needs three more per-batch vectors expressed in cache-relative coordinates.
     const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
     seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
-    auto cuda_stream = Stream(context);
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
@@ -856,6 +851,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                  parameters.batch_size,
                                                  parameters.sequence_length,
                                                  parameters.is_first_prompt,
+                                                 parameters.total_sequence_length,
                                                  parameters.kv_cache_capacity,
                                                  parameters.kv_cache_real_capacity,
                                                  cuda_stream,

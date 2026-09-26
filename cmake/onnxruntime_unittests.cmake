@@ -792,7 +792,11 @@ if(onnxruntime_USE_JSEP)
 endif()
 
 if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  file(GLOB_RECURSE onnxruntime_test_providers_webgpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/webgpu/*.cc"
+    "${TEST_SRC_DIR}/providers/webgpu/*.h")
+
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
@@ -1715,8 +1719,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # coverage gap this feature exists to close.
   # ---------------------------------------------------------------------------
   if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # Commit-pinned archives do not encode a release version in DEP_URL_onnx. Keep the
-    # expected wheel version in deps.txt alongside the exact archive pin.
+    # Keep the expected wheel version in deps.txt alongside the source archive pin.
     file(STRINGS "${REPO_ROOT}/cmake/deps.txt" _onnx_version_line REGEX "^# ONNX_VERSION=")
     string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pinned_version "${_onnx_version_line}")
     if(_onnx_pinned_version)
@@ -1751,27 +1754,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
         "  Details: ${_onnx_err}")
     endif()
-    # onnx version gate: HARD FAIL on a genuine mismatch, but RC / pre-release AWARE.
-    # ONNX's opset-bump workflow ships wheels like 1.23.0rc1 or 1.23.0.dev20240101 whose
-    # COMPILED opset registry already matches the formal 1.23.0 tag, so we compare on the
-    # RELEASE BASE (major.minor.micro) rather than the raw string. This mirrors
-    # materialize_onnx_node_tests.py::_release_base EXACTLY (regex ^(\d+)\.(\d+)\.(\d+), with a
-    # raw-string fallback when there is no leading X.Y.Z) so the cmake and Python layers agree:
-    # an rcN/.devN wheel of the pinned tag passes, while a real major/minor/micro mismatch
-    # (e.g. 1.21.x, or 1.23.0 when pinned at 1.22.0) still FATALs. Both sides are normalized;
-    # _onnx_pinned_version is already a clean X.Y.Z (parsed from the deps.txt vX.Y.Z tag), so
-    # normalizing it is a no-op kept only for symmetry with the Python two-sided compare.
-    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_ver_base "${_onnx_ver}")
-    if(_onnx_ver_base STREQUAL "")
-      set(_onnx_ver_base "${_onnx_ver}")
-    endif()
-    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pin_base "${_onnx_pinned_version}")
-    if(_onnx_pin_base STREQUAL "")
-      set(_onnx_pin_base "${_onnx_pinned_version}")
-    endif()
-    if(NOT _onnx_ver_base STREQUAL _onnx_pin_base)
+    # The source and wheel are both final releases, so require exact version parity.
+    if(NOT _onnx_ver STREQUAL _onnx_pinned_version)
       message(FATAL_ERROR
-        "onnx ${_onnx_ver} (release base ${_onnx_ver_base}) != pinned ${_onnx_pinned_version} "
+        "onnx ${_onnx_ver} != pinned ${_onnx_pinned_version} "
         "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
         "corpus (silent drift).\n"
         "  Fix: pip install onnx==${_onnx_pinned_version}")

@@ -2102,6 +2102,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -2562,86 +2564,85 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(sparse_values, model_path));
   ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(indices, model_path));
 
+  if (type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
+                           ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  }
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
   }
 
-  if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-    auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
-    const size_t element_size = ml_data->Size();
-    const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
-    ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
-                      "Sparse tensor: ", name, " dense data size of ", dense_data_size,
-                      " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
-                      " byte limit for embedded initializer data.");
+  auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+  const size_t element_size = ml_data->Size();
+  const size_t dense_data_size = SafeInt<size_t>(dense_elements) * element_size;
+  ORT_RETURN_IF_NOT(dense_data_size <= kMaxEmbeddedInitializerSizeInBytes,
+                    "Sparse tensor: ", name, " dense data size of ", dense_data_size,
+                    " bytes exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " byte limit for embedded initializer data.");
 
-    // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
-    // into the TensorProto.
-    std::string dense_data_storage(dense_data_size, 0);
-    if (nnz_elements > 0) {
-      // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-      std::vector<uint8_t> values_data;
-      ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
-      ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
-                        "Sparse tensor: ", name, " values data size does not match expected: ",
-                        static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
-      void* sparse_data = values_data.data();
-      void* dense_data = dense_data_storage.data();
+  // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
+  // into the TensorProto.
+  std::string dense_data_storage(dense_data_size, 0);
+  if (nnz_elements > 0) {
+    // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
+    std::vector<uint8_t> values_data;
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
+    ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
+                      "Sparse tensor: ", name, " values data size does not match expected: ",
+                      static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
+    void* sparse_data = values_data.data();
+    void* dense_data = dense_data_storage.data();
 
-      switch (element_size) {
-        case 1: {
-          status = CopySparseData(
-              name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
-              });
+    switch (element_size) {
+      case 1: {
+        status = CopySparseData(
+            name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+            [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+              static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+            });
 
-          break;
-        }
-        case 2: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint16_t));
-                                  });
+        break;
+      }
+      case 2: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint16_t));
+                                });
 
-          break;
-        }
-        case 4: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint32_t));
-                                  });
+        break;
+      }
+      case 4: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint32_t));
+                                });
 
-          break;
-        }
-        case 8: {
-          status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint64_t));
-                                  });
-          break;
-        }
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
-                                 " type: ", type);
+        break;
+      }
+      case 8: {
+        status = CopySparseData(name, nnz_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint64_t));
+                                });
+        break;
       }
 
-      ORT_RETURN_IF_ERROR(status);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
+                               " type: ", type);
     }
-    utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
-  } else {
-    // No request for std::string
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
-                             ONNX_NAMESPACE::TensorProto_DataType_STRING);
+
+    ORT_RETURN_IF_ERROR(status);
   }
+  utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
   return status;
 }
 

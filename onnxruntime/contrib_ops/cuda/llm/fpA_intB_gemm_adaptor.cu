@@ -53,9 +53,9 @@ void launch_transpose_scale_kernel(
 
 // CUDA kernel to compute -scale * zero_point and transpose
 // Each thread computes one element of the OUTPUT matrix (shape [k_blocks, n])
-template <bool is_zero_point_int4_packed, typename T, typename Z>
+template <int ZeroPointBits, typename T, typename Z>
 __global__ void computeScaledZeroPointAndTransposeKernel(
-    const Z* zero_point,        // Input zero_point matrix [n, k_blocks]  or [n, (k_blocks + 1) / 2] if packed int4
+    const Z* zero_point,        // Input zero_point matrix [n, k_blocks] or [n, ceil(k_blocks * ZeroPointBits / 8)] if packed
     const T* transposed_scale,  // transposed scale [k_blocks, n]
     T* scaled_zero_point,       // Output matrix [k_blocks, n]
     int n,                      // Rows of input matrices
@@ -76,11 +76,13 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
     T scale_val = transposed_scale[output_offset];
     float zero_point_val;
     if (zero_point != nullptr) {
-      if constexpr (is_zero_point_int4_packed) {  // zero point is 4 bit, and two elements are packed into one byte.
-        int64_t packed_row_size = (k_blocks + 1) / 2;
-        int64_t packed_zp_offset = static_cast<int64_t>(in_row) * packed_row_size + in_col / 2;
+      if constexpr (ZeroPointBits != 0) {  // several zero points share a byte, low element first
+        constexpr int kPerByte = 8 / ZeroPointBits;
+        constexpr uint8_t kMask = static_cast<uint8_t>((1u << ZeroPointBits) - 1u);
+        int64_t packed_row_size = (k_blocks + kPerByte - 1) / kPerByte;
+        int64_t packed_zp_offset = static_cast<int64_t>(in_row) * packed_row_size + in_col / kPerByte;
         uint8_t packed_zp = zero_point[packed_zp_offset];
-        zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_zp >> 4) : (packed_zp & 0x0f));
+        zero_point_val = static_cast<float>((packed_zp >> ((in_col % kPerByte) * ZeroPointBits)) & kMask);
       } else {
         int64_t input_offset = static_cast<int64_t>(in_row) * k_blocks + in_col;
         zero_point_val = static_cast<float>(zero_point[input_offset]);
@@ -94,7 +96,7 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
   }
 }
 
-template <bool is_zero_point_int4_packed, typename T, typename Z>
+template <int ZeroPointBits, typename T, typename Z>
 void launch_scaled_zero_point_kernel(
     cudaStream_t stream,
     const Z* zero_point,
@@ -109,7 +111,7 @@ void launch_scaled_zero_point_kernel(
       (k_blocks + blockDim.y - 1) / blockDim.y  // Grid size in y covers output rows (k_blocks)
   );
 
-  computeScaledZeroPointAndTransposeKernel<is_zero_point_int4_packed, T, Z><<<gridDim, blockDim, 0, stream>>>(
+  computeScaledZeroPointAndTransposeKernel<ZeroPointBits, T, Z><<<gridDim, blockDim, 0, stream>>>(
       zero_point,
       transposed_scale,
       scaled_zero_point,
@@ -125,14 +127,14 @@ template void launch_transpose_scale_kernel<half>(
     half* transposed_scale,
     int n, int k_blocks);
 
-template void launch_scaled_zero_point_kernel<false, half, half>(
+template void launch_scaled_zero_point_kernel<0, half, half>(
     cudaStream_t stream,
     const half* zero_point,
     const half* transposed_scale,
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
-template void launch_scaled_zero_point_kernel<false, half, uint8_t>(
+template void launch_scaled_zero_point_kernel<0, half, uint8_t>(
     cudaStream_t stream,
     const uint8_t* zero_point,
     const half* transposed_scale,
@@ -140,7 +142,15 @@ template void launch_scaled_zero_point_kernel<false, half, uint8_t>(
     int n, int k_blocks, float default_zero_point);
 
 // zero point is 4 bits packed.
-template void launch_scaled_zero_point_kernel<true, half, uint8_t>(
+template void launch_scaled_zero_point_kernel<4, half, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const half* transposed_scale,
+    half* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+// zero point is 2 bits packed.
+template void launch_scaled_zero_point_kernel<2, half, uint8_t>(
     cudaStream_t stream,
     const uint8_t* zero_point,
     const half* transposed_scale,
@@ -153,14 +163,14 @@ template void launch_transpose_scale_kernel<__nv_bfloat16>(
     __nv_bfloat16* transposed_scale,
     int n, int k_blocks);
 
-template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, __nv_bfloat16>(
+template void launch_scaled_zero_point_kernel<0, __nv_bfloat16, __nv_bfloat16>(
     cudaStream_t stream,
     const __nv_bfloat16* zero_point,
     const __nv_bfloat16* transposed_scale,
     __nv_bfloat16* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
-template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, uint8_t>(
+template void launch_scaled_zero_point_kernel<0, __nv_bfloat16, uint8_t>(
     cudaStream_t stream,
     const uint8_t* zero_point,
     const __nv_bfloat16* transposed_scale,
@@ -168,7 +178,15 @@ template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, uint8_t>(
     int n, int k_blocks, float default_zero_point);
 
 // zero point is 4 bits packed.
-template void launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
+template void launch_scaled_zero_point_kernel<4, __nv_bfloat16, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+// zero point is 2 bits packed.
+template void launch_scaled_zero_point_kernel<2, __nv_bfloat16, uint8_t>(
     cudaStream_t stream,
     const uint8_t* zero_point,
     const __nv_bfloat16* transposed_scale,
@@ -249,6 +267,52 @@ void unpack_uint4_transposed_to_int8_direct_cuda(
   int num_blocks = (total_output_bytes + threads_per_block - 1) / threads_per_block;
 
   unpack_transpose_pack_uint4_to_int8_kernel_v2<<<num_blocks, threads_per_block, 0, stream>>>(
+      (const unsigned char*)packed_weight,
+      (signed char*)packed_transposed_weight,
+      n,
+      k);
+}
+
+// 2-bit analogue of the kernel above: reads the MatMulNBits (n, k/4) uint2 blob (code j of a
+// byte at bit offset 2j) and writes the transposed (k, n/4) blob holding the same codes
+// re-centred on the symmetric zero point 2, i.e. signed values in [-2, 1].
+__global__ void unpack_transpose_pack_uint2_to_int8_kernel(
+    const unsigned char* __restrict__ packed_weight,
+    signed char* __restrict__ packed_transposed_weight,
+    int n,  // original matrix rows
+    int k)  // original matrix columns
+{
+  int out_flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total_output_bytes = k * (n / 4);
+
+  if (out_flat_idx < total_output_bytes) {
+    constexpr signed char default_zero_point = 2;
+
+    const int out_row_packed = out_flat_idx / (n / 4);  // 0 .. k-1
+    const int out_col_packed = out_flat_idx % (n / 4);  // 0 .. n/4-1
+
+    const int c_orig = out_row_packed;
+    const int in_byte_col = c_orig / 4;
+    const int in_shift = (c_orig % 4) * 2;
+
+    unsigned char out_byte = 0;
+    for (int j = 0; j < 4; ++j) {
+      const int r_orig = 4 * out_col_packed + j;
+      unsigned char packed_data = packed_weight[r_orig * (k / 4) + in_byte_col];
+      signed char val = (signed char)((packed_data >> in_shift) & 0x03) - default_zero_point;
+      out_byte |= (unsigned char)((val & 0x03) << (j * 2));
+    }
+    packed_transposed_weight[out_flat_idx] = (signed char)out_byte;
+  }
+}
+
+void unpack_uint2_transposed_to_int8_direct_cuda(
+    cudaStream_t stream, void* packed_transposed_weight, const void* packed_weight, int n, int k) {
+  int total_output_bytes = k * (n / 4);
+  int threads_per_block = 256;
+  int num_blocks = (total_output_bytes + threads_per_block - 1) / threads_per_block;
+
+  unpack_transpose_pack_uint2_to_int8_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
       (const unsigned char*)packed_weight,
       (signed char*)packed_transposed_weight,
       n,

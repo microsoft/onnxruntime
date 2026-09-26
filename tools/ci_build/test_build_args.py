@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -10,10 +11,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# isort: off
-import build
-import build_args
-# isort: on
+build = importlib.import_module("build")
+build_args = importlib.import_module("build_args")
 
 _UNRELEASED_OPSET_ENVIRONMENT = {
     "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
