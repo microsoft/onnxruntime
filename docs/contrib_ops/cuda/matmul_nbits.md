@@ -439,30 +439,35 @@ Qwen3.8-27B (`N=248320`, `K=5120`, INT4, `block_size=32`), the profiler scratch 
 ~1.72 GiB at `M=2048` and ~4.7 GiB for a lazily profiled `M=8192` prefill chunk.
 
 Setting `ep.cuda.matmul_nbits_m_chunk_size` (or `ORT_MATMULNBITS_M_CHUNK_SIZE`)
-to a positive value `Mc` computes `Y` in row chunks of at most `Mc` rows when
-both of these hold:
+to a positive value `Mc` computes `Y` in row chunks of at most the effective
+`Mc`. For values below 8192, the configured `Mc` is rounded down to a supported
+profile bucket.
 
 - `M > Mc`, and
-- `M * (N + K) * sizeof(T) > 256 MiB`, i.e. the profiler's `A` and `C` buffers
-  for an unchunked `M` would be large. Small layers are never split, because the
-  extra launches cost time and save almost nothing.
+- `M` exceeds the 256 MiB row cutoff, `floor(256 MiB / ((N + K) * sizeof(T)))`.
+  Below 8192, that cutoff is rounded down to the previous profile bucket because
+  the profiler rounds requested M up; at and above 8192, profiler buckets
+  saturate at 8192.
+
+Small layers are not split, because the extra launches cost time and save almost
+nothing.
 
 `ORT_MATMULNBITS_FORCE_CHUNKED=1` bypasses the size condition (it also forces
 the §5 fallback's N chunking). For Qwen3.8-27B in FP16/BF16 the size condition
 means:
 
-| node | `N` | `K` | chunked when `M` > |
+| node | `N` | `K` | size-gate cutoff (`M` >) |
 |---|---|---|---|
-| LM head | 248320 | 5120 | 529 |
-| MLP gate/up | 17408 | 5120 | 5957 |
-| MLP down | 5120 | 17408 | 5957 |
+| LM head | 248320 | 5120 | 512 |
+| MLP gate/up | 17408 | 5120 | 4096 |
+| MLP down | 5120 | 17408 | 4096 |
 | any node with `N + K <= 16384` | | | >= 8192 |
 
-Each chunk reuses one workspace sized for `Mc`, looks up its own tactic (a
+Each chunk reuses one workspace sized for the effective `Mc`, looks up its own tactic (a
 trailing partial chunk may pick a different tactic, including the GEMV for fewer
 than 16 rows). Constructor profiling is capped at the largest `M` that can still
-run unchunked, `max(Mc, 256 MiB / ((N + K) * sizeof(T)))`, so a large node never
-profiles a bucket above that. At `Mc=256` the LM-head profiler scratch above
+run unchunked, `max(Mc, size-gate M)`, so a large node never profiles a bucket
+above that cap. At `Mc=256` the LM-head profiler scratch above
 drops to ~0.86 GiB; the remainder is the weight-sized and scale buffers, which do
 not depend on `M`. Prefer a power of two so trailing chunks round to an
 already-profiled bucket.

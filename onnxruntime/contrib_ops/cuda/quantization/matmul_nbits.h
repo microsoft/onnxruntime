@@ -131,6 +131,23 @@ inline int ParseMatMulNBitsMChunkSize(const std::string& value) {
   return chunk_size;
 }
 
+// The tactic profiler rounds M up to a power-of-two bucket, capped at kMaxProfileM. Keep limits below
+// that cap on a bucket boundary so initial and lazy profiling cannot allocate scratch above the limit.
+inline int64_t FpAIntBProfileSafeMCap(int64_t max_m) {
+  if (max_m <= 0) {
+    return 0;
+  }
+  constexpr int64_t kMaxProfileM = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+  if (max_m >= kMaxProfileM) {
+    return max_m;
+  }
+  int64_t profile_m = 1;
+  while (profile_m <= max_m / 2) {
+    profile_m *= 2;
+  }
+  return profile_m;
+}
+
 // Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
 // Hopper layout and workspace formula; all non-Hopper kernels share the SM80 layout and workspace
 // formula, including compact runners targeting SM75 or SM89.
@@ -217,7 +234,11 @@ class MatMulNBits final : public CudaKernel {
                 weight_prepacked_);
     m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
         info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
-    m_chunk_min_rows_ = kMChunkMinBytes / static_cast<int64_t>(sizeof(T)) / std::max<int64_t>(1, N_ + K_);
+    m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
+    const int64_t profile_elements_per_row = SafeInt<int64_t>(N_) + SafeInt<int64_t>(K_);
+    const int64_t scratch_elements_limit = kMChunkMinBytes / static_cast<int64_t>(sizeof(T));
+    const int64_t memory_gate_rows = scratch_elements_limit / std::max<int64_t>(1, profile_elements_per_row);
+    m_chunk_min_rows_ = FpAIntBProfileSafeMCap(memory_gate_rows);
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
       // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
       // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).

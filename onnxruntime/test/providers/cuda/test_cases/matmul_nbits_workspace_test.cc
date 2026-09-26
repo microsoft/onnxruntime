@@ -45,6 +45,7 @@ namespace test {
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
+using onnxruntime::contrib::cuda::FpAIntBProfileSafeMCap;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
@@ -195,6 +196,19 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(1, 8192), 1);
   EXPECT_EQ(RoundUpProfileM(3000, 8192), 4096);
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerMCapStaysWithinScratchLimit) {
+  EXPECT_EQ(FpAIntBProfileSafeMCap(529), 512);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(5957), 4096);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(8191), 4096);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(8192), 8192);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(9000), 9000);
+
+  for (const int64_t limit : {529, 5957, 8191, 8192, 9000}) {
+    const int64_t cap = FpAIntBProfileSafeMCap(limit);
+    EXPECT_LE(RoundUpProfileM(static_cast<int>(cap), 8192), limit) << "limit=" << limit;
+  }
 }
 
 TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {

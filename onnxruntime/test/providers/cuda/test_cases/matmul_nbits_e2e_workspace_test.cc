@@ -84,15 +84,19 @@ constexpr uint16_t kHalfOne = 0x3C00;  // 1.0 in IEEE-754 half precision.
 // The compact fpA_intB path does not support bias. Other builds use the valid optional-input
 // layout [A, B, scales, "", "", bias] to exercise positional Level-2 shape resolution.
 //
-// When `m_dim_param` is null (default), input A's leading dimension is the fully-static value
-// `kE2eM` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
-// a *symbolic* dim (dim_param, e.g. "seq") with NO dim_value -- a genuinely dynamic shape. This is
-// used by Test D (dynamic, no override -> graceful fallback) and by Test C, where a
-// FreeDimensionOverrideByName later rewrites the symbolic dim into a concrete value at session init.
+// When `m_dim_param` is null (default), input A's leading dimension is `m_dim_value` (default `kE2eM`),
+// a concrete dim_value. When `m_dim_param` is non-null, that leading dimension is instead a *symbolic*
+// dim (dim_param, e.g. "seq") with NO dim_value -- a genuinely dynamic shape. This is used by Test D
+// (dynamic, no override -> graceful fallback) and by Test C, where a FreeDimensionOverrideByName later
+// rewrites the symbolic dim into a concrete value at session init.
 std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
-                                       int64_t weight_prepacked = 0) {
-  const int64_t k_blocks = (kE2eK + kE2eBlockSize - 1) / kE2eBlockSize;  // 32
-  const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;          // 16
+                                       int64_t weight_prepacked = 0,
+                                       int64_t m_dim_value = kE2eM,
+                                       int64_t n = kE2eN,
+                                       int64_t k = kE2eK,
+                                       uint8_t packed_weight_byte = 0) {
+  const int64_t k_blocks = (k + kE2eBlockSize - 1) / kE2eBlockSize;
+  const int64_t blob_size = (kE2eBlockSize * kE2eBits + 7) / 8;  // 16
 
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
@@ -128,27 +132,28 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   // mirrors it too so the declared output shape stays consistent with shape inference.
   auto* a = graph->add_input();
   a->set_name("A");
-  set_fp16_shape(a, m_dim_param, kE2eM, kE2eK);
+  set_fp16_shape(a, m_dim_param, m_dim_value, k);
   auto* y = graph->add_output();
   y->set_name("Y");
-  set_fp16_shape(y, m_dim_param, kE2eM, kE2eN);
+  set_fp16_shape(y, m_dim_param, m_dim_value, n);
 
-  // B initializer: uint8 {N, k_blocks, blob_size}, zero-filled.
+  // B initializer: uint8 {N, k_blocks, blob_size}, filled with `packed_weight_byte`.
   auto* b = graph->add_initializer();
   b->set_name("B");
   b->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  b->add_dims(kE2eN);
+  b->add_dims(n);
   b->add_dims(k_blocks);
   b->add_dims(blob_size);
-  b->mutable_raw_data()->assign(static_cast<size_t>(kE2eN * k_blocks * blob_size), '\0');
+  b->mutable_raw_data()->assign(static_cast<size_t>(n * k_blocks * blob_size),
+                                static_cast<char>(packed_weight_byte));
 
   // scales initializer: fp16 {N, k_blocks}, all 1.0.
   auto* scales = graph->add_initializer();
   scales->set_name("scales");
   scales->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  scales->add_dims(kE2eN);
+  scales->add_dims(n);
   scales->add_dims(k_blocks);
-  const size_t n_scales = static_cast<size_t>(kE2eN * k_blocks);
+  const size_t n_scales = static_cast<size_t>(n * k_blocks);
   std::string scale_raw(n_scales * sizeof(uint16_t), '\0');
   for (size_t i = 0; i < n_scales; ++i) {
     std::memcpy(&scale_raw[i * sizeof(uint16_t)], &kHalfOne, sizeof(uint16_t));
@@ -161,8 +166,8 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
   auto* bias = graph->add_initializer();
   bias->set_name("bias");
   bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-  bias->add_dims(kE2eN);
-  bias->mutable_raw_data()->assign(static_cast<size_t>(kE2eN * sizeof(uint16_t)), '\0');
+  bias->add_dims(n);
+  bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
 #endif
 
   // MatMulNBits node.
@@ -187,8 +192,8 @@ std::string BuildMatMulNBitsModelBytes(const char* m_dim_param = nullptr,
     attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
     attr->set_i(v);
   };
-  add_int_attr("K", kE2eK);
-  add_int_attr("N", kE2eN);
+  add_int_attr("K", k);
+  add_int_attr("N", n);
   add_int_attr("block_size", kE2eBlockSize);
   add_int_attr("bits", kE2eBits);
   add_int_attr("accuracy_level", 0);
@@ -829,6 +834,87 @@ TEST(MatMulNBitsWorkspace, MChunkSizeGate) {
     EXPECT_EQ(requirements[0].size_bytes, expected);
     EXPECT_EQ(runtime, expected);
   }
+}
+
+// N+K gives a raw 256 MiB cutoff of 8176 rows, but M=4097 rounds to an 8192-row profiler bucket whose
+// A/C scratch exceeds that limit. The launch must therefore use the 4096-row chunk and a 1-row tail.
+TEST(MatMulNBitsWorkspace, MChunkSizeGateRoundsDownAtProfilerBoundary) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "MatMulNBits fpA_intB path requires a CUDA device with sm >= " << kMinFpAIntBSm;
+  }
+
+  constexpr int64_t kGateM = 4097;
+  constexpr int64_t kGateN = 16384;
+  constexpr int64_t kGateK = 32;
+  constexpr int64_t kChunkRows = 4096;
+  constexpr uint8_t kPackedWeightByte = 0x99;  // Every int4 value is 9; implicit zero point is 8.
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}},
+                {"ORT_MATMULNBITS_M_CHUNK_SIZE", optional<std::string>{"0"}},
+                {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"0"}}});
+
+  const std::string model_bytes =
+      BuildMatMulNBitsModelBytes(nullptr, 0, kGateM, kGateN, kGateK, kPackedWeightByte);
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "4096"));
+
+  InferenceSessionWrapper session(so, GetEnvironment());
+  CUDAExecutionProviderInfo cuda_info{};
+  cuda_info.enable_cuda_graph = true;
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(cuda_info);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+  ASSERT_NE(mm_node, nullptr);
+  ASSERT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
+  ASSERT_NE(op_kernel, nullptr);
+
+  const std::array<WorkspaceInputShape, 1> input_shapes{
+      WorkspaceInputShape::PresentWithShape(TensorShape({kGateM, kGateK}))};
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+  ASSERT_EQ(requirements.size(), 1u);
+
+  // SM80 formula: ceil(M/16) * ceil(N/64) * 7 * 4 bytes, evaluated for one 4096-row chunk.
+  const size_t expected_workspace =
+      static_cast<size_t>((kChunkRows + 15) / 16) * static_cast<size_t>((kGateN + 63) / 64) * 7 * 4;
+  EXPECT_EQ(requirements[0].size_bytes, expected_workspace);
+
+  std::vector<MLFloat16> a_data(static_cast<size_t>(kGateM * kGateK), MLFloat16(1.0f));
+  OrtValue a_value;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kGateM, kGateK}, a_data.data(), OrtMemoryInfo(), &a_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", a_value);
+  std::vector<OrtValue> fetches;
+  const std::vector<std::string> output_names{"Y"};
+  for (int run = 0; run < 3; ++run) {
+    fetches.clear();
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+  EXPECT_TRUE(cuda_ep->IsGraphCaptured(0));
+  ASSERT_EQ(fetches.size(), 1u);
+  ASSERT_TRUE(fetches[0].IsTensor());
+
+  const Tensor& output = fetches[0].Get<Tensor>();
+  ASSERT_EQ(output.Shape(), TensorShape({kGateM, kGateN}));
+  const MLFloat16* output_data = output.Data<MLFloat16>();
+  for (const int64_t row : {0, kChunkRows - 1, kChunkRows, kGateM - 1}) {
+    for (const int64_t column : {0, kGateN / 2, kGateN - 1}) {
+      EXPECT_NEAR(static_cast<float>(output_data[row * kGateN + column]), static_cast<float>(kGateK), 0.1f)
+          << "row=" << row << ", column=" << column;
+    }
+  }
+
+  const size_t runtime_workspace = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+  EXPECT_EQ(runtime_workspace, expected_workspace);
 }
 
 // ---------------------------------------------------------------------------
