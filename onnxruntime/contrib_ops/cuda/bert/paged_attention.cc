@@ -157,6 +157,8 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   // for tables whose channel scales span more than the fold can hold; see paged_attention.md §18.7.
   enable_per_channel_xqa_ =
       enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_PER_CHANNEL_KV", 1) != 0);
+    xqa_shared_memory_limit_for_test_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_TEST_ONLY_PAGED_ATTENTION_XQA_SHARED_MEMORY_LIMIT", -1);
   // cuDNN paged SDPA follows the same opt-in / auto-on pattern as GroupQueryAttention's cuDNN tier.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
@@ -231,6 +233,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+  const float cudnn_scale = parameters.scale == 0.0f
+                                ? 1.0f / std::sqrt(static_cast<float>(parameters.head_size))
+                                : parameters.scale;
 
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
@@ -300,6 +305,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // replay of a captured CUDA Graph (docs/contrib_ops/cuda/paged_attention.md section 4.7).
   //
   //   * FlashAttention (preferred for prefill / mixed batches).
+  //   * cuDNN paged SDPA (preferred for eligible one-token decode steps).
   //   * PagedDecode: a flash-decoding style kernel that reads the paged cache in place and
   //     dequantizes in registers.
   //   * MemoryEfficientAttention: the general fallback; gathers pages into a dense buffer.
@@ -542,7 +548,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
           parameters.num_heads, parameters.kv_num_heads,
           parameters.head_size, parameters.head_size,
           /*sequence_length_q=*/1,
-          /*max_sequence_length_kv=*/max_kv_len_bound,
           parameters.block_size);
   bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
 
@@ -559,9 +564,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // non-capturable build. A false result clears use_cudnn_paged for this Run only, so the cascade
   // drops to FlashAttention / MemoryEfficientAttention.
   if (use_cudnn_paged) {
-    const float probe_scale = parameters.scale == 0.0f
-                                  ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
-                                  : parameters.scale;
     const bool ok = onnxruntime::cudnn_sdpa::try_build_paged_graph(
         parameters.batch_size,
         parameters.num_heads, parameters.kv_num_heads,
@@ -569,7 +571,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
         parameters.num_blocks,
         parameters.block_size,
         parameters.max_num_blocks_per_seq,
-        probe_scale,
+        cudnn_scale,
         std::is_same<T, BFloat16>::value,
         GetCudnnHandle(context),
         ort_stream.get());
@@ -691,9 +693,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                device_prop, parameters.head_size, parameters.num_heads,
                                                parameters.kv_num_heads, xqa_kv_quant_type,
                                                std::is_same<T, BFloat16>::value);
+          const size_t shared_memory_limit = xqa_shared_memory_limit_for_test_ >= 0
+                         ? static_cast<size_t>(xqa_shared_memory_limit_for_test_)
+                         : device_prop.sharedMemPerBlockOptin;
         // A zero result means the selected CUDA image has no compatible XQA symbol or the symbol
         // query failed. Either case must use the portable fallback rather than attempting a launch.
-        xqa_smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+          xqa_smem_ok = (required_smem != 0 && required_smem <= shared_memory_limit) ? 1 : 0;
         xqa_smem_cache.store(xqa_smem_ok, std::memory_order_relaxed);
       } else {
         xqa_smem_ok = 0;
@@ -711,9 +716,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // case, so we don't re-run a probe that already failed at line ~527 for a non-XQA path (that
   // failure is a definitive per-Run decision).
   if (fp16_xqa_eligible && cudnn_paged_eligible && !use_cudnn_paged && !use_xqa_decode) {
-    const float probe_scale = parameters.scale == 0.0f
-                                  ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
-                                  : parameters.scale;
     if (onnxruntime::cudnn_sdpa::try_build_paged_graph(
             parameters.batch_size,
             parameters.num_heads, parameters.kv_num_heads,
@@ -721,15 +723,15 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
             parameters.num_blocks,
             parameters.block_size,
             parameters.max_num_blocks_per_seq,
-            probe_scale,
+            cudnn_scale,
             std::is_same<T, BFloat16>::value,
             GetCudnnHandle(context),
             ort_stream.get())) {
       use_cudnn_paged = true;
       use_paged_decode = false;
-      // use_flash_attention and use_memory_efficient_attention were both set false at lines 553
-      // and 555 (their `!use_paged_decode` term was false because `use_paged_decode` was true when
-      // XQA was statically preferred), so nothing else to override here.
+      use_flash_attention = false;
+      // MemoryEfficientAttention is ineligible here: this branch requires fp16_xqa_eligible,
+      // which implies a FlashAttention-supported shape, while MEA requires !flash_eligible.
     }
   }
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
@@ -756,11 +758,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                            "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
                            flash_min_block_size, " for head_size ", parameters.head_size,
                            "), MemoryEfficientAttention (fp16 sm>=53, bf16 sm>=80, head_size<=1024 and %8==0), "
+                           "cuDNN paged SDPA (cuDNN>=9.5, sm>=90, fp16/bf16 one-token decode with attention_metadata), "
                            "or the paged decode kernel (fp16/bf16, decode-shaped batch, i.e. "
                            "token_count <= batch_size; this step has token_count=",
                            parameters.token_count, " and batch_size=", parameters.batch_size,
                            ") to be available. Check ORT_DISABLE_FLASH_ATTENTION / "
-                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION / ORT_DISABLE_DECODER_ATTENTION env vars and "
+                           "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION / ORT_DISABLE_DECODER_ATTENTION / "
+                           "ORT_ENABLE_CUDNN_FLASH_ATTENTION env vars and "
                            "dtype/head_size/block_size.");
   }
 
@@ -1005,6 +1009,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   if (use_cudnn_paged) {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.cudnn_allocator));
     data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
+    data.cudnn_scale = cudnn_scale;
+    data.cudnn_debug_info = kernel_options_->AllowDebugInfo();
     data.cudnn_seqlens_kv = reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get());
   }
 

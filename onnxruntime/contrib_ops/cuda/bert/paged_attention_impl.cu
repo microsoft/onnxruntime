@@ -1859,8 +1859,7 @@ Status CudnnPagedAttention(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T, TCACHE>& data,
-    float scale) {
+    PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
 
@@ -1878,6 +1877,7 @@ Status CudnnPagedAttention(
       parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
   const bool ok = onnxruntime::cudnn_sdpa::run_paged(
       /*output=*/reinterpret_cast<void*>(data.output),
       /*q=*/reinterpret_cast<void*>(query),
@@ -1893,11 +1893,15 @@ Status CudnnPagedAttention(
       parameters.num_blocks,
       parameters.block_size,
       parameters.max_num_blocks_per_seq,
-      scale,
+      data.cudnn_scale,
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
-      data.cudnn_allocator);
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
   if (!ok) {
     // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
     // try_build_paged_graph probe before selecting this backend, so a false here means either the
@@ -2111,7 +2115,7 @@ Status QkvToContext(
   }
 
   if (data.use_cudnn_paged) {
-    return CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
+    return CudnnPagedAttention(device_prop, ort_stream, parameters, data);
   }
 
   if (data.use_paged_decode) {
