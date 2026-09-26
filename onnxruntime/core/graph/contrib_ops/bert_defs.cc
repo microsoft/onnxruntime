@@ -2850,12 +2850,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* EngramGate_ver1_doc = R"DOC(
 Fuses the Engram gate.
 
-The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
-the hidden-state queries in the same layout, an already projected value in
-(batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
-RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
-provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
-projection is computed once per token instead of once per hyper-connection.
+The op consumes already projected keys and hidden-state queries in either dense
+(batch_size, sequence_length, hc_mult, hidden_size) or packed
+(total_tokens, hc_mult, hidden_size) layout. The projected value has the corresponding
+(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size) layout and is shared by
+every hyper-connection. The key and value projections stay outside the op so they can run on the
+execution provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the
+value projection is computed once per token instead of once per hyper-connection.
 
 It computes the Engram gate:
 
@@ -2878,16 +2879,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               1.0e-5f)
         .Input(0,
                "key",
-               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+           "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size) "
+           "or (total_tokens, hc_mult, hidden_size).",
                "T")
         .Input(1,
                "query",
-               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+           "Hidden-state queries with the same shape as key.",
                "T")
         .Input(2,
                "value",
                "Projected Engram value shared by every hyper-connection, with shape "
-               "(batch_size, sequence_length, hidden_size).",
+               "(batch_size, sequence_length, hidden_size) or (total_tokens, hidden_size).",
                "T")
         .Input(3,
                "key_norm_scale",
@@ -2905,12 +2907,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+          "Gated value tensor with the same shape as key.",
                 "T")
         .Output(1,
                 "gated_value_normed",
-                "Optional RMS-normalized gated value tensor with shape "
-                "(batch_size, sequence_length, hc_mult, hidden_size).",
+                "Optional RMS-normalized gated value tensor with the same shape as key.",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T",
@@ -2924,8 +2925,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
-            if (key_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: key must have rank 4");
+            if (key_shape.dim_size() != 3 && key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 3 or 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
             if (ctx.getNumOutputs() > 1) {
@@ -2934,14 +2935,39 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);
-            if (query_shape.dim_size() != 4) {
-              fail_shape_inference("EngramGate: query must have rank 4");
+            if (query_shape.dim_size() != 3 && query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 3 or 4");
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& key_shape = getInputShape(ctx, 0);
+              if (query_shape.dim_size() != key_shape.dim_size()) {
+                fail_shape_inference("EngramGate: query must have the same rank as key");
+              }
+              for (int i = 0; i < key_shape.dim_size(); ++i) {
+                if (query_shape.dim(i).has_dim_value() && key_shape.dim(i).has_dim_value() &&
+                    query_shape.dim(i).dim_value() != key_shape.dim(i).dim_value()) {
+                  fail_shape_inference("EngramGate: query must have the same shape as key");
+                }
+              }
             }
           }
           if (hasInputShape(ctx, 2)) {
             const auto& value_shape = getInputShape(ctx, 2);
-            if (value_shape.dim_size() != 3) {
-              fail_shape_inference("EngramGate: value must have rank 3");
+            if (value_shape.dim_size() != 2 && value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 2 or 3");
+            }
+            if (hasInputShape(ctx, 0) && value_shape.dim_size() + 1 != getInputShape(ctx, 0).dim_size()) {
+              fail_shape_inference("EngramGate: value rank must be one less than key rank");
+            }
+            if (hasInputShape(ctx, 0) && value_shape.dim_size() + 1 == getInputShape(ctx, 0).dim_size()) {
+              const auto& key_shape = getInputShape(ctx, 0);
+              for (int i = 0; i < value_shape.dim_size(); ++i) {
+                const int key_dim = i == value_shape.dim_size() - 1 ? i + 1 : i;
+                if (value_shape.dim(i).has_dim_value() && key_shape.dim(key_dim).has_dim_value() &&
+                    value_shape.dim(i).dim_value() != key_shape.dim(key_dim).dim_value()) {
+                  fail_shape_inference("EngramGate: value must match key's token dimensions and hidden size");
+                }
+              }
             }
           }
         }));

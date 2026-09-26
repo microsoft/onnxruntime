@@ -96,12 +96,11 @@ Status LaunchEngramGateKernel(
     const T* conv_norm_scale,
     T* output,
     T* output_normed,
-    int64_t batch_size,
-    int64_t sequence_length,
+    int64_t token_count,
     int64_t hc_mult,
     int64_t hidden_size,
     float epsilon) {
-  const int64_t rows = batch_size * sequence_length * hc_mult;
+  const int64_t rows = token_count * hc_mult;
   if (rows == 0 || hidden_size == 0) {
     return Status::OK();
   }
@@ -115,7 +114,7 @@ Status LaunchEngramGateKernel(
 
 #define INSTANTIATE_ENGRAM_GATE(T)                                                                          \
   template Status LaunchEngramGateKernel<T>(cudaStream_t, const T*, const T*, const T*, const T*, const T*, \
-                                            const T*, T*, T*, int64_t, int64_t, int64_t, int64_t, float);
+                                            const T*, T*, T*, int64_t, int64_t, int64_t, float);
 
 INSTANTIATE_ENGRAM_GATE(float)
 INSTANTIATE_ENGRAM_GATE(half)

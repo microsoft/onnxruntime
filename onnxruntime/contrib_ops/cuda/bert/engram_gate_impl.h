@@ -21,8 +21,7 @@ Status LaunchEngramGateKernel(
     const T* conv_norm_scale,
     T* output,
     T* output_normed,
-    int64_t batch_size,
-    int64_t sequence_length,
+    int64_t token_count,
     int64_t hc_mult,
     int64_t hidden_size,
     float epsilon);
