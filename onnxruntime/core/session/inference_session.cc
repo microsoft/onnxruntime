@@ -2702,11 +2702,6 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
-#pragma warning(disable : 26117)
-#endif
 common::Status InferenceSession::Initialize() {
   const auto start_timing = [this]() {
     TimePoint start_time{};
@@ -2722,45 +2717,39 @@ common::Status InferenceSession::Initialize() {
     return start_time;
   };
 
+  Status status = Status::OK();
+  bool have_cpu_ep = false;
   if (session_options_.IsLoadCancellationFlagSet()) {
-    const Status status = ORT_MAKE_STATUS(
+    status = ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "Session initialization canceled due to user request.");
-    return RecordSessionCreationEndTelemetry(start_timing(), status);
-  }
-
-  bool have_cpu_ep = false;
-  {
-    std::unique_lock<std::mutex> initial_guard(session_mutex_);
-
+  } else {
+    std::lock_guard<std::mutex> initial_guard(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      const Status status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
-      initial_guard.unlock();
-      return RecordSessionCreationEndTelemetry(start_timing(), status);
-    }
-
-    if (is_inited_) {
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+    } else if (is_inited_) {
       LOGS(*session_logger_, INFO) << "Session has already been initialized.";
       return common::Status::OK();
-    }
-
+    } else {
 #if !defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
-    for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
-      if (key == kOrtSessionOptionsGqaValueLayout) {
-        const Status status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "GQA layout disabled");
-        initial_guard.unlock();
-        return RecordSessionCreationEndTelemetry(start_timing(), status);
+      for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
+        if (key == kOrtSessionOptionsGqaValueLayout) {
+          status = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "GQA layout disabled");
+          break;
+        }
+      }
+#endif
+      if (status.IsOK()) {
+        have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
       }
     }
-#endif
-
-    have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
   }
 
-  Status status = Status::OK();
   const TimePoint tp = start_timing();
+  if (!status.IsOK()) {
+    return RecordSessionCreationEndTelemetry(tp, status);
+  }
 
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
@@ -3295,9 +3284,6 @@ common::Status InferenceSession::Initialize() {
 
   return RecordSessionCreationEndTelemetry(tp, status);
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
