@@ -3736,5 +3736,75 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)
+
+// Verifies that GetProviderOptions reports effective CoreML options using public option names,
+// whether the EP is configured through ProviderOptions or legacy flags.
+TEST(CoreMLExecutionProviderTest, GetProviderOptionsReportsEffectiveOptions) {
+  const auto reported_options = [](const ProviderOptions& options) {
+    return CoreMLProviderFactoryCreator::Create(options)->CreateProvider()->GetProviderOptions();
+  };
+
+  // Default values are reported even when no options are provided. An unset cache directory is omitted.
+  {
+    const ProviderOptions reported = reported_options({});
+    EXPECT_EQ(reported.at(kCoremlProviderOption_MLComputeUnits), kCoremlProviderOption_MLComputeUnits_ALL);
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ModelFormat), "NeuralNetwork");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_RequireStaticInputShapes), "0");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_EnableOnSubgraphs), "0");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_SpecializationStrategy), "Default");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ProfileComputePlan), "0");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU), "0");
+    EXPECT_EQ(reported.count(kCoremlProviderOption_ModelCacheDirectory), size_t{0});
+  }
+
+  // Explicitly provided option values are reported unchanged.
+  {
+    const std::string cache_directory =
+        std::filesystem::temp_directory_path().append("coreml_provider_options_test").string();
+    const ProviderOptions reported = reported_options({
+        {kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_MLComputeUnits_CPUOnly},
+        {kCoremlProviderOption_ModelFormat, "MLProgram"},
+        {kCoremlProviderOption_RequireStaticInputShapes, "1"},
+        {kCoremlProviderOption_EnableOnSubgraphs, "1"},
+        {kCoremlProviderOption_SpecializationStrategy, "FastPrediction"},
+        {kCoremlProviderOption_ProfileComputePlan, "1"},
+        {kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU, "1"},
+        {kCoremlProviderOption_ModelCacheDirectory, cache_directory},
+    });
+    EXPECT_EQ(reported.at(kCoremlProviderOption_MLComputeUnits), kCoremlProviderOption_MLComputeUnits_CPUOnly);
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ModelFormat), "MLProgram");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_RequireStaticInputShapes), "1");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_EnableOnSubgraphs), "1");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_SpecializationStrategy), "FastPrediction");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ProfileComputePlan), "1");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU), "1");
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ModelCacheDirectory), cache_directory);
+  }
+
+  // ProfileComputePlan applies only to MLProgram, so it is reported as "0" for NeuralNetwork even when set to "1".
+  EXPECT_EQ(reported_options({{kCoremlProviderOption_ProfileComputePlan, "1"}})
+                .at(kCoremlProviderOption_ProfileComputePlan),
+            "0");
+
+  EXPECT_EQ(reported_options({{kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_MLComputeUnits_CPUAndGPU}})
+                .at(kCoremlProviderOption_MLComputeUnits),
+            kCoremlProviderOption_MLComputeUnits_CPUAndGPU);
+
+  EXPECT_EQ(reported_options({{kCoremlProviderOption_MLComputeUnits,
+                               kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine}})
+                .at(kCoremlProviderOption_MLComputeUnits),
+            kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine);
+
+  // The legacy flags constructor reports the same names and values.
+  {
+    const ProviderOptions reported =
+        CoreMLProviderFactoryCreator::Create(COREML_FLAG_USE_CPU_ONLY | COREML_FLAG_CREATE_MLPROGRAM)
+            ->CreateProvider()
+            ->GetProviderOptions();
+    EXPECT_EQ(reported.at(kCoremlProviderOption_MLComputeUnits), kCoremlProviderOption_MLComputeUnits_CPUOnly);
+    EXPECT_EQ(reported.at(kCoremlProviderOption_ModelFormat), "MLProgram");
+    EXPECT_EQ(reported.count(kCoremlProviderOption_ModelCacheDirectory), size_t{0});
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
