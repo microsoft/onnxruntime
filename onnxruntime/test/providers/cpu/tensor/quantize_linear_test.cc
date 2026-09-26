@@ -1994,6 +1994,15 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   test.Run(BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
 
+TEST(DequantizeLinearOp21BlockedTest, SignedInt_UseZeroPoint_OneDimension) {
+  std::vector<float> x_scale{0.5f, 2.0f};
+  std::vector<int> zero_point{0, 10};
+  std::vector<int> x{10, 20, 30, 40, 50, 60, 70, 80};
+  std::vector<float> y{5.0f, 10.0f, 15.0f, 20.0f, 80.0f, 100.0f, 120.0f, 140.0f};
+
+  DequantizeLinearOp21BlockedTest_Int_Succeed<int8_t, float>({8}, 0, 4, x, x_scale, zero_point, y);
+}
+
 TEST(DequantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {
   std::vector<float> x_scale{-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0};
   std::vector<int> zero_point;
