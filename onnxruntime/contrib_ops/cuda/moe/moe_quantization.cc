@@ -845,6 +845,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                         " shape [E,N,K/pack]=[", moe_params.num_experts, ",", n, ",", packed_k,
                         "], got ", weight_shape, ". Legacy transposed weight layouts are not supported.");
       ORT_RETURN_IF_NOT(scales != nullptr, scales_name, " is required.");
+      ORT_RETURN_IF_NOT(is_fp16_ ? scales->IsDataType<MLFloat16>() : scales->IsDataType<BFloat16>(),
+                        "INT2 or mixed-width CUDA QMoE requires ", scales_name,
+                        " dtype to match the input dtype (", is_fp16_ ? "float16" : "bfloat16", ").");
       const auto& scale_shape = scales->Shape();
       const int64_t blocks_per_row = k / block_size_;
       ORT_RETURN_IF_NOT(scale_shape.NumDimensions() == 3 &&
@@ -1405,6 +1408,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         } else if (scales->IsDataType<BFloat16>()) {
           LaunchQMoETranspose2D(static_cast<const __nv_bfloat16*>(scales->DataRaw()), static_cast<__nv_bfloat16*>(transposed_scale_holder.get()), batch, rows, cols, stream);
         } else {
+          ORT_ENFORCE(scales->IsDataType<float>(),
+                      "QMoE scale transpose supports only float16, bfloat16, and float tensors.");
           LaunchQMoETranspose2D(static_cast<const float*>(scales->DataRaw()), static_cast<float*>(transposed_scale_holder.get()), batch, rows, cols, stream);
         }
       }

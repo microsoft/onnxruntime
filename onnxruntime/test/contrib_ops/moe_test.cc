@@ -2455,7 +2455,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaAsymmetricZeroPoints) {
 
 static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
     int64_t hidden_size, int64_t inter_size, int64_t block_size,
-    bool row_wise_scales, bool legacy_weights, const char* expected_error) {
+    bool row_wise_scales, bool legacy_weights, const char* expected_error,
+    bool use_float8_scales = false) {
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
   constexpr int64_t fc1_bits = 2;
@@ -2489,15 +2490,25 @@ static void RunQMoEMixedWidthCudaInvalidFallbackInputTest(
   tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, {MLFloat16(1.0f)});
   tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weight_shape,
                            std::vector<uint8_t>(static_cast<size_t>(fc1_weight_shape[1] * fc1_weight_shape[2])));
-  tester.AddInput<MLFloat16>("fc1_scales", fc1_scale_shape,
-                             std::vector<MLFloat16>(static_cast<size_t>(inter_size * (row_wise_scales ? 1 : fc1_blocks)),
-                                                    MLFloat16(1.0f)));
+  const size_t fc1_scale_count = static_cast<size_t>(inter_size * (row_wise_scales ? 1 : fc1_blocks));
+  if (use_float8_scales) {
+    tester.AddInput<Float8E4M3FN>("fc1_scales", fc1_scale_shape,
+                                  std::vector<Float8E4M3FN>(fc1_scale_count, Float8E4M3FN(1.0f)));
+  } else {
+    tester.AddInput<MLFloat16>("fc1_scales", fc1_scale_shape,
+                               std::vector<MLFloat16>(fc1_scale_count, MLFloat16(1.0f)));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weight_shape,
                            std::vector<uint8_t>(static_cast<size_t>(fc2_weight_shape[1] * fc2_weight_shape[2])));
-  tester.AddInput<MLFloat16>("fc2_scales", fc2_scale_shape,
-                             std::vector<MLFloat16>(static_cast<size_t>(hidden_size * (row_wise_scales ? 1 : fc2_blocks)),
-                                                    MLFloat16(1.0f)));
+  const size_t fc2_scale_count = static_cast<size_t>(hidden_size * (row_wise_scales ? 1 : fc2_blocks));
+  if (use_float8_scales) {
+    tester.AddInput<Float8E4M3FN>("fc2_scales", fc2_scale_shape,
+                                  std::vector<Float8E4M3FN>(fc2_scale_count, Float8E4M3FN(1.0f)));
+  } else {
+    tester.AddInput<MLFloat16>("fc2_scales", fc2_scale_shape,
+                               std::vector<MLFloat16>(fc2_scale_count, MLFloat16(1.0f)));
+  }
   tester.AddOptionalInputEdge<MLFloat16>();
   tester.AddOptionalInputEdge<uint8_t>();
   tester.AddOptionalInputEdge<MLFloat16>();
@@ -2527,6 +2538,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaRejectsUnsafeFallbackInputs) {
       80, 64, 32, false, false, "requires hidden_size to be divisible by block_size");
   RunQMoEMixedWidthCudaInvalidFallbackInputTest(
       64, 80, 32, false, false, "requires inter_size to be divisible by block_size");
+  RunQMoEMixedWidthCudaInvalidFallbackInputTest(
+      64, 64, 32, false, false, "fc1_scales dtype to match the input dtype", true);
 }
 #endif
 
