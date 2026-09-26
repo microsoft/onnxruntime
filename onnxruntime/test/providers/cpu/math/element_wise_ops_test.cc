@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits>
 #include <math.h>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace test {
@@ -4351,6 +4352,49 @@ TEST(ModOpTest, Fmod_float16_mixed_sign) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
+template <typename T>
+void TestFloorModFloatingPointOpset28(const std::vector<T>& x,
+                                      const std::vector<T>& y,
+                                      const std::vector<T>& expected) {
+  OpTester test("Mod", 28);
+  test.AddAttribute<int64_t>("fmod", 0);
+  const std::vector<int64_t> shape{static_cast<int64_t>(x.size())};
+  test.AddInput<T>("X", shape, x);
+  test.AddInput<T>("Y", shape, y);
+  test.AddOutput<T>("Z", shape, expected);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_float_mixed_sign_opset28) {
+  TestFloorModFloatingPointOpset28<float>(
+      {-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f},
+      {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f},
+      {2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f});
+}
+
+TEST(ModOpTest, FloorMod_double_mixed_sign_opset28) {
+  TestFloorModFloatingPointOpset28<double>(
+      {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0},
+      {2.1, -3.4, 8.0, -2.1, 3.4, 5.0},
+      {2.0, -3.0, 5.0, -2.0, 3.0, 3.0});
+}
+
+TEST(ModOpTest, FloorMod_float16_mixed_sign_opset28) {
+  TestFloorModFloatingPointOpset28<MLFloat16>(
+      MakeMLFloat16({-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f}),
+      MakeMLFloat16({2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f}),
+      MakeMLFloat16({2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f}));
+}
+
+TEST(ModOpTest, FloorMod_float_special_values_opset28) {
+  constexpr auto infinity = std::numeric_limits<float>::infinity();
+  constexpr auto nan = std::numeric_limits<float>::quiet_NaN();
+  TestFloorModFloatingPointOpset28<float>(
+      {6.0f, -6.0f, 5.0f, -5.0f, infinity, 1.0f, nan, 1.0f},
+      {-3.0f, 3.0f, infinity, -infinity, 2.0f, 0.0f, 2.0f, nan},
+      {-0.0f, 0.0f, 5.0f, -5.0f, nan, nan, nan, nan});
+}
+
 #if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
@@ -4649,6 +4693,93 @@ TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
   test.AddInput<uint8_t>("X", {2}, {64, 32});
   test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
+  test.Run();
+}
+
+template <typename T>
+void TestSignedBitShiftOpset28() {
+  constexpr T bit_width = static_cast<T>(std::numeric_limits<std::make_unsigned_t<T>>::digits);
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "LEFT");
+    test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, std::numeric_limits<T>::max(), T{-2}, T{2}});
+    test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{1}, T{-1}, bit_width});
+    test.AddOutput<T>("Z", {6}, {T{-16}, T{-12}, T{8}, T{-2}, T{0}, T{0}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "RIGHT");
+    test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, T{-2}, T{-2}, T{2}});
+    test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{-1}, bit_width, bit_width});
+    test.AddOutput<T>("Z", {6}, {T{-4}, T{-1}, T{0}, T{-1}, T{-1}, T{0}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "RIGHT");
+    test.AddInput<T>("X", {1}, {T{-8}});
+    test.AddInput<T>("Y", {4}, {T{1}, T{2}, bit_width, T{-1}});
+    test.AddOutput<T>("Z", {4}, {T{-4}, T{-2}, T{-1}, T{-1}});
+    test.Run();
+  }
+
+  {
+    OpTester test("BitShift", 28);
+    test.AddAttribute("direction", "LEFT");
+    test.AddInput<T>("X", {2}, {std::numeric_limits<T>::max(), T{-8}});
+    test.AddInput<T>("Y", {1}, {T{1}});
+    test.AddOutput<T>("Z", {2}, {T{-2}, T{-16}});
+    test.Run();
+  }
+}
+
+TEST(BitShiftOpTest, SignedInt8Opset28) {
+  TestSignedBitShiftOpset28<int8_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt16Opset28) {
+  TestSignedBitShiftOpset28<int16_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt32Opset28) {
+  TestSignedBitShiftOpset28<int32_t>();
+}
+
+TEST(BitShiftOpTest, SignedInt64Opset28) {
+  TestSignedBitShiftOpset28<int64_t>();
+}
+
+template <typename T>
+void TestUnsignedBitShiftRegistration(int opset) {
+  OpTester test("BitShift", opset);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<T>("X", {2}, {T{1}, T{3}});
+  test.AddInput<T>("Y", {2}, {T{1}, T{2}});
+  test.AddOutput<T>("Z", {2}, {T{2}, T{12}});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, Uint16Opset11) {
+  TestUnsignedBitShiftRegistration<uint16_t>(11);
+}
+
+TEST(BitShiftOpTest, UnsignedTypesOpset28) {
+  TestUnsignedBitShiftRegistration<uint8_t>(28);
+  TestUnsignedBitShiftRegistration<uint16_t>(28);
+  TestUnsignedBitShiftRegistration<uint32_t>(28);
+  TestUnsignedBitShiftRegistration<uint64_t>(28);
+}
+
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64Opset28) {
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
   test.Run();
 }
 

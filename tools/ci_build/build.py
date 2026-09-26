@@ -149,6 +149,13 @@ def run_subprocess(
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
 
+def get_onnx_backend_test_environment(_use_cuda):
+    return {
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+    }
+
+
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
@@ -2066,7 +2073,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
+                        # Set the opset policy explicitly so the child process does not inherit the CI default.
+                        run_subprocess(
+                            [sys.executable, "onnx_backend_test_series.py"],
+                            cwd=cwd,
+                            dll_path=dll_path,
+                            env=get_onnx_backend_test_environment(args.use_cuda),
+                        )
 
             if not args.skip_keras_test:
                 try:

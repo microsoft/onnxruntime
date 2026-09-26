@@ -5,13 +5,17 @@
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 from helper import get_name
 from numpy.testing import assert_allclose
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 import onnxruntime.backend as backend
+from onnxruntime.backend.backend import OnnxRuntimeBackend
+from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 
 class TestBackend(unittest.TestCase):
@@ -22,6 +26,27 @@ class TestBackend(unittest.TestCase):
         res = rep.run(x)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_prepare_model_bytes_allows_unreleased_opset_when_policy_disabled(self):
+        model = helper.make_model(
+            helper.make_graph(
+                [helper.make_node("Identity", ["X"], ["Y"])],
+                "unreleased_opset",
+                [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+            ),
+            opset_imports=[helper.make_opsetid("", 28)],
+        )
+
+        original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+        try:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = False
+            rep = backend.prepare(model.SerializeToString())
+        finally:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+        result = rep.run(np.array([1.0], dtype=np.float32))
+        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
 
     def test_allocation_plan_works_with_only_execute_path_to_fetches_option(self):
         """
@@ -64,6 +89,54 @@ class TestBackend(unittest.TestCase):
             assert_allclose(session_run_results[0], -(inp0 - inp1), rtol=1e-6, atol=1e-6)
         else:
             assert_allclose(session_run_results[0], -(inp0 - inp1))
+
+
+class TestBackendRepInputNormalization(unittest.TestCase):
+    class _Session:
+        def __init__(self, input_names):
+            self._inputs = [SimpleNamespace(name=name) for name in input_names]
+            self.received_inputs = None
+
+        def get_inputs(self):
+            return self._inputs
+
+        def run(self, _, inputs, __):
+            self.received_inputs = inputs
+            return [inputs]
+
+    def test_run_normalizes_numpy_scalar_inputs_to_zero_dimensional_arrays(self):
+        session = self._Session(["first", "second"])
+        rep = OnnxRuntimeBackendRep(session)
+
+        rep.run([np.int32(3), np.float32(4.5)])
+
+        self.assertEqual(session.received_inputs["first"].shape, ())
+        self.assertEqual(session.received_inputs["second"].shape, ())
+        self.assertEqual(session.received_inputs["first"].dtype, np.dtype(np.int32))
+        self.assertEqual(session.received_inputs["second"].dtype, np.dtype(np.float32))
+
+    def test_run_normalizes_single_numpy_scalar_to_zero_dimensional_array(self):
+        session = self._Session(["input"])
+        rep = OnnxRuntimeBackendRep(session)
+
+        rep.run(np.int64(7))
+
+        self.assertEqual(session.received_inputs["input"].shape, ())
+        self.assertEqual(session.received_inputs["input"].dtype, np.dtype(np.int64))
+
+    def test_run_preserves_non_scalar_inputs(self):
+        values = (
+            (np.array([1], dtype=np.int32),),
+            {"key": np.array([2], dtype=np.int32)},
+        )
+        for value in values:
+            with self.subTest(value=value):
+                session = self._Session(["input"])
+                rep = OnnxRuntimeBackendRep(session)
+
+                rep.run(value)
+
+                self.assertIs(session.received_inputs["input"], value)
 
 
 class TestBackendKwargsAllowlist(unittest.TestCase):

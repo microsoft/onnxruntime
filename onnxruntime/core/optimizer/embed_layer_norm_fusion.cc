@@ -247,8 +247,8 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
       {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
@@ -259,7 +259,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_2{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
       {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
@@ -271,15 +271,15 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Range", {11, 27}, kOnnxDomain},
-      {0, 1, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Range", {11, 27, 28}, kOnnxDomain},
+      {0, 1, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Path 4 pattern (Path 3 with no "Cast"):
   std::vector<graph_utils::EdgeEndToMatch> parent_path_4{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Range", {11, 27}, kOnnxDomain},
+      {0, 0, "Range", {11, 27, 28}, kOnnxDomain},
       {0, 1, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Match one of the three path patterns.

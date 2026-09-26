@@ -132,7 +132,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
   }
 
   const Node& child_node = *node.OutputNodesBegin();
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", {1, 6, 9, 13, 19, 21, 23, 24, 25})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", {1, 6, 9, 13, 19, 21, 23, 24, 25, 28})) {
     if (child_node.GetOutputEdgesCount() != 1) {
       return false;
     }

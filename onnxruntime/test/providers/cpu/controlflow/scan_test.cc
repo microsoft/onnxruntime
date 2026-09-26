@@ -1061,7 +1061,8 @@ TEST(Scan8, NumScanInputsExceedsVariadicInputs) {
   test.AddOutput<float>("scan_output_2", {1, 2, 1}, {0.f, 0.f});
   test.AddOutput<float>("scan_output_3", {1, 2, 1}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid 'num_scan_inputs' of 10. Value must be between 1 and 3",
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "num_scan_inputs (10) plus the sequence_lens input cannot exceed the number of Scan inputs (4).",
            options.excluded_provider_types);
 }
 
@@ -1165,7 +1166,7 @@ TEST(Scan9, NumScanInputsExceedsVariadicInputs) {
   // inferencing error wrapping a shape-inference error, rather than the kernel-level message produced
   // by the opset 8 test above.
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "[ShapeInferenceError] Mismatch between number of inferred and declared dimensions",
+           "num_scan_inputs (10) cannot exceed the number of Scan inputs (3).",
            options.excluded_provider_types);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
