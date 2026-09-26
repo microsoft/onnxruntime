@@ -477,6 +477,23 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_IsSessionScoped) {
   EXPECT_EQ(GetStatInt(shared_allocator.GetStats(), "NumAllocs"), shared_allocs_before);
 }
 
+TEST_F(CudaPluginArenaTest, CudaGraphRejectsEnvironmentAllocator) {
+  Ort::SessionOptions so;
+  so.AddConfigEntry("session.use_env_allocators", "1");
+  std::unordered_map<std::string, std::string> provider_options = {
+      {"enable_cuda_graph", "1"},
+  };
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  try {
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+    FAIL() << "Expected session creation to reject a shared environment allocator with CUDA graphs.";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string(ex.what()).find("session.use_env_allocators=1"), std::string::npos);
+  }
+}
+
 // Verify arena handles a large allocation.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_LargeAllocation) {
   auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);

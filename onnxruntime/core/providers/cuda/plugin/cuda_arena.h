@@ -262,7 +262,8 @@ class ArenaImpl {
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
   // Permanently exclude chunks associated with a stream whose completion is unknown.
-  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined);
+  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined,
+                                         bool abandon_if_used = false);
 
   void Abandon();
 
@@ -611,10 +612,11 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
     return err;  // required for ORT_NO_EXCEPTIONS
   }
 
-  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined) {
+  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined,
+                                         bool abandon_if_used = false) {
     OrtStatus* err = nullptr;
     ORT_TRY {
-      err = impl_->QuarantineChunksUsingStream(stream_impl, quarantined);
+      err = impl_->QuarantineChunksUsingStream(stream_impl, quarantined, abandon_if_used);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

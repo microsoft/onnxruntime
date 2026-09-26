@@ -879,7 +879,8 @@ OrtStatus* ArenaImpl::ResetChunksUsingStream(const OrtSyncStreamImpl* stream_imp
   return nullptr;
 }
 
-OrtStatus* ArenaImpl::QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined) {
+OrtStatus* ArenaImpl::QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined,
+                                                  bool abandon_if_used) {
   std::lock_guard<std::mutex> lock(lock_);
   quarantined = false;
 
@@ -903,6 +904,9 @@ OrtStatus* ArenaImpl::QuarantineChunksUsingStream(const OrtSyncStreamImpl* strea
   }
 
   impl_to_stream_.erase(impl_it);
+  if (quarantined && abandon_if_used) {
+    abandoned_ = true;
+  }
   return nullptr;
 }
 

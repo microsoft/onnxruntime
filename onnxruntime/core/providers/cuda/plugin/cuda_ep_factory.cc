@@ -694,6 +694,15 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);
 
+  const bool use_env_allocators =
+      try_get_session_config("session.use_env_allocators").value_or("0") == "1";
+  if (config.enable_cuda_graph && use_env_allocators) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA graph capture is incompatible with session.use_env_allocators=1 because captured graphs require a "
+        "session-scoped device arena.");
+  }
+
   // --- Stream and allocator options ---
   read_session_config_bool(
       {has_user_compute_stream_key, "ep.cuda.has_user_compute_stream", "has_user_compute_stream"},
@@ -877,8 +886,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                                         std::move(raw_allocator), allocator_options,
                                         factory.ort_api_, factory.default_logger_, arena);
     if (status != nullptr) return status;
-    *allocator = arena.get();
     entry->device_arenas.push_back(DeviceArena{std::move(arena)});
+    *allocator = entry->device_arenas.back().allocator.get();
     return nullptr;
   }
 
@@ -1105,17 +1114,11 @@ OrtStatus* CudaEpFactory::QuarantineAndAbandonDeviceArena(
     if (!entry) return nullptr;
     std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
 
-    // Disable allocation/free/shrink before fallible stream-map detachment so no
-    // concurrent user can observe a partially quarantined arena.
-    for (auto& arena : entry->device_arenas) {
-      arena.allocator->Abandon();
-      arena.abandoned = true;
-    }
-
     for (auto& arena : entry->device_arenas) {
       bool quarantined = false;
-      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined);
+      status = arena.allocator->QuarantineChunksUsingStream(stream_impl, quarantined, true);
       arena.has_quarantine = arena.has_quarantine || quarantined;
+      arena.abandoned = arena.abandoned || quarantined;
       if (status != nullptr) return status;
     }
   }

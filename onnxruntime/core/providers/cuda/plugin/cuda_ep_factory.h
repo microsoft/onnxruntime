@@ -41,7 +41,7 @@ class CudaEpFactory : public OrtEpFactory {
   /// Permanently quarantine chunks when stream completion cannot be established.
   OrtStatus* QuarantineDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
 
-  /// Atomically detach stream pointers and abandon the backing memory of every device arena of a device.
+  /// Atomically detach stream pointers and abandon each device arena that used the stream.
   OrtStatus* QuarantineAndAbandonDeviceArena(int device_id, const OrtSyncStreamImpl* stream_impl) noexcept;
 
   /// Abandon every device arena of a device when chunk-level detachment cannot be guaranteed.
