@@ -31,7 +31,7 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // daf7aa96ffddeaaeabed7e8443f06e17d95660758d717a00948a19e7000c7712
+#include "wgsl_template_gen/string_table.h"  // ceb918d6246ada150c7390bc883927343ff1a83b8bc92be0c327feaa264e38dc
 
 // Include template implementations
 
@@ -41,6 +41,7 @@ std::string pass_as_string(T&& v) {
 #include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 716093e16dab78785c901496aba2d83252c582cd160b55f2adf130e63b09007a
 #include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // b51b250b8de40b765a7bbf221549c429ba5667ca0710d1b2693c97bed3ecddec
 #include "wgsl_template_gen/generated/tensor/pad.h"  // 38d233f377317f5321d49575df8f252da49f360d15af6fb3fe3d4ff7f6aaf911
+#include "wgsl_template_gen/generated/nn/conv_transpose3d.h"  // 9378f100d9b851f3bf74f1eea224862a3d506766efde5d652d8b46e48cc5cc6a
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

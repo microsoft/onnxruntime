@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/conv_backprop.h"
 
@@ -16,9 +17,14 @@ namespace webgpu {
 template <bool is_channels_last>
 Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context) const {
   const auto* input = context.Input<Tensor>(0);
-  const auto* filter = context.Input<Tensor>(1);
+  const auto* filter = prepacked_filter_ ? prepacked_filter_.get() : context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
   TensorShape filter_shape = filter->Shape();
+  const bool is_prepacked = weight_layout_ == WeightLayout::DHWOI;
+  if (is_prepacked) {
+    // Recover the logical ONNX shape before validating channels or inferring output dimensions.
+    filter_shape = TensorShape{filter_shape[4], filter_shape[3], filter_shape[0], filter_shape[1], filter_shape[2]};
+  }
 
   const auto rank = input_shape.NumDimensions();
   if (rank < 3) {
@@ -30,6 +36,24 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
                            " W: ", filter_shape.ToString().c_str());
+  }
+
+  if (rank != filter_shape.NumDimensions()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.");
+  }
+  if (rank > 5) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Only ConvTranspose1d, ConvTranspose2d, and ConvTranspose3d are supported.");
+  }
+  const auto input_channels = input_shape[is_channels_last ? rank - 1 : 1];
+  if (conv_transpose_attrs_.group <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0");
+  }
+  if (filter_shape[0] != input_channels) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.");
+  }
+  if (input_channels % conv_transpose_attrs_.group != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.");
   }
 
   const InlinedVector<size_t> perm = {2, 3, 0, 1};
@@ -99,6 +123,28 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
   }
 
+  if (rank == 5) {
+    auto* output = context.Output(0, computed_output_shape);
+    const auto output_size = narrow<uint32_t>(computed_output_shape.Size());
+    if (output_size == 0) {
+      return Status::OK();
+    }
+    const gsl::span<const uint32_t> pads_3d{pads.data(), 3};
+    const auto input_channels_per_group = narrow<uint32_t>(input_channels / group);
+    const int components = is_prepacked ? GetMaxComponents(input_channels_per_group) : 1;
+    ConvTranspose3DProgram program(is_channels_last, has_bias, is_prepacked, components);
+    program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, is_channels_last ? components : 1},
+                       {filter, ProgramTensorMetadataDependency::TypeAndRank, components}})
+        .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+        .CacheHint(is_channels_last, has_bias, is_prepacked, components)
+        .AddUniformVariables({{output_size}, {strides}, {dilations}, {pads_3d}, {input_channels_per_group}})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank});
+    }
+    return context.RunProgram(program);
+  }
+
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
@@ -112,11 +158,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     pads.insert(pads.begin() + 2, 0);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
-  }
-  if (input_shape.NumDimensions() > 4 || filter_shape.NumDimensions() > 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Conv2d or Conv1d are supported.");
-  } else if (input_shape.NumDimensions() < 2 || filter_shape.NumDimensions() < 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input and kernel tensors must have at least 3 dimensions");
   }
   // Transpose weights
   Tensor transposed_filter;
@@ -135,6 +176,35 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   input_output_shapes.push_back(output_shape);
   auto program = CreateConvTranspose2DProgram(inputs, {pads[0], pads[1]}, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
   return context.RunProgram(program);
+}
+
+template <bool is_channels_last>
+Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& context,
+                                                        const Tensor& tensor,
+                                                        int input_idx,
+                                                        AllocatorPtr alloc,
+                                                        /*out*/ bool& is_packed) {
+  is_packed = false;
+  if (input_idx != 1 || tensor.Shape().NumDimensions() != 5 || tensor.Shape().Size() == 0) {
+    return Status::OK();
+  }
+
+  // Group boundaries must align with the packed channel vectors. Leave invalid
+  // shapes to ComputeInternal so they retain the normal argument validation.
+  const auto group = conv_transpose_attrs_.group;
+  if (group <= 0 || tensor.Shape()[0] % group != 0) {
+    return Status::OK();
+  }
+
+  const InlinedVector<size_t> perm{2, 3, 4, 1, 0};
+  const auto& shape = tensor.Shape();
+  const TensorShape packed_shape{shape[2], shape[3], shape[4], shape[1], shape[0]};
+  auto packed = std::make_unique<Tensor>(tensor.DataType(), packed_shape, alloc);
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *packed));
+  prepacked_filter_ = std::move(packed);
+  weight_layout_ = WeightLayout::DHWOI;
+  is_packed = true;
+  return Status::OK();
 }
 
 ONNX_OPERATOR_KERNEL_EX(

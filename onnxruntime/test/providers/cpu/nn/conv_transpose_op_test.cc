@@ -42,6 +42,9 @@ void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
                                     const std::string& err_str = "",
                                     const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
   OpTester test("ConvTranspose", 11);
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    test.ConfigSkipUnsupportedWebGpuFp16();
+  }
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
 
@@ -1276,7 +1279,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                       kCudaNHWCExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AsymmetricPads) {
@@ -1813,10 +1816,10 @@ TEST(ConvTransposeTest, ConvTranspose_3D_InconsistentOutputShape) {
   test.AddInput<float>("W", {1, 1, 2, 2, 2}, std::vector<float>(8, 1.0f));
   test.AddOutput<float>("Y", {0}, {});
 
-  // CUDA/WebGPU don't support 3D ConvTranspose in most builds.
+  // CUDA doesn't support 3D ConvTranspose in most builds.
   test.Run(OpTester::ExpectResult::kExpectFailure, "inconsistent with input spatial dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
-            kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
+            kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 // Test that a valid 3D explicit output_shape with non-trivial padding works correctly.
@@ -1847,7 +1850,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D_ValidOutputShape) {
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
                        kCudaNHWCExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider, kWebGpuExecutionProvider});
+                       kDmlExecutionProvider});
 }
 
 // Test group > 1 with explicit output_shape.
