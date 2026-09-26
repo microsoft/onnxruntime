@@ -44,7 +44,16 @@ fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t
   const bits : u32 = nbits;
 
   if (row < r_dim && col < c_dim) {
+  #if has_weight_idx
+  #if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+  #else
+    let actual_weight_idx = uniforms.weight_idx;
+  #endif
+    let offset = actual_weight_idx * r_dim * c_dim + row * c_dim + col;
+  #else
     let offset = row * c_dim + col;
+  #endif
 
     // u32 holds elements_in_uint32 packed nbits.
     let array_index = offset / elements_in_uint32;

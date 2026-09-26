@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -12,6 +13,9 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+#include "absl/flags/reflection.h"
+#endif
 
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
@@ -57,8 +61,16 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
 #if GTEST_HAS_DEATH_TEST
   // Context 0 can outlive an individual test. Re-exec instead of forking its
   // initialized Dawn device or clearing state that another EP still owns.
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
+  ASSERT_NE(death_test_style_flag, nullptr);
+  const std::string previous_style = death_test_style_flag->CurrentValue();
+  std::string flag_error;
+  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
+#else
   const auto previous_style = GTEST_FLAG_GET(death_test_style);
   GTEST_FLAG_SET(death_test_style, "threadsafe");
+#endif
 
   // Exercise isolation even when running only this test, and ensure the child
   // does not disturb a live provider in the parent process.
@@ -84,7 +96,12 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
       testing::ExitedWithCode(EXIT_SUCCESS), "");
 
   EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  flag_error.clear();
+  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
+#else
   GTEST_FLAG_SET(death_test_style, previous_style);
+#endif
 #else
   ORT_UNUSED_PARAMETER(compile_only_parent);
   test_body();
@@ -355,6 +372,100 @@ TEST(WebGpuContextTest, KvCacheQuantizationAcceptsSupportedBitWidths) {
 
 TEST(WebGpuContextTest, KvCacheQuantizationRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(KvCacheQuantizationOptions("3")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsInvalidValue) {
+  for (const char* value : {"-1", "1x"}) {
+    ConfigOptions options;
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, value));
+    EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+  }
+}
+
+TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+
+    ASSERT_NE(ep, nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+  },
+                             /*compile_only_parent=*/true);
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexSelectsPhysicalAdapter) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+
+    ASSERT_NE(ep, nullptr);
+    EXPECT_NE(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+  });
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsOutOfRangeValue) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  ConfigOptions options;
+  const std::string adapter_index = std::to_string(std::numeric_limits<uint32_t>::max());
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, adapter_index.c_str()));
+
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsUnsupportedBuild) {
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "This build supports physical adapter enumeration.";
+#else
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  try {
+    WebGpuProviderFactoryCreator::Create(options);
+    FAIL() << "Expected adapterIndex to be rejected by this build.";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_NE(std::string_view{ex.what()}.find("requires a native Dawn build"), std::string_view::npos);
+  }
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsConflictingSelectorOnReusedContext) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions first_options;
+    ORT_THROW_IF_ERROR(first_options.AddConfigEntry(kAdapterIndex, "0"));
+    auto first_ep = WebGpuProviderFactoryCreator::Create(first_options)->CreateProvider();
+    ASSERT_NE(first_ep, nullptr);
+
+    ConfigOptions power_options;
+    ORT_THROW_IF_ERROR(power_options.AddConfigEntry(kAdapterIndex, "0"));
+    ORT_THROW_IF_ERROR(power_options.AddConfigEntry(kPowerPreference, kPowerPreference_LowPower));
+    EXPECT_THROW(WebGpuProviderFactoryCreator::Create(power_options), OnnxRuntimeException);
+
+    webgpu::WebGpuContextConfig backend_config;
+    backend_config.adapter_index = 0;
+    backend_config.backend_type = std::numeric_limits<int>::max();
+    EXPECT_THROW(webgpu::WebGpuContextFactory::CreateContext(backend_config), OnnxRuntimeException);
+  });
+#endif
 }
 
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {

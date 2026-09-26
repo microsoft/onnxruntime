@@ -153,6 +153,7 @@ struct WebGpuContextConfig {
   // Internal test hook. Provider-option parsing never populates this field.
   uint64_t test_only_max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
+  std::optional<uint32_t> adapter_index;
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
   int backend_type{
 #ifdef _WIN32
@@ -420,6 +421,9 @@ class WebGpuContext final {
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
   bool enable_profiling_ = false;
+  std::optional<uint32_t> adapter_index_;
+  int adapter_power_preference_ = static_cast<int>(WGPUPowerPreference_HighPerformance);
+  int adapter_backend_type_ = 0;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;

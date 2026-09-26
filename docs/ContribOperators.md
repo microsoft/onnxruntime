@@ -2186,7 +2186,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
   Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-  with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
+  with scalar decay, `head_size_qk <= 256`, and compact state updates.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -4071,6 +4071,12 @@ This version of the operator has been available since version 1 of the 'com.micr
   Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
         GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
         usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+        A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+        different requests are concatenated along dimension 0 without padding. MoE is token-local,
+        so request boundaries do not affect the result and no cumulative sequence-length input is
+        required. A 3D input is the dense convenience form and is processed as batch_size *
+        sequence_length independent token rows. router_probs must contain one corresponding row per
+        token in either form.
   
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
@@ -5649,6 +5655,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QMoE"></a><a name="com.microsoft.qmoe">**com.microsoft.QMoE**</a>
 
   Quantized mixture of experts (MoE).
+        A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+        different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+        so request boundaries do not affect the result and no cumulative sequence-length input is
+        required. A 3D input is the dense convenience form and is processed as batch_size *
+        sequence_length independent token rows. router_probs and optional router_weights must contain
+        one corresponding row per token in either form.
   
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
@@ -7758,5 +7770,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
