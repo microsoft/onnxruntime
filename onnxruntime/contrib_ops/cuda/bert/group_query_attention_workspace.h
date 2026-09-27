@@ -12,6 +12,17 @@ namespace cuda {
 
 constexpr size_t kGQAWorkspaceAlignment = 256;
 
+// Windowed backends consume at most the resident/staged cache extent. Non-windowed
+// allocations intentionally continue to use the caller's absolute total length.
+constexpr int64_t GetGQAEffectiveWorkspaceKvLength(
+    int64_t total_sequence_length,
+    int64_t present_kv_cache_capacity,
+    bool is_windowed_kv_cache) noexcept {
+  return is_windowed_kv_cache && present_kv_cache_capacity < total_sequence_length
+             ? present_kv_cache_capacity
+             : total_sequence_length;
+}
+
 enum class GQAWorkspaceError {
   None,
   InvalidArgument,
@@ -224,6 +235,8 @@ struct GQAXqaWorkspaceResult {
 };
 
 struct GQAFlashConfig {
+  // Standalone recipes consume this value as-is. Complete recipes accept the
+  // absolute length and apply the windowed resident/staged-capacity bound.
   int64_t total_sequence_length = 0;
   int64_t local_window_size = -1;
   int64_t multi_processor_count = 0;
@@ -299,6 +312,8 @@ struct GQAUnfusedWorkspaceResult {
 };
 
 struct GQAUnfusedConfig {
+  // Complete recipes accept the absolute length and apply the windowed
+  // resident/staged-capacity bound before building the standalone recipe.
   int64_t total_sequence_length = 0;
 };
 

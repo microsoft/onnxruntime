@@ -20,6 +20,11 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
+// Log MoE expert-routing decisions at INFO severity.
+// "0": disable (default); "1": enable.
+static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
+    "session.enable_moe_expert_statistics";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";
@@ -170,6 +175,20 @@ static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "sessio
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
+
+// Enable running each node's kernel->PrePack() call (constant-initializer weight pre-packing, done
+// once during session Initialize()) across the intra-op thread pool instead of a single thread.
+// "1": enable; "0": disable. The default is "0", and it only takes effect when the intra-op thread
+// pool has a degree of parallelism greater than one. PrePack() is where the real, potentially large,
+// CPU work (and page-ins for mmap'd external-data tensors) happens for ops like MatMulNBits, so this
+// can noticeably reduce load time for models dominated by such ops. It also only takes effect when
+// cross-session pre-packed-weight caching (OrtApi::AddInitializer /
+// SessionOptions.AddInitializer-based sharing) is NOT in use for this session -- that path is
+// already serialized across sessions and is left untouched. Bookkeeping shared across nodes
+// (the pre-packed-weights container, initializer use counts) is synchronized internally; the
+// per-node PrePack() calls that do the heavy lifting are not, and run concurrently. The feature is
+// also available in Android minimal builds.
+static const char* const kOrtSessionOptionsEnableParallelPrepack = "session.prepack.enable_parallel";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
@@ -428,6 +447,12 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
+/// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
+/// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.
+/// "0" or unset (default) disables chunking. Overrides ORT_MATMULNBITS_M_CHUNK_SIZE.
+static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
@@ -480,6 +505,15 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 /// hard partitioning budget and may change whether a node is assigned to an EP.
 /// </summary>
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
+
+/// Controls whether a Level-2 workspace declaration larger than the workspace reservation selected during
+/// partitioning, or a nonzero reservation is orphaned by a post-partition graph mutation. The default value is
+/// "0", which logs a warning and retains existing runtime allocation behavior. Nodes without a partition-time
+/// reservation and orphaned zero-byte reservations remain diagnostic only. Set to "1" for strict constrained-memory
+/// validation. Strict verification is not supported when loading an ORT format model because partition-time
+/// workspace reservations are not serialized in the model.
+static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
+    "session.strict_workspace_verification";
 
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
@@ -542,6 +576,14 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "0": Do not use LUT based GEMM. [DEFAULT]
 // - "1": Use LUT based GEMM when available.
 static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
+
+// Force eligible accuracy-level-4 MatMulNBits nodes to use CompFp32 for the entire session.
+// This currently applies to x86/x64 float-input, 4-bit, block-size-32 CPU kernels. Use a dedicated
+// throughput-oriented session when enabling this option so every batch uses the same numerical path.
+// Option values:
+// - "0": Use the compute type selected by accuracy_level for all shapes. [DEFAULT]
+// - "1": Use CompFp32 instead of CompInt8 for eligible accuracy-level-4 nodes.
+static const char* const kOrtSessionOptionsMlasQNBitForceFp32 = "mlas.qnbit.force_fp32";
 
 // Use KleidiAI kernels in MLAS if available.
 // Option values:

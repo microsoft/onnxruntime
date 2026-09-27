@@ -78,6 +78,24 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: >-
+            ${{
+              format(
+                'macos-{0}-{1}-{2}-xcode-{3}-coreml-{4}-xnnpack-{5}-webgpu-{6}',
+                matrix.machine,
+                matrix.target,
+                matrix.build_config,
+                env.xcode_version,
+                inputs.use_coreml,
+                inputs.use_xnnpack,
+                inputs.use_webgpu
+              )
+            }}
+
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
         uses: ./.github/actions/get-vcpkg-tool-info

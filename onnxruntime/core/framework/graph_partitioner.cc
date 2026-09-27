@@ -944,7 +944,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Computing the cost for the newly created fused node would undercount
         // because the fused node often doesn't expose all original initializers,
         // and would commit weights for the wrong node index.
-        capability.AccountForAllNodes();
+        capability.AccountForAllNodes(fused_node->GetContainingGraph(), fused_node->Index());
       }
       result = fused_node;
     } else {
@@ -1655,7 +1655,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
       fused_node.SetExecutionProviderType(type);
       if (indexed_sub_graph.IsAccountingEnabled()) {
-        indexed_sub_graph.AccountForAllNodes();
+        indexed_sub_graph.AccountForAllNodes(fused_node.GetContainingGraph(), fused_node.Index());
       }
 
       // create filtered graph viewer for this set of nodes
@@ -1780,7 +1780,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                   WorkspaceReservationMap* workspace_reservations) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1791,6 +1792,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   //    preference.
   if (providers_.Empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
+  }
+  if (workspace_reservations != nullptr) {
+    workspace_reservations->clear();
   }
 
   CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
@@ -1892,6 +1896,15 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                              << ", profiled workspace=" << comparison.profiled_bytes << " bytes"
                              << ", Level-1 estimated workspace="
                              << comparison.level1_estimated_bytes << " bytes";
+        }
+        if (workspace_reservations != nullptr) {
+          auto reservations = accountant->GetCommittedWorkspaceReservations();
+          for (auto& [graph_identity, node_reservations] : reservations) {
+            auto& destination = (*workspace_reservations)[graph_identity];
+            for (auto& [node_index, selection] : node_reservations) {
+              destination.insert_or_assign(node_index, selection);
+            }
+          }
         }
       }
     }

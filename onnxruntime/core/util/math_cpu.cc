@@ -18,8 +18,10 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 #include "core/common/float16.h"
+#include "core/common/inlined_containers.h"
 
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 #include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
@@ -899,11 +901,31 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   const int64_t output_hw = output_h * output_w;
   const int64_t hw = height * width;
   const int64_t hwc = hw * channels;
-  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
   if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 && pad_t == 0 && pad_b == 0) {
+    if (kernel_h == 2 && kernel_w == 2 && stride_h == 2 && stride_w == 2 &&
+        height % 2 == 0 && width % 2 == 0) {
+      // Each output has one input value. Write adjacent values together,
+      // without an output read or a separate zero fill.
+      for (int64_t c = 0; c < channels; ++c) {
+        for (int64_t h = 0; h < output_h; ++h) {
+          const float* src = data_col + c * 4 * output_hw + h * output_w;
+          float* dst = data_im + c * hw + h * 2 * width;
+          for (int64_t w = 0; w < output_w; ++w) {
+            // Keep the addition to positive zero for signed-zero behavior.
+            dst[2 * w] = 0.0f + src[w];
+            dst[2 * w + 1] = 0.0f + src[output_hw + w];
+            dst[width + 2 * w] = 0.0f + src[2 * output_hw + w];
+            dst[width + 2 * w + 1] = 0.0f + src[3 * output_hw + w];
+          }
+        }
+      }
+      return;
+    }
+
+    Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
     // Src (column) data cursor
     auto* src = data_col;
     // End of dst (image) data
@@ -941,6 +963,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   }
 
   // Fallback
+  Set<float, CPUMathUtil>(narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Src (col data) cursor
   auto* src = data_col;
@@ -956,6 +979,18 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
       int64_t w_offset = -pad_l;
       int64_t w_offset_end = w_offset + kernel_w * dilation_w;
       for (; w_offset < w_offset_end; w_offset += dilation_w) {
+        // The valid source columns are the same for each row of this kernel element.
+        const int64_t first_col = w_offset < 0 ? std::min(output_w, -(w_offset + 1) / stride_w + 1) : 0;
+        if (first_col == output_w) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t first_w = w_offset + first_col * stride_w;
+        if (first_w >= width) {
+          src += output_hw;
+          continue;
+        }
+        const int64_t count = std::min(output_w - first_col, (width - 1 - first_w) / stride_w + 1);
         // End of src channel data
         auto* src_ce = src + output_hw;
         // Dst row offset
@@ -963,14 +998,11 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
           // End of src row data
           auto* src_we = src + output_w;
           if (is_a_ge_zero_and_a_lt_b(h, hw)) {
-            for (int64_t w = w_offset; src < src_we; src++, w += stride_w) {
-              if (is_a_ge_zero_and_a_lt_b(w, width)) {
-                dst[h + w] += *src;
-              }
+            for (int64_t col = 0; col < count; ++col) {
+              dst[h + first_w + col * stride_w] += src[first_col + col];
             }
-          } else {
-            src = src_we;
           }
+          src = src_we;
         }
       }
     }
@@ -1017,18 +1049,79 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
                                                       const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
                                                       float* data_img, CPUMathUtil* context) {
   Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
-  Im2col<float, StorageOrder::NCHW>()(
-      data_col,
-      img_shape,
-      output_shape,
-      channels_col,
-      kernel_shape,
-      stride,
-      dilation,
-      pad,
-      N,
-      data_img,
-      true);
+  if (N == 0) {
+    Im2col<float, StorageOrder::NCHW>()(data_col, img_shape, output_shape, channels_col,
+                                        kernel_shape, stride, dilation, pad, N, data_img, true);
+    return;
+  }
+  const ptrdiff_t last = N - 1;
+  const int64_t width = img_shape[last];
+  const int64_t row_size = output_shape[last];
+  const int64_t step = stride[last];
+  const int64_t column_size = std::accumulate(output_shape, output_shape + N, int64_t{1}, std::multiplies<int64_t>());
+  InlinedVector<int64_t> offsets(N);
+  InlinedVector<int64_t> position(last, 0);
+  for (int64_t c = 0; c < channels_col; ++c) {
+    int64_t kernel_index = c;
+    for (ptrdiff_t d = last; d >= 0; --d) {
+      offsets[d] = (kernel_index % kernel_shape[d]) * dilation[d] - pad[d];
+      kernel_index /= kernel_shape[d];
+    }
+    const int64_t first_col = offsets[last] < 0
+                                  ? std::min(row_size, -(offsets[last] + 1) / step + 1)
+                                  : 0;
+    if (first_col == row_size) {
+      continue;
+    }
+    const int64_t first_x = offsets[last] < 0
+                                ? step - 1 - (-(offsets[last] + 1) % step)
+                                : offsets[last];
+    if (first_x >= width) {
+      continue;
+    }
+    const int64_t count = std::min(row_size - first_col, (width - 1 - first_x) / step + 1);
+    const float* row = data_col + c * column_size;
+    do {
+      int64_t img_index = kernel_index;
+      bool valid = true;
+      for (ptrdiff_t d = 0; d < last; ++d) {
+        const int64_t coordinate = position[d] * stride[d] + offsets[d];
+        if (!is_a_ge_zero_and_a_lt_b(coordinate, img_shape[d])) {
+          valid = false;
+          break;
+        }
+        img_index = img_index * img_shape[d] + coordinate;
+      }
+      if (valid) {
+        const float* src = row + first_col;
+        float* dst = data_img + img_index * width + first_x;
+        if (step == 1) {
+          for (int64_t x = 0; x < count; ++x) {
+            dst[x] += src[x];
+          }
+        } else {
+          for (int64_t x = 0; x < count; ++x) {
+            dst[x * step] += src[x];
+          }
+        }
+      }
+      row += row_size;
+    } while (NextPosition(last, output_shape, position.data()));
+  }
+  bool may_overlap = false;
+  for (ptrdiff_t d = 0; d < N; ++d) {
+    if (kernel_shape[d] - 1 > (stride[d] - 1) / dilation[d]) {
+      may_overlap = true;
+      break;
+    }
+  }
+  // A single contribution has no competing NaN payload. For overlapping windows,
+  // use the original loop to preserve NaN payloads after vectorized additions.
+  if (may_overlap && std::any_of(data_img, data_img + img_size, [](float value) { return std::isnan(value); })) {
+    Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
+    Im2col<float, StorageOrder::NCHW>()(data_col, img_shape, output_shape, channels_col,
+                                        kernel_shape, stride, dilation, pad, N, data_img, true);
+  }
 }
 
 #define SPECIALIZED_COPYVECTOR(T)                                                          \
