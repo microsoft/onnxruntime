@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // Thrust code needs to be compiled with nvcc
+#include <algorithm>
 #include <memory>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -33,6 +34,53 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count) {
   _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output, value, N);
 }
+
+template <typename T, typename Index>
+__global__ void BroadcastBiasKernel(const T* bias, T* output, int64_t count,
+                                    DivMod<Index> cols, int bias_row_stride, int bias_col_stride, T scale) {
+  // Keep offsets and the loop increment wide even when fast 32-bit division is sufficient.
+  for (int64_t id = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       id < count; id += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    Index row, col;
+    cols.divmod(static_cast<Index>(id), row, col);
+    const T value = bias[static_cast<int64_t>(row) * bias_row_stride + col * bias_col_stride];
+    output[id] = scale == T(1) ? value : scale * value;
+  }
+}
+
+template <typename T>
+void BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
+                   int bias_rows, int bias_cols, T scale) {
+  ORT_ENFORCE(rows >= 0 && cols >= 0 &&
+                  (bias_rows == 1 || bias_rows == rows) && (bias_cols == 1 || bias_cols == cols),
+              "Invalid bias broadcast dimensions");
+  const int64_t count = static_cast<int64_t>(rows) * cols;
+  if (count == 0) {
+    return;
+  }
+
+  constexpr int threads = GridDim::maxThreadsPerBlock;
+  const int blocks = static_cast<int>(std::min<int64_t>(CeilDiv(count, threads), 65535));
+  const int row_stride = bias_rows == 1 ? 0 : bias_cols;
+  const int col_stride = bias_cols == 1 ? 0 : 1;
+  if (count <= std::numeric_limits<int>::max()) {
+    BroadcastBiasKernel<<<blocks, threads, 0, stream>>>(
+        bias, output, count, DivMod<int>(cols), row_stride, col_stride, scale);
+  } else {
+    BroadcastBiasKernel<<<blocks, threads, 0, stream>>>(
+        bias, output, count, DivMod<int64_t>(cols), row_stride, col_stride, scale);
+  }
+}
+
+#define SPECIALIZED_BROADCAST_BIAS(T) \
+  template void BroadcastBias<T>(cudaStream_t, const T*, T*, int, int, int, int, T);
+
+SPECIALIZED_BROADCAST_BIAS(float)
+SPECIALIZED_BROADCAST_BIAS(double)
+SPECIALIZED_BROADCAST_BIAS(half)
+SPECIALIZED_BROADCAST_BIAS(BFloat16)
+
+#undef SPECIALIZED_BROADCAST_BIAS
 
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {

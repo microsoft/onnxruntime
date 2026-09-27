@@ -46,6 +46,13 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 template <typename T>
 void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 
+// Broadcast a scalar, row, column, or matrix bias into a row-major [rows, cols] output.
+// Each bias dimension must be either 1 or the corresponding output dimension.
+// A unit scale copies values without arithmetic; non-unit scaling is used by zero-K Gemm.
+template <typename T>
+void BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
+                   int bias_rows, int bias_cols, T scale);
+
 /*
   This is a utility wrapper for arbitrary type array
   Commonly used for passing small list of metadata during cuda kernel launch

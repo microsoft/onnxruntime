@@ -101,43 +101,16 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
     const CudaT* b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-    if (b_shape.Size() == 1) {
-      // if B is (), (1,) or (1, 1), broadcast the scalar
-      CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
-          Stream(ctx),
-          GetCublasHandle(ctx),
-          M * N,
-          b_data,
-          0,
-          out_data,
-          1));
-    } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-      // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          GetCublasHandle(ctx),
-          CUBLAS_OP_N,
-          CUBLAS_OP_N,
-          N, M, 1,
-          /*alpha*/ &one,
-          b_data, N,
-          GetConstOnes<CudaT>(M, Stream(ctx)), 1,
-          /*beta*/ &zero,
-          out_data, N, device_prop, UseTF32()));
-    } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
-      // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
-      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-          GetCublasHandle(ctx),
-          CUBLAS_OP_N,
-          CUBLAS_OP_N,
-          N, M, 1,
-          /*alpha*/ &one,
-          GetConstOnes<CudaT>(N, Stream(ctx)), N,
-          b_data, 1,
-          /*beta*/ &zero,
-          out_data, N, device_prop, UseTF32()));
-    } else {
+    if (b_shape.Size() == Y->Shape().Size() && K != 0) {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, static_cast<size_t>(M) * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
+    } else {
+      const auto rank = b_shape.NumDimensions();
+      const int bias_rows = rank == 2 ? static_cast<int>(b_shape[0]) : 1;
+      const int bias_cols = rank == 0 ? 1 : static_cast<int>(b_shape[rank - 1]);
+      // The main GEMM applies beta, except when K == 0 and it is skipped.
+      BroadcastBias(Stream(ctx), b_data, out_data, M, N, bias_rows, bias_cols,
+                    K == 0 ? ToCudaType<T>::FromFloat(beta_) : one);
     }
   }
 
