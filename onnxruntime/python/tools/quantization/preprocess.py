@@ -13,6 +13,14 @@ from .shape_inference import quant_pre_process
 logger = logging.getLogger(__name__)
 
 
+def _parse_bool(value):
+    if value.lower() in ("true", "1"):
+        return True
+    if value.lower() in ("false", "0"):
+        return False
+    raise argparse.ArgumentTypeError("Expected true, false, 1, or 0")
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="""Model optimizer and shape inferencer, in preparation for quantization,
@@ -38,7 +46,7 @@ Essentially this tool performs the following three (skippable) steps:
     parser.add_argument("--output", required=True, help="Path to the output model file")
     parser.add_argument(
         "--skip_optimization",
-        type=bool,
+        type=_parse_bool,
         default=False,
         help="Skip model optimization step if true. It's a known issue that ORT"
         " optimization has difficulty with model size greater than 2GB, rerun with"
@@ -46,7 +54,7 @@ Essentially this tool performs the following three (skippable) steps:
     )
     parser.add_argument(
         "--skip_onnx_shape",
-        type=bool,
+        type=_parse_bool,
         default=False,
         help="Skip ONNX shape inference. Symbolic shape inference is most effective"
         " with transformer based models. Skipping all shape inferences may"
@@ -55,7 +63,7 @@ Essentially this tool performs the following three (skippable) steps:
     )
     parser.add_argument(
         "--skip_symbolic_shape",
-        type=bool,
+        type=_parse_bool,
         default=False,
         help="Skip symbolic shape inference. Symbolic shape inference is most"
         " effective with transformer based models. Skipping all shape"
