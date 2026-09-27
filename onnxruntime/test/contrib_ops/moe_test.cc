@@ -16,11 +16,14 @@
 #include "nlohmann/json.hpp"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "core/mlas/inc/mlas_qnbit.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
@@ -2395,6 +2398,197 @@ TEST(MoETest, QMoETest_Int2CudaPackedDecodeMultiRowExpertParity) {
     EXPECT_NEAR(packed_output[i], dense_output[i], 0.02f) << "mismatch at index " << i;
   }
 }
+
+#ifdef USE_CUDA
+static std::string BuildQMoEInt2DynamicRowsModel() {
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 512;
+  constexpr int64_t inter_size = 512;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t pack_size = 4;
+  constexpr int64_t fc1_rows = 2 * inter_size;
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+  auto* graph = model.mutable_graph();
+  graph->set_name("qmoe_int2_dynamic_rows");
+
+  auto add_fp16_value_info = [graph](const char* name, int64_t width, bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    tensor_type->mutable_shape()->add_dim()->set_dim_param("num_rows");
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(width);
+  };
+  add_fp16_value_info("input", hidden_size, true);
+  add_fp16_value_info("router_probs", num_experts, true);
+  add_fp16_value_info("output", hidden_size, false);
+
+  auto make_identity_weights = [](int64_t rows, int64_t columns) {
+    std::vector<uint8_t> weights(static_cast<size_t>(rows * columns / pack_size), 0xAA);
+    for (int64_t row = 0; row < rows; ++row) {
+      const int64_t column = row % columns;
+      const size_t byte_index = static_cast<size_t>(row * (columns / pack_size) + column / pack_size);
+      weights[byte_index] |= static_cast<uint8_t>(1u << ((column % pack_size) * 2));
+    }
+    return weights;
+  };
+  const auto fc1_weights = make_identity_weights(fc1_rows, hidden_size);
+  const auto fc2_weights = make_identity_weights(hidden_size, inter_size);
+
+  auto make_scales = [](int64_t rows, int64_t blocks) {
+    std::vector<MLFloat16> scales(static_cast<size_t>(rows * blocks));
+    for (int64_t row = 0; row < rows; ++row) {
+      for (int64_t block = 0; block < blocks; ++block) {
+        scales[static_cast<size_t>(row * blocks + block)] = MLFloat16(0.5f + 0.0625f * block);
+      }
+    }
+    return scales;
+  };
+  const auto fc1_scales = make_scales(fc1_rows, hidden_size / block_size);
+  const auto fc2_scales = make_scales(hidden_size, inter_size / block_size);
+
+  auto add_initializer = [graph](const char* name, int32_t data_type, const std::vector<int64_t>& dims,
+                                 const void* data, size_t bytes) {
+    auto* initializer = graph->add_initializer();
+    initializer->set_name(name);
+    initializer->set_data_type(data_type);
+    for (int64_t dim : dims) {
+      initializer->add_dims(dim);
+    }
+    initializer->mutable_raw_data()->assign(static_cast<const char*>(data), bytes);
+  };
+  add_initializer("fc1_weights", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                  {num_experts, fc1_rows, hidden_size / pack_size}, fc1_weights.data(), fc1_weights.size());
+  add_initializer("fc1_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                  {num_experts, fc1_rows, hidden_size / block_size}, fc1_scales.data(),
+                  fc1_scales.size() * sizeof(MLFloat16));
+  add_initializer("fc2_weights", ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                  {num_experts, hidden_size, inter_size / pack_size}, fc2_weights.data(), fc2_weights.size());
+  add_initializer("fc2_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                  {num_experts, hidden_size, inter_size / block_size}, fc2_scales.data(),
+                  fc2_scales.size() * sizeof(MLFloat16));
+
+  auto* node = graph->add_node();
+  node->set_op_type("QMoE");
+  node->set_domain(kMSDomain);
+  for (const char* input_name : {"input", "router_probs", "fc1_weights", "fc1_scales", "",
+                                 "fc2_weights", "fc2_scales", "", "", "", ""}) {
+    node->add_input(input_name);
+  }
+  node->add_output("output");
+  auto add_int_attribute = [node](const char* name, int64_t value) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  };
+  add_int_attribute("k", 1);
+  add_int_attribute("swiglu_fusion", 1);
+  add_int_attribute("normalize_routing_weights", 1);
+  add_int_attribute("expert_weight_bits", 2);
+  add_int_attribute("weights_prepacked", 0);
+  add_int_attribute("block_size", block_size);
+  auto* activation = node->add_attribute();
+  activation->set_name("activation_type");
+  activation->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  activation->set_s("swiglu");
+
+  std::string model_bytes;
+  ORT_ENFORCE(model.SerializeToString(&model_bytes));
+  return model_bytes;
+}
+
+TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+
+  constexpr int64_t hidden_size = 512;
+  const std::string model_bytes = BuildQMoEInt2DynamicRowsModel();
+#if defined(ENABLE_CUDA_PROFILING)
+  const auto profile_prefix = std::filesystem::temp_directory_path() / "qmoe_int2_cached_scales";
+#endif
+  SessionOptions session_options;
+#if defined(ENABLE_CUDA_PROFILING)
+  session_options.enable_profiling = true;
+  session_options.profile_file_prefix = profile_prefix.native();
+#endif
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+#if defined(ENABLE_CUDA_PROFILING)
+  const std::string setup_profile_path = session.EndProfiling();
+  std::error_code setup_profile_error;
+  std::filesystem::remove(setup_profile_path, setup_profile_error);
+  session.StartProfiling(profile_prefix.string());
+#endif
+
+  const auto run_rows = [&session](int64_t num_rows) {
+    std::vector<MLFloat16> input(static_cast<size_t>(num_rows * hidden_size), MLFloat16(0.1f));
+    std::vector<MLFloat16> router_probs(static_cast<size_t>(num_rows), MLFloat16(1.0f));
+    OrtValue input_value;
+    OrtValue router_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({num_rows, hidden_size}),
+                         input.data(), OrtMemoryInfo(), input_value);
+    Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({num_rows, 1}),
+                         router_probs.data(), OrtMemoryInfo(), router_value);
+    NameMLValMap feeds{{"input", input_value}, {"router_probs", router_value}};
+    const std::vector<std::string> output_names{"output"};
+    std::vector<OrtValue> fetches;
+    EXPECT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    if (fetches.empty()) {
+      return std::vector<float>{};
+    }
+    const Tensor& output = fetches[0].Get<Tensor>();
+    const MLFloat16* output_data = output.Data<MLFloat16>();
+    std::vector<float> result(static_cast<size_t>(output.Shape().Size()));
+    std::transform(output_data, output_data + result.size(), result.begin(),
+                   [](MLFloat16 value) { return value.ToFloat(); });
+    return result;
+  };
+
+  const std::vector<float> first_decode = run_rows(1);
+  const std::vector<float> second_decode = run_rows(1);
+  ASSERT_EQ(first_decode.size(), static_cast<size_t>(hidden_size));
+  ASSERT_EQ(first_decode, second_decode);
+#if defined(ENABLE_CUDA_PROFILING)
+  const std::string profile_path = session.EndProfiling();
+  auto remove_profile = gsl::finally([&profile_path] {
+    std::error_code error;
+    std::filesystem::remove(profile_path, error);
+  });
+
+  if (session.GetProfiling().HasEpProfilers() && session.GetProfiling().GetEpProfilingStatus().IsOK()) {
+    std::ifstream profile_stream(profile_path);
+    ASSERT_TRUE(profile_stream.is_open());
+    const auto profile = nlohmann::json::parse(profile_stream);
+    bool saw_kernel_event = false;
+    for (const auto& event : profile) {
+      if (event.value("cat", "") == "Kernel") {
+        saw_kernel_event = true;
+        EXPECT_EQ(event.value("name", "").find("QMoETranspose2DKernel"), std::string::npos)
+            << "initializer scales were transposed during repeated decode";
+      }
+    }
+    EXPECT_TRUE(saw_kernel_event);
+  }
+#endif
+
+  const std::vector<float> prefill = run_rows(257);
+  ASSERT_EQ(prefill.size(), static_cast<size_t>(257 * hidden_size));
+  for (size_t column = 0; column < static_cast<size_t>(hidden_size); ++column) {
+    EXPECT_NEAR(prefill[column], first_decode[column], 0.02f) << "mismatch at column " << column;
+  }
+}
+#endif
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
   if (!HasCudaEnvironment(800)) {

@@ -140,6 +140,10 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc1_bias_;
   IAllocatorUniquePtr<void> packed_fc2_scales_;
   IAllocatorUniquePtr<void> packed_fc2_bias_;
+  // Decode-only [E, K_blocks, N] scale caches for INT2/mixed-width packed GEMV.
+  // The canonical initializer inputs remain live for validation and dense prefill fallback.
+  IAllocatorUniquePtr<void> gemv_int_fc1_scales_;
+  IAllocatorUniquePtr<void> gemv_int_fc2_scales_;
 
   // FP4 pre-packed buffers
   IAllocatorUniquePtr<void> packed_fp4_fc1_weights_;

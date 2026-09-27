@@ -1587,10 +1587,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   };
 
   if (!use_int_dequant_fallback || use_packed_int_gemv) {
-    prepare_scale_zp(fc1_scales, fc1_zeros, packed_fc1_scales_, packed_fc1_bias_,
+    const auto& fc1_prepared_scales = use_packed_int_gemv ? gemv_int_fc1_scales_ : packed_fc1_scales_;
+    const auto& fc2_prepared_scales = use_packed_int_gemv ? gemv_int_fc2_scales_ : packed_fc2_scales_;
+    prepare_scale_zp(fc1_scales, fc1_zeros, fc1_prepared_scales, packed_fc1_bias_,
                      transposed_fc1_scales_holder, transposed_fc1_zp_holder, transient_fc1_bias, p_fc1_scales, p_fc1_zp,
                      fc1_expert_weight_bits_);
-    prepare_scale_zp(fc2_scales, fc2_zeros, packed_fc2_scales_, packed_fc2_bias_,
+    prepare_scale_zp(fc2_scales, fc2_zeros, fc2_prepared_scales, packed_fc2_bias_,
                      transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp,
                      fc2_expert_weight_bits_);
   }
@@ -2381,8 +2383,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   if (is_mixed_width && quant_type_ != "int") {
     return Status::OK();
   }
-  if (quant_type_ == "int" && (is_mixed_width || expert_weight_bits_ == 2) &&
-      input_idx != 2 && input_idx != 5) {
+  const bool uses_packed_int_decode = quant_type_ == "int" && (is_mixed_width || expert_weight_bits_ == 2);
+  if (uses_packed_int_decode && input_idx != 2 && input_idx != 3 && input_idx != 5 && input_idx != 6) {
     return Status::OK();
   }
   if (quant_type_ == "int" && (is_mixed_width || expert_weight_bits_ == 2) &&
@@ -2620,8 +2622,16 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         TryBuildGemvFp4Scales(1, stream, alloc);
       }
     } else if (quant_type_ == "int") {
-      PrePackTransposeAndPack(tensor, stream, alloc, packed_fc1_scales_, is_packed);
-      DUMP_PACK_TENSOR("packed_fc1_scales", packed_fc1_scales_, tensor);
+      if (uses_packed_int_decode) {
+        if (packed_fc1_weights_) {
+          bool local_packed = false;
+          PrePackTransposeAndPack(tensor, stream, alloc, gemv_int_fc1_scales_, local_packed);
+        }
+        is_packed = false;
+      } else {
+        PrePackTransposeAndPack(tensor, stream, alloc, packed_fc1_scales_, is_packed);
+        DUMP_PACK_TENSOR("packed_fc1_scales", packed_fc1_scales_, tensor);
+      }
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
@@ -2663,8 +2673,16 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         TryBuildGemvFp4Scales(2, stream, alloc);
       }
     } else if (quant_type_ == "int") {
-      PrePackTransposeAndPack(tensor, stream, alloc, packed_fc2_scales_, is_packed);
-      DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
+      if (uses_packed_int_decode) {
+        if (packed_fc2_weights_) {
+          bool local_packed = false;
+          PrePackTransposeAndPack(tensor, stream, alloc, gemv_int_fc2_scales_, local_packed);
+        }
+        is_packed = false;
+      } else {
+        PrePackTransposeAndPack(tensor, stream, alloc, packed_fc2_scales_, is_packed);
+        DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
+      }
     }
     if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "wfp4afp8") {
       is_packed = false;
