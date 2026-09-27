@@ -573,16 +573,26 @@ struct SizeOf<void> {
   return true;
 }
 
+// Returns the buffer of ones for `device_id`. There is one buffer per device and type, shared by all the sessions,
+// streams and threads of the process, so it must be thread safe (see CreateSharedConstantOnes() in cuda_utils.h).
+// The buffers of all the devices are created, empty, on the first call, so that the lookup does not need a lock.
 template <typename T>
 IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
-  static std::mutex mutex;
-  static std::unordered_map<int, std::unique_ptr<IConstantBuffer<T>>> buffers;
-  std::lock_guard<std::mutex> lock(mutex);
-  auto& buffer = buffers[device_id];
-  if (!buffer) {
-    buffer = CreateConstantOnes<T>();
+  static const std::vector<std::unique_ptr<IConstantBuffer<T>>> buffers = [] {
+    int device_count = 0;
+    PL_CUDA_CALL_THROW(cudaGetDeviceCount(&device_count));
+    std::vector<std::unique_ptr<IConstantBuffer<T>>> result;
+    result.reserve(device_count);
+    for (int id = 0; id < device_count; ++id) {
+      result.push_back(CreateSharedConstantOnes<T>(id));
+    }
+    return result;
+  }();
+  if (device_id < 0 || static_cast<size_t>(device_id) >= buffers.size()) {
+    ORT_THROW("Invalid CUDA device id ", device_id, " for the constant buffer, the process has ", buffers.size(),
+              " CUDA devices");
   }
-  return buffer.get();
+  return buffers[device_id].get();
 }
 
 struct DefaultCudaHandles {
@@ -1191,8 +1201,9 @@ class CudaKernel : public OpKernel {
     return &stub;
   }
 
-  // GetConstOnes: returns a device buffer of constant ones.
-  // Delegates to IConstantBuffer from cuda_utils.h (compiled in cuda_utils.cu).
+  // GetConstOnes: returns a device buffer of at least `count` constant ones.
+  // The buffer is shared by all the sessions, streams and threads that use the same device, it is already initialised
+  // when it is returned, and it remains valid until the plugin library is unloaded (see GetConstOnesBufferForDevice).
   template <typename T>
   const T* GetConstOnes(size_t count, cudaStream_t stream) const {
     auto* buf = detail::GetConstOnesBufferForDevice<T>(device_id_);

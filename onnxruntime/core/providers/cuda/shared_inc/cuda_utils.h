@@ -40,8 +40,16 @@ class IConstantBuffer {
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
+// Buffer of ones for a single thread: GetBuffer() is not thread safe, and when the buffer grows it is reallocated and
+// filled asynchronously in the `stream` passed to that GetBuffer() call.
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
+
+// Buffer of ones that can be shared by all the sessions, streams and threads that use the device `device_id`:
+// GetBuffer() is thread safe, the `stream` argument is ignored, and the returned buffer is fully initialised, can be
+// used in any stream without further synchronisation, and remains valid until the IConstantBuffer is destroyed.
+template <typename T>
+std::unique_ptr<IConstantBuffer<T>> CreateSharedConstantOnes(int device_id);
 
 template <typename T>
 void Fill(cudaStream_t stream, T* output, T value, int64_t count);
