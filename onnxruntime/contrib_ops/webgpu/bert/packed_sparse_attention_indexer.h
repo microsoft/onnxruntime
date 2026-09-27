@@ -39,6 +39,8 @@ class PackedSparseAttentionIndexerQsaUpdateProgram final
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"key_row_stride", ProgramUniformVariableDataType::Uint32},
+      {"key_offset", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
       {"buffer_capacity", ProgramUniformVariableDataType::Uint32},
@@ -67,6 +69,7 @@ class PackedSparseAttentionIndexerQsaSelectProgram final
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"query_row_stride", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},

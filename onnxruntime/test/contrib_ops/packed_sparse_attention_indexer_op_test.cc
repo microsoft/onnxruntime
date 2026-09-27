@@ -96,6 +96,7 @@ struct GraphOptions {
   int64_t key_total_tokens = -1;
   int64_t kv_buffer_capacity = -1;
   int64_t gate_buffer_width = -1;
+  bool packed_qk = false;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool add_position_ids = false;
@@ -115,9 +116,12 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> inputs{
       builder.MakeInput<float>(
-          std::vector<int64_t>{options.total_tokens, options.num_heads * options.head_size}),
-      builder.MakeInput<float>(
-          std::vector<int64_t>{options.key_total_tokens >= 0 ? options.key_total_tokens : options.total_tokens, width}),
+          std::vector<int64_t>{options.total_tokens,
+                               (options.num_heads + (options.packed_qk ? 1 : 0)) * options.head_size}),
+      options.packed_qk
+          ? &empty
+          : builder.MakeInput<float>(std::vector<int64_t>{
+                options.key_total_tokens >= 0 ? options.key_total_tokens : options.total_tokens, width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
@@ -190,6 +194,19 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndSt
               {options.batch_size, BufferCapacity(options.compress_ratio), options.head_size});
   ExpectShape(graph, node.OutputDefs()[psai::kPresentStateLengths]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaAcceptsPackedQueryKey) {
+  GraphOptions options;
+  options.packed_qk = true;
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+
+  const Node& node = *model->MainGraph().Nodes().begin();
+  EXPECT_FALSE(node.InputDefs()[psai::kKey]->Exists());
+  ExpectShape(model->MainGraph(), node.OutputDefs()[psai::kPresentKeyState]->Name(),
+              ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+              {options.batch_size, options.state_capacity, options.head_size});
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndState) {
@@ -276,7 +293,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
   GraphOptions options;
   options.num_heads = 0;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "query width must be > 0");
+                       "query width must contain at least one query head");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsGenericBufferCapacityOverflow) {
@@ -693,7 +710,8 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
-                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr) {
+                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr,
+                      bool packed_qk = false) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -725,8 +743,22 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   if (problem.scale.has_value()) {
     test.AddAttribute("scale", *problem.scale);
   }
-  test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
-  test.AddInput<T>("key", {total_tokens, head_size}, ToElementType<T>(problem.key));
+  if (packed_qk) {
+    const int64_t query_width = problem.num_heads * head_size;
+    const int64_t packed_width = query_width + head_size;
+    std::vector<float> query_key(static_cast<size_t>(total_tokens * packed_width));
+    for (int64_t token = 0; token < total_tokens; ++token) {
+      std::copy_n(problem.query.begin() + token * query_width, query_width,
+                  query_key.begin() + token * packed_width);
+      std::copy_n(problem.key.begin() + token * head_size, head_size,
+                  query_key.begin() + token * packed_width + query_width);
+    }
+    test.AddInput<T>("query_key", {total_tokens, packed_width}, ToElementType<T>(query_key));
+    test.AddOptionalInputEdge<T>();
+  } else {
+    test.AddInput<T>("query", {total_tokens, problem.num_heads * head_size}, ToElementType<T>(problem.query));
+    test.AddInput<T>("key", {total_tokens, head_size}, ToElementType<T>(problem.key));
+  }
   test.AddInput<T>("query_norm_weight", {head_size}, ToElementType<T>(problem.query_norm_weight));
   test.AddInput<T>("key_norm_weight", {head_size}, ToElementType<T>(problem.key_norm_weight));
   test.AddInput<T>("cos_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.cos_cache));
@@ -769,6 +801,10 @@ TEST(PackedSparseAttentionIndexerTest, QsaFloat) { RunQsaPackedTest<float>(1.0e-
 TEST(PackedSparseAttentionIndexerTest, QsaFloat16) { RunQsaPackedTest<MLFloat16>(2.0e-3f); }
 
 TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>(2.0e-2f); }
+
+TEST(PackedSparseAttentionIndexerTest, QsaPackedQueryKey) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true);
+}
 
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {
   if (DefaultCudaExecutionProvider() == nullptr) {
@@ -856,6 +892,10 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaPackedTest<MLFloat16>(2.0e-3f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPackedQueryKey) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, true);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {

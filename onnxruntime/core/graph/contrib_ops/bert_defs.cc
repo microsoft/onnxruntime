@@ -2447,12 +2447,16 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   // Strict policy input validation: every fixed slot required by every policy must be provided;
   // csa-only slots must be provided iff policy_mode is 'csa'; position_ids is optional for 'qsa'
   // and required for 'csa'.
-  for (int index : {psai::kQuery, psai::kKey, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
+  for (int index : {psai::kQuery, psai::kQueryNormWeight, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
                     psai::kCumulativeSequenceLengths, psai::kPastSequenceLengths, psai::kPastKeyState,
                     psai::kPastKvBuffer, psai::kPastStateLengths}) {
     if (!PackedSparseAttentionIndexerHasInput(ctx, index)) {
       fail_shape_inference("PackedSparseAttentionIndexer: input ", index, " is required for every policy_mode");
     }
+  }
+  const bool has_key = PackedSparseAttentionIndexerHasInput(ctx, psai::kKey);
+  if (!is_qsa && !has_key) {
+    fail_shape_inference("PackedSparseAttentionIndexer: key is required for policy_mode 'csa'");
   }
   for (int index : {psai::kGate, psai::kPositionBias, psai::kHeadWeights, psai::kPastGateBuffer}) {
     if (PackedSparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
@@ -2642,8 +2646,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   if (query_shape != nullptr) {
     const auto& total_tokens_dim = query_shape->dim(0);
     const auto& query_width_dim = query_shape->dim(1);
-    if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
-      fail_shape_inference("PackedSparseAttentionIndexer: query width must be > 0, got ",
+    const int64_t packed_key_heads = is_qsa && !has_key ? 1 : 0;
+    if (query_width_dim.has_dim_value() && query_norm_shape != nullptr &&
+        query_norm_shape->dim(0).has_dim_value() &&
+        query_width_dim.dim_value() <= packed_key_heads * query_norm_shape->dim(0).dim_value()) {
+      fail_shape_inference("PackedSparseAttentionIndexer: query width must contain at least one query head",
+                           has_key ? "" : " followed by one packed key head", ", got ",
                            query_width_dim.dim_value());
     }
     if (query_width_dim.has_dim_value() && query_norm_shape != nullptr &&
@@ -2785,14 +2793,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "query",
                "Packed indexer queries with shape (total_tokens, num_heads * head_size), before normalization, "
-               "logical reshape, and rotary embedding.",
+               "logical reshape, and rotary embedding. For policy_mode 'qsa', key may be omitted and query then "
+               "contains row-wise concatenated query and key projections with shape "
+               "(total_tokens, (num_heads + 1) * head_size).",
                "T")
         .Input(1,
                "key",
                "Packed indexer key projection of the new tokens. Shape is (total_tokens, head_size) for "
                "policy_mode 'qsa' and (total_tokens, 2 * head_size) for policy_mode 'csa', where the first "
-               "head_size channels are the Ca series and the last head_size channels the Cb series.",
-               "T")
+               "head_size channels are the Ca series and the last head_size channels the Cb series. May be "
+               "omitted for policy_mode 'qsa' when query contains the packed query/key projection.",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "query_norm_weight",
                "Effective RMSNorm multiplier of the queries, with shape (head_size).",
