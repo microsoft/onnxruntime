@@ -59,8 +59,8 @@ later slot keeps its fixed index.
 
 | # | Name | Shape | Type | Policy |
 |---|---|---|---|---|
-| 0 | `query` | `(total_tokens, num_heads*head_size)` | T | both |
-| 1 | `key` | `(total_tokens, head_size)` qsa / `(total_tokens, 2*head_size)` csa | T | both |
+| 0 | `query` | `(total_tokens, num_heads*head_size)`; when qsa omits `key`, `(total_tokens, (num_heads+1)*head_size)` containing row-wise `[query \| key]` | T | both |
+| 1 | `key` | `(total_tokens, head_size)` qsa / `(total_tokens, 2*head_size)` csa; optional for qsa when packed into `query` | T | both |
 | 2 | `query_norm_weight` | `(head_size)` | T | both |
 | 3 | `key_norm_weight` | `(head_size)` | T | both |
 | 4 | `cos_cache` | `(max_position, rotary_width)` or `(batch_size, max_position, rotary_width)` | T | both |
@@ -118,10 +118,11 @@ Both policies read and write the *same four* state slots — there is no separat
   `CsaWindowPlan`/`TryComputeCsaWindowPlan`).
 
 State never grows. `present_*` always has exactly the same shape as `past_*`; only the *contents*
-change. Input/output aliasing is supported. CUDA avoids unsafe buffer aliases; WebGPU omits an
-aliased `past_*` read-only binding and reads the prior contents through the matching read-write
-`present_*` binding. Each request is handled by one invocation, and buffer compaction reads entries
-at or above the destination index before overwriting them.
+change. CUDA supports aliasing `past_key_state` with `present_key_state` and `past_state_lengths`
+with `present_state_lengths`; it skips the baseline key-state copy when those buffers alias.
+WebGPU supports aliasing every corresponding `past_*` / `present_*` pair and reads prior contents
+through the matching read-write `present_*` binding. Each request is handled by one invocation,
+and buffer compaction reads entries at or above the destination index before overwriting them.
 
 **State overflow.** If a call would close more blocks/windows than
 `state_capacity - old_entry_count` allows, that request's step is rejected as a deterministic

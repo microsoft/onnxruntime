@@ -20,6 +20,8 @@ struct PackedSparseAttentionIndexerParams {
   int total_tokens = 0;
   int num_heads = 0;
   int head_size = 0;
+  int query_row_stride = 0;
+  int key_row_stride = 0;
   int rotary_width = 0;            // cos_cache.shape[-1]
   int max_rotary_length = 0;       // cos_cache.shape[-2]
   bool cos_cache_batched = false;  // cos_cache rank: 3 = [batch, pos, rot], 2 = [pos, rot]

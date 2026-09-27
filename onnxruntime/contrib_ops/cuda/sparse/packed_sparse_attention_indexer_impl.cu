@@ -181,7 +181,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
                                                       params.head_size +
                                                   d])
                      : to_float<T>(key[(static_cast<int64_t>(req_start) + (virtual_pos - old_buf_len)) *
-                                           params.head_size +
+                                           params.key_row_stride +
                                        d]);
         }
         pooled[d] = sum / static_cast<float>(params.compress_ratio);
@@ -233,7 +233,9 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
                                            params.head_size +
                                        d])
                   : to_float<T>(
-                        key[(static_cast<int64_t>(req_start) + (virtual_pos - old_buf_len)) * params.head_size + d]);
+                        key[(static_cast<int64_t>(req_start) + (virtual_pos - old_buf_len)) *
+                                params.key_row_stride +
+                            d]);
           present_kv_buffer[out_base + d] = from_float<T>(value);
         }
       }
@@ -258,10 +260,11 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     const int token = static_cast<int>(row / params.num_heads);
     const int batch = PackedBatchOfToken(cumulative_sequence_lengths, params.batch_size, token);
-    const int64_t base = row * params.head_size;
+    const int64_t input_base = static_cast<int64_t>(token) * params.query_row_stride +
+                               static_cast<int64_t>(row % params.num_heads) * params.head_size;
 
     for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-      shared[d] = to_float<T>(query[base + d]);
+      shared[d] = to_float<T>(query[input_base + d]);
     }
     __syncthreads();
 
@@ -288,10 +291,9 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
     const T* sin_row = sin_cache + cache_offset;
 
     for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
-      query_rotated[base + d] = kUseLeadingRope
-                                    ? SaiLeadingRope<T>(shared, params.rotary_width, cos_row, sin_row, d)
-                                    : SaiTrailingRope<T>(shared, params.head_size, params.rotary_width, cos_row,
-                                                         sin_row, d);
+      query_rotated[row * params.head_size + d] =
+          kUseLeadingRope ? SaiLeadingRope<T>(shared, params.rotary_width, cos_row, sin_row, d)
+                          : SaiTrailingRope<T>(shared, params.head_size, params.rotary_width, cos_row, sin_row, d);
     }
     __syncthreads();
   }

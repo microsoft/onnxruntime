@@ -19,19 +19,19 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
 
-#define REGISTER_KERNEL_TYPED(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
-      PackedSparseAttentionIndexer,                                    \
-      kMSDomain,                                                       \
-      1,                                                               \
-      T,                                                               \
-      kCudaExecutionProvider,                                          \
-      (*KernelDefBuilder::Create())                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
-          .MayInplace(11, 2)                                           \
-          .MayInplace(14, 5),                                          \
+#define REGISTER_KERNEL_TYPED(T)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      PackedSparseAttentionIndexer,                                         \
+      kMSDomain,                                                            \
+      1,                                                                    \
+      T,                                                                    \
+      kCudaExecutionProvider,                                               \
+      (*KernelDefBuilder::Create())                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())      \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
+          .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)          \
+          .MayInplace(psai::kPastStateLengths, psai::kPresentStateLengths), \
       PackedSparseAttentionIndexer<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -189,13 +189,16 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   const int64_t total_tokens = query_shape[0];
   ORT_RETURN_IF(query_norm_weight == nullptr, "PackedSparseAttentionIndexer: query_norm_weight is required");
   const auto& query_norm_shape = query_norm_weight->Shape();
-  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1,
+  ORT_RETURN_IF_NOT(query_norm_shape.NumDimensions() == 1 && query_norm_shape[0] > 0,
                     "PackedSparseAttentionIndexer: query_norm_weight must have shape (head_size), got ",
                     query_norm_shape.ToString());
   const int64_t head_size = query_norm_shape[0];
-  ORT_RETURN_IF(head_size <= 0 || query_shape[1] % head_size != 0,
-                "PackedSparseAttentionIndexer: query width must be divisible by head_size");
-  const int64_t num_heads = query_shape[1] / head_size;
+  const bool has_separate_key = key != nullptr;
+  const int64_t query_width = query_shape[1] - (has_separate_key ? 0 : head_size);
+  ORT_RETURN_IF(query_width <= 0 || query_width % head_size != 0,
+                "PackedSparseAttentionIndexer: query width must contain a positive multiple of head_size",
+                has_separate_key ? "" : " followed by one packed key head");
+  const int64_t num_heads = query_width / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("total_tokens", total_tokens));
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
   ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
@@ -213,7 +216,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
                 "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
-  ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  if (has_separate_key) {
+    ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
+  }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm_weight, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
   if (position_ids != nullptr) {
@@ -267,6 +272,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   params.total_tokens = static_cast<int>(total_tokens);
   params.num_heads = static_cast<int>(num_heads);
   params.head_size = static_cast<int>(head_size);
+  params.query_row_stride = static_cast<int>(query_shape[1]);
+  params.key_row_stride = static_cast<int>(has_separate_key ? head_size : query_shape[1]);
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
@@ -283,10 +290,14 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   auto overflow_flags =
       GetScratchBuffer<int32_t>(static_cast<size_t>(std::max<int64_t>(batch_size, 1)), GetComputeStream(context));
 
+  const CudaT* query_data = reinterpret_cast<const CudaT*>(query->Data<T>());
+  const CudaT* key_data = has_separate_key
+                              ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                              : query_data + query_width;
   return LaunchQsaPackedSparseAttentionIndexer<CudaT>(
       Stream(context), params,
-      reinterpret_cast<const CudaT*>(query->Data<T>()),
-      reinterpret_cast<const CudaT*>(key->Data<T>()),
+      query_data,
+      key_data,
       reinterpret_cast<const CudaT*>(query_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(key_norm_weight->Data<T>()),
       reinterpret_cast<const CudaT*>(cos_cache->Data<T>()),
@@ -418,6 +429,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
   params.total_tokens = static_cast<int>(total_tokens);
   params.num_heads = static_cast<int>(num_heads);
   params.head_size = static_cast<int>(head_size);
+  params.query_row_stride = static_cast<int>(query_shape[1]);
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
