@@ -1474,7 +1474,8 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
-    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options,
+                                                             session_options.enable_profiling);
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN

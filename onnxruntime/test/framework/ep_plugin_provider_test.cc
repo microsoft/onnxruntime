@@ -1258,6 +1258,16 @@ TEST(PluginExecutionProviderTest, CreateProfilingEvent_AllCategories) {
   }
 }
 
+TEST(PluginExecutionProviderTest, SessionOptionsGetEnableProfiling) {
+  const auto& ep_api = Ort::GetEpApi();
+  Ort::SessionOptions session_options;
+
+  EXPECT_FALSE(ep_api.SessionOptionsGetEnableProfiling(session_options));
+
+  session_options.EnableProfiling(ORT_TSTR("ep_api_profile"));
+  EXPECT_TRUE(ep_api.SessionOptionsGetEnableProfiling(session_options));
+}
+
 TEST(PluginExecutionProviderTest, CreateProfilingEvent_NullOutput) {
   const auto& ep_api = Ort::GetEpApi();
 

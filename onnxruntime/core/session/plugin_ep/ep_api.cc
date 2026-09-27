@@ -1209,6 +1209,10 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
   API_IMPL_END
 }
 
+ORT_API(bool, SessionOptionsGetEnableProfiling, _In_ const OrtSessionOptions* session_options) {
+  return session_options->value.enable_profiling;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1299,6 +1303,9 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE
+    // End of Version 30 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::SessionOptionsGetEnableProfiling,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -243,9 +243,13 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     empty_string = new string;
     //     empty_named_groups = new std::map<string, int>;
     //     empty_group_names = new std::map<int, string>; });
+    //
+    // Abseil retains replaced flag values indefinitely because concurrent readers may still access them.
     if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
         string.find("re2::RE2::Init") == std::string::npos &&
         string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
+        string.find("flags_internal::`anonymous namespace'::AddToFreelist") == std::string::npos &&  // abseil
+        string.find("flags_internal::FlagImpl::StoreValue") == std::string::npos &&                  // abseil
         string.find("AbslFlagDefaultGenForgtest_") == std::string::npos &&
         string.find("AbslFlagDefaultGenForundefok::Gen") == std::string::npos &&
         string.find("::SetProgramUsageMessage") == std::string::npos &&
