@@ -2749,16 +2749,16 @@ void QMoE::PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, Al
     size_t rows = shape[1];   // N
     size_t cols = shape[2];   // Blocks
     size_t batch = shape[0];  // Experts
-    auto type = tensor.DataType();
-    if (type == DataTypeImpl::GetType<MLFloat16>()) {
+    const int32_t element_type = tensor.GetElementType();
+    if (element_type == utils::ToTensorProtoElementType<MLFloat16>()) {
       LaunchQMoETranspose2D(static_cast<const half*>(p_src), static_cast<half*>(packed_buf.get()), batch, rows, cols, stream);
-    } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    } else if (element_type == utils::ToTensorProtoElementType<BFloat16>()) {
       LaunchQMoETranspose2D(static_cast<const __nv_bfloat16*>(p_src), static_cast<__nv_bfloat16*>(packed_buf.get()), batch, rows, cols, stream);
-    } else if (type == DataTypeImpl::GetType<float>()) {
+    } else if (element_type == utils::ToTensorProtoElementType<float>()) {
       LaunchQMoETranspose2D(static_cast<const float*>(p_src), static_cast<float*>(packed_buf.get()), batch, rows, cols, stream);
-    } else if (type == DataTypeImpl::GetType<uint8_t>()) {
+    } else if (element_type == utils::ToTensorProtoElementType<uint8_t>()) {
       LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
-    } else if (type == DataTypeImpl::GetType<Float8E8M0>()) {
+    } else if (element_type == utils::ToTensorProtoElementType<Float8E8M0>()) {
       LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
     } else {
       ORT_THROW("Unsupported data type for scale transposition");
