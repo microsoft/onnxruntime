@@ -218,6 +218,12 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
     first, and the scale is refit by weighted least squares to the levels chosen for it.
     """
     data = data.reshape((-1, group_size)).astype(xp.float32)  # (nb, group_size)
+    # Treat subnormal weights as zeros, as the CuPy path does: subnormal scales slow down x86 MatMulNBits kernels.
+    data[xp.abs(data) < xp.finfo(xp.float32).tiny] = 0
+    # The search is scale-invariant. Scaling each group to unit range by a power of 2 is exact in float32 and keeps
+    # its sums from overflowing or underflowing.
+    _, exponent = xp.frexp(xp.max(xp.abs(data), axis=1, keepdims=True))  # (nb, 1)
+    data = xp.ldexp(data, -exponent)
     maxq = 2**num_bits - 1
     minq = 0
     sum_x2 = xp.sum(data**2, axis=1, keepdims=True)  # (nb, 1)
@@ -234,7 +240,7 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
     nstep = 20
     rdelta = 0.1
     rrmin = -1
-    for factor in [maxq - minq] + [rrmin + rdelta * is_ + maxq - minq for is_ in range(nstep)]:
+    for i, factor in enumerate([maxq - minq] + [rrmin + rdelta * is_ + maxq - minq for is_ in range(nstep)]):
         iscale = factor / rrange  # (nb, 1)
         this_zero_point = xp.clip(xp.round(-rmin * iscale), minq, maxq)  # (nb, 1)
         levels = xp.clip(xp.round(data * iscale) + this_zero_point, minq, maxq) - this_zero_point  # (nb, group_size)
@@ -245,13 +251,14 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
         this_quant = xp.clip(xp.round(data / this_scale) + this_zero_point, minq, maxq)  # (nb, group_size)
         diff = this_scale * (this_quant - this_zero_point) - data  # (nb, group_size)
         mad = xp.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
-        idx_to_replace = xp.where(mad < best_mad)[0]
+        # The first candidate always counts, so a group whose scores are all non-finite still gets a grid.
+        idx_to_replace = xp.where((mad < best_mad) | (i == 0))[0]
         quant_data[idx_to_replace, :] = this_quant[idx_to_replace, :]
         best_mad[idx_to_replace] = mad[idx_to_replace]
         scale[idx_to_replace] = this_scale[idx_to_replace]
         zero_point[idx_to_replace] = this_zero_point[idx_to_replace]
 
-    return quant_data.astype(xp.float64), scale.astype(xp.float64), zero_point.astype("uint8")
+    return quant_data.astype(xp.float64), xp.ldexp(scale.astype(xp.float64), exponent), zero_point.astype("uint8")
 
 
 def quant_tensor_k_quant_cpu(data, num_bits=4, group_size=32):

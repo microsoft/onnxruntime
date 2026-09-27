@@ -63,6 +63,23 @@ class TestWeightOnlyKQuant(unittest.TestCase):
         error = np.abs(dequantize(q_weight, scale, zero_point) - data)
         self.assertTrue(np.all(error <= scale / 2 + 1e-6))
 
+    def test_quant_tensor_k_quant_cpu_is_scale_invariant(self):
+        data = self.weights()
+        q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, 4, GROUP_SIZE)
+        # Scaling by a power of 2 is exact, so very large or tiny groups must get the same codes.
+        for exponent in (-64, 64):
+            with self.subTest(exponent=exponent):
+                scaled = quant_tensor_k_quant_cpu(data * np.float32(2.0**exponent), 4, GROUP_SIZE)
+                np.testing.assert_array_equal(scaled[0], q_weight)
+                np.testing.assert_array_equal(scaled[2], zero_point)
+                np.testing.assert_array_equal(scaled[1], scale * 2.0**exponent)
+
+    def test_quant_tensor_k_quant_cpu_quantizes_subnormal_group_as_zeros(self):
+        data = np.tile(np.float32([3.2e-39, -3.2e-39]), (1, GROUP_SIZE // 2))
+        q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, 4, GROUP_SIZE)
+        self.assertTrue(np.all(scale >= np.finfo(np.float32).tiny))
+        np.testing.assert_array_equal(dequantize(q_weight, scale, zero_point), 0)
+
     @unittest.skipUnless(find_spec("cupy") and find_spec("torch"), "requires cupy and torch")
     def test_quant_tensor_k_quant_cuda_matches_cpu(self):
         import torch  # noqa: PLC0415
