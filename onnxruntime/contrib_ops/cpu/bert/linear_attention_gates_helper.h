@@ -10,6 +10,7 @@
 
 namespace onnxruntime {
 namespace contrib {
+namespace linear_attention_gates_helper {
 
 enum class GatedRMSNormActivation : uint8_t {
   kSilu = 0,
@@ -36,5 +37,6 @@ inline GatedRMSNormActivation ParseGatedRMSNormActivationOrThrow(std::string_vie
   return parsed_activation;
 }
 
+}  // namespace linear_attention_gates_helper
 }  // namespace contrib
 }  // namespace onnxruntime

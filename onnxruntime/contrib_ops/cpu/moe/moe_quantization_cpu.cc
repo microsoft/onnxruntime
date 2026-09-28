@@ -557,7 +557,7 @@ void DequantizePrePacked(const uint8_t* prepacked_data,
       if (block_size > 0) block_idx = std::min(block_idx, blocks_per_row - 1);
 
       int64_t scale_idx;
-      if (scale_dims.size() == 3 && scale_dims[2] > 1) {  // block-wise
+      if (scale_dims.size() == 3) {  // block-wise
         scale_idx = r * blocks_per_row + block_idx;
       } else {  // per-channel
         scale_idx = r;
@@ -570,7 +570,7 @@ void DequantizePrePacked(const uint8_t* prepacked_data,
         int64_t zp_idx;
         bool is_lower_nibble;
 
-        if (scale_dims.size() == 3 && scale_dims[2] > 1) {  // block-wise
+        if (scale_dims.size() == 3) {  // block-wise
           int64_t zp_blocks_packed = (blocks_per_row + zp_pack_size - 1) / zp_pack_size;
           zp_idx = r * zp_blocks_packed + block_idx / 2;
           is_lower_nibble = (block_idx % 2 == 0);
@@ -604,7 +604,7 @@ Status BuildDirectQ4PackedBCache(const uint8_t* prepacked_weights,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to compute MLAS Q4 packed size for cache");
   }
 
-  const bool is_block_wise = (scales_dims.size() == 3 && scales_dims[2] > 1);
+  const bool is_block_wise = scales_dims.size() == 3;
   const int64_t scales_expert_stride = is_block_wise ? (rows * scales_dims[2]) : rows;
   const size_t prepacked_expert_stride = static_cast<size_t>(rows * cols);
   const size_t total_packed_size = packed_size * static_cast<size_t>(num_experts);
@@ -1043,11 +1043,10 @@ bool QMoECPU<T>::QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t r
       return false;
     }
     // The kernels read the MatMulNBits zero point layout, [rows, ceil(blocks/pack)] per expert with
-    // the even block in the low nibble, which is QMoE's block-wise layout. With a single block per
-    // row QMoE switches to the row-wise [ceil(rows/pack)] layout instead, so that case stays out.
+    // the even block in the low nibble, which is QMoE's rank-3 block-wise layout.
     const int64_t zp_pack = 8 / expert_weight_bits_;
     const auto& zp_dims = zp_tensor->Shape().GetDims();
-    if (blocks_per_row < 2 || zp_dims.size() != 3 || zp_dims[0] != num_experts || zp_dims[1] != rows ||
+    if (zp_dims.size() != 3 || zp_dims[0] != num_experts || zp_dims[1] != rows ||
         zp_dims[2] != (blocks_per_row + zp_pack - 1) / zp_pack) {
       out.ineligible_reason = "the zero points are not in the block-wise [num_experts, rows, blocks/pack] layout";
       return false;
@@ -1508,8 +1507,8 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
   const auto& fc1_scales_dims = fc1_scales->Shape().GetDims();
   const auto& fc2_scales_dims = fc2_scales->Shape().GetDims();
-  const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
-  const bool is_fc2_block_wise = (fc2_scales_dims.size() == 3 && fc2_scales_dims[2] > 1);
+  const bool is_fc1_block_wise = block_size_ > 0 && fc1_scales_dims.size() == 3;
+  const bool is_fc2_block_wise = block_size_ > 0 && fc2_scales_dims.size() == 3;
 
   const bool use_qnbit_fc1 = (qnbit_fc1_.packed != nullptr);
   const bool use_qnbit_fc2 = (qnbit_fc2_.packed != nullptr);

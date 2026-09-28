@@ -18,8 +18,10 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 #include "core/common/float16.h"
+#include "core/common/inlined_containers.h"
 
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 #include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
@@ -1047,18 +1049,79 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
                                                       const int64_t* dilation, const int64_t* pad, ptrdiff_t N,
                                                       float* data_img, CPUMathUtil* context) {
   Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
-  Im2col<float, StorageOrder::NCHW>()(
-      data_col,
-      img_shape,
-      output_shape,
-      channels_col,
-      kernel_shape,
-      stride,
-      dilation,
-      pad,
-      N,
-      data_img,
-      true);
+  if (N == 0) {
+    Im2col<float, StorageOrder::NCHW>()(data_col, img_shape, output_shape, channels_col,
+                                        kernel_shape, stride, dilation, pad, N, data_img, true);
+    return;
+  }
+  const ptrdiff_t last = N - 1;
+  const int64_t width = img_shape[last];
+  const int64_t row_size = output_shape[last];
+  const int64_t step = stride[last];
+  const int64_t column_size = std::accumulate(output_shape, output_shape + N, int64_t{1}, std::multiplies<int64_t>());
+  InlinedVector<int64_t> offsets(N);
+  InlinedVector<int64_t> position(last, 0);
+  for (int64_t c = 0; c < channels_col; ++c) {
+    int64_t kernel_index = c;
+    for (ptrdiff_t d = last; d >= 0; --d) {
+      offsets[d] = (kernel_index % kernel_shape[d]) * dilation[d] - pad[d];
+      kernel_index /= kernel_shape[d];
+    }
+    const int64_t first_col = offsets[last] < 0
+                                  ? std::min(row_size, -(offsets[last] + 1) / step + 1)
+                                  : 0;
+    if (first_col == row_size) {
+      continue;
+    }
+    const int64_t first_x = offsets[last] < 0
+                                ? step - 1 - (-(offsets[last] + 1) % step)
+                                : offsets[last];
+    if (first_x >= width) {
+      continue;
+    }
+    const int64_t count = std::min(row_size - first_col, (width - 1 - first_x) / step + 1);
+    const float* row = data_col + c * column_size;
+    do {
+      int64_t img_index = kernel_index;
+      bool valid = true;
+      for (ptrdiff_t d = 0; d < last; ++d) {
+        const int64_t coordinate = position[d] * stride[d] + offsets[d];
+        if (!is_a_ge_zero_and_a_lt_b(coordinate, img_shape[d])) {
+          valid = false;
+          break;
+        }
+        img_index = img_index * img_shape[d] + coordinate;
+      }
+      if (valid) {
+        const float* src = row + first_col;
+        float* dst = data_img + img_index * width + first_x;
+        if (step == 1) {
+          for (int64_t x = 0; x < count; ++x) {
+            dst[x] += src[x];
+          }
+        } else {
+          for (int64_t x = 0; x < count; ++x) {
+            dst[x * step] += src[x];
+          }
+        }
+      }
+      row += row_size;
+    } while (NextPosition(last, output_shape, position.data()));
+  }
+  bool may_overlap = false;
+  for (ptrdiff_t d = 0; d < N; ++d) {
+    if (kernel_shape[d] - 1 > (stride[d] - 1) / dilation[d]) {
+      may_overlap = true;
+      break;
+    }
+  }
+  // A single contribution has no competing NaN payload. For overlapping windows,
+  // use the original loop to preserve NaN payloads after vectorized additions.
+  if (may_overlap && std::any_of(data_img, data_img + img_size, [](float value) { return std::isnan(value); })) {
+    Set<float, CPUMathUtil>(narrow<ptrdiff_t>(img_size), 0, data_img, context);
+    Im2col<float, StorageOrder::NCHW>()(data_col, img_shape, output_shape, channels_col,
+                                        kernel_shape, stride, dilation, pad, N, data_img, true);
+  }
 }
 
 #define SPECIALIZED_COPYVECTOR(T)                                                          \
