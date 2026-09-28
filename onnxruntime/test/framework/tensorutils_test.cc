@@ -363,6 +363,59 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   EXPECT_FALSE(status.IsOK());
 }
 
+namespace {
+TensorProto CreateStringTensorProto(std::initializer_list<size_t> payload_sizes) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("string_initializer");
+  tensor_proto.set_data_type(TensorProto_DataType_STRING);
+  tensor_proto.add_dims(static_cast<int64_t>(payload_sizes.size()));
+
+  for (size_t payload_size : payload_sizes) {
+    tensor_proto.add_string_data(std::string(payload_size, 'a'));
+  }
+
+  return tensor_proto;
+}
+}  // namespace
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoRejectsOversizedPayload) {
+  constexpr size_t kPayloadBudgetBytes = 128;
+  constexpr size_t kTestBudgetBytes = sizeof(std::string) + kPayloadBudgetBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kPayloadBudgetBytes + 1});
+
+  const Status status = ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "string_data shape bytes + payload exceeds");
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoRejectsCombinedShapeAndPayloadOverflow) {
+  constexpr size_t kFirstPayloadBytes = 64;
+  constexpr size_t kTestBudgetBytes = 2 * sizeof(std::string) + kFirstPayloadBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kFirstPayloadBytes, 1});
+
+  // STRING tensors account for the shape-declared bytes and the aggregate payload bytes.
+  // The first payload exactly fills the remaining allowance after object storage; the second
+  // payload proves that validation uses cumulative accounting.
+  const Status status = ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "string_data shape bytes + payload exceeds");
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoAcceptsExactPayloadLimit) {
+  constexpr size_t kPayloadBytes = 17;
+  constexpr size_t kTestBudgetBytes = sizeof(std::string) + kPayloadBytes;
+  const TensorProto tensor_proto = CreateStringTensorProto({kPayloadBytes});
+
+  ASSERT_STATUS_OK(ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes));
+}
+
+TEST(TensorProtoUtilsTest, ValidateEmbeddedStringTensorProtoAcceptsNormalPayload) {
+  constexpr size_t kTestBudgetBytes = 3 * sizeof(std::string) + 32;
+  const TensorProto tensor_proto = CreateStringTensorProto({7, 11, 13});
+
+  ASSERT_STATUS_OK(ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto, kTestBudgetBytes));
+}
+
 // A bool initializer supplied through raw_data is copied verbatim, so its bytes are not
 // restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
 // canonical bool values) all observe the same result regardless of how they read the byte.
