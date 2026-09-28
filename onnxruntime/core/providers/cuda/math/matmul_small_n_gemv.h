@@ -24,7 +24,8 @@ size_t SmallNGemvCounterElements(int n);
 // shared-expert gate 2048x1). The K axis is split across `SmallNGemvSplitK`
 // blocks so the read of B spreads over many SMs; the last block to finish a
 // column tile reduces the fp32 partials in slice order, so the result is
-// deterministic.
+// deterministic. Even N with K % 8 == 0 and 16-byte aligned A takes a vectorized
+// kernel (two columns and eight K rows per lane); other shapes take a scalar one.
 //
 // `workspace` must hold SmallNGemvWorkspaceElements() floats. `counter` must
 // hold SmallNGemvCounterElements() unsigned ints; the launcher clears it before

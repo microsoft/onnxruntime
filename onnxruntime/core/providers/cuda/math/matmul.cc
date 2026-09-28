@@ -14,8 +14,12 @@
 namespace onnxruntime {
 namespace cuda {
 
-bool SmallNGemvEnabledFromEnvironment() {
-  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
+bool SmallNGemvEnabled(const cudaDeviceProp& device_prop) {
+  const auto setting = ParseEnvironmentVariable<bool>("ORT_ENABLE_SMALL_N_GEMV");
+  if (setting.has_value()) {
+    return *setting;
+  }
+  return device_prop.major < 9;
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                  \

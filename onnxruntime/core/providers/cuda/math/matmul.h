@@ -9,7 +9,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-bool SmallNGemvEnabledFromEnvironment();
+// ORT_ENABLE_SMALL_N_GEMV=1 forces the small-N fp16 GEMV on and =0 forces it off. When unset it is
+// enabled for devices below SM 9.0, where cuBLAS picks a serial split-K kernel for 2..8-row
+// small-N shapes that is more than 10x slower than the GEMV.
+bool SmallNGemvEnabled(const cudaDeviceProp& device_prop);
 
 template <typename T>
 class MatMul final : public CudaKernel {
@@ -23,7 +26,7 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
-        small_n_gemv_enabled_{SmallNGemvEnabledFromEnvironment()} {}
+        small_n_gemv_enabled_{SmallNGemvEnabled(GetDeviceProp())} {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;

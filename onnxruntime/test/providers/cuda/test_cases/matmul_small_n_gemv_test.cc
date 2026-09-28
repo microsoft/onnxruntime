@@ -80,6 +80,17 @@ TEST(MatMulSmallNGemvTest, HandlesAllMVariants) {
   }
 }
 
+// Even N, K % 8 == 0 and aligned buffers select the vectorized kernel, including a partial
+// 64-column tile, a single split and multiple 8-row chunks.
+TEST(MatMulSmallNGemvTest, HandlesVectorizedVariants) {
+  for (int m = 1; m <= 8; ++m) {
+    RunSmallNGemvCase(m, 48, 5120);
+  }
+  RunSmallNGemvCase(8, 96, 2048);
+  RunSmallNGemvCase(3, 1024, 128);
+  RunSmallNGemvCase(17, 2, 1032);
+}
+
 TEST(MatMulSmallNGemvTest, HandlesColumnTileBoundaries) {
   for (const int n : {1, 32, 1024}) {
     RunSmallNGemvCase(1, n, 128);
