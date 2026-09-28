@@ -78,6 +78,6 @@ The option is intentionally internal and test-only: it is declared with WebGPU p
 - Add device-independent scheduler unit tests covering every common branch, forced-over-vendor precedence, the zero-K correctness guard, vendor-over-common precedence, Intel override, default fallback, independent vendor thresholds, common packed defaults, vendor tuning of a forced algorithm, Split-K profile routing, and current Intel architecture boundaries.
 - Add parser/configuration tests for every accepted value and invalid input.
 - Add WebGPU MatMul tests that choose shapes which normally select a different path, force a compatible algorithm, and verify numerical output. Hardware-specific forced algorithms are tested only when their hard capabilities are present; strict-failure tests cover unsupported forced choices.
-- Build Dawn and the WebGPU provider on Windows with the Vulkan backend enabled and D3D12 disabled. Tests explicitly request `dawnBackendType=Vulkan`.
-- Verify the selected Vulkan adapter exposes subgroup size control, f16, and the cooperative/subgroup-matrix configuration required by the 8x16x16 kernel before claiming subgroup-matrix execution coverage.
+- Run hardware-backed tests on the build's default WebGPU backend. Hardware-specific tests inspect the selected adapter's capabilities and skip unsupported algorithms.
+- Verify the selected adapter exposes subgroup size control, f16, and the cooperative/subgroup-matrix configuration required by the 8x16x16 kernel before claiming subgroup-matrix execution coverage.
 - Run scheduler/parser tests and hardware-backed MatMul tests on the local Intel Arc Vulkan adapter. macOS-arm64 Metal CI remains additional cross-backend coverage; lavapipe is not used because it cannot execute MatMul reliably.

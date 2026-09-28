@@ -89,7 +89,6 @@ static void ComputeExpectedResult(std::initializer_list<int64_t> a_dims,
   if (!b_is_vector) output_dims.push_back(N);
 }
 
-#if defined(_WIN32) && defined(DAWN_ENABLE_VULKAN)
 static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
     const IExecutionProvider& ep,
     webgpu::MatMulAlgorithm algorithm) {
@@ -147,7 +146,6 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
   return std::nullopt;
 #endif
 }
-#endif
 
 template <typename T, int version = 13>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims,
@@ -161,8 +159,6 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   if (forced_algorithm.has_value()) {
     ConfigOptions config_options{};
     const std::string algorithm_name{webgpu::MatMulAlgorithmName(*forced_algorithm)};
-    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kDawnBackendType,
-                                                   webgpu::options::kDawnBackendType_Vulkan));
     ASSERT_STATUS_OK(config_options.AddConfigEntry(
         webgpu::options::kForceMatMulAlgorithm,
         algorithm_name.c_str()));
@@ -173,14 +169,12 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
-#if defined(_WIN32) && defined(DAWN_ENABLE_VULKAN)
   if (forced_algorithm.has_value()) {
     if (const auto reason = GetForcedAlgorithmUnsupportedReason(*webgpu_ep, *forced_algorithm);
         reason.has_value()) {
       GTEST_SKIP() << *reason;
     }
   }
-#endif
 
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
@@ -237,7 +231,6 @@ TEST(MatMulProgramTest, VectorFallbackExecution) {
   RunTestTyped<float>({2, 2, 8}, {8});
 }
 
-#if defined(_WIN32)
 TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
   ConfigOptions valid_config_options{};
   if (!WebGpuExecutionProviderWithOptions(valid_config_options)) {
@@ -249,7 +242,6 @@ TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
   EXPECT_THROW(WebGpuExecutionProviderWithOptions(config_options), OnnxRuntimeException);
 }
 
-#if defined(DAWN_ENABLE_VULKAN)
 static std::string BuildDynamicMatMulModelBytes() {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
@@ -337,10 +329,7 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrixRejectsFloatInputs) {
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ReselectsAlgorithmForEachDynamicShape) {
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kDawnBackendType,
-                                                 webgpu::options::kDawnBackendType_Vulkan));
-  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
@@ -387,8 +376,6 @@ TEST(WebGpuMatMulAlgorithmTest, ReselectsAlgorithmForEachDynamicShape) {
       TensorShape({0, 8}), std::vector<float>{unused_storage},
       TensorShape({1, 8}), 0.0f);
 }
-#endif  // defined(DAWN_ENABLE_VULKAN)
-#endif
 
 // 2D aligned baseline shapes.
 TEST(MatMul_Large, DISABLED_Aligned) {
