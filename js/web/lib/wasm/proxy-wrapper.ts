@@ -17,6 +17,7 @@ import {
   inferWasmPathPrefixFromScriptSrc,
   isEsmImportMetaUrlHardcodedAsFileUri,
 } from './wasm-utils-import';
+import { loadFile } from './wasm-utils-load-file';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker | undefined;
@@ -224,10 +225,11 @@ export const releaseSession = async (sessionId: number): Promise<void> => {
   }
 };
 
-export const createLoraAdapter = async (adapterData: Uint8Array): Promise<number> => {
+export const createLoraAdapter = async (pathOrBuffer: string | Uint8Array): Promise<number> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     throw new Error('LoRA adapter is not supported for proxy.');
   }
+  const adapterData = typeof pathOrBuffer === 'string' ? await loadFile(pathOrBuffer) : pathOrBuffer;
   return core.createLoraAdapter(adapterData);
 };
 

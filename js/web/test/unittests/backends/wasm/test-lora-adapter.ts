@@ -103,6 +103,8 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
   if (env.wasm.proxy && typeof document !== 'undefined') {
     it('create LoRA adapter in proxy mode', async () => {
       await expectRejected(LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA), 'not supported for proxy');
+      // proxy mode is checked before the file is loaded.
+      await expectRejected(LoraAdapter.create('not-existing.onnx_adapter'), 'not supported for proxy');
     });
   } else {
     it('run with LoRA adapter', async () => {
@@ -144,7 +146,51 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
       await expectRejected(adapter.release(), 'invalid adapter id');
     });
 
+    it('run with released LoRA adapter after creating new ones', async () => {
+      // the released adapter must stay invalid even when a new adapter reuses its native memory.
+      const releasedAdapter = await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA);
+      await releasedAdapter.release();
+      const adapters: LoraAdapter[] = [];
+      try {
+        for (let i = 0; i < 3; i++) {
+          adapters.push(await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA));
+        }
+        await expectRejected(
+          session.run(createFeeds(), { activeLoraAdapters: [releasedAdapter] }),
+          'invalid LoRA adapter id',
+        );
+        await expectRejected(releasedAdapter.release(), 'invalid adapter id');
+        for (const adapter of adapters) {
+          expectOutput(
+            await session.run(createFeeds(), { activeLoraAdapters: [adapter] }),
+            EXPECTED_OUTPUT_ROW_WITH_ADAPTER,
+          );
+        }
+      } finally {
+        for (const adapter of adapters) {
+          await adapter.release();
+        }
+      }
+    });
+
     if (typeof window !== 'undefined') {
+      it('run with LoRA adapter created from a URL', async () => {
+        const url = URL.createObjectURL(new Blob([ONNX_ADAPTER_TWO_PARAMS_LORA]));
+        try {
+          const adapter = await LoraAdapter.create(url);
+          try {
+            expectOutput(
+              await session.run(createFeeds(), { activeLoraAdapters: [adapter] }),
+              EXPECTED_OUTPUT_ROW_WITH_ADAPTER,
+            );
+          } finally {
+            await adapter.release();
+          }
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      });
+
       it('run with LoRA adapter on a session using IO binding', async () => {
         // IO binding is used when an output is preferred to be on GPU. The error is thrown before any GPU work.
         const ioBindingSession = await InferenceSession.create(ONNX_MODEL_TWO_PARAMS_LORA, {

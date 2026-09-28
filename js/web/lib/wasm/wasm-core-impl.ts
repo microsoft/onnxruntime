@@ -567,7 +567,10 @@ export const releaseSession = (sessionId: number): void => {
   activeSessions.delete(sessionId);
 };
 
-const loraAdapters = new Set<number>();
+// map from LoRA adapter ID to native LoRA adapter handle. The native handle is not used as the ID, because the
+// memory of a released adapter can be reused by a new one.
+const loraAdapters = new Map<number, number>();
+let nextLoraAdapterId = 1;
 
 /**
  * create a LoRA adapter from a buffer in the LoRA adapter format.
@@ -588,8 +591,9 @@ export const createLoraAdapter = (adapterData: Uint8Array): number => {
     if (adapterHandle === 0) {
       checkLastError("Can't create a LoRA adapter.");
     }
-    loraAdapters.add(adapterHandle);
-    return adapterHandle;
+    const adapterId = nextLoraAdapterId++;
+    loraAdapters.set(adapterId, adapterHandle);
+    return adapterId;
   } finally {
     // the data is copied by ORT, so it can be freed here.
     wasm._free(dataOffset);
@@ -598,10 +602,11 @@ export const createLoraAdapter = (adapterData: Uint8Array): number => {
 
 export const releaseLoraAdapter = (adapterId: number): void => {
   const wasm = getInstance();
-  if (!loraAdapters.has(adapterId)) {
+  const adapterHandle = loraAdapters.get(adapterId);
+  if (adapterHandle === undefined) {
     throw new Error(`cannot release LoRA adapter. invalid adapter id: ${adapterId}`);
   }
-  if (wasm._OrtReleaseLoraAdapter(adapterId) !== 0) {
+  if (wasm._OrtReleaseLoraAdapter(adapterHandle) !== 0) {
     checkLastError("Can't release LoRA adapter.");
   }
   loraAdapters.delete(adapterId);
@@ -762,6 +767,7 @@ export const run = async (
   const enableGraphCapture = session[4];
   const inputOutputBound = session[5];
 
+  const loraAdapterHandles: number[] = [];
   if (loraAdapterIds.length > 0) {
     // ORT does not apply active LoRA adapters in RunWithBinding(). Fail instead of silently ignoring them.
     if (ioBindingState) {
@@ -770,9 +776,11 @@ export const run = async (
       );
     }
     for (const adapterId of loraAdapterIds) {
-      if (!loraAdapters.has(adapterId)) {
+      const adapterHandle = loraAdapters.get(adapterId);
+      if (adapterHandle === undefined) {
         throw new Error(`cannot run inference. invalid LoRA adapter id: ${adapterId}`);
       }
+      loraAdapterHandles.push(adapterHandle);
     }
   }
 
@@ -794,7 +802,7 @@ export const run = async (
   const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
   try {
-    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options, loraAdapterIds);
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options, loraAdapterHandles);
 
     TRACE_EVENT_BEGIN('wasm prepareInputOutputTensor');
     // create input tensors

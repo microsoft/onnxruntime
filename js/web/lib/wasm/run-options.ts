@@ -8,7 +8,7 @@ import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-uti
 
 export const setRunOptions = (
   options: InferenceSession.RunOptions,
-  loraAdapterIds: readonly number[],
+  loraAdapterHandles: readonly number[],
 ): [number, number[]] => {
   const wasm = getInstance();
   let runOptionsHandle = 0;
@@ -64,8 +64,8 @@ export const setRunOptions = (
       });
     }
 
-    for (const adapterId of loraAdapterIds) {
-      if (wasm._OrtRunOptionsAddActiveLoraAdapter(runOptionsHandle, adapterId) !== 0) {
+    for (const adapterHandle of loraAdapterHandles) {
+      if (wasm._OrtRunOptionsAddActiveLoraAdapter(runOptionsHandle, adapterHandle) !== 0) {
         checkLastError("Can't add an active LoRA adapter.");
       }
     }
