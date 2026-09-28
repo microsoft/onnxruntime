@@ -10,6 +10,8 @@
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
 
+#include <optional>
+
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
@@ -19,17 +21,32 @@ using onnxruntime::webgpu::ComputeContext;
 
 class GateProgram final : public Program<GateProgram> {
  public:
-  GateProgram(int k, bool is_fp16) : Program<GateProgram>{"QmoeGate"}, k_{k}, is_fp16_{is_fp16} {};
+  GateProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
+      : Program<GateProgram>{"QmoeGate"},
+        k_{k},
+        is_fp16_{is_fp16},
+        has_router_weights_{has_router_weights},
+        normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("topk_values");
-    shader.AddOutput("hiddenstate_for_expert");
+    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* router_weights = &router_logits;
+    if (has_router_weights_) {
+      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& topk_values = shader.AddOutput("topk_values");
+    const auto& hiddenstate_for_expert = shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_));
+                               WGSL_TEMPLATE_PARAMETER(k, k_),
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                               WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
+                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -40,20 +57,37 @@ class GateProgram final : public Program<GateProgram> {
  private:
   int k_;
   bool is_fp16_;
+  bool has_router_weights_;
+  bool normalize_routing_weights_;
 };
 
 class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
  public:
-  Gate1TokenProgram(int k, bool is_fp16) : Program<Gate1TokenProgram>{"QmoeGate1Token"}, k_{k}, is_fp16_{is_fp16} {};
+  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
+      : Program<Gate1TokenProgram>{"QmoeGate1Token"},
+        k_{k},
+        is_fp16_{is_fp16},
+        has_router_weights_{has_router_weights},
+        normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("topk_values");
-    shader.AddOutput("indirect_experts");
+    const auto& router_logits = shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* router_weights = &router_logits;
+    if (has_router_weights_) {
+      router_weights = &shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& topk_values = shader.AddOutput("topk_values");
+    const auto& indirect_experts = shader.AddOutput("indirect_experts");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
-                               WGSL_TEMPLATE_PARAMETER(k, k_));
+                               WGSL_TEMPLATE_PARAMETER(k, k_),
+                               WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_),
+                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                               WGSL_TEMPLATE_VARIABLE(router_logits, router_logits),
+                               WGSL_TEMPLATE_VARIABLE(router_weights, *router_weights),
+                               WGSL_TEMPLATE_VARIABLE(topk_values, topk_values));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -63,6 +97,8 @@ class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
  private:
   int k_;
   bool is_fp16_;
+  bool has_router_weights_;
+  bool normalize_routing_weights_;
 };
 
 class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> {
@@ -70,12 +106,16 @@ class HiddenStateGatherProgram final : public Program<HiddenStateGatherProgram> 
   HiddenStateGatherProgram() : Program<HiddenStateGatherProgram>{"QmoeHiddenStateGather"} {};
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("new_hidden_state");
-    shader.AddOutput("tokens");
+    const auto& hiddenstate_for_expert = shader.AddInput("hiddenstate_for_expert", ShaderUsage::UseElementTypeAlias);
+    const auto& hidden_state = shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
+    const auto& new_hidden_state = shader.AddOutput("new_hidden_state");
+    const auto& tokens = shader.AddOutput("tokens");
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/hidden_state_gather.wgsl.template");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/hidden_state_gather.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(hidden_state, hidden_state),
+                               WGSL_TEMPLATE_VARIABLE(hiddenstate_for_expert, hiddenstate_for_expert),
+                               WGSL_TEMPLATE_VARIABLE(new_hidden_state, new_hidden_state),
+                               WGSL_TEMPLATE_VARIABLE(tokens, tokens));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -92,8 +132,9 @@ class ZeroTensorProgram final : public Program<ZeroTensorProgram> {
   ZeroTensorProgram() : Program<ZeroTensorProgram>{"QmoeZeroTensor"} {};
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template");
+    const auto& tensor = shader.AddOutput("tensor", ShaderUsage::UseElementTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_tensor.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(tensor, tensor));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -102,16 +143,42 @@ class ZeroTensorProgram final : public Program<ZeroTensorProgram> {
  private:
 };
 
-class SwigLuProgram final : public Program<SwigLuProgram> {
+class ZeroU32Program final : public Program<ZeroU32Program> {
  public:
-  SwigLuProgram() : Program<SwigLuProgram>{"SwigLu"} {
-                    };
+  ZeroU32Program() : Program<ZeroU32Program>{"QmoeZeroU32"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/zero_u32.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/swiglu.wgsl.template");
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+};
+
+class MoEActivationProgram final : public Program<MoEActivationProgram> {
+ public:
+  MoEActivationProgram(MoEActivationType activation_type, int swiglu_fusion, bool has_fc3)
+      : Program<MoEActivationProgram>{"MoEActivation"},
+        activation_type_{activation_type},
+        swiglu_fusion_{swiglu_fusion},
+        has_fc3_{has_fc3} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+    const ShaderVariableHelper* fc3_input = &input;
+    if (has_fc3_) {
+      fc3_input = &shader.AddInput("fc3_input", ShaderUsage::UseElementTypeAlias);
+    }
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
+    return WGSL_TEMPLATE_APPLY(shader, "moe/activation.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(activation, static_cast<int>(activation_type_)),
+                               WGSL_TEMPLATE_PARAMETER(has_fc3, has_fc3_),
+                               WGSL_TEMPLATE_PARAMETER(swiglu_fusion, swiglu_fusion_),
+                               WGSL_TEMPLATE_VARIABLE(fc3_input, *fc3_input),
+                               WGSL_TEMPLATE_VARIABLE(input, input),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
   };
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -122,6 +189,9 @@ class SwigLuProgram final : public Program<SwigLuProgram> {
       {"swiglu_limit", ProgramUniformVariableDataType::Float32});
 
  private:
+  MoEActivationType activation_type_;
+  int swiglu_fusion_;
+  bool has_fc3_;
 };
 
 class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgram> {
@@ -129,11 +199,15 @@ class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgr
   FusedFinalMix1TokenProgram() : Program<FusedFinalMix1TokenProgram>{"QmoeFusedFinalMix1Token"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "moe/fused_final_mix_1token.wgsl.template");
+    const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    const auto& indirect_experts = shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "moe/fused_final_mix_1token.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(fc2_outputs, fc2_outputs),
+                               WGSL_TEMPLATE_VARIABLE(indirect_experts, indirect_experts),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -146,12 +220,16 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
   QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    const auto& fc2_outputs = shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    const auto& router_values = shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    const auto& expert_tokens = shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template");
+    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(expert_tokens, expert_tokens),
+                               WGSL_TEMPLATE_VARIABLE(fc2_outputs, fc2_outputs),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(router_values, router_values));
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -159,8 +237,6 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
       {"num_experts", ProgramUniformVariableDataType::Uint32},
       {"expert_idx", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
 };
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
@@ -177,7 +253,6 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const Tensor* fc3_experts_weights_optional = context.Input<Tensor>(8);
   const Tensor* fc3_scales_optional = context.Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context.Input<Tensor>(10);
-  // zero points, not supported yet
   const Tensor* fc1_zero_points = context.Input<Tensor>(11);
   const Tensor* fc2_zero_points = context.Input<Tensor>(12);
   const Tensor* fc3_zero_points = context.Input<Tensor>(13);
@@ -185,16 +260,13 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   MoEParameters moe_params;
 
-  if (fc1_zero_points || fc2_zero_points || fc3_zero_points) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "zero_points for QMoE are not yet supported on WebGPU.");
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == MoEActivationType::SwiGLU && swiglu_fusion == 0 &&
+      fc3_experts_weights_optional == nullptr) {
+    swiglu_fusion = 1;
   }
-
-  if (router_weights) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Separate router_weights is not yet implemented on WebGPU for QMoE.");
-  }
-
+  const bool is_swiglu = activation_type_ == MoEActivationType::SwiGLU;
+  const bool is_fused_swiglu = is_swiglu && swiglu_fusion != 0 && fc3_experts_weights_optional == nullptr;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, hidden_state, router_logits,
       fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
@@ -203,7 +275,20 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       moe_helper::MoEWeightBits{fc1_expert_weight_bits_,
                                 fc2_expert_weight_bits_,
                                 fc3_expert_weight_bits_},
-      activation_type_ == MoEActivationType::SwiGLU, block_size_));
+      is_fused_swiglu, block_size_));
+  ORT_RETURN_IF(router_weights && router_weights->Shape() != router_logits->Shape(),
+                "router_weights must have the same shape as router_probs; got ",
+                router_weights->Shape(), " and ", router_logits->Shape());
+  ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
+                    "QMoE requires 0 < k <= num_experts, got k=", k_,
+                    " and num_experts=", moe_params.num_experts);
+  ORT_RETURN_IF_NOT(block_size_ > 0 ||
+                        (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
+                    "WebGPU QMoE row-wise quantization does not support explicit zero points. "
+                    "Use block-wise quantization or omit the zero-point inputs.");
+  ORT_RETURN_IF_NOT(moe_params.num_rows != 1 ||
+                        (fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr),
+                    "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
 
   if (fc1_expert_weight_bits_ != expert_weight_bits_ ||
       fc2_expert_weight_bits_ != expert_weight_bits_ ||
@@ -214,19 +299,22 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
 
   const auto& input_shape = hidden_state->Shape();
 
-  // SwiGLU validation
-  bool is_swiglu = (activation_type_ == MoEActivationType::SwiGLU);
-  if (fc3_experts_weights_optional) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "FC3 gating is not yet implemented on WebGPU.");
-  }
-
   // process tokens in chunks of max_tokens to put some cap on memory usage
   const int max_tokens = 2 * 1024;
 
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
+  Tensor* output_tensor = context.Output(0, input_shape);
+  if (moe_params.num_rows == 0) {
+    return Status::OK();
+  }
+  const auto& device_limits = context.DeviceLimits();
+  ORT_RETURN_IF_NOT(num_experts <= device_limits.maxComputeWorkgroupSizeX &&
+                        num_experts <= device_limits.maxComputeInvocationsPerWorkgroup,
+                    "WebGPU QMoE requires num_experts to fit in one workgroup; got ", num_experts,
+                    ", maxComputeWorkgroupSizeX=", device_limits.maxComputeWorkgroupSizeX,
+                    ", maxComputeInvocationsPerWorkgroup=", device_limits.maxComputeInvocationsPerWorkgroup, ".");
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
-  const int64_t fc1_output_size = is_swiglu && swiglu_fusion_ > 0 ? 2 * moe_params.inter_size : moe_params.inter_size;
+  const int64_t fc1_output_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
   const bool is_fp16 = hidden_state->DataType() == DataTypeImpl::GetType<MLFloat16>();
   const auto dtype = is_fp16 ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();
@@ -238,11 +326,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int64_t accuracy_level = 4;
   const int64_t block_size_fc1 = (block_size_ != 0) ? block_size_ : K_fc1;
   const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
+  const int64_t block_size_fc3 = block_size_fc1;
   Status status;
 
-  Tensor* output_tensor = context.Output(0, input_shape);
-
-  if (moe_params.num_rows == 1) {
+  if (moe_params.num_rows == 1 && router_weights == nullptr) {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
     // run a single batched MatMulNBits with M=k where each row uses a different expert's
     // weights via weight_index_indirect. A's single row is broadcast to all k rows.
@@ -257,51 +344,60 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     Tensor indirect_experts = context.CreateGPUTensor(dtype_uint32, indirect_experts_shape);
 
     // Step 1: Gate — select top-k experts
-    Gate1TokenProgram gate{k_, is_fp16};
+    Gate1TokenProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
-        .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+    if (router_weights) {
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+    }
+    gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(num_tokens)
         .AddUniformVariables({num_tokens, num_experts})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
+        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
     // Step 2: Batched fc1 MatMulNBits with M=k, per-row expert selection.
     // A is (1, hidden_size) but dispatched with override_M=k; shader broadcasts A row 0.
     TensorShape fc1_output_shape({static_cast<int64_t>(k), fc1_output_size});
     Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
-    status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
+    status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
                               K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
                               &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
     ORT_RETURN_IF_ERROR(status);
 
-    // Step 3: SwiGLU on all k rows at once
+    // Step 3: Apply the activation, optionally combining FC1 with a separate FC3 projection.
     TensorShape fc1_activated_shape({static_cast<int64_t>(k), moe_params.inter_size});
     Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
-    if (is_swiglu) {
-      SwigLuProgram swiglu;
-      swiglu
-          .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
-          .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-          .SetWorkgroupSize(128)
-          .SetDispatchGroupSize(((k * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
-          .AddUniformVariables({k,
-                                static_cast<uint32_t>(moe_params.inter_size),
-                                activation_alpha_,
-                                activation_beta_,
-                                swiglu_limit_});
-      ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
-    } else {
-      ORT_THROW("only swiglu is supported for WebGPU.");
+    std::optional<Tensor> fc3_outputs;
+    if (fc3_experts_weights_optional) {
+      fc3_outputs.emplace(context.CreateGPUTensor(dtype, fc1_activated_shape));
+      ORT_RETURN_IF_ERROR(ApplyMatMulNBits(hidden_state, fc3_experts_weights_optional, fc3_scales_optional,
+                                           fc3_zero_points, fc3_experts_bias_optional,
+                                           K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
+                                           expert_weight_bits_, context, &*fc3_outputs, 0, &indirect_experts,
+                                           /*override_M=*/k));
     }
+    MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
+    activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
+    if (fc3_outputs) {
+      activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::Type}});
+    }
+    activation
+        .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+        .SetWorkgroupSize(128)
+        .SetDispatchGroupSize(((k * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
+        .AddUniformVariables({k, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
+                              activation_beta_, swiglu_limit_})
+        .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());
+    ORT_RETURN_IF_ERROR(context.RunProgram(activation));
 
     // Step 4: Batched fc2 MatMulNBits with M=k, per-row expert selection
     // fc1_activated already has k rows (one per expert), no override_M needed.
     TensorShape fc2_output_shape({static_cast<int64_t>(k), N_fc2});
     Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
-    status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
+    status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
                               K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
                               &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
     ORT_RETURN_IF_ERROR(status);
@@ -354,16 +450,25 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     //  token_idx is the global index into hidden_state
     Tensor gate_hidden = context.CreateGPUTensor(dtype_uint32, gate_hidden_shape);
 
-    GateProgram gate{k_, is_fp16};
+    ZeroU32Program zero_counts;
+    zero_counts.AddOutput({&gate_counts, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize((num_experts + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({num_experts});
+    ORT_RETURN_IF_ERROR(context.RunProgram(zero_counts));
+
+    GateProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
-        .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+    if (router_weights) {
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+    }
+    gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_hidden, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_counts, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
         .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts, static_cast<uint32_t>(token_offset)})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
+        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
 
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
@@ -409,35 +514,40 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       //
       // Step 3: matmul the hidden_state with fc1 (gate_up) of the selected experts
       //
-      status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
+      status = ApplyMatMulNBits(&expert_hidden, fc1_experts_weights, fc1_scales, fc1_zero_points, fc1_experts_bias_optional,
                                 K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
                                 &fc1_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
 
       //
-      // Step 4: apply swiglu
+      // Step 4: apply the activation and optional FC3 gate.
       //
-      if (is_swiglu) {
-        SwigLuProgram swiglu;
-        swiglu
-            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
-            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-            .SetWorkgroupSize(128)
-            .SetDispatchGroupSize(((used_by * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
-            .AddUniformVariables({static_cast<uint32_t>(used_by),
-                                  static_cast<uint32_t>(moe_params.inter_size),
-                                  activation_alpha_,
-                                  activation_beta_,
-                                  swiglu_limit_});
-        ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
-      } else {
-        ORT_THROW("only swiglu is supported for WebGPU.");
+      std::optional<Tensor> fc3_outputs;
+      if (fc3_experts_weights_optional) {
+        fc3_outputs.emplace(context.CreateGPUTensor(dtype, fc1_activated_shape));
+        ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&expert_hidden, fc3_experts_weights_optional, fc3_scales_optional,
+                                             fc3_zero_points, fc3_experts_bias_optional,
+                                             K_fc1, moe_params.inter_size, block_size_fc3, accuracy_level,
+                                             expert_weight_bits_, context, &*fc3_outputs, expert_idx));
       }
+      MoEActivationProgram activation{activation_type_, swiglu_fusion, fc3_outputs.has_value()};
+      activation.AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type}});
+      if (fc3_outputs) {
+        activation.AddInputs({{&*fc3_outputs, ProgramTensorMetadataDependency::Type}});
+      }
+      activation
+          .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+          .SetWorkgroupSize(128)
+          .SetDispatchGroupSize(((used_by * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
+          .AddUniformVariables({used_by, static_cast<uint32_t>(moe_params.inter_size), activation_alpha_,
+                                activation_beta_, swiglu_limit_})
+          .CacheHint(static_cast<int>(activation_type_), swiglu_fusion, fc3_outputs.has_value());
+      ORT_RETURN_IF_ERROR(context.RunProgram(activation));
 
       //
       // Step 5: multiply fc1_activated with fc2 (gate_down) of the selected experts
       //
-      status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
+      status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, fc2_zero_points, fc2_experts_bias_optional,
                                 K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
                                 &fc2_outputs, expert_idx);
       ORT_RETURN_IF_ERROR(status);
@@ -455,7 +565,8 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
           .AddUniformVariables({hidden_size,
                                 num_experts,
                                 expert_idx,
-                                static_cast<uint32_t>(token_offset)});
+                                static_cast<uint32_t>(token_offset)})
+          .CacheHint(router_weights != nullptr, normalize_routing_weights_);
 
       ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
     }
