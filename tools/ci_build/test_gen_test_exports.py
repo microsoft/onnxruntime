@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,27 @@ from gen_test_exports import Symbols, read_symbols, select_exports, write_export
 
 
 class TestTestExports(unittest.TestCase):
+    def test_production_include_without_module_search_path(self):
+        cmake_dir = Path(__file__).resolve().parents[2] / "cmake"
+        includes = [
+            line.strip()
+            for line in (cmake_dir / "onnxruntime_unittests.cmake").read_text(encoding="utf-8").splitlines()
+            if line.strip().startswith("include(") and "onnxruntime_test_exports" in line
+        ]
+        self.assertEqual(len(includes), 1)
+        with tempfile.TemporaryDirectory(prefix="ort export include ") as directory:
+            source = Path(directory)
+            build = source / "build"
+            build.mkdir()
+            shutil.copyfile(cmake_dir / "onnxruntime_test_exports.cmake", source / "onnxruntime_test_exports.cmake")
+            script = source / "include.cmake"
+            script.write_text(
+                'set(CMAKE_MODULE_PATH "")\n' + includes[0] + "\nif(NOT COMMAND onnxruntime_export_test_symbols)\n"
+                '  message(FATAL_ERROR "Test export helper was not loaded")\nendif()\n',
+                encoding="utf-8",
+            )
+            subprocess.run(["cmake", "-P", str(script)], cwd=build, check=True, timeout=30)
+
     def test_parse_coff_symbols(self):
         symbols = read_symbols(
             """

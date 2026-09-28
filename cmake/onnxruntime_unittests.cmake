@@ -1503,7 +1503,7 @@ block()
   # Export only host symbols referenced by the module, including definitions in static libraries.
   # Exporting every provider-test symbol exceeds the Windows import-library limit.
   if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
-    include(onnxruntime_test_exports)
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_test_exports.cmake")
     get_target_property(cuda_ut_link_libraries onnxruntime_providers_cuda_ut LINK_LIBRARIES)
     onnxruntime_export_test_symbols(${onnxruntime_provider_test_target}
       OBJECT_TARGET onnxruntime_providers_cuda_ut_objects
