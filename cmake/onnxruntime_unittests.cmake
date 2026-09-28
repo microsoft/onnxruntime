@@ -777,6 +777,8 @@ endif()
 
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
+  # the MIGraphX tests use the HIP runtime directly, e.g. to create the streams passed as "user_compute_stream"
+  list(APPEND onnxruntime_test_providers_libs hip::host)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
