@@ -271,7 +271,7 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
 
   int64_t max_local_entries = 0;
   if (attention_mode_ == SparseAttentionMode::kLocalPlusSelected) {
-        max_local_entries = is_causal_ && local_window_size_ > 0
+    max_local_entries = is_causal_ && local_window_size_ > 0
                             ? local_window_size_
                             : static_cast<int64_t>(parameters.max_num_blocks_per_seq) * parameters.block_size;
   }
@@ -281,8 +281,9 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   const int num_splits = ComputeSparsePagedAttentionSplits(
       parameters.token_count, parameters.num_heads, static_cast<int>(max_candidate_entries),
       device_prop.multiProcessorCount);
-  const size_t partial_rows =
-      static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
+  const size_t partial_rows = num_splits > 1
+                                  ? static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads
+                                  : 0;
   auto partial_out = GetScratchBuffer<float>(partial_rows * parameters.head_size, GetComputeStream(context));
   auto partial_max = GetScratchBuffer<float>(partial_rows, GetComputeStream(context));
   auto partial_sum = GetScratchBuffer<float>(partial_rows, GetComputeStream(context));
