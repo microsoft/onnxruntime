@@ -18,6 +18,7 @@
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
@@ -204,36 +205,23 @@ struct OpKernelInfo {
   }
 
  private:
-  // A missing optional attribute is normal control flow for GetAttrOrDefault()/GetAttrsOrDefault(), so these
-  // accessors must not depend on catching the exception thrown by the Ort:: C++ wrappers: a plugin EP may be
-  // compiled with C++ exception catching disabled. The ORT Web build is one such case -- it builds with
-  // `-sDISABLE_EXCEPTION_CATCHING` everywhere except the C API boundary, so a `catch` in this inlined header
-  // never matches and the exception escapes all the way out of session creation. Use the non-throwing C API
-  // directly instead.
-  static Status ToStatus(OrtStatus* ort_status) {
-    if (ort_status == nullptr) {
-      return Status::OK();
-    }
-    const Ort::Status status{ort_status};  // takes ownership
-    return Status(onnxruntime::common::ONNXRUNTIME, status.GetErrorCode(), status.GetErrorMessage());
-  }
-
   static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, float* out) {
-    return ToStatus(Ort::GetApi().KernelInfoGetAttribute_float(info, name, out));
+    return ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttribute_float(info, name, out));
   }
 
   static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, int64_t* out) {
-    return ToStatus(Ort::GetApi().KernelInfoGetAttribute_int64(info, name, out));
+    return ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttribute_int64(info, name, out));
   }
 
   static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, std::string* out) {
     size_t size = 0;
     // Feed nullptr for the data buffer to query the true size of the string attribute.
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttribute_string(info, name, nullptr, &size)));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttribute_string(info, name, nullptr, &size)));
 
     std::string value;
     value.resize(size);
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttribute_string(info, name, value.data(), &size)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttribute_string(info, name, value.data(), &size)));
     value.resize(size - 1);  // remove the terminating character '\0'
     *out = std::move(value);
     return Status::OK();
@@ -241,30 +229,34 @@ struct OpKernelInfo {
 
   static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<float>& out) {
     size_t size = 0;
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, nullptr, &size)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, nullptr, &size)));
 
     std::vector<float> values(size);
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, values.data(), &size)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, values.data(), &size)));
     out.swap(values);
     return Status::OK();
   }
 
   static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<int64_t>& out) {
     size_t size = 0;
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, nullptr, &size)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, nullptr, &size)));
 
     std::vector<int64_t> values(size);
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, values.data(), &size)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, values.data(), &size)));
     out.swap(values);
     return Status::OK();
   }
 
   static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<std::string>& out) {
     OrtAllocator* allocator = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
     size_t size = 0;
     ORT_RETURN_IF_ERROR(
-        ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, nullptr, &size)));
+        ToStatusAndRelease(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, nullptr, &size)));
     if (size == 0) {
       out.clear();
       return Status::OK();
@@ -272,7 +264,8 @@ struct OpKernelInfo {
 
     char** raw_values = nullptr;
     ORT_RETURN_IF_ERROR(
-        ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, &raw_values, &size)));
+        ToStatusAndRelease(
+            Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, &raw_values, &size)));
 
     // The allocator owns both the array and every string in it, so release them on all exit paths: constructing the
     // std::string copies below can throw. Free through the OrtAllocator function pointer rather than
