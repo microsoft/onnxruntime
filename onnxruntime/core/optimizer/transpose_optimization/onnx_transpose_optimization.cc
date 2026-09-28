@@ -3051,9 +3051,12 @@ static int CalculateCost(OptimizerCtx& ctx, const api::NodeRef& node,
     for (auto out : outputs) {
       out_cost = std::max(out_cost, EstimateValueRank(graph, out));
       if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
+        // `nodes` lists only node consumers. A graph output or subgraph input sets `comprehensive` to false
+        // and cannot cancel the permutation, so it blocks the benefit the same way a second branch does.
         auto consumers = graph.GetValueConsumers(out);
-        if (consumers->nodes.size() <= 1 ||
-            HasPathToCancelingTranspose(ctx, out, perm, outputs_leading_to_transpose)) {
+        if (consumers->comprehensive &&
+            (consumers->nodes.size() <= 1 ||
+             HasPathToCancelingTranspose(ctx, out, perm, outputs_leading_to_transpose))) {
           has_output_leading_to_transpose = true;
         }
       }
