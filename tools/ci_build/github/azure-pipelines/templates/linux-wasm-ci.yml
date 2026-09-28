@@ -65,7 +65,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -94,7 +95,8 @@ jobs:
     inputs:
       versionSpec: '22.x'
 
-  - script: python -m pip install flatbuffers
+  - script: |
+      python -m pip install flatbuffers
     displayName: 'Install python dependencies'
 
   - ${{if eq(parameters.WithCache, true)}}:

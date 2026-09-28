@@ -299,6 +299,75 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
   }
 }
 
+TEST(FlatbufferUtilsTest, Float6InitializerOrtFormatRoundTrip) {
+  for (auto type : {ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
+                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2}) {
+    for (int64_t count : {int64_t{4}, int64_t{88}}) {
+      ONNX_NAMESPACE::TensorProto initializer;
+      initializer.set_name("float6");
+      initializer.set_data_type(type);
+      initializer.add_dims(count);
+      for (int64_t i = 0; i < count; ++i) {
+        initializer.add_int32_data(static_cast<int32_t>(i % 32));
+      }
+
+      std::vector<uint8_t> external_data;
+      ExternalDataWriter writer = [&external_data](int32_t, gsl::span<const uint8_t> bytes, uint64_t& offset) {
+        offset = 0;
+        external_data.assign(bytes.begin(), bytes.end());
+        return Status::OK();
+      };
+      flatbuffers::FlatBufferBuilder builder;
+      flatbuffers::Offset<fbs::Tensor> tensor_offset;
+      ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, {}, tensor_offset, writer));
+      builder.Finish(tensor_offset);
+
+      const auto* tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+      if (count == 4) {
+        EXPECT_NE(tensor->raw_data(), nullptr);
+      } else {
+        EXPECT_EQ(tensor->external_data_offset(), 0);
+        EXPECT_EQ(external_data.size(), 66U);
+      }
+
+      ExternalDataReader reader = [&external_data](uint64_t offset, gsl::span<uint8_t> bytes) {
+        ORT_ENFORCE(offset == 0 && bytes.size() == external_data.size());
+        std::copy(external_data.begin(), external_data.end(), bytes.begin());
+        return Status::OK();
+      };
+      ONNX_NAMESPACE::TensorProto loaded;
+      OrtFormatLoadOptions options;
+      ASSERT_STATUS_OK(LoadInitializerOrtFormat(*tensor, loaded, options, reader));
+      std::vector<uint8_t> expected_data, loaded_data;
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(initializer, expected_data));
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(loaded, loaded_data));
+      EXPECT_EQ(expected_data, loaded_data);
+    }
+  }
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsReservedTensorDataTypes) {
+  for (int32_t value = 21; value <= 26; ++value) {
+    flatbuffers::FlatBufferBuilder builder;
+    const auto name = builder.CreateString("reserved_type");
+    const auto dims = builder.CreateVector(std::vector<int64_t>{1});
+    const auto raw_data = builder.CreateVector(std::vector<uint8_t>{0});
+
+    fbs::TensorBuilder tensor_builder(builder);
+    tensor_builder.add_name(name);
+    tensor_builder.add_dims(dims);
+    tensor_builder.add_data_type(static_cast<fbs::TensorDataType>(value));
+    tensor_builder.add_raw_data(raw_data);
+    builder.Finish(tensor_builder.Finish());
+
+    const auto* tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+    ONNX_NAMESPACE::TensorProto initializer;
+    OrtFormatLoadOptions options;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*tensor, initializer, options),
+                                        "Unsupported tensor data type '<unknown>'");
+  }
+}
+
 TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   flatbuffers::FlatBufferBuilder builder(256);
 
@@ -332,6 +401,69 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options),
                                       "Null string data entry for initializer");
 }
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsMismatchedStringDataSize) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{1});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("string_0"),
+      builder.CreateString("string_1"),
+  });
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::STRING);
+  tensor_builder.add_string_data(string_data);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options),
+                                      "Initializer string data size mismatch");
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(FlatbufferUtilsTest, LoadSparseInitializerRejectsStringValues) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("sparse_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{0});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("unexpected"),
+  });
+
+  fbs::TensorBuilder values_builder(builder);
+  values_builder.add_name(name);
+  values_builder.add_dims(dims);
+  values_builder.add_data_type(fbs::TensorDataType::STRING);
+  values_builder.add_string_data(string_data);
+  auto values = values_builder.Finish();
+
+  auto raw_data = builder.CreateVector(std::vector<uint8_t>{});
+  fbs::TensorBuilder indices_builder(builder);
+  indices_builder.add_dims(dims);
+  indices_builder.add_data_type(fbs::TensorDataType::INT64);
+  indices_builder.add_raw_data(raw_data);
+  auto indices = indices_builder.Finish();
+
+  fbs::SparseTensorBuilder sparse_builder(builder);
+  sparse_builder.add_values(values);
+  sparse_builder.add_indices(indices);
+  sparse_builder.add_dims(dims);
+  builder.Finish(sparse_builder.Finish());
+
+  const auto* fbs_sparse_tensor = flatbuffers::GetRoot<fbs::SparseTensor>(builder.GetBufferPointer());
+  ONNX_NAMESPACE::SparseTensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, initializer, options),
+      "Unsupported sparse tensor data type");
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithoutDims) {
   flatbuffers::FlatBufferBuilder builder(256);

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <limits>
 
 #include "core/optimizer/initializer.h"
@@ -372,6 +373,14 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
 }
 
 static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
+  const std::array<NodeIndex, 5> source_node_indices{
+      q_node->Index(),
+      k_node->Index(),
+      v_node->Index(),
+      rotary_node_1->Index(),
+      rotary_node_2->Index(),
+  };
+
   graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
 
   auto target_idx = new_node->Index();
@@ -397,6 +406,7 @@ static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_no
 
   auto& new_node_output_defs = new_node->MutableOutputDefs();
   new_node_output_defs.assign(output_defs.begin(), output_defs.end());
+  graph.NotifyNodeReplacement(source_node_indices, new_node->Index());
 }
 
 Status GroupQueryAttentionFusion::ApplyImpl(

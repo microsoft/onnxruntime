@@ -82,7 +82,7 @@ MlasNeonGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* tem
     for (; i + 7 < count; i += 8) {
         MLAS_FLOAT16X8 x = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(input + i));
         MLAS_FLOAT16X8 t = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(temp + i));
-        MLAS_FLOAT16X8 result = MlasMultiplyFloat16(v_half, MlasMultiplyFloat16(x, MlasAddFloat16(v_one, t)));
+        MLAS_FLOAT16X8 result = MlasMultiplyFloat16(x, MlasMultiplyFloat16(v_half, MlasAddFloat16(v_one, t)));
         MlasStoref16Float16x8(reinterpret_cast<float16_t*>(output + i), result);
     }
 
