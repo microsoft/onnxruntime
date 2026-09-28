@@ -1388,7 +1388,8 @@ Status LaunchPagedLatentAttention(const T* query, const TCACHE* key_cache, const
 template <typename T, typename TCACHE>
 Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParameters& parameters,
                             PagedAttentionData<T, TCACHE>& data, const int max_threads_per_block,
-                            T** query_out) {
+                            T** query_out, T** key_out = nullptr, T** value_out = nullptr,
+                            int* key_stride_out = nullptr, int* value_stride_out = nullptr) {
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
   const int q_hidden_size = parameters.hidden_size;
@@ -1463,6 +1464,12 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   }
 
   *query_out = query;
+  if (key_out != nullptr) {
+    *key_out = key;
+    *value_out = value;
+    *key_stride_out = key_stride;
+    *value_stride_out = value_stride;
+  }
   return Status::OK();
 }
 
@@ -1998,10 +2005,14 @@ Status PreparePagedAttentionQueryAndCache(
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<T, TCACHE>& data,
-    T** query) {
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride) {
   return PrepareQueryAndCache<T, TCACHE>(
       static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
-      device_prop.maxThreadsPerBlock, query);
+      device_prop.maxThreadsPerBlock, query, key, value, key_stride, value_stride);
 }
 
 template <typename T, typename TCACHE>
@@ -2049,7 +2060,8 @@ Status QkvToContext(
   template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
       const cudaDeviceProp& device_prop, Stream* stream,         \
       contrib::PagedAttentionParameters& parameters,             \
-      PagedAttentionData<T, TCACHE>& data, T** query);           \
+      PagedAttentionData<T, TCACHE>& data, T** query, T** key,   \
+      T** value, int* key_stride, int* value_stride);            \
   template Status QkvToContext<T, TCACHE>(                       \
       const cudaDeviceProp& device_prop,                         \
       cublasHandle_t& cublas,                                    \
