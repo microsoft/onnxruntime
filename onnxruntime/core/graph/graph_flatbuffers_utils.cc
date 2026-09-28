@@ -253,7 +253,7 @@ static Status GetElementCountFromFbsTensor(const fbs::Tensor& tensor, size_t& nu
   const auto* tensor_name = tensor.name();
   const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
   const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
-  if (tensor_data_type_str[0] == '\0') {
+  if (tensor_data_type_str == nullptr || tensor_data_type_str[0] == '\0') {
     tensor_data_type_str = "<unknown>";
   }
 
@@ -308,7 +308,7 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
   const auto* tensor_name = tensor.name();
   const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
   const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
-  if (tensor_data_type_str[0] == '\0') {
+  if (tensor_data_type_str == nullptr || tensor_data_type_str[0] == '\0') {
     tensor_data_type_str = "<unknown>";
   }
 
