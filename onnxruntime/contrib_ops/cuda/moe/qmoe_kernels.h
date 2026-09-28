@@ -259,23 +259,46 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
     int k_blocks,
     cudaStream_t stream);
 
-void LaunchQMoEDequantizeFp8Weights(
-    const uint8_t* weights,
-    const float* global_scales,
-    half* output,
+// Keeps the original routing IDs intact. Unused compact_to_expert slots are -1.
+void LaunchQMoECompactExperts(
+    const int* expert_indices,
+    int* compact_indices,
+    int* expert_to_compact,
+    int* compact_to_expert,
     int num_experts,
-    int n,
-    int k,
+    int expert_capacity,
+    int64_t num_routes,
     cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
+    half* output,
+    int num_experts,
+    int n,
+    int k,
+    cudaStream_t stream,
+    int block_size = 0,
+    bool split_fc1 = false,
+    bool block_fused_fc1 = false,
+    const int* compact_to_expert = nullptr,
+    const half* bias = nullptr,
+    half* output_bias = nullptr);
+
+void LaunchQMoEDequantizeFp8Weights(
+    const uint8_t* weights,
+    const float* scales,
     __nv_bfloat16* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int block_size = 0,
+    bool split_fc1 = false,
+    bool block_fused_fc1 = false,
+    const int* compact_to_expert = nullptr,
+    const __nv_bfloat16* bias = nullptr,
+    __nv_bfloat16* output_bias = nullptr);
 
 // NVFP4 weight dequantization: E2M1 4-bit weights with Float8E4M3FN block scales
 // (block size 16) and per-expert float32 global scales. Weight layout [E, K, N/2],

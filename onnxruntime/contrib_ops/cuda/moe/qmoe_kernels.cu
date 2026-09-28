@@ -1490,14 +1490,75 @@ void LaunchQMoEPackFp4ScalesForTmaWs(
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
+__global__ void QMoEMarkActiveExpertsKernel(
+    const int* expert_indices, int* expert_to_compact, int64_t num_routes) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < num_routes) {
+    atomicExch(expert_to_compact + expert_indices[index], 0);
+  }
+}
+
+__global__ void QMoECompactExpertMapKernel(
+    int* expert_to_compact, int* compact_to_expert, int num_experts, int expert_capacity) {
+  // Expert counts are small; a serial prefix preserves ascending expert order deterministically.
+  int slot = 0;
+  for (int expert = 0; expert < num_experts; ++expert) {
+    if (expert_to_compact[expert] == 0) {
+      expert_to_compact[expert] = slot;
+      compact_to_expert[slot++] = expert;
+    }
+  }
+  for (; slot < expert_capacity; ++slot) {
+    compact_to_expert[slot] = -1;
+  }
+}
+
+__global__ void QMoERemapExpertsKernel(
+    const int* expert_indices, int* compact_indices, const int* expert_to_compact, int64_t num_routes) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < num_routes) {
+    compact_indices[index] = expert_to_compact[expert_indices[index]];
+  }
+}
+
+void LaunchQMoECompactExperts(
+    const int* expert_indices,
+    int* compact_indices,
+    int* expert_to_compact,
+    int* compact_to_expert,
+    int num_experts,
+    int expert_capacity,
+    int64_t num_routes,
+    cudaStream_t stream) {
+  ORT_ENFORCE(num_experts > 0 && num_routes > 0 &&
+                  expert_capacity >= std::min<int64_t>(num_experts, num_routes) &&
+                  expert_capacity <= num_experts,
+              "Invalid QMoE compact expert capacity.");
+  CUDA_CALL_THROW(cudaMemsetAsync(expert_to_compact, 0xff, static_cast<size_t>(num_experts) * sizeof(int), stream));
+  constexpr int block = 256;
+  const int grid = onnxruntime::narrow<int>((num_routes - 1) / block + 1);
+  QMoEMarkActiveExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, expert_to_compact, num_routes);
+  CUDA_CALL_THROW(cudaGetLastError());
+  QMoECompactExpertMapKernel<<<1, 1, 0, stream>>>(expert_to_compact, compact_to_expert, num_experts, expert_capacity);
+  CUDA_CALL_THROW(cudaGetLastError());
+  QMoERemapExpertsKernel<<<grid, block, 0, stream>>>(expert_indices, compact_indices, expert_to_compact, num_routes);
+  CUDA_CALL_THROW(cudaGetLastError());
+}
+
 template <typename T>
 __global__ void QMoEDequantizeFp8WeightsKernel(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     T* output,
     int num_experts,
     int n,
-    int k) {
+    int k,
+    int block_size,
+    bool split_fc1,
+    bool block_fused_fc1,
+    const int* compact_to_expert,
+    const T* bias,
+    T* output_bias) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= total) {
@@ -1505,47 +1566,95 @@ __global__ void QMoEDequantizeFp8WeightsKernel(
   }
 
   int64_t expert_stride = static_cast<int64_t>(n) * k;
-  int expert = static_cast<int>(index / expert_stride);
-  float value = DecodeFloat8E4M3FN(weights[index]) * global_scales[expert];
-  output[index] = static_cast<T>(value);
+  const int output_expert = static_cast<int>(index / expert_stride);
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+  int64_t local_index = index % expert_stride;
+  int64_t scale_index = expert;
+  if (block_size > 0) {
+    int scale_n = n / block_size + (n % block_size != 0);
+    int scale_k = k / block_size + (k % block_size != 0);
+    scale_index = (static_cast<int64_t>(expert) * scale_n + local_index / k / block_size) * scale_k +
+                  local_index % k / block_size;
+  }
+  float value = DecodeFloat8E4M3FN(weights[static_cast<int64_t>(expert) * expert_stride + local_index]) *
+                scales[scale_index];
+  // Normalize separate and block-fused gate/up projections to interleaved rows.
+  int64_t output_index = index;
+  if (split_fc1) {
+    output_index = static_cast<int64_t>(output_expert) * 2 * expert_stride + 2 * (local_index / k) * k + local_index % k;
+  } else if (block_fused_fc1) {
+    int64_t row = local_index / k;
+    int64_t output_row = row < n / 2 ? 2 * row : 2 * (row - n / 2) + 1;
+    output_index = static_cast<int64_t>(output_expert) * expert_stride + output_row * k + local_index % k;
+  }
+  output[output_index] = static_cast<T>(value);
+  if (bias && local_index % k == 0) {
+    output_bias[output_index / k] = bias[static_cast<int64_t>(expert) * n + local_index / k];
+  }
 }
 
 template <typename T>
 void LaunchQMoEDequantizeFp8WeightsImpl(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     T* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int block_size,
+    bool split_fc1,
+    bool block_fused_fc1,
+    const int* compact_to_expert,
+    const T* bias,
+    T* output_bias) {
+  ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE FP8 bias gathering requires an output buffer.");
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeFp8WeightsKernel<<<grid, block, 0, stream>>>(
-      weights, global_scales, output, num_experts, n, k);
+      weights, scales, output, num_experts, n, k, block_size, split_fc1, block_fused_fc1,
+      compact_to_expert, bias, output_bias);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     half* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
-  LaunchQMoEDequantizeFp8WeightsImpl(weights, global_scales, output, num_experts, n, k, stream);
+    cudaStream_t stream,
+    int block_size,
+    bool split_fc1,
+    bool block_fused_fc1,
+    const int* compact_to_expert,
+    const half* bias,
+    half* output_bias) {
+  LaunchQMoEDequantizeFp8WeightsImpl(weights, scales, output, num_experts, n, k, stream,
+                                     block_size, split_fc1, block_fused_fc1, compact_to_expert, bias, output_bias);
 }
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
-    const float* global_scales,
+    const float* scales,
     __nv_bfloat16* output,
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
-  LaunchQMoEDequantizeFp8WeightsImpl(weights, global_scales, output, num_experts, n, k, stream);
+    cudaStream_t stream,
+    int block_size,
+    bool split_fc1,
+    bool block_fused_fc1,
+    const int* compact_to_expert,
+    const __nv_bfloat16* bias,
+    __nv_bfloat16* output_bias) {
+  LaunchQMoEDequantizeFp8WeightsImpl(weights, scales, output, num_experts, n, k, stream,
+                                     block_size, split_fc1, block_fused_fc1, compact_to_expert, bias, output_bias);
 }
 
 // NVFP4 dequantization. Identical structure to QMoEDequantizeFp4WeightsKernel (MXFP4) except:

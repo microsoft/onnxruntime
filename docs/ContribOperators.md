@@ -5665,12 +5665,20 @@ This version of the operator has been available since version 1 of the 'com.micr
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
   
-        The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+        For integer quantization, the formula of linear dequantization using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
         When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
   
-        If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+        For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
+
+        For quant_type='fp8', weights are float8e4m3fn tensors stored as [num_experts, N, K].
+        A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
+        [num_experts, ceil(N / block_size), ceil(K / block_size)]:
+          dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]
+        Partial edge blocks are allowed. No zero points or activation scales are used.
+        Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
+        Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
   
         Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
         Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -5708,7 +5716,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation_type</tt> : string</dt>
 <dd>Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
+<dd>For integer quantization, size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). Both hidden_size and inter_size must be divisible by the block size. The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. Without a positive value, FP8 uses per-expert global scales. For integer quantization ('int'), omitting block_size means there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
 <dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>fc1_expert_weight_bits</tt> : int</dt>
@@ -5722,7 +5730,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -5743,19 +5751,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is fc1_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). Not used for quant_type='fp8'.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, hidden_size, inter_size * effective_fc2_bits / 8). The last dimension must be byte-aligned. effective_fc2_bits is fc2_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc2_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). Not used for quant_type='fp8'.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape (num_experts, hidden_size, inter_size / 16). For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape (num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
 <dd>3D optional tensor with shape (num_experts, inter_size, hidden_size * effective_fc3_bits / 8). The last dimension must be byte-aligned. effective_fc3_bits is fc3_expert_weight_bits when provided, otherwise expert_weight_bits.</dd>
 <dt><tt>fc3_scales</tt> (optional) : T2</dt>
-<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, inter_size), or a 3D tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, inter_size), or a 3D tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, inter_size, hidden_size / 32). For quant_type='fp8' and block_size > 0, required when FC3 is present, with floating-point scales shaped (num_experts, ceil(inter_size / block_size), ceil(hidden_size / block_size)).</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, inter_size)</dd>
 <dt><tt>fc1_zero_points</tt> (optional) : T1</dt>
@@ -5767,9 +5775,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>router_weights</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. When not provided, router_probs is used for both selection and aggregation (backward compatible).</dd>
 <dt><tt>fc1_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', or 'fp8' with block_size <= 0. Not used for block-scaled FP8.</dd>
 <dt><tt>fc2_global_scale</tt> (optional) : T4</dt>
-<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8'.</dd>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'nvfp4', or 'wfp4afp8', or 'fp8' with block_size <= 0. Not used for block-scaled FP8.</dd>
 <dt><tt>fc1_act_scale</tt> (optional) : T4</dt>
 <dd>1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.</dd>
 <dt><tt>fc2_act_scale</tt> (optional) : T4</dt>
@@ -5795,7 +5803,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T1</tt> : tensor(uint8), tensor(float8e4m3fn)</dt>
 <dd>Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0), tensor(float8e4m3fn)</dt>
-<dd>Constrain scale types. Float tensors are used for integer quantization scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
+<dd>Constrain scale types. Float tensors are used for integer quantization and FP8 square-block scales. Float8e8m0 tensors are used for MXFP4 block scales; float8e4m3fn tensors are used for NVFP4 block scales.</dd>
 <dt><tt>T4</tt> : tensor(float)</dt>
 <dd>Constrain FP4 global scale type to float32 tensors.</dd>
 </dl>
