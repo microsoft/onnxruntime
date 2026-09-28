@@ -1530,12 +1530,12 @@ void RunVarlenNGramHashMappingStateUpdateEosFillTest() {
 
   OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
   test.AddAttribute<int64_t>("max_ngram_size", state_length + 1);
-  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
   test.AddAttribute<int64_t>("pad_id", kPadId);
   test.AddAttribute<int64_t>("state_update_capacity", 2);
   test.AddInput<T>("input_ids", {2}, {10, 11});
   test.AddInput<T>("multipliers", {3}, {11, 13, 17});
-  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
   test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 2});
   test.AddOptionalInputEdge<T>();
   test.AddOptionalInputEdge<T>();
@@ -1543,8 +1543,9 @@ void RunVarlenNGramHashMappingStateUpdateEosFillTest() {
   test.AddOptionalInputEdge<int32_t>();
   test.AddOptionalInputEdge<int32_t>();
   test.AddInput<int32_t>("capture_count", {1}, {2});
-  test.AddOutput<T>("hash_ids", {2, 2},
-                    VarlenNGramHashMappingReference<T>({{10, 11}}, {}, {11, 13, 17}, {101, 103}, eos_id));
+  test.AddOutput<T>("hash_ids", {2, 4},
+                    VarlenNGramHashMappingReference<T>({{10, 11}}, {}, {11, 13, 17},
+                                                       {101, 103, 107, 109}, eos_id));
   test.AddOptionalOutputEdge<T>();
   test.AddOptionalOutputEdge<int32_t>();
   test.AddOutput<T>("state_update", {1, 2, state_length},
