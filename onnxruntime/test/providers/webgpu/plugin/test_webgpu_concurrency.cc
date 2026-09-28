@@ -109,11 +109,13 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
   auto cpu_input = Ort::Value::CreateTensor<float>(
       cpu_memory_info, input_data.data(), input_data.size(), kShape.data(), kShape.size());
   auto gpu_tensor = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
 
   ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
-  ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
+  ThrowOnError(ort_env->CopyTensor(gpu_tensor, gpu_copy, nullptr));
+  ThrowOnError(ort_env->CopyTensor(gpu_copy, cpu_output, nullptr));
   if (output_data != input_data) {
     throw std::runtime_error("CopyTensor round trip returned incorrect data");
   }
@@ -722,6 +724,17 @@ TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
     }
   });
 
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionRunsAreSerialized) {
+  auto session = CreateSession();
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      RunWithCpuInputAndOutput(*session, static_cast<float>(thread_id * kIterations + iteration + 1));
+    }
+  });
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 

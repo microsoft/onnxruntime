@@ -25,7 +25,7 @@ namespace ep {
 // | Internal use   | Not used for EP kernel scratch                     | Run input/intermediate/output and scratch   |
 // | Buffer manager | Context-shared BufferManager                       | Context-shared BufferManager                |
 // | Capture route  | Still context-shared default                       | Session-owned per-graph manager during Run  |
-// | Recording      | Getter retains independent state                   | Getter borrows the owning EP's Recording()  |
+// | Recording      | Per-call encoder; no Session recording             | AllocOnStream/Free borrow EP Recording()    |
 // | Lifetime       | Getter retains Context; no Session                 | EP must outlive allocator use/tensor frees  |
 // | Alloc          | Submit cached clear before return                  | Submit cached clear, even during Run        |
 // | AllocOnStream  | Not exposed by the C API wrapper                   | Matching Session stream: defer cached clear |
