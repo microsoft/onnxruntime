@@ -69,7 +69,7 @@ def select_exports(host: Symbols, module: Symbols) -> dict[str, bool]:
 
 def write_exports(path: Path, exports: dict[str, bool]) -> None:
     lines = ["EXPORTS"]
-    lines.extend(f'  "{name}"' + (" DATA" if exports[name] else "") for name in sorted(exports))
+    lines.extend(f"  {name}" + (" DATA" if exports[name] else "") for name in sorted(exports))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

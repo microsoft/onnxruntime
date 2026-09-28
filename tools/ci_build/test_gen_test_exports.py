@@ -108,7 +108,7 @@ Archive member name at 34: helpers.obj
             write_exports(output, {"?Run@Session@@QEAAHXZ": False, "?Data@@3HA": True})
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
-                'EXPORTS\n  "?Data@@3HA" DATA\n  "?Run@Session@@QEAAHXZ"\n',
+                "EXPORTS\n  ?Data@@3HA DATA\n  ?Run@Session@@QEAAHXZ\n",
             )
 
     def test_force_includes_preserve_function_and_data_names(self):
@@ -152,6 +152,7 @@ add_library(test_objects OBJECT module.cc)
 add_executable(provider_test_executable main.cc)
 set_target_properties(provider_test_executable PROPERTIES OUTPUT_NAME provider_test)
 target_link_libraries(provider_test_executable PRIVATE runtime)
+target_link_options(provider_test_executable PRIVATE /VERBOSE:LIB)
 onnxruntime_export_test_symbols(provider_test_executable OBJECT_TARGET test_objects HOST_LIBS runtime)
 add_library(test_module MODULE $<TARGET_OBJECTS:test_objects>)
 target_link_libraries(test_module PRIVATE provider_test_executable)
@@ -166,11 +167,19 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
                 timeout=120,
             )
             command = ["cmake", "--build", str(build), "--config", "Release", "--target", "provider_test", "--parallel"]
-            subprocess.run(command, check=True, timeout=240)
             output_dir = build / "Release"
+            definition = build / "provider_test_executable_exports/Release/exports.def"
+            linker = (build / "linker.txt").read_text(encoding="utf-8")
+            result = subprocess.run(command, check=False, timeout=240)
+            if result.returncode:
+                if definition.is_file():
+                    print(definition.read_text(encoding="utf-8"), flush=True)
+                export_object = output_dir / "provider_test.exp"
+                if export_object.is_file():
+                    subprocess.run([linker, "/dump", "/nologo", "/symbols", str(export_object)], check=True, timeout=30)
+                result.check_returncode()
             for artifact in ("provider_test.exe", "provider_test.lib", "test_module.dll"):
                 self.assertTrue((output_dir / artifact).is_file(), artifact)
-            definition = build / "provider_test_executable_exports/Release/exports.def"
             force_includes = definition.with_name("force_include.cc")
             self.assertEqual(
                 force_includes.read_text(encoding="utf-8"),
@@ -180,10 +189,9 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
                 definition.read_text(encoding="utf-8").splitlines(),
                 [
                     "EXPORTS",
-                    '  "?required@test_runtime@@YAHH@Z"',
+                    "  ?required@test_runtime@@YAHH@Z",
                 ],
             )
-            linker = (build / "linker.txt").read_text(encoding="utf-8")
             imports = subprocess.check_output(
                 [linker, "/dump", "/nologo", "/imports", str(output_dir / "test_module.dll")],
                 text=True,
