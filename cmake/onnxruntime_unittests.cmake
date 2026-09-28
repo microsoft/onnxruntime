@@ -1490,15 +1490,11 @@ block()
   # without this the module fails to load with an undefined-symbol error.
   set_target_properties(${onnxruntime_provider_test_target} PROPERTIES ENABLE_EXPORTS 1)
 
-  # On Windows, ENABLE_EXPORTS makes CMake emit an import library (onnxruntime_provider_test.lib)
-  # for the exported symbols, but a MODULE library (onnxruntime_providers_cuda_ut, built via
-  # onnxruntime_add_shared_library_module) cannot have unresolved externals at *link* time the way
-  # a dlopen'd .so can on Linux. Since tests compiled into onnxruntime_providers_cuda_ut (e.g. the
-  # MatMulNBits end-to-end workspace test) call into InferenceSession symbols owned by this
-  # executable, link the module against that import library so those symbols resolve at link time.
-  # On Linux the runtime -rdynamic export path (above) is sufficient, so this is Windows-only.
-  # Note: onnxruntime_providers_cuda_ut only exists in the non-plugin CUDA-EP-internal-tests path.
+  # A Windows executable needs explicitly exported symbols before CMake can produce its import
+  # library. Export the symbols from its objects and linked static libraries, then link the CUDA
+  # test module against that import library. Linux uses the runtime -rdynamic export path above.
   if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
+    set_target_properties(${onnxruntime_provider_test_target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS 1)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE ${onnxruntime_provider_test_target})
   endif()
 
