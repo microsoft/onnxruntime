@@ -2479,7 +2479,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
   const bool has_state_update_output =
       ctx.getNumOutputs() > static_cast<size_t>(psai::kStateUpdate) && ctx.getOutputType(psai::kStateUpdate) != nullptr;
-  if (!is_qsa && (ctx.getAttribute("state_update_capacity") != nullptr || has_capture_count ||
+  if (!is_qsa && (state_update_capacity > 0 || has_capture_count ||
                   has_state_update_active || has_state_update_output)) {
     fail_shape_inference("PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
   }
