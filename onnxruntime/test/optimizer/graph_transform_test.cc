@@ -1768,6 +1768,25 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingSkipsOverflowingConstantOfShape) {
+  auto build_model = [](ModelTestBuilder& builder) {
+    auto* shape = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), 2});
+    builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
 // Verify that ConstantOfShape output size is estimated directly from the input shape
 // initializer (and not just from shape inference) so that excessive constant-folded
 // allocations are blocked before kernel execution. The 'value' attribute uses int64
