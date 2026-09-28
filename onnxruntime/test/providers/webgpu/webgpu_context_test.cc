@@ -681,14 +681,19 @@ TEST(WebGpuContextTest, RequiredPipelinedRejectsNonPipelinedExistingContext) {
             std::string::npos);
 }
 
-TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
+TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorsAcrossFilesAndRanges) {
   TemporaryDirectory temp_dir{
       ORT_TSTR("webgpu_direct_storage_external_tensor_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const auto other_data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("other_weights.bin");
   constexpr size_t kDataOffset = 32;
+  constexpr size_t kSeparatedDataOffset = 128;
   const std::array<uint32_t, 15> expected{
       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
+  const std::array<uint32_t, 4> separated_expected{101, 102, 103, 104};
+  const std::array<uint32_t, 3> other_expected{201, 202, 203};
   {
     std::ofstream stream{data_path,
                          std::ios::binary | std::ios::trunc};
@@ -697,6 +702,19 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
     stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
     stream.write(reinterpret_cast<const char*>(expected.data()),
                  static_cast<std::streamsize>(sizeof(expected)));
+    stream.seekp(kSeparatedDataOffset);
+    stream.write(reinterpret_cast<const char*>(separated_expected.data()),
+                 static_cast<std::streamsize>(sizeof(separated_expected)));
+    ASSERT_TRUE(stream.good());
+  }
+  {
+    std::ofstream stream{other_data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    const std::array<char, kDataOffset> prefix{};
+    stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    stream.write(reinterpret_cast<const char*>(other_expected.data()),
+                 static_cast<std::streamsize>(sizeof(other_expected)));
     ASSERT_TRUE(stream.good());
   }
 
@@ -724,14 +742,28 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
   ASSERT_STATUS_OK(loader->PreloadTensor(
       Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
   ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "empty", kDataOffset + sizeof(expected), 0));
+      Env::Default(), data_path, "separated", kSeparatedDataOffset,
+      sizeof(separated_expected)));
+  ASSERT_STATUS_OK(loader->PreloadTensor(
+      Env::Default(), other_data_path, "other_weights", kDataOffset,
+      sizeof(other_expected)));
+  ASSERT_STATUS_OK(loader->PreloadTensor(
+      Env::Default(), data_path, "empty",
+      kSeparatedDataOffset + sizeof(separated_expected), 0));
   ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
 
   ASSERT_STATUS_OK(loader->BeginLoad());
   ASSERT_STATUS_OK(loader->PrepareTensor(
       Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
   ASSERT_STATUS_OK(loader->PrepareTensor(
-      Env::Default(), data_path, "empty", kDataOffset + sizeof(expected), 0));
+      Env::Default(), data_path, "separated", kSeparatedDataOffset,
+      sizeof(separated_expected)));
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), other_data_path, "other_weights", kDataOffset,
+      sizeof(other_expected)));
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "empty",
+      kSeparatedDataOffset + sizeof(separated_expected), 0));
   ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
 
   Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({15}),
@@ -744,11 +776,32 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
                 reinterpret_cast<WGPUBuffer>(weights.MutableDataRaw())),
             expected);
 
+  Tensor separated_weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({4}),
+                           nullptr, allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), data_path, "separated", kSeparatedDataOffset,
+      sizeof(separated_expected), allocator, separated_weights));
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<4>(
+                webgpu::WebGpuContextFactory::GetContext(0),
+                reinterpret_cast<WGPUBuffer>(
+                    separated_weights.MutableDataRaw())),
+            separated_expected);
+
+  Tensor other_weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({3}),
+                       nullptr, allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), other_data_path, "other_weights", kDataOffset,
+      sizeof(other_expected), allocator, other_weights));
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(
+                webgpu::WebGpuContextFactory::GetContext(0),
+                reinterpret_cast<WGPUBuffer>(other_weights.MutableDataRaw())),
+            other_expected);
+
   Tensor empty{DataTypeImpl::GetType<uint32_t>(), TensorShape({0}), nullptr,
                allocator};
   ASSERT_STATUS_OK(loader->LoadTensor(
-      Env::Default(), data_path, "empty", kDataOffset + sizeof(expected), 0,
-      allocator, empty));
+      Env::Default(), data_path, "empty",
+      kSeparatedDataOffset + sizeof(separated_expected), 0, allocator, empty));
   EXPECT_EQ(empty.SizeInBytes(), 0u);
   EXPECT_EQ(empty.MutableDataRaw(), nullptr);
 }

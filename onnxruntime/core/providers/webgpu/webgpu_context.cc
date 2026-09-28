@@ -123,7 +123,9 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
   }
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  if (!IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode)) {
+  if (!IsWeightLoadAccelerationPipelined(
+          config.weight_load_acceleration_mode) ||
+      !pipelined_weight_loading_) {
     WaitForInitializeComplete();
   }
 #else
@@ -445,7 +447,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
     SignalStartInitializeComplete();
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-    if (IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_)) {
+    if (pipelined_weight_loading_) {
       std::unique_lock<std::mutex> lock{initialize_mutex_};
       initialize_condition_.wait(lock, [this]() { return continue_initialize_; });
     }
