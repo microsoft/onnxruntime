@@ -77,7 +77,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
           cutlass::platform::is_same<ActivationType, __nv_bfloat16>::value || cutlass::platform::is_same<ActivationType, half>::value || cutlass::platform::is_same<ActivationType, float>::value,
       "Specialized for bfloat16, half, float");
 
-  static_assert(cutlass::platform::is_same<ActivationType, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value,
+  static_assert(cutlass::platform::is_same<ActivationType, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint2b_t>::value,
                 "");
 
   // The cutlass type for the input elements. This is needed to convert to cutlass::half_t if necessary.
@@ -407,7 +407,8 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     if constexpr ((cutlass::platform::is_same<ActivationType, half>::value ||
                    cutlass::platform::is_same<ActivationType, __nv_bfloat16>::value) &&
                   (cutlass::platform::is_same<WeightType, uint8_t>::value ||
-                   cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value) &&
+                   cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value ||
+                   cutlass::platform::is_same<WeightType, cutlass::uint2b_t>::value) &&
                   cutlass::platform::is_same<ActivationType, ScaleZeroType>::value &&
                   cutlass::platform::is_same<ActivationType, BiasType>::value &&
                   cutlass::platform::is_same<ActivationType, OutputType>::value) {
@@ -416,15 +417,19 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
       //     consumes the SM80 column-interleaved weight layout).
       //   - use_sm90_native_ == true: the native SM90 TMA/WGMMA mixed-GEMM kernel, which consumes
       //     the Hopper weight layout (prepacked with arch=90, no column interleave).
-      if (use_sm90_native_) {
-        sm90_dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
-                                      EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size, workspace_ptr,
-                                                   workspace_bytes, gemm_config, stream, occupancy);
-      } else {
-        dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
-                                 QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
-                                                       workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
+      // 2-bit weights have no native Hopper collective, so they always take the compat path.
+      constexpr bool kHasSm90Native = !cutlass::platform::is_same<WeightType, cutlass::uint2b_t>::value;
+      if constexpr (kHasSm90Native) {
+        if (use_sm90_native_) {
+          sm90_dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
+                                        EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size, workspace_ptr,
+                                                     workspace_bytes, gemm_config, stream, occupancy);
+          return;
+        }
       }
+      dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
+                               QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
+                                                     workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
     } else {
       static_assert(!cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value || cutlass::platform::is_same<ScaleZeroType, half>::value,
                     "ScaleZeroType must be half for activation=fp8");

@@ -27,8 +27,24 @@ const OrtDevice OpKernel::GetDevice(OrtMemType mem_type) const {
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_ Stream* stream,
-                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
-    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger), stream_(stream) {
+                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger
+#if !defined(ORT_MINIMAL_BUILD)
+                                 ,
+                                 _In_opt_ const RunInstrumentationContext* run_instrumentation_context)
+#else
+                                 )
+#endif
+    : execution_frame_(frame),
+      kernel_(kernel),
+      threadpool_(threadpool),
+      logger_(&logger),
+      stream_(stream)
+#if !defined(ORT_MINIMAL_BUILD)
+      ,
+      run_instrumentation_context_(run_instrumentation_context) {
+#else
+{
+#endif
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
@@ -185,6 +201,19 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
 
   auto output_arg_index = GetOutputArgIndex(index);
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
+}
+
+OrtValue* OpKernelContext::GetPreallocatedOutputMLValue(int index) const {
+  if (index < 0 || index >= OutputCount()) {
+    return nullptr;
+  }
+
+  OrtValue* output = execution_frame_->GetMutableNodeInputOrOutputMLValue(GetOutputArgIndex(index));
+  if (output == nullptr || !output->IsAllocated()) {
+    return nullptr;
+  }
+
+  return output;
 }
 
 AllocatorPtr OpKernelContext::GetAllocator(const OrtDevice& device) const {
