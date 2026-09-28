@@ -19,6 +19,7 @@ class VarlenNGramHashMapping final : public onnxruntime::cuda::CudaKernel {
  private:
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
+  int64_t state_update_capacity_;
   T pad_id_;
   bool reset_on_eos_;
 };

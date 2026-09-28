@@ -1171,6 +1171,92 @@ void RunVarlenNGramHashMappingChunkedTest() {
             present_after_decode3);
 }
 
+template <typename T>
+void RunVarlenNGramHashMappingStateUpdateTest() {
+  constexpr int64_t state_length = 2;
+  constexpr int64_t capacity = 3;
+  const std::vector<T> input_ids{10, 11, 12, 13, 20, 21};
+  const std::vector<T> past_ids{1, 2, 3, 4};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", state_length + 1);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", capacity);
+  test.AddInput<T>("input_ids", {6}, input_ids);
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 4, 6});
+  test.AddInput<T>("past_ids", {2, state_length}, past_ids);
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {2}, {2, 3});
+  test.AddOutput<T>("hash_ids", {6, 4},
+                    VarlenNGramHashMappingReference<T>({{10, 11, 12, 13}, {20, 21}},
+                                                       {{1, 2}, {3, 4}}, {11, 13, 17},
+                                                       {101, 103, 107, 109}));
+  test.AddOptionalOutputEdge<T>();
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<T>("state_update", {2, capacity, state_length},
+                    {2, 10, 10, 11, kPadId, kPadId,
+                     4, 20, 20, 21, kPadId, kPadId});
+  test.Run();
+}
+
+void RunVarlenNGramHashMappingCaptureCountShapeTest() {
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", 1);
+  test.AddInput<int64_t>("input_ids", {2}, {10, 20});
+  test.AddInput<int64_t>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<int64_t>("vocab_sizes", {2}, {101, 103});
+  test.AddInput<int32_t>("cumulative_sequence_length", {3}, {0, 1, 2});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {1}, {1});
+  test.AddOutput<int64_t>("hash_ids", {2, 2}, std::vector<int64_t>(4));
+  test.AddOptionalOutputEdge<int64_t>();
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<int64_t>("state_update", {2, 1, 2}, std::vector<int64_t>(4));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "capture_count must have shape (batch_size)");
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingStateUpdateEosFillTest() {
+  constexpr int64_t state_length = 2;
+  constexpr int64_t eos_id = 99;
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", state_length + 1);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("state_update_capacity", 2);
+  test.AddInput<T>("input_ids", {2}, {10, 11});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 2});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {static_cast<T>(eos_id)});
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<int32_t>("capture_count", {1}, {2});
+  test.AddOutput<T>("hash_ids", {2, 2},
+                    VarlenNGramHashMappingReference<T>({{10, 11}}, {}, {11, 13, 17}, {101, 103}, eos_id));
+  test.AddOptionalOutputEdge<T>();
+  test.AddOptionalOutputEdge<int32_t>();
+  test.AddOutput<T>("state_update", {1, 2, state_length},
+                    {static_cast<T>(eos_id), 10, 10, 11});
+  test.Run();
+}
+
 // cumulative_sequence_length content (values, not just shape) is validated on the host only for
 // the CPU EP, so malformed content there surfaces as an OpTester failure with a specific message.
 // GPU EPs cannot afford a host round-trip to validate device-resident cu_seqlens content on every
@@ -1456,6 +1542,26 @@ TEST(EngramOpsTest, VarlenNGramHashMappingChunkedMatchesFullSequenceInt64) {
 // past_ids/present_ids shaders any execution coverage at all.
 TEST(EngramOpsTest, VarlenNGramHashMappingChunkedMatchesFullSequenceInt32) {
   RunVarlenNGramHashMappingChunkedTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateInt64) {
+  RunVarlenNGramHashMappingStateUpdateTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateInt32) {
+  RunVarlenNGramHashMappingStateUpdateTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateEosFillInt64) {
+  RunVarlenNGramHashMappingStateUpdateEosFillTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingStateUpdateEosFillInt32) {
+  RunVarlenNGramHashMappingStateUpdateEosFillTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsInvalidCaptureCountShape) {
+  RunVarlenNGramHashMappingCaptureCountShapeTest();
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingNegativeIdsInt64) {
