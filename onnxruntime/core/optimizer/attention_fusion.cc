@@ -142,9 +142,10 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  try {
+  ORT_TRY {
     hidden_size = SafeInt<int64_t>(num_heads) * head_size;
-  } catch (const OnnxRuntimeException&) {
+  }
+  ORT_CATCH(const OnnxRuntimeException&) {
     return false;
   }
 
