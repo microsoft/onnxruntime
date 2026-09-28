@@ -549,7 +549,10 @@ export declare namespace InferenceSession {
      * The adapters must be created by the same backend as the session. Parameters of different adapters that are
      * active at the same time must not overlap.
      *
-     * This setting is available only in WebAssembly backend.
+     * This setting is available only in WebAssembly backend. It is not supported yet in proxy mode
+     * (`env.wasm.proxy`), or for a session that uses IO binding. IO binding is used when an output is preferred to be
+     * on GPU (see `SessionOptions.preferredOutputLocation`), when graph capture is enabled, and in some cases with the
+     * WebNN execution provider.
      */
     activeLoraAdapters?: readonly LoraAdapter[];
   }

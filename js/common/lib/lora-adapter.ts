@@ -11,7 +11,8 @@ import { LoraAdapter as LoraAdapterImpl } from './lora-adapter-impl.js';
  * An adapter is independent of any inference session. It can be activated for a single run by passing it in
  * `InferenceSession.RunOptions.activeLoraAdapters`.
  *
- * This feature is available only in WebAssembly backend.
+ * This feature is available only in WebAssembly backend, and is not supported yet in proxy mode (`env.wasm.proxy`).
+ * See `InferenceSession.RunOptions.activeLoraAdapters` for other limitations.
  */
 export interface LoraAdapter {
   /**

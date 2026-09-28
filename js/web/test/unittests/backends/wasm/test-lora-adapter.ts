@@ -36,6 +36,21 @@ const ONNX_ADAPTER_TWO_PARAMS_LORA = Uint8Array.from([
   97, 95, 112, 97, 114, 97, 109, 95, 97, 0, 0, 0, 0,
 ]);
 
+// The adapter above split into two adapters, one with only "lora_param_a" and one with only "lora_param_b". Generated
+// in the same way as create_adapter() in two_params_lora_model.py.
+const ONNX_ADAPTER_TWO_PARAMS_LORA_PARAM_A = Uint8Array.from([
+  12, 0, 0, 0, 84, 79, 82, 84, 0, 0, 0, 0, 228, 255, 255, 255, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0,
+  0, 16, 0, 0, 0, 12, 0, 20, 0, 4, 0, 8, 0, 12, 0, 16, 0, 12, 0, 0, 0, 60, 0, 0, 0, 32, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0,
+  16, 0, 0, 0, 0, 0, 64, 64, 0, 0, 128, 64, 0, 0, 160, 64, 0, 0, 192, 64, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 108, 111, 114, 97, 95, 112, 97, 114, 97, 109, 95, 97, 0, 0, 0, 0,
+]);
+const ONNX_ADAPTER_TWO_PARAMS_LORA_PARAM_B = Uint8Array.from([
+  12, 0, 0, 0, 84, 79, 82, 84, 0, 0, 0, 0, 228, 255, 255, 255, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0,
+  0, 16, 0, 0, 0, 12, 0, 20, 0, 4, 0, 8, 0, 12, 0, 16, 0, 12, 0, 0, 0, 60, 0, 0, 0, 32, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0,
+  16, 0, 0, 0, 0, 0, 224, 64, 0, 0, 0, 65, 0, 0, 16, 65, 0, 0, 32, 65, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 108, 111, 114, 97, 95, 112, 97, 114, 97, 109, 95, 98, 0, 0, 0, 0,
+]);
+
 // Expected value of each output row when "input_x" is all ones. See two_params_lora_model.py.
 const EXPECTED_OUTPUT_ROW_BASE = [28, 32, 36, 40];
 const EXPECTED_OUTPUT_ROW_WITH_ADAPTER = [154, 176, 198, 220];
@@ -118,6 +133,25 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
         expectOutput(await session.run(createFeeds()), EXPECTED_OUTPUT_ROW_BASE);
       } finally {
         await adapter.release();
+      }
+    });
+
+    it('run with multiple LoRA adapters', async () => {
+      const adapterA = await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA_PARAM_A);
+      const adapterB = await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA_PARAM_B);
+      try {
+        // each adapter provides one of the two parameters, so together they give the same result as the full adapter.
+        expectOutput(
+          await session.run(createFeeds(), { activeLoraAdapters: [adapterA, adapterB] }),
+          EXPECTED_OUTPUT_ROW_WITH_ADAPTER,
+        );
+        expectOutput(
+          await session.run(createFeeds(), { activeLoraAdapters: [adapterB, adapterA] }),
+          EXPECTED_OUTPUT_ROW_WITH_ADAPTER,
+        );
+      } finally {
+        await adapterA.release();
+        await adapterB.release();
       }
     });
 
