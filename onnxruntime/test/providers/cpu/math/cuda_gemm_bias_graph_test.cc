@@ -248,10 +248,10 @@ TEST_F(CudaGemmBiasSessionTest, GraphReplayAfterLargerSession) {
   auto other = CreateSession(other_stream.stream, false);
   auto allocator = CreateAllocator(captured);
   ASSERT_NE(allocator, nullptr);
-  GemmBiasBinding small(captured, allocator, capture_stream.stream, 17, 19);
+  GemmBiasBinding small_binding(captured, allocator, capture_stream.stream, 17, 19);
   GemmBiasBinding medium(captured, allocator, capture_stream.stream, 65, 67);
   for (int iteration = 0; iteration < 4; ++iteration) {
-    small.RunAndVerify(capture_stream.stream, "1", static_cast<float>(iteration));
+    small_binding.RunAndVerify(capture_stream.stream, "1", static_cast<float>(iteration));
   }
   for (int iteration = 0; iteration < 4; ++iteration) {
     medium.RunAndVerify(capture_stream.stream, "2", static_cast<float>(iteration));
@@ -259,9 +259,9 @@ TEST_F(CudaGemmBiasSessionTest, GraphReplayAfterLargerSession) {
   GemmBiasBinding large(other, allocator, other_stream.stream, 2049, 2051);
   large.RunAndVerify(other_stream.stream, "-1", 7.0f);
   // Old captures must neither reference freed shared ones buffers nor depend on another stream's initialization.
-  small.RunAndVerify(capture_stream.stream, "1", 5.0f);
+  small_binding.RunAndVerify(capture_stream.stream, "1", 5.0f);
   medium.RunAndVerify(capture_stream.stream, "2", 6.0f);
-  small.RunAndVerify(capture_stream.stream, "1", -1.0f);
+  small_binding.RunAndVerify(capture_stream.stream, "1", -1.0f);
 
   std::promise<void> start;
   auto ready = start.get_future();
@@ -276,11 +276,11 @@ TEST_F(CudaGemmBiasSessionTest, GraphReplayAfterLargerSession) {
   start.set_value();
   // CUDA graph caches are per-thread: replay on the capturing thread while the other session grows.
   do {
-    small.RunAndVerify(capture_stream.stream, "1", 2.0f);
+    small_binding.RunAndVerify(capture_stream.stream, "1", 2.0f);
     medium.RunAndVerify(capture_stream.stream, "2", -2.0f);
   } while (grow.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready);
   EXPECT_NO_THROW(grow.get());
-  small.RunAndVerify(capture_stream.stream, "1", 4.0f);
+  small_binding.RunAndVerify(capture_stream.stream, "1", 4.0f);
 }
 
 }  // namespace

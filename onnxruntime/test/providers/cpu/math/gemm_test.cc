@@ -36,12 +36,13 @@ auto initialize_matrix = [](int64_t rows, int64_t cols) {
 };
 
 enum class BiasType {
-  noBias,      // No bias input
-  MBias,       // C shape is {M,1}
-  ScalarBias,  // C shape is {1,1}
-  MNBias,      // C shape is {M,N}
-  NBias,       // C shape is {N}
-  NBias2D      // C shape is {1,N}
+  noBias,          // No bias input
+  MBias,           // C shape is {M,1}
+  ScalarBias,      // C shape is {1,1}
+  MNBias,          // C shape is {M,N}
+  NBias,           // C shape is {N}
+  NBias2D,         // C shape is {1,N}
+  Rank0ScalarBias  // C shape is {}
 };
 // Helper function to initialize bias data for Gemm tests
 auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
@@ -59,6 +60,10 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
       break;
     case BiasType::ScalarBias:
       shape = {1, 1};
+      data.push_back(1.0f);
+      break;
+    case BiasType::Rank0ScalarBias:
+      shape = {};
       data.push_back(1.0f);
       break;
     case BiasType::MNBias:
@@ -88,6 +93,7 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
     case BiasType::MBias:
       return bias_data[i];
     case BiasType::ScalarBias:
+    case BiasType::Rank0ScalarBias:
       return bias_data[0];
     case BiasType::MNBias:
       return bias_data[i * N + j];
@@ -179,6 +185,15 @@ TYPED_TEST(CudaGemmBiasBroadcastTest, ZeroKAndEmptyOutput) {
     }
     RunCudaGemmBiasBroadcast<TypeParam>(0, 5, 4, bias_type, false, false, 0.5f, -2.0f);
     RunCudaGemmBiasBroadcast<TypeParam>(3, 0, 4, bias_type, false, false, 0.5f, -2.0f);
+  }
+}
+
+TYPED_TEST(CudaGemmBiasBroadcastTest, Rank0ScalarBias) {
+  for (int64_t k : {4, 0}) {
+    for (float beta : {-2.0f, 0.5f, 1.0f}) {
+      RunCudaGemmBiasBroadcast<TypeParam>(3, 5, k, BiasType::Rank0ScalarBias,
+                                          false, false, 0.5f, beta);
+    }
   }
 }
 
