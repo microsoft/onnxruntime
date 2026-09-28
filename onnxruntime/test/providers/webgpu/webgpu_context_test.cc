@@ -198,7 +198,7 @@ void TestCopyAfterDeferredDispatch(bool upload) {
   dispatch.compute_pipeline = pipeline;
   dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_desc);
   recording.deferred_dispatches.push_back(std::move(dispatch));
-  recording.has_unsubmitted_work = true;
+  buffer_manager.BeginRecording(recording);
 
   if (upload) {
     // The dispatch must consume the original input before Upload overwrites it.
@@ -223,6 +223,71 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
 
 TEST(WebGpuContextTest, MemCpyFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(false);
+}
+
+TEST(WebGpuContextTest, BufferReuseFollowsCachePolicyAndRecordingSubmission) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+
+  for (auto mode : {webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::LazyRelease,
+                    webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Simple,
+                    webgpu::BufferCacheMode::Graph, webgpu::BufferCacheMode::GraphSimple}) {
+    SCOPED_TRACE(static_cast<int>(mode));
+    webgpu::BufferManager manager(context, mode, webgpu::BufferCacheMode::Disabled,
+                                  webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled);
+    webgpu::CommandRecordingState first;
+    webgpu::CommandRecordingState second;
+    auto buffer = manager.Create(first, 64, usage);
+    wgpu::Buffer retained{buffer};
+    manager.GetCommandEncoder(first).ClearBuffer(buffer, 0, 64);
+    manager.Release(buffer, &first);
+
+    auto other_buffer = manager.Create(second, 64, usage);
+    EXPECT_NE(other_buffer, buffer);
+    manager.GetCommandEncoder(second).ClearBuffer(other_buffer, 0, 64);
+    ASSERT_STATUS_OK(context.Flush(manager, second));
+    // A submission on another recording cannot make the first buffer reusable.
+    auto after_other_submission = manager.Create(second, 64, usage);
+    EXPECT_NE(after_other_submission, buffer);
+
+    ASSERT_STATUS_OK(context.Flush(manager, first));
+    auto reused = manager.Create(second, 64, usage);
+    if (mode == webgpu::BufferCacheMode::Disabled || mode == webgpu::BufferCacheMode::LazyRelease) {
+      EXPECT_NE(reused, buffer);
+    } else {
+      EXPECT_EQ(reused, buffer);
+    }
+    manager.Release(reused);
+    manager.Release(other_buffer);
+    manager.Release(after_other_submission);
+  }
+}
+
+TEST(WebGpuContextTest, AbandonedRecordingDoesNotReturnBuffersToPool) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto buffer = manager.Create(recording, 64, usage);
+  // Keep the handle alive so a new device allocation cannot reuse its address.
+  wgpu::Buffer retained{buffer};
+  manager.GetCommandEncoder(recording).ClearBuffer(buffer, 0, 64);
+  manager.Release(buffer, &recording);
+  recording.command_encoder = nullptr;
+  manager.DiscardPendingBuffers(recording);
+
+  // Reuse the recording's address after abandoning its previous commands.
+  manager.GetCommandEncoder(recording);
+  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  auto replacement = manager.Create(recording, 64, usage);
+  EXPECT_NE(replacement, buffer);
+  manager.Release(replacement);
 }
 
 TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {

@@ -470,7 +470,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
 
   // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -775,10 +774,10 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   command.bind_group = CreateBindGroup(bind_buffers, bind_buffers_segments,
                                        *bind_group_layout, program.Name());
   command.pending_build = std::move(pending_build);
-  recording.has_unsubmitted_work = true;
+  buffer_mgr.BeginRecording(recording);
   if (uniform_buffer) {
     // The bind group owns a reference now, so return the allocator's reference immediately.
-    buffer_mgr.Release(recording, uniform_buffer);
+    buffer_mgr.Release(uniform_buffer, &recording);
   }
   command.dispatch_group = {x, y, z};
   if (program.IndirectDispatchTensor() != nullptr) {
@@ -1120,7 +1119,6 @@ Status WebGpuContext::PopErrorScope() {
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   Status status = EncodeDeferredDispatches(recording);
   if (!recording.command_encoder) {
     return status;
@@ -1165,12 +1163,9 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
   }
   auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
-  if (recording.graph_capture_state != GraphCaptureState::Replaying) {
-    buffer_mgr.RefreshPendingBuffers(recording);
-  }
+  buffer_mgr.RefreshPendingBuffers(recording);
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
-  recording.has_unsubmitted_work = false;
   return status;
 }
 
@@ -1243,7 +1238,6 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
                                  const webgpu::BufferManager& buffer_manager,
                                  CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
@@ -1260,7 +1254,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
                            const webgpu::BufferManager& buffer_manager,
                            CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
@@ -1278,6 +1271,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
       recording.pending_kernels.emplace_back(*command.pending_kernel_info);
     }
 
+    buffer_manager.BeginRecording(recording);
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
       ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
@@ -1291,7 +1285,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 }
 
 void WebGpuContext::CaptureEnd(CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
 
   recording.graph_capture_state = GraphCaptureState::Default;

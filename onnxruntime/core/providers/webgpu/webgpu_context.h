@@ -108,17 +108,16 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// State for one session's command recording timeline. WebGpuContext is shared across sessions,
-// but Dawn command encoders and deferred dispatch windows must not be.
+// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
+// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
+// releases from concurrent allocator callers separately from command recording.
 struct CommandRecordingState {
-  std::recursive_mutex mutex;
+  CommandRecordingState() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
+
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
-  // TODO: Make BufferManager defer reuse of buffers belonging to unsubmitted batches, including
-  // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
-  bool has_unsubmitted_work = false;
-  std::vector<wgpu::Buffer> pending_buffers;
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -257,14 +256,6 @@ class WebGpuContext final {
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 
-  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
-    if (!recording.command_encoder) {
-      recording.command_encoder = device_.CreateCommandEncoder();
-      recording.has_unsubmitted_work = true;
-    }
-    return recording.command_encoder;
-  }
-
   const wgpu::ComputePassEncoder& GetComputePassEncoder(CommandRecordingState& recording) {
     if (!recording.compute_pass_encoder) {
       auto& command_encoder = GetCommandEncoder(recording);
@@ -396,6 +387,13 @@ class WebGpuContext final {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
+
+  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
+    if (!recording.command_encoder) {
+      recording.command_encoder = device_.CreateCommandEncoder();
+    }
+    return recording.command_encoder;
+  }
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,
