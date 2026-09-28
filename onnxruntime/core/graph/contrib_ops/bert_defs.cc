@@ -2686,6 +2686,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: state_capacity must be in (0, INT_MAX], got ",
                          state_capacity);
   }
+  const int64_t state_update_capacity =
+      getAttribute(ctx, "state_update_capacity", static_cast<int64_t>(0));
+  if (state_update_capacity < 0 || state_update_capacity > 8) {
+    fail_shape_inference("PackedSparseAttentionIndexer: state_update_capacity must be in [0, 8], got ",
+                         state_update_capacity);
+  }
 
   const int64_t token_budget = getAttribute(ctx, "token_budget", static_cast<int64_t>(0));
   const int64_t index_topk = getAttribute(ctx, "index_topk", static_cast<int64_t>(0));
@@ -2737,10 +2743,24 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
                          " (position_ids) is required when policy_mode is 'csa'");
   }
+  const bool has_capture_count = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateCaptureCount);
+  const bool has_state_update_active = PackedSparseAttentionIndexerHasInput(ctx, psai::kStateUpdateActive);
+  const bool has_state_update_output =
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kStateUpdate) && ctx.getOutputType(psai::kStateUpdate) != nullptr;
+  if (!is_qsa && (ctx.getAttribute("state_update_capacity") != nullptr || has_capture_count ||
+                  has_state_update_active || has_state_update_output)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
+  }
+  if (state_update_capacity > 0 && !has_capture_count) {
+    fail_shape_inference(
+        "PackedSparseAttentionIndexer: state_update_capture_count is required when "
+        "state_update_capacity is positive");
+  }
 
-  if (ctx.getNumOutputs() != static_cast<size_t>(psai::kFixedOutputCount)) {
-    fail_shape_inference("PackedSparseAttentionIndexer: exactly ", psai::kFixedOutputCount,
-                         " declared outputs are required, got ", ctx.getNumOutputs());
+  if (ctx.getNumOutputs() < static_cast<size_t>(psai::kFixedOutputCount) ||
+      ctx.getNumOutputs() > static_cast<size_t>(psai::kOutputCount)) {
+    fail_shape_inference("PackedSparseAttentionIndexer: expected ", psai::kFixedOutputCount, " or ",
+                         psai::kOutputCount, " declared outputs, got ", ctx.getNumOutputs());
   }
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
@@ -2751,6 +2771,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     // present_gate_buffer keeps its fixed positional slot (with an empty name) for policy_mode
     // 'qsa'; only propagate its type/shape when it is actually produced.
     propagateElemTypeFromInputToOutput(ctx, psai::kPastGateBuffer, psai::kPresentGateBuffer);
+  }
+  if (has_state_update_output) {
+    propagateElemTypeFromInputToOutput(ctx, psai::kPastKeyState, psai::kStateUpdate);
   }
 
   const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 2);
@@ -2792,6 +2815,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
     position_ids_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPositionIds, 1);
   }
+  const auto* capture_count_shape =
+      PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateCaptureCount, 1);
+  const auto* state_update_active_shape =
+      PackedSparseAttentionIndexerShape(ctx, psai::kStateUpdateActive, 1);
 
   auto require_equal_dims = [](const ONNX_NAMESPACE::TensorShapeProto* lhs, int lhs_index,
                                const ONNX_NAMESPACE::TensorShapeProto* rhs, int rhs_index,
@@ -2820,6 +2847,9 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                      "past_key_state and past_kv_buffer batch dimensions must match");
   require_equal_dims(state_lengths_shape, 0, key_state_shape, 0,
                      "past_state_lengths dimension 0 must equal the state batch dimension");
+  require_equal_dims(capture_count_shape, 0, key_state_shape, 0,
+                     "state_update_capture_count dimension 0 must equal the state batch dimension");
+  require_dim_value(state_update_active_shape, 0, 1, "state_update_active dimension 0 must equal 1");
   require_equal_dims(key_state_shape, 2, query_norm_shape, 0,
                      "past_key_state dimension 2 must equal head_size");
   require_dim_value(key_state_shape, 1, state_capacity, "past_key_state dimension 1 must equal state_capacity");
@@ -2952,6 +2982,13 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   if (state_lengths_shape != nullptr) {
     updateOutputShape(ctx, psai::kPresentStateLengths, *state_lengths_shape);
   }
+  if (has_state_update_output && key_state_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto state_update_shape;
+    *state_update_shape.add_dim() = key_state_shape->dim(0);
+    state_update_shape.add_dim()->set_dim_value(state_update_capacity);
+    *state_update_shape.add_dim() = key_state_shape->dim(2);
+    updateOutputShape(ctx, psai::kStateUpdate, state_update_shape);
+  }
 }
 
 constexpr const char* PackedSparseAttentionIndexer_ver1_doc = R"DOC(
@@ -3035,6 +3072,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("state_capacity",
               "Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.",
               AttributeProto::INT)
+        .Attr("state_update_capacity",
+              "Only for policy_mode 'qsa': maximum number of leading token transitions captured per request. "
+              "Must be in [0, 8]. Default is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("token_budget",
               "Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. "
               "Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.",
@@ -3150,6 +3192,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "pending-buffer length (policy_mode 'qsa': incomplete-block length in [0, compress_ratio); 'csa': "
                "buffer length in [0, 2 * compress_ratio)).",
                "M")
+        .Input(16,
+               "state_update_capture_count",
+               "Only for policy_mode 'qsa': number of leading token transitions to capture for each request, "
+               "with shape (batch_size). Values are clamped to the request length and state_update_capacity. "
+               "Required when state_update_capacity is positive.",
+               "M",
+               OpSchema::Optional)
+        .Input(17,
+               "state_update_active",
+               "Only for policy_mode 'qsa': optional capture gate with shape (1). A zero value disables capture.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "selected_indices",
                 "Selected entries with shape (total_tokens, capacity). capacity is "
@@ -3179,6 +3233,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present_state_lengths",
                 "Updated generic per-request state length, with the same fixed shape as past_state_lengths.",
                 "M")
+        .Output(6,
+                "state_update",
+                "Only for policy_mode 'qsa': compact transition payloads with shape "
+                "(batch_size, state_update_capacity, head_size). A token that completes a compression block "
+                "stores the prepared block representative; any other captured token stores its raw key. "
+                "Inactive and unused slots are zero.",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain floating point tensors to float, float16 and bfloat16.")

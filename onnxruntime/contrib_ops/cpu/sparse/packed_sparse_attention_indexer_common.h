@@ -49,7 +49,9 @@ enum InputIndex : int {
   kPastKvBuffer = 13,              // generic: [batch_size, 2 * compress_ratio - 1, width]
   kPastGateBuffer = 14,            // csa only: same shape as past_kv_buffer
   kPastStateLengths = 15,          // generic: [batch_size, 2], int32
-  kInputCount = 16,
+  kStateUpdateCaptureCount = 16,   // qsa only, optional: [batch_size], int32
+  kStateUpdateActive = 17,         // qsa only, optional: [1], int32
+  kInputCount = 18,
 };
 
 // Fixed output slots. present_gate_buffer is declared (with an empty name) but not produced for
@@ -61,12 +63,14 @@ enum OutputIndex : int {
   kPresentKvBuffer = 3,      // same shape as past_kv_buffer
   kPresentGateBuffer = 4,    // csa only: same shape as past_gate_buffer
   kPresentStateLengths = 5,  // [batch_size, 2], int32
-  kOutputCount = 6,
+  kStateUpdate = 6,          // qsa only, optional: [batch_size, state_update_capacity, head_size]
+  kOutputCount = 7,
 };
 
 // Every PackedSparseAttentionIndexer node declares all 6 fixed outputs; present_gate_buffer is an
-// empty-name optional output for policy_mode="qsa".
-constexpr int kFixedOutputCount = kOutputCount;
+// empty-name optional output for policy_mode="qsa". State update capture is an optional appended
+// seventh output so existing nodes retain their output layout.
+constexpr int kFixedOutputCount = kStateUpdate;
 
 // Column layout of past_state_lengths / present_state_lengths.
 enum StateLengthColumn : int {

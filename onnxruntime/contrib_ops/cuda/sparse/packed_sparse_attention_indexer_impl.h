@@ -35,6 +35,7 @@ struct PackedSparseAttentionIndexerParams {
 
   // policy_mode = "qsa"
   int block_topk = 0;  // token_budget / compress_ratio
+  int state_update_capacity = 0;
 
   // policy_mode = "csa"
   int index_topk = 0;
@@ -68,11 +69,14 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const T* past_key_state,
     const T* past_kv_buffer,
     const int32_t* past_state_lengths,
+    const int32_t* state_update_capture_count,
+    const int32_t* state_update_active,
     int32_t* selected_indices,
     int32_t* selected_counts,
     T* present_key_state,
     T* present_kv_buffer,
     int32_t* present_state_lengths,
+    T* state_update,
     float* float_workspace,
     int32_t* overflow_flags);
 
