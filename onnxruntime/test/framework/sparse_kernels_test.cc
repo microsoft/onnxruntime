@@ -2313,7 +2313,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
   ONNX_NAMESPACE::TensorProto dense;
   auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
   EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("values data size does not match expected"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw_data size"));
 }
 
 // Tests for SparseTensorProtoToDenseTensorProto with negative indices (model-loading path)
