@@ -5,6 +5,7 @@
 #include "contrib_ops/cpu/bert/causal_conv_with_state_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 #include <limits>
 
@@ -130,8 +131,16 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   Tensor* state_update_tensor = context->Output(2, state_update_shape);
   if (state_update_capacity_ > 0 && state_update_tensor != nullptr) {
     const size_t count = SafeInt<size_t>(batch_size) * state_update_capacity_ * channels;
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-        state_update_tensor->MutableDataRaw(), 0, count * sizeof(T), Stream(context)));
+    // Cleared with a kernel: inside a CUDA graph a memset node adds several microseconds of
+    // dependency latency, while a kernel node adds well under one.
+    if ((count * sizeof(T)) % sizeof(int32_t) == 0) {
+      onnxruntime::cuda::Fill<int32_t>(Stream(context), static_cast<int32_t*>(state_update_tensor->MutableDataRaw()),
+                                       0, static_cast<int64_t>(count * sizeof(T) / sizeof(int32_t)));
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    } else {
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
+          state_update_tensor->MutableDataRaw(), 0, count * sizeof(T), Stream(context)));
+    }
   }
 
   bool apply_silu = (activation_ == "silu" || activation_ == "swish");

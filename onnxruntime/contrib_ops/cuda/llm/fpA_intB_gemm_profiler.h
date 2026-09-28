@@ -106,6 +106,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
 
   bool checkTactic(int m, int n, int k, Config const& tactic) const override;
 
+  float getSelectionTime(int m, Config const& tactic, float time) const override;
+
   std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const override;
 
  private:

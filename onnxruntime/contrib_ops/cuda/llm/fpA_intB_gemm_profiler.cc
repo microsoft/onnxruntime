@@ -140,6 +140,19 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
   return true;
 }
 
+float WeightOnlyGroupwiseQuantGemmPluginProfiler::getSelectionTime(int m, Config const& tactic, float time) const {
+  // The profiler replays one synthetic weight matrix back to back, so any matrix that fits in L2 is
+  // timed L2-resident. In decode every weight matrix streams from DRAM once per step, where the CUDA
+  // GEMV (a pure weight stream) keeps its measured speed but the CUTLASS kernels lose much of their
+  // L2 advantage, and serial split-K also launches a semaphore clear. Near ties at small M therefore
+  // go to CUTLASS in the profiler yet run slower in the model, so CUTLASS has to win clearly.
+  constexpr float kCutlassPenaltyWhenGemvEligible = 1.1f;
+  if (!tactic.enableCudaKernel && m < 16) {
+    return time * kCutlassPenaltyWhenGemvEligible;
+  }
+  return time;
+}
+
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
   std::vector<int> result;
   if (value.empty()) {
