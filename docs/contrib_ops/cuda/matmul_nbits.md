@@ -496,6 +496,13 @@ present. `ComputeInternal` then:
   remains named `onnxruntime_provider_test.exe`, and the CTest name remains
   `onnxruntime_provider_test`. The default build also includes both artifacts.
 
+  Tests using core `Node` and `Tensor` objects call provider implementations through
+  statically linked test adapters with opaque, borrowed pointers. The adapters use
+  the existing provider-host accessors, avoiding the distinct core/provider C++ types
+  in cross-translation-unit signatures. The module uses manual C++ API initialization
+  consistently and imports host test utilities instead of linking a second copy that
+  depends on the executable's `ort_env` global. On Windows it links `onnx_proto` directly.
+
   Before the full build, Windows CUDA CI builds only `onnxruntime_provider_test`
   and requires the executable, its import library, and the internal-test DLL to be produced from
   fresh outputs. It then runs `CUDA_EP_Unittest.All` explicitly on the GPU runner.

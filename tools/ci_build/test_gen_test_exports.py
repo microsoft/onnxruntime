@@ -121,6 +121,40 @@ Archive member name at 34: helpers.obj
                 '#pragma comment(linker, "/include:?Run@Session@@QEAAHXZ")\n',
             )
 
+    def test_host_link_inputs_include_imported_and_object_libraries(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(prefix="ort host inputs ") as directory:
+            source = Path(directory)
+            build = source / "build"
+            (source / "main.cc").write_text("int main() { return 0; }\n", encoding="utf-8")
+            (source / "library.cc").write_text("int required() { return 42; }\n", encoding="utf-8")
+            (source / "CMakeLists.txt").write_text(
+                f"""
+cmake_minimum_required(VERSION 3.28)
+project(TestHostInputs LANGUAGES CXX)
+set(REPO_ROOT "{repo_root.as_posix()}")
+include("${{REPO_ROOT}}/cmake/onnxruntime_test_exports.cmake")
+add_library(host_runtime STATIC library.cc)
+add_library(host_objects OBJECT library.cc)
+add_library(external UNKNOWN IMPORTED)
+set_target_properties(external PROPERTIES IMPORTED_LOCATION "${{CMAKE_CURRENT_SOURCE_DIR}}/external.lib")
+add_library(test_objects OBJECT library.cc)
+add_executable(host main.cc)
+target_link_libraries(host PRIVATE host_runtime host_objects external)
+get_target_property(host_libraries host LINK_LIBRARIES)
+onnxruntime_export_test_symbols(host OBJECT_TARGET test_objects HOST_LIBS ${{host_libraries}})
+""",
+                encoding="utf-8",
+            )
+            subprocess.run(["cmake", "-S", str(source), "-B", str(build)], check=True, timeout=120)
+            responses = list((build / "host_exports").rglob("host.rsp"))
+            self.assertTrue(responses)
+            for response in responses:
+                inputs = response.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len(inputs), 3)
+                for name in ("host_runtime", "host_objects.dir", "external.lib"):
+                    self.assertTrue(any(name in entry for entry in inputs), (name, inputs))
+
     @unittest.skipUnless(sys.platform == "win32", "Requires the Windows MSVC toolchain")
     def test_windows_targeted_build_and_incremental_exports(self):
         repo_root = Path(__file__).resolve().parents[2]
@@ -128,16 +162,46 @@ Archive member name at 34: helpers.obj
             source = Path(directory)
             build = source / "build"
             (source / "host.cc").write_text(
+                '#pragma detect_mismatch("ORT_API_MANUAL_INIT", "disabled")\n'
                 "namespace test_runtime {\nint required(int value) { return value + 1; }\n"
                 + "\n".join(f"int unused_{i}(int value) {{ return value + {i}; }}" for i in range(70000))
                 + "\n}\n",
                 encoding="utf-8",
             )
-            (source / "main.cc").write_text("int main() { return 0; }\n", encoding="utf-8")
+            (source / "main.cc").write_text(
+                "#include <windows.h>\n#include <cstdlib>\n"
+                "int main(int argc, char** argv) {\n"
+                "  if (argc != 2) return 2;\n"
+                '  HMODULE module = LoadLibraryW(L"test_module.dll");\n'
+                "  if (!module) return 3;\n"
+                '  auto run = reinterpret_cast<int (*)()>(GetProcAddress(module, "run_tests"));\n'
+                "  int result = run && run() == std::atoi(argv[1]) ? 0 : 4;\n"
+                "  FreeLibrary(module);\n"
+                "  return result;\n}\n",
+                encoding="utf-8",
+            )
+            (source / "bridge.cc").write_text(
+                '#pragma detect_mismatch("ORT_API_MANUAL_INIT", "enabled")\n'
+                'extern "C" int CoreNodeValue(const void*);\n'
+                "namespace test_runtime {\n"
+                "struct Node { int Value() const { return CoreNodeValue(this); } };\n"
+                "int Estimate(const Node& node) { return node.Value(); }\n}\n"
+                "int EstimateForTest(const void* node) {\n"
+                "  return test_runtime::Estimate(*static_cast<const test_runtime::Node*>(node));\n}\n",
+                encoding="utf-8",
+            )
+            module_preamble = (
+                '#pragma detect_mismatch("ORT_API_MANUAL_INIT", "enabled")\n'
+                "namespace test_runtime { class Node { public: int value; }; int required(int); int unused_0(int); }\n"
+                'extern "C" int CoreNodeValue(const void* node) {\n'
+                "  return static_cast<const test_runtime::Node*>(node)->value;\n}\n"
+                "int EstimateForTest(const void*);\n"
+            )
             module = source / "module.cc"
             module.write_text(
-                "namespace test_runtime { int required(int); }\n"
-                'extern "C" __declspec(dllexport) int run_tests() { return test_runtime::required(41); }\n',
+                module_preamble + 'extern "C" __declspec(dllexport) int run_tests() {\n'
+                "  test_runtime::Node node{41};\n"
+                "  return test_runtime::required(EstimateForTest(&node));\n}\n",
                 encoding="utf-8",
             )
             (source / "CMakeLists.txt").write_text(
@@ -148,12 +212,13 @@ set(REPO_ROOT "{repo_root.as_posix()}")
 include("${{REPO_ROOT}}/cmake/onnxruntime_test_exports.cmake")
 add_library(runtime STATIC host.cc)
 target_compile_options(runtime PRIVATE /bigobj)
-add_library(test_objects OBJECT module.cc)
+add_library(test_objects OBJECT module.cc bridge.cc)
 add_executable(provider_test_executable main.cc)
 set_target_properties(provider_test_executable PROPERTIES OUTPUT_NAME provider_test)
 target_link_libraries(provider_test_executable PRIVATE runtime)
 target_link_options(provider_test_executable PRIVATE /VERBOSE:LIB)
-onnxruntime_export_test_symbols(provider_test_executable OBJECT_TARGET test_objects HOST_LIBS runtime)
+get_target_property(host_libraries provider_test_executable LINK_LIBRARIES)
+onnxruntime_export_test_symbols(provider_test_executable OBJECT_TARGET test_objects HOST_LIBS ${{host_libraries}})
 add_library(test_module MODULE $<TARGET_OBJECTS:test_objects>)
 target_link_libraries(test_module PRIVATE provider_test_executable)
 add_custom_target(provider_test ALL DEPENDS provider_test_executable test_module)
@@ -199,11 +264,12 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
             )
             self.assertIn("provider_test.exe", imports)
             self.assertIn("?required@test_runtime@@YAHH@Z", imports)
+            subprocess.run([str(output_dir / "provider_test.exe"), "42"], cwd=output_dir, check=True, timeout=30)
 
             module.write_text(
-                "namespace test_runtime { int required(int); int unused_0(int); }\n"
-                'extern "C" __declspec(dllexport) int run_tests() {\n'
-                "  return test_runtime::required(41) + test_runtime::unused_0(1);\n}\n",
+                module_preamble + 'extern "C" __declspec(dllexport) int run_tests() {\n'
+                "  test_runtime::Node node{41};\n"
+                "  return test_runtime::required(EstimateForTest(&node)) + test_runtime::unused_0(1);\n}\n",
                 encoding="utf-8",
             )
             subprocess.run(command, check=True, timeout=120)
@@ -214,6 +280,7 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
                 '#pragma comment(linker, "/include:?unused_0@test_runtime@@YAHH@Z")',
                 force_includes.read_text(encoding="utf-8"),
             )
+            subprocess.run([str(output_dir / "provider_test.exe"), "43"], cwd=output_dir, check=True, timeout=30)
 
 
 if __name__ == "__main__":

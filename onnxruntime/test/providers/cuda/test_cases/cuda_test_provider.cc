@@ -137,6 +137,7 @@ struct CUDA_Test_Provider : Provider {
   void* GetInfo() override { return &g_test_info; }
 
   void Initialize() override {
+    InitProviderOrtApi();
     InitializeRegistry();
   }
 

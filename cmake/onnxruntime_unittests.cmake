@@ -1039,11 +1039,15 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   foreach(cuda_ut_target IN LISTS onnxruntime_cuda_ut_compile_targets)
     config_cuda_provider_shared_module(${cuda_ut_target})
     target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-    onnxruntime_add_include_to_target(${cuda_ut_target} GTest::gtest GTest::gmock)
+    onnxruntime_add_include_to_target(${cuda_ut_target} GTest::gtest GTest::gmock onnxruntime_test_utils)
     add_dependencies(${cuda_ut_target} onnxruntime_test_utils)
     target_include_directories(${cuda_ut_target} PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
+    target_compile_definitions(${cuda_ut_target} PRIVATE ORT_API_MANUAL_INIT)
     target_link_libraries(${cuda_ut_target} PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS}
-                                                  onnxruntime_test_utils ${PROTOBUF_LIB})
+                                                  ${PROTOBUF_LIB})
+    if(WIN32)
+      target_link_libraries(${cuda_ut_target} PRIVATE onnx_proto)
+    endif()
     if (MSVC)
       # Cutlass code has an issue with warning C4100: 'magic': unreferenced formal parameter.
       target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
@@ -1504,10 +1508,11 @@ block()
   # Exporting every provider-test symbol exceeds the Windows import-library limit.
   if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
     include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_test_exports.cmake")
+    get_target_property(provider_test_link_libraries ${onnxruntime_provider_test_target} LINK_LIBRARIES)
     get_target_property(cuda_ut_link_libraries onnxruntime_providers_cuda_ut LINK_LIBRARIES)
     onnxruntime_export_test_symbols(${onnxruntime_provider_test_target}
       OBJECT_TARGET onnxruntime_providers_cuda_ut_objects
-      HOST_LIBS ${onnxruntime_provider_test_libs}
+      HOST_LIBS ${provider_test_link_libraries}
       MODULE_LIBS onnxruntime_providers_cuda_obj ${cuda_ut_link_libraries})
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE ${onnxruntime_provider_test_target})
   endif()

@@ -23,7 +23,7 @@
 // This translation unit runs a real InferenceSession, so it includes the core framework headers.
 // Those cannot coexist with the CUDA-provider (shared-provider bridge) headers in one TU, so the two
 // provider-world pieces it needs (the Level-1 estimate and the runtime probe) are reached through
-// slim, bridge-free declarations. It lives in the CUDA-only unit-test module because that is the only
+// statically linked test adapters with opaque Node pointers. It lives in the CUDA-only unit-test module because that is the only
 // place these provider-internal symbols are linkable. Requires a real CUDA device; skips otherwise.
 
 #include "gtest/gtest.h"
@@ -56,6 +56,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/providers/cuda/test_cases/matmul_nbits_workspace_test_probe.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -309,7 +310,7 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
   device_prop.major = 8;
   device_prop.minor = 0;
   device_prop.multiProcessorCount = 100;
-  return onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(node, device_prop);
+  return EstimateMatMulNBitsWorkspaceForTest(&node, device_prop);
 }
 
 }  // namespace
@@ -352,8 +353,8 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_NE(mm_node, nullptr);
     EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 
-    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, cuda_ep->GetDeviceProp(),
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, cuda_ep->GetDeviceProp(),
         {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1"}});
     ASSERT_TRUE(estimate.has_value());
     ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
@@ -426,15 +427,15 @@ TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
     EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 
     const TensorShape planning_shape({256, kE2eK});
-    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
+    const auto estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
         {/*fpa_intb_gemm=*/std::string_view{"1"},
          /*profile_m=*/std::string_view{"256"},
          /*input_shape_is_upper_bound=*/true});
     ASSERT_TRUE(estimate.has_value());
     const TensorShape missing_bucket_shape({128, kE2eK});
-    const auto missing_bucket_estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-        *mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
+    const auto missing_bucket_estimate = EstimateMatMulNBitsMemoryForTest(
+        mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
         {/*fpa_intb_gemm=*/std::string_view{"1"},
          /*profile_m=*/std::string_view{"256"}});
     ASSERT_TRUE(missing_bucket_estimate.has_value());
@@ -603,12 +604,12 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   // ---- Level 1: the estimator function GetCapability() uses, invoked directly on the node + device
   //      properties and the concrete estimation shape for this run. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value()) << "Level-1 estimate returned nullopt for an eligible node.";
   const auto static_shape_with_bound_option =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
           {/*fpa_intb_gemm=*/std::string_view{"1"},
            /*profile_m=*/std::string_view{"256"},
            /*input_shape_is_upper_bound=*/true});
@@ -734,8 +735,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   // ---- Empty-output parity on the same dynamic-shape session and kernel. ----
   // Level 1 knows that m == 0 and must return a known zero, including for native SM90.
   const std::optional<size_t> zero_m_level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(
-          *mm_node, zero_m_a_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsWorkspaceForTest(
+          mm_node, zero_m_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(zero_m_level1.has_value());
   EXPECT_EQ(*zero_m_level1, 0u);
 
@@ -835,7 +836,7 @@ TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
 
   // ---- Level 1: estimator reads the (now-overridden) node shape directly. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(*mm_node, cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(mm_node, cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value())
       << "Level-1 estimate returned nullopt after the fixed override made the shape static.";
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value());
@@ -936,7 +937,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   // ---- Level 1: dynamic leading dim leaves runtime workspace unknown, while shape-independent
   //      prepack memory remains estimable. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(*mm_node, cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(mm_node, cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value());
   EXPECT_FALSE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace must be unknown for a dynamic (symbolic) leading dim.";
@@ -948,8 +949,8 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   // modifying its canonical shape metadata.
   const TensorShape max_input_shape({256, kE2eK});
   const std::optional<Level1MemoryEstimate> bounded_level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
-          *mm_node, max_input_shape.GetDims(), cuda_ep->GetDeviceProp());
+      EstimateMatMulNBitsMemoryForTest(
+          mm_node, max_input_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(bounded_level1.has_value());
   EXPECT_TRUE(bounded_level1->runtime_workspace_bytes.has_value());
 

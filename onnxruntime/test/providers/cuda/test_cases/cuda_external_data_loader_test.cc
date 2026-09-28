@@ -25,6 +25,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "cuda_runtime.h"
 #include "gtest/gtest.h"
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -256,8 +257,8 @@ TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
     }
 
     Tensor tensor(DataTypeImpl::GetType<bool>(), TensorShape({static_cast<int64_t>(input.size())}), *allocator);
-    ASSERT_STATUS_OK(loader->LoadTensor(
-        Env::Default(), path, kFilePrefixSize, input.size(), tensor));
+    ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
+        loader.get(), Env::Default(), path, kFilePrefixSize, input.size(), &tensor));
     std::array<uint8_t, 4> output{};
     ASSERT_EQ(cudaSuccess, cudaMemcpy(
                                output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
