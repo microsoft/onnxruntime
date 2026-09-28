@@ -56,6 +56,19 @@ class TestWeightOnlyKQuant(unittest.TestCase):
                 rtn_error = squared_error(quant_tensor(data, num_bits, GROUP_SIZE, "asym", "uint"), data)
                 self.assertLess(k_quant_error, 0.97 * rtn_error)
 
+    def test_quant_tensor_k_quant_cpu_fits_scale_to_stored_codes(self):
+        data = self.weights()
+        x = data.reshape(-1, GROUP_SIZE).astype(np.float64)
+        # k_quant weights each value by the group's RMS plus its magnitude.
+        weights = np.sqrt(np.mean(x**2, axis=1, keepdims=True)) + np.abs(x)
+        for num_bits in (4, 8):
+            with self.subTest(num_bits=num_bits):
+                q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, num_bits, GROUP_SIZE)
+                levels = q_weight - zero_point
+                sum_xl = np.sum(weights * levels * x, axis=1, keepdims=True)
+                sum_l2 = np.sum(weights * levels**2, axis=1, keepdims=True)
+                np.testing.assert_allclose(scale, sum_xl / sum_l2, rtol=1e-5)
+
     def test_quant_tensor_k_quant_cpu_does_not_clip_when_group_is_one_signed(self):
         data = np.stack([np.linspace(0.5, 1.0, GROUP_SIZE), -np.linspace(0.5, 1.0, GROUP_SIZE), np.zeros(GROUP_SIZE)])
         data = data.astype(np.float32)

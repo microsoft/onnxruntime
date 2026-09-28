@@ -215,7 +215,7 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
 
     Tries the candidate scales of llama.cpp's ``make_qkx2_quants`` and keeps, per group, the one with the lowest
     weighted squared error on the grid that is stored: for each candidate the zero point is rounded to an integer
-    first, and the scale is refit by weighted least squares to the levels chosen for it.
+    first, and the scale is refit by weighted least squares to the levels that are stored.
     """
     data = data.reshape((-1, group_size)).astype(xp.float32)  # (nb, group_size)
     # Treat subnormal weights as zeros, as the CuPy path does: subnormal scales slow down x86 MatMulNBits kernels.
@@ -233,6 +233,14 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
     rmin = xp.minimum(xp.min(data, axis=1, keepdims=True), 0)  # (nb, 1)
     rmax = xp.maximum(xp.max(data, axis=1, keepdims=True), 0)  # (nb, 1)
     rrange = xp.where(rmax > rmin, rmax - rmin, 1)  # (nb, 1)
+
+    def fit_scale(levels, fallback):
+        # Weighted least-squares scale for the levels, or the fallback where there is nothing to fit.
+        sum_l2 = xp.sum(weights * levels**2, axis=1, keepdims=True)  # (nb, 1)
+        sum_xl = xp.sum(weights * levels * data, axis=1, keepdims=True)  # (nb, 1)
+        fit = (sum_l2 > 0) & (sum_xl > 0)
+        return xp.where(fit, sum_xl / xp.where(fit, sum_l2, 1), fallback)  # (nb, 1)
+
     quant_data = xp.zeros_like(data)
     scale = xp.ones_like(rrange)
     zero_point = xp.zeros_like(rrange)
@@ -244,12 +252,12 @@ def _quant_tensor_k_quant(xp, data, num_bits, group_size):
         iscale = factor / rrange  # (nb, 1)
         this_zero_point = xp.clip(xp.round(-rmin * iscale), minq, maxq)  # (nb, 1)
         levels = xp.clip(xp.round(data * iscale) + this_zero_point, minq, maxq) - this_zero_point  # (nb, group_size)
-        sum_l2 = xp.sum(weights * levels**2, axis=1, keepdims=True)  # (nb, 1)
-        sum_xl = xp.sum(weights * levels * data, axis=1, keepdims=True)  # (nb, 1)
-        fit = (sum_l2 > 0) & (sum_xl > 0)
-        this_scale = xp.where(fit, sum_xl / xp.where(fit, sum_l2, 1), 1 / iscale)  # (nb, 1)
+        this_scale = fit_scale(levels, 1 / iscale)  # (nb, 1)
         this_quant = xp.clip(xp.round(data / this_scale) + this_zero_point, minq, maxq)  # (nb, group_size)
-        diff = this_scale * (this_quant - this_zero_point) - data  # (nb, group_size)
+        # Rounding with the fitted scale can change levels, so fit the scale again to the levels that are stored.
+        levels = this_quant - this_zero_point  # (nb, group_size)
+        this_scale = fit_scale(levels, this_scale)  # (nb, 1)
+        diff = this_scale * levels - data  # (nb, group_size)
         mad = xp.sum(weights * diff**2, axis=1, keepdims=True)  # (nb, 1)
         # The first candidate always counts, so a group whose scores are all non-finite still gets a grid.
         idx_to_replace = xp.where((mad < best_mad) | (i == 0))[0]
