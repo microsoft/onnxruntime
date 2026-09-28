@@ -4362,7 +4362,8 @@ void TestFloorModFloatingPointOpset28(const std::vector<T>& x,
   test.AddInput<T>("X", shape, x);
   test.AddInput<T>("Y", shape, y);
   test.AddOutput<T>("Z", shape, expected);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kQnnExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ModOpTest, FloorMod_float_mixed_sign_opset28) {
@@ -4706,7 +4707,7 @@ void TestSignedBitShiftOpset28() {
     test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, std::numeric_limits<T>::max(), T{-2}, T{2}});
     test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{1}, T{-1}, bit_width});
     test.AddOutput<T>("Z", {6}, {T{-16}, T{-12}, T{8}, T{-2}, T{0}, T{0}});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 
   {
@@ -4715,7 +4716,7 @@ void TestSignedBitShiftOpset28() {
     test.AddInput<T>("X", {6}, {T{-8}, T{-3}, T{1}, T{-2}, T{-2}, T{2}});
     test.AddInput<T>("Y", {6}, {T{1}, T{2}, T{3}, T{-1}, bit_width, bit_width});
     test.AddOutput<T>("Z", {6}, {T{-4}, T{-1}, T{0}, T{-1}, T{-1}, T{0}});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 
   {
@@ -4724,7 +4725,7 @@ void TestSignedBitShiftOpset28() {
     test.AddInput<T>("X", {1}, {T{-8}});
     test.AddInput<T>("Y", {4}, {T{1}, T{2}, bit_width, T{-1}});
     test.AddOutput<T>("Z", {4}, {T{-4}, T{-2}, T{-1}, T{-1}});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 
   {
@@ -4733,7 +4734,7 @@ void TestSignedBitShiftOpset28() {
     test.AddInput<T>("X", {2}, {std::numeric_limits<T>::max(), T{-8}});
     test.AddInput<T>("Y", {1}, {T{1}});
     test.AddOutput<T>("Z", {2}, {T{-2}, T{-16}});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 }
 
