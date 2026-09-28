@@ -360,10 +360,10 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
     test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
                           state_tol);
   }
+  const bool state_update_enabled = in.state_update_active.empty() || in.state_update_active[0] != 0;
   if (o.state_update_capacity > 0) {
     const int64_t width = static_cast<int64_t>(o.state_update_capacity) *
                           (g.hv + g.hq * g.dk + g.hv * g.dv);
-    const bool state_update_enabled = in.state_update_active.empty() || in.state_update_active[0] != 0;
     test.AddOutput<float>("state_update", {g.batch, width},
                           use_webgpu && state_update_enabled
                               ? ref_state_update
@@ -371,6 +371,54 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
                           false, use_webgpu ? state_tol : 1e9f, use_webgpu ? state_tol : 1e9f);
   } else {
     test.AddOutput<float>("state_update", {g.batch, 0}, {});
+  }
+
+  if (use_webgpu && o.state_update_capacity > 0 && state_update_enabled) {
+    test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& actual_outputs, const std::string&) {
+      ASSERT_EQ(actual_outputs.size(), 3u);
+      const Tensor& actual_output = actual_outputs[0].Get<Tensor>();
+      const Tensor& actual_final_state = actual_outputs[1].Get<Tensor>();
+      const Tensor& actual_state_update = actual_outputs[2].Get<Tensor>();
+      const int64_t decay_elements = static_cast<int64_t>(o.state_update_capacity) * g.hv;
+      const int64_t key_elements = static_cast<int64_t>(o.state_update_capacity) * g.hq * g.dk;
+      const int64_t width = decay_elements + key_elements +
+                            static_cast<int64_t>(o.state_update_capacity) * g.hv * g.dv;
+      ASSERT_EQ(actual_output.Shape(), TensorShape(shaped({out_heads, g.dv})));
+      ASSERT_EQ(actual_final_state.Shape(), TensorShape({g.batch, g.hv, g.dv, g.dk}));
+      ASSERT_EQ(actual_state_update.Shape(), TensorShape({g.batch, width}));
+
+      const T* actual_output_data = actual_output.Data<T>();
+      const std::vector<T> expected_output = ToTensorType<T>(ref_out);
+      for (size_t i = 0; i < expected_output.size(); ++i) {
+        if constexpr (std::is_same_v<T, float>) {
+          EXPECT_NEAR(actual_output_data[i], expected_output[i], out_tol);
+        } else {
+          EXPECT_NEAR(actual_output_data[i].ToFloat(), expected_output[i].ToFloat(), out_tol);
+        }
+      }
+      const float* actual_final_state_data = actual_final_state.Data<float>();
+      for (size_t i = 0; i < ref_state.size(); ++i) {
+        EXPECT_NEAR(actual_final_state_data[i], ref_state[i], state_tol);
+      }
+
+      const float* actual_data = actual_state_update.Data<float>();
+      for (int b = 0; b < g.batch; ++b) {
+        const int sequence_length = in.cu_seqlens.empty()
+                                        ? g.total_tokens / g.batch
+                                        : in.cu_seqlens[b + 1] - in.cu_seqlens[b];
+        const int count = std::clamp(in.capture_count[b], 0,
+                                     std::min(o.state_update_capacity, sequence_length));
+        auto check_range = [&](int64_t offset, int64_t elements) {
+          for (int64_t i = 0; i < elements; ++i) {
+            const int64_t index = static_cast<int64_t>(b) * width + offset + i;
+            EXPECT_NEAR(actual_data[index], ref_state_update[index], state_tol);
+          }
+        };
+        check_range(0, static_cast<int64_t>(count) * g.hv);
+        check_range(decay_elements, static_cast<int64_t>(count) * g.hq * g.dk);
+        check_range(decay_elements + key_elements, static_cast<int64_t>(count) * g.hv * g.dv);
+      }
+    });
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -576,6 +624,23 @@ TEST(GatedDeltaNetWebGpuTest, CompactStateUpdates) {
   options.state_update_capacity = 7;
   RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, CompactStateUpdatesFp16QwenGeometry) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{12, 3, 2, 6, 128, 128};
+  Inputs inputs = MakeInputs(g, 229);
+  inputs.cu_seqlens = {0, 1, 5, 12};
+  inputs.capture_count = {-1, 2, 8};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = 7;
+  RunCase(g, options, inputs, 3e-2f, 3e-2f,
+          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
 TEST(GatedDeltaNetWebGpuTest, InactiveCompactStateUpdatesAreZero) {

@@ -41,7 +41,7 @@ class Capture {
     return stream_;
   }
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 // add SAL annotation for printf format string. requires Code Analysis to run to validate usage.
 #define msvc_printf_check _Printf_format_string_
 #define __attribute__(x)  // Disable for MSVC. Supported by GCC and CLang.
