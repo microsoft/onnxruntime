@@ -20,11 +20,12 @@ namespace contrib {
 namespace webgpu {
 
 Status TransferBSDToBNSHProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("qkv_input", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* bias_var = nullptr;
+  const auto& qkv_input_var = shader.AddInput("qkv_input", ShaderUsage::UseUniform);
   const auto& qkv_output = shader.AddOutput("qkv_output", ShaderUsage::UseUniform | ShaderUsage::UseOffsetToIndices);
 
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias_var = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size")
@@ -34,12 +35,11 @@ Status TransferBSDToBNSHProgram::GenerateShaderCode(ShaderHelper& shader) const 
   if (has_bias_) {
     shader.MainFunctionBody() << "let bias_offset_idx = (input_offset_idx % uniforms.sequence_offset) + uniforms.bias_offset;\n";
   }
-  shader.MainFunctionBody() << "qkv_output[global_idx] = qkv_input[input_offset_idx]";
+  std::string value = qkv_input_var.GetByOffset("input_offset_idx");
   if (has_bias_) {
-    shader.MainFunctionBody() << " + bias[bias_offset_idx];\n";
-  } else {
-    shader.MainFunctionBody() << ";\n";
+    value += " + " + bias_var->GetByOffset("bias_offset_idx");
   }
+  shader.MainFunctionBody() << qkv_output.SetByOffset("global_idx", value) << "\n";
 
   return Status::OK();
 }
@@ -116,9 +116,9 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
   return context.RunProgram(program);
 }
 
-void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
-  if (has_seqlen_k) {
-    ss << "let raw_total_sequence_length = u32(max(seqlen_k[batch_idx], 0)) + 1u;\n";
+void InitVarStub(std::ostringstream& ss, const ShaderVariableHelper* seqlen_k) {
+  if (seqlen_k) {
+    ss << "let raw_total_sequence_length = u32(max(" << seqlen_k->GetByOffset("batch_idx") << ", 0)) + 1u;\n";
     ss << "total_sequence_length = min(raw_total_sequence_length, min(uniforms.present_sequence_length, total_sequence_length));\n";
     ss << "let past_sequence_length = select(total_sequence_length - uniforms.kv_sequence_length, 0u, total_sequence_length <= uniforms.kv_sequence_length);\n";
   } else {
@@ -127,20 +127,24 @@ void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
 }
 
 Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const ShaderVariableHelper* past_key = nullptr;
+  const ShaderVariableHelper* seqlen_k = nullptr;
+  const ShaderVariableHelper* attention_bias_var = nullptr;
+  const ShaderVariableHelper* present_key_var = nullptr;
+  const auto& q_var = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& key_var = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (feed_past_key_) {
-    shader.AddInput("past_key", ShaderUsage::UseUniform);
+    past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
   }
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias_var = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
   if (has_seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
+    seqlen_k = &shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (has_present_key_) {
-    shader.AddOutput("present_key", ShaderUsage::UseUniform);
+    present_key_var = &shader.AddOutput("present_key", ShaderUsage::UseUniform);
   }
 
   shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
@@ -158,7 +162,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                       << "               bias_head_idx * uniforms.M * uniforms.N +\n"
                                       << "               q_idx * uniforms.N +\n"
                                       << "               k_idx;\n"
-                                      << "  return attention_bias[offset];\n"
+                                      << "  return " << attention_bias_var->GetByOffset("offset", true) << ";\n"
                                       << "}\n";
   }
 
@@ -171,7 +175,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
-  InitVarStub(oss, has_seqlen_k_);
+  InitVarStub(oss, seqlen_k);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let kOffset = (batch_head_idx / uniforms.n_reps) * uniforms.kv_sequence_length * uniforms.K;\n";
   if (has_present_key_) {
@@ -179,24 +183,23 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
-                               "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
-                               "  if (m + local_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                               "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
-                               "  }\n"
-                               "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
-                               "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
+                            << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+                            << "  if (m + local_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
+                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = "
+                            << q_var.GetByOffset("qOffset + local_id.y * uniforms.K + w + local_id.x", true) << ";\n"
+                            << "  }\n"
+                            << "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
+                            << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      let pastKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.past_sequence_length * uniforms.K;\n"
-                              << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
+                              << "      tileK[idx] = " << (past_present_share_buffer_ ? present_key_var : past_key)->GetByOffset("pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x") << ";\n"
                               << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
+                              << "      tileK[idx] = " << key_var.GetByOffset("kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x", true) << ";\n"
                               << "    }\n";
   } else {
-    shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
-                                 "      tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                                 "    }\n";
+    shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n      tileK[idx] = " << key_var.GetByOffset("kOffset + (n + local_id.y) * uniforms.K + w + local_id.x", true) << ";\n    }\n";
   }
 
   if (has_present_key_) {
@@ -205,7 +208,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
-    shader.MainFunctionBody() << "      present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];\n"
+    shader.MainFunctionBody() << "      " << present_key_var->SetByOffset("presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x", "tileK[idx]", true) << "\n"
                               << "    }\n";
   }
 
@@ -233,12 +236,11 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  }\n";
   }
 
-  shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
+  std::string value = "output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
+    value += " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
   }
-  shader.MainFunctionBody() << ";\n"
-                            << "}\n";
+  shader.MainFunctionBody() << output.SetByOffset("outputIdx", value) << "\n}\n";
 
   return Status::OK();
 }
@@ -311,6 +313,8 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 }
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* seqlen_k = nullptr;
+  const ShaderVariableHelper* head_sink_var = nullptr;
   bool has_sliding_window = local_window_size_ != -1;
   const std::string value_max_expr = components_ == 4
                                          ? "max(max(value.x, value.y), max(value.z, value.w))"
@@ -320,12 +324,12 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                : (components_ == 2 ? "(shifted_exp.x + shifted_exp.y)" : "shifted_exp");
 
   if (has_seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
+    seqlen_k = &shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
   if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink_var = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& x_var = shader.AddOutput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AdditionalImplementation() << "var<workgroup> thread_max: array<f32, " << work_group_size_ << ">;\n"
                                     << "var<workgroup> thread_sum: array<f32, " << work_group_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
@@ -334,7 +338,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let head_idx = u32(workgroup_idx / sequence_length) % uniforms.num_heads;\n"
                             << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
   std::ostringstream oss;
-  InitVarStub(oss, has_seqlen_k_);
+  InitVarStub(oss, seqlen_k);
   shader.MainFunctionBody() << oss.str()
                             << "let seq_causal_length = " << (has_seqlen_k_ ? "min(past_sequence_length + workgroup_idx % sequence_length + 1u, total_sequence_length)" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
@@ -359,7 +363,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-      << "    let value = f32_val_t(x[offset + i + start_offset]);\n"
+      << "    let value = f32_val_t(" << x_var.GetByOffset("offset + i + start_offset", true) << ");\n"
       << "    let value_max = " << value_max_expr << ";\n"
       << "    let new_max = max(thread_max_local, value_max);\n"
       << "    let shifted_exp = exp(value - f32_val_t(new_max));\n"
@@ -373,7 +377,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_head_sink_) {
     // Handle head sink
-    shader.MainFunctionBody() << "let sink_value: f32 = f32(head_sink[head_idx]);\n"
+    shader.MainFunctionBody() << "let sink_value: f32 = f32(" << head_sink_var->GetByOffset("head_idx", true) << ");\n"
                               << "var max_value = sink_value;\n";
   } else if (use_smooth_softmax_) {
     shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
@@ -399,7 +403,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
                             << "  let actual_pos = local_offset + i + start_offset;\n"
                             << "    if (actual_pos < seq_causal_length) {\n"
-                            << "      x[offset + i + start_offset] = x_value_t(x_element_t(1.0)/x_element_t(effective_seq_length));\n"
+                            << "      " << x_var.SetByOffset("offset + i + start_offset", "x_value_t(x_element_t(1.0)/x_element_t(effective_seq_length))", true) << "\n"
                             << "    }\n"
                             << "  }\n"
                             << "} else {\n"
@@ -407,8 +411,8 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let actual_pos = local_offset + i + start_offset;\n"
                             << "    let pos = offset + i + start_offset;\n"
                             << "    if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-                            << "       var f32input = f32_val_t(x[pos]);\n"
-                            << "       x[pos] = x_value_t(exp(f32input - f32_val_t(max_value)) / f32_val_t(sum));\n"
+                            << "       var f32input = f32_val_t(" << x_var.GetByOffset("pos", true) << ");\n"
+                            << "       " << x_var.SetByOffset("pos", "x_value_t(exp(f32input - f32_val_t(max_value)) / f32_val_t(sum))", true) << "\n"
                             << "    }\n"
                             << "  }\n"
                             << "}\n";
@@ -418,14 +422,14 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
                             << "    let global_pos = i + local_offset;\n"
                             << "    if (global_pos < start_offset) {\n"
-                            << "      x[offset + i] = x_value_t(x_element_t(0));\n"
+                            << "      " << x_var.SetByOffset("offset + i", "x_value_t(x_element_t(0))", true) << "\n"
                             << "    }\n"
                             << "  }\n"
                             << "}\n";
 
   if (has_seqlen_k_) {
     shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
-                              << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
+                              << "   " << x_var.SetByOffset("offset + total_seq_id", "x_value_t(x_element_t(0))", true) << "\n"
                               << "}\n";
   }
 
@@ -470,17 +474,20 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
 }
 
 Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const ShaderVariableHelper* past_value = nullptr;
+  const ShaderVariableHelper* seqlen_k = nullptr;
+  const ShaderVariableHelper* present_value_var = nullptr;
+  const auto& probs_var = shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& v_var = shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (feed_past_value_) {
-    shader.AddInput("past_value", ShaderUsage::UseUniform);
+    past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
   if (seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
+    seqlen_k = &shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& output_var = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (has_present_value_) {
-    shader.AddOutput("present_value", ShaderUsage::UseUniform);
+    present_value_var = &shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
 
   shader.AdditionalImplementation() << "var<workgroup> tileQ: array<probs_value_t, " << tile_size_ * tile_size_ << ">;\n"
@@ -494,7 +501,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_);
+  InitVarStub(oss, seqlen_k);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let vOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.kv_sequence_length + n;\n";
   if (has_present_value_) {
@@ -504,7 +511,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "var value = output_value_t(0);\n"
                             << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
                             << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];\n"
+                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = " << probs_var.GetByOffset("offsetA + w + local_id.x", true) << ";\n"
                             << "  }\n"
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
@@ -512,13 +519,13 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
                               << "      let pastValueOffset = (batch_head_idx / uniforms.n_reps) * uniforms.N * uniforms.past_sequence_length + n;\n"
-                              << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
+                              << "      tileK[idx] = " << (past_present_share_buffer_ ? present_value_var : past_value)->GetByOffset("pastValueOffset + (w + local_id.y) * uniforms.N") << ";\n"
                               << "    } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = v[vOffset + (w + local_id.y - past_sequence_length) * uniforms.N];\n"
+                              << "      tileK[idx] = " << v_var.GetByOffset("vOffset + (w + local_id.y - past_sequence_length) * uniforms.N", true) << ";\n"
                               << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length) {\n"
-                              << "      tileK[idx] = v[vOffset + (w + local_id.y) * uniforms.N];\n"
+                              << "      tileK[idx] = " << v_var.GetByOffset("vOffset + (w + local_id.y) * uniforms.N", true) << ";\n"
                               << "    }\n";
   }
 
@@ -528,7 +535,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
-    shader.MainFunctionBody() << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];\n"
+    shader.MainFunctionBody() << "      " << present_value_var->SetByOffset("presentValueOffset + (w + local_id.y) * uniforms.N", "tileK[idx]", true) << "\n"
                               << "    }\n";
   }
 
@@ -544,7 +551,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "if (m < uniforms.M && n < uniforms.N) {\n"
                             << "  let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + "
                             << "  m * uniforms.v_hidden_size + head_idx * uniforms.N + n;\n"
-                            << "  output[outputIdx] = value;\n"
+                            << "  " << output_var.SetByOffset("outputIdx", "value", true) << "\n"
                             << "}\n";
 
   return Status::OK();

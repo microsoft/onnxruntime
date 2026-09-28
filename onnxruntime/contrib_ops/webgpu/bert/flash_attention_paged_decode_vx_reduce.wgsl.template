@@ -37,7 +37,7 @@ $MAIN {
   // tiles ensures softmax rescaling is not skewed by garbage tiles.
   #if use_seqlen_k
   let batch_idx_for_seqlen = batch_head_idx / uniforms.num_heads;
-  let total_sequence_length = u32(seqlens_k[batch_idx_for_seqlen]) + 1u;
+  let total_sequence_length = u32(seqlens_k.getByOffset(batch_idx_for_seqlen)) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
   #else
   let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;
@@ -52,7 +52,7 @@ $MAIN {
     var g_max = f32(-3.4028234663852886e+38f);
 #if has_head_sink
     let head_idx_for_sink = batch_head_idx % uniforms.num_heads;
-    let sink_value = f32(head_sink[head_idx_for_sink]);
+    let sink_value = f32(head_sink.getByOffset(head_idx_for_sink));
     g_max = max(g_max, sink_value);
 #endif
     for (var i = 0u; i < num_total_seq_length_tile; i++) {

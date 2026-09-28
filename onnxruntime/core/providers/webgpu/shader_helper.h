@@ -79,13 +79,14 @@ class ShaderHelper final {
 
   // Add an input variable to the shader.
   //
-  // depending on the usage of the variable, additional code may be generated.
+  // The name is logical, not a WGSL storage binding. Access storage only through
+  // the returned helper so backing-buffer ownership, offsets and segments apply.
   const ShaderVariableHelper& AddInput(const std::string& name,
                                        ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
   // Add an output variable to the shader.
   //
-  // depending on the usage of the variable, additional code may be generated.
+  // As with inputs, storage reads and writes must use the returned helper.
   const ShaderVariableHelper& AddOutput(const std::string& name,
                                         ShaderUsage usage = ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseUniform);
 
@@ -179,6 +180,7 @@ class ShaderHelper final {
   std::vector<std::unique_ptr<ShaderVariableHelper>> output_vars_;
   std::vector<std::unique_ptr<ShaderIndicesHelper>> indices_vars_;
   OStringStream additional_implementation_ss_;
+  OStringStream main_function_prologue_ss_;
   OStringStream body_ss_;
 };
 

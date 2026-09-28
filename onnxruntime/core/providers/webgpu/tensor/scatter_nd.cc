@@ -13,8 +13,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  shader.AddInput("updates", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& indices_var = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& updates_var = shader.AddInput("updates", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
   const auto output_rank = static_cast<size_t>(output.Rank());
   auto atomic_reduction_snippet = [](ScatterNDReduction reduction, const std::string& ptr, const std::string& value, const std::string& data_type) -> std ::string {
@@ -38,7 +38,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
                  << "      }\n";
     switch (reduction) {
       case ScatterNDReduction::None:
-        ss << "    " << ptr << " = " << value << ";\n";
+        ORT_THROW("Non-atomic ScatterND writes must use SetByOffset");
         break;
       case ScatterNDReduction::Add:
         if (is_32_bit_integer) {
@@ -102,11 +102,11 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return ss.str();
   };
 
-  auto update_elements_snippet = [atomic_reduction_snippet](ScatterNDReduction reduction, const std::string& data_type) -> std::string {
+  auto update_elements_snippet = [&](ScatterNDReduction reduction, const std::string& data_type) -> std::string {
     std::ostringstream ss;
     ss << "  for (var i = 0u; i < uniforms.num_updates_elements; i++) {\n"
-       << "    let value = updates[uniforms.num_updates_elements * global_idx + i];\n"
-       << atomic_reduction_snippet(reduction, "output[data_offset + i]", "value", data_type) << "\n"
+       << "    let value = " << updates_var.GetByOffset("uniforms.num_updates_elements * global_idx + i", true) << ";\n"
+       << (reduction == ScatterNDReduction::None ? output.SetByOffset("data_offset + i", "value", true) : atomic_reduction_snippet(reduction, "storage_output[data_offset + i]", "value", data_type)) << "\n"
        << "  }\n";
     return ss.str();
   };
@@ -133,7 +133,7 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var indices_start = uniforms.last_index_dimension * global_idx;\n"
                             << "  var indices_end = indices_start + uniforms.last_index_dimension;\n"
                             << "  for (var i = indices_start; i < indices_end; i++) {\n"
-                            << "    var index = i32(indices[i].x);\n"
+                            << "    var index = i32(" << indices_var.GetByOffset("i", true) << ".x);\n"
                             << calc_data_offset_snippet(output_rank)
                             << "  }\n"
                             << update_elements_snippet(reduction_, data_type_str);

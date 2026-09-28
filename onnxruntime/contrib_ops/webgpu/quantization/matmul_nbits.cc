@@ -31,17 +31,20 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias = nullptr;
+  const ShaderVariableHelper* weight_index_indirect = nullptr;
+  const ShaderVariableHelper* zero_points = nullptr;
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    zero_points = &shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   if (has_weight_idx_indirect_) {
-    shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
+    weight_index_indirect = &shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -62,23 +65,29 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales, scales));
+                             WGSL_TEMPLATE_VARIABLE(scales, scales),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(weight_index_indirect, weight_index_indirect),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias = nullptr;
+  const ShaderVariableHelper* weight_index_indirect = nullptr;
+  const ShaderVariableHelper* zero_points = nullptr;
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
   const auto& scales_b = shader.AddInput("scales_b");
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    zero_points = &shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   if (has_weight_idx_indirect_) {
-    shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
+    weight_index_indirect = &shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
@@ -110,8 +119,11 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(weight_index_indirect, weight_index_indirect),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {

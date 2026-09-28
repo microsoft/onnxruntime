@@ -4,6 +4,8 @@
 #define PAD_MODE_WRAP 3
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
+
+#use .getByOffset
 #use getElementAt
 #use .offsetToIndices .setByOffset .rank
 
@@ -22,7 +24,7 @@ $MAIN {
 #endif
 
 #if dim_value_zero
-  output[global_idx] = constant_value;
+  output.setByOffset(global_idx, constant_value);
 #else
   let output_indices = output.offsetToIndices(global_idx);
   var input_index = u32(0);
@@ -73,6 +75,6 @@ $MAIN {
         , u32(in_coord), dim == output.rank - 1);
   }
 
-  output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
+  output.setByOffset(global_idx, select(data.getByOffset(input_index), constant_value, use_pad_value));
 #endif
 } // MAIN

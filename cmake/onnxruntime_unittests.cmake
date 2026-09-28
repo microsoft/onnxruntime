@@ -796,6 +796,10 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
     "${TEST_SRC_DIR}/providers/webgpu/*.cc"
     "${TEST_SRC_DIR}/providers/webgpu/*.h")
 
+  # ShaderHelper includes the generated WGSL template declarations.
+  set_property(SOURCE "${TEST_SRC_DIR}/providers/webgpu/buffer_access_test.cc" APPEND PROPERTY
+    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
+
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)

@@ -62,7 +62,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Add input and output variables
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                                ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+  const auto& result_var = shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
   const std::string thread_max_scalar_decl = is_fp32_
@@ -80,11 +80,11 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation()
       << "fn getValue(row: i32, col: i32, row_stride: i32) -> x_value_t {\n"
       << "  let index = row * row_stride + col;\n"
-      << "  return x[index];\n"
+      << "  return " << input.GetByOffset("u32(index)") << ";\n"
       << "}\n"
       << "fn setValue(row: i32, col: i32, row_stride: i32, value: x_value_t) {\n"
       << "  let index = row * row_stride + col;\n"
-      << "  result[index] = value;\n"
+      << "  " << result_var.SetByOffset("u32(index)", "value") << "\n"
       << "}\n";
 
   // Main function body

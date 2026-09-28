@@ -49,19 +49,22 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
 }
 
 Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("weight", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* bias = nullptr;
+  const ShaderVariableHelper* conv_state = nullptr;
+  const ShaderVariableHelper* present_state = nullptr;
+  const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+  const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform);
 
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   if (has_conv_state_) {
-    shader.AddInput("conv_state", ShaderUsage::UseUniform);
+    conv_state = &shader.AddInput("conv_state", ShaderUsage::UseUniform);
   }
 
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
   if (output_present_state_) {
-    shader.AddOutput("present_state", ShaderUsage::UseUniform);
+    present_state = &shader.AddOutput("present_state", ShaderUsage::UseUniform);
   }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/causal_conv_with_state.wgsl.template",
@@ -69,12 +72,18 @@ Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_conv_state, has_conv_state_),
                              WGSL_TEMPLATE_PARAMETER(output_present_state, output_present_state_),
-                             WGSL_TEMPLATE_PARAMETER(use_silu, activation_ == CausalConvActivation::Silu));
+                             WGSL_TEMPLATE_PARAMETER(use_silu, activation_ == CausalConvActivation::Silu),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(conv_state, conv_state),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(present_state, present_state),
+                             WGSL_TEMPLATE_VARIABLE(weight, weight));
 }
 
 Status CausalConvUpdateStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("present_state", ShaderUsage::UseUniform);
+  const auto& input_var = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+  const auto& present_state_var = shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
   // global_idx enumerates (batch, channel) pairs. Both layouts are dense, so a (base, stride)
   // pair per tensor covers them: channels-first walks a contiguous row, channels-last strides by
@@ -97,25 +106,21 @@ Status CausalConvUpdateStateProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
 
   shader.MainFunctionBody()
-      << "\n"
-         "  if (uniforms.input_length >= uniforms.state_length) {\n"
-         "    let input_offset = uniforms.input_length - uniforms.state_length;\n"
-         "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
-         "      present_state[base_state + s * state_stride] =\n"
-         "          input[base_input + (input_offset + s) * input_stride];\n"
-         "    }\n"
-         "  } else {\n"
-         "    let preserved_state = uniforms.state_length - uniforms.input_length;\n"
-         "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
-         "      if (s < preserved_state) {\n"
-         "        present_state[base_state + s * state_stride] =\n"
-         "            present_state[base_state + (s + uniforms.input_length) * state_stride];\n"
-         "      } else {\n"
-         "        present_state[base_state + s * state_stride] =\n"
-         "            input[base_input + (s - preserved_state) * input_stride];\n"
-         "      }\n"
-         "    }\n"
-         "  }\n";
+      << "  if (uniforms.input_length >= uniforms.state_length) {\n"
+      << "    let input_offset = uniforms.input_length - uniforms.state_length;\n"
+      << "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
+      << "      " << present_state_var.SetByOffset("base_state + s * state_stride", input_var.GetByOffset("base_input + (input_offset + s) * input_stride")) << "\n"
+      << "    }\n"
+      << "  } else {\n"
+      << "    let preserved_state = uniforms.state_length - uniforms.input_length;\n"
+      << "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
+      << "      if (s < preserved_state) {\n"
+      << "        " << present_state_var.SetByOffset("base_state + s * state_stride", present_state_var.GetByOffset("base_state + (s + uniforms.input_length) * state_stride")) << "\n"
+      << "      } else {\n"
+      << "        " << present_state_var.SetByOffset("base_state + s * state_stride", input_var.GetByOffset("base_input + (s - preserved_state) * input_stride")) << "\n"
+      << "      }\n"
+      << "    }\n"
+      << "  }\n";
 
   return Status::OK();
 }

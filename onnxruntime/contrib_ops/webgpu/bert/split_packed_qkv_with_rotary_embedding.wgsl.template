@@ -35,7 +35,7 @@ $MAIN {
     let past_seqlen = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.sequence_length);
     let position_id = past_seqlen + seq_idx;
 #if use_total_sequence_length_input
-    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let global_total_seq_length = u32(total_sequence_length_input.getByOffset(0));
 #else
     let global_total_seq_length = uniforms.total_sequence_length;
 #endif

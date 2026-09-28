@@ -502,7 +502,7 @@ ss << __param_sg_mat_n;
 ss << __str_26;
 ss << __param_sg_mat_k;
 ss << __str_73;
-// 204 |                 &input_b, b_base + 0 * kSgMatN, uniforms.N_b);
+// 204 |                 &storage_input_b, b_base + 0 * kSgMatN, uniforms.N_b);
 ss << __str_204;
 // 205 | #if sg_mat_count_n >= 2
 if (__param_sg_mat_count_n >= 2) {
@@ -518,7 +518,7 @@ ss << __param_sg_mat_n;
 ss << __str_26;
 ss << __param_sg_mat_k;
 ss << __str_73;
-// 208 |                 &input_b, b_base + 1 * kSgMatN, uniforms.N_b);
+// 208 |                 &storage_input_b, b_base + 1 * kSgMatN, uniforms.N_b);
 ss << __str_205;
 // 209 | #endif
 }
@@ -536,7 +536,7 @@ ss << __param_sg_mat_n;
 ss << __str_26;
 ss << __param_sg_mat_k;
 ss << __str_73;
-// 213 |                 &input_b, b_base + 2 * kSgMatN, uniforms.N_b);
+// 213 |                 &storage_input_b, b_base + 2 * kSgMatN, uniforms.N_b);
 ss << __str_206;
 // 214 | #endif
 }
@@ -554,7 +554,7 @@ ss << __param_sg_mat_n;
 ss << __str_26;
 ss << __param_sg_mat_k;
 ss << __str_73;
-// 218 |                 &input_b, b_base + 3 * kSgMatN, uniforms.N_b);
+// 218 |                 &storage_input_b, b_base + 3 * kSgMatN, uniforms.N_b);
 ss << __str_207;
 // 219 | #endif
 }
@@ -576,7 +576,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 227 |                 &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 227 |                 &storage_input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_97;
 // 228 | #if sg_mat_count_m >= 2
 if (__param_sg_mat_count_m >= 2) {
@@ -592,7 +592,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 231 |                 &input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 231 |                 &storage_input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_98;
 // 232 | #endif
 }
@@ -610,7 +610,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 236 |                 &input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 236 |                 &storage_input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_99;
 // 237 | #endif
 }
@@ -628,7 +628,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 241 |                 &input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 241 |                 &storage_input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_100;
 // 242 | #endif
 }
@@ -646,7 +646,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 246 |                 &input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 246 |                 &storage_input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_101;
 // 247 | #endif
 }
@@ -664,7 +664,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 251 |                 &input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 251 |                 &storage_input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_102;
 // 252 | #endif
 }
@@ -682,7 +682,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 256 |                 &input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 256 |                 &storage_input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_103;
 // 257 | #endif
 }
@@ -700,7 +700,7 @@ ss << __param_sg_mat_k;
 ss << __str_26;
 ss << __param_sg_mat_m;
 ss << __str_73;
-// 261 |                 &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+// 261 |                 &storage_input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 ss << __str_104;
 // 262 | #endif
 }

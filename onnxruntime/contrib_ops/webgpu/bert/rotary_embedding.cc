@@ -123,9 +123,11 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
   // Decode-only fast path: each thread re-reads its own head's head_size channels to
   // compute the sum-of-squares (no reductions, no shared memory). The redundant L1
   // traffic is sub-microsecond on Qwen3-1.7B decode geometry.
+  const ShaderVariableHelper* q_norm_weight = nullptr;
+  const ShaderVariableHelper* k_norm_weight = nullptr;
   if (has_qk_norm_) {
-    shader.AddInput("q_norm_weight", ShaderUsage::UseUniform);
-    shader.AddInput("k_norm_weight", ShaderUsage::UseUniform);
+    q_norm_weight = &shader.AddInput("q_norm_weight", ShaderUsage::UseUniform);
+    k_norm_weight = &shader.AddInput("k_norm_weight", ShaderUsage::UseUniform);
   }
 
   // Outputs
@@ -178,13 +180,13 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
     if (!has_qk_norm_) {
       return q_input.GetByOffset(off);
     }
-    return std::string("(") + q_input.GetByOffset(off) + " * q_inv_rms * q_norm_weight[" + chan + "])";
+    return std::string("(") + q_input.GetByOffset(off) + " * q_inv_rms * " + q_norm_weight->GetByOffset(chan) + ")";
   };
   auto load_k = [&](const std::string& off, const std::string& chan) {
     if (!has_qk_norm_) {
       return k_input.GetByOffset(off);
     }
-    return std::string("(") + k_input.GetByOffset(off) + " * k_inv_rms * k_norm_weight[" + chan + "])";
+    return std::string("(") + k_input.GetByOffset(off) + " * k_inv_rms * " + k_norm_weight->GetByOffset(chan) + ")";
   };
 
   // Channel index expressions for the rotated branch. For interleaved layout the pair is

@@ -10,8 +10,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("y", ShaderUsage::UseUniform);
+  const auto& x_var = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& y_var = shader.AddOutput("y", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
       << "var<workgroup> norm_shared : array<f32, workgroup_size_x>;\n";
@@ -40,7 +40,7 @@ Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // Phase 1: Accumulate norm contribution
       << "var local_sum: f32 = 0.0;\n"
       << "for (var j: u32 = 0u; j < elements_per_thread; j++) {\n"
-      << "  let val = f32(x[base + (start + j) * uniforms.stride_factor]);\n";
+      << "  let val = f32(" << x_var.GetByOffset("base + (start + j) * uniforms.stride_factor", true) << ");\n";
 
   if (p_ == 1) {
     shader.MainFunctionBody()
@@ -79,9 +79,9 @@ Status LpNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var j: u32 = 0u; j < elements_per_thread; j++) {\n"
       << "  let offset = base + (start + j) * uniforms.stride_factor;\n"
       << "  if (norm_val != 0.0) {\n"
-      << "    y[offset] = x_element_t(f32(x[offset]) / norm_val);\n"
+      << "    " << y_var.SetByOffset("offset", MakeStringWithClassicLocale("x_element_t(f32(", x_var.GetByOffset("offset", true), ") / norm_val)"), true) << "\n"
       << "  } else {\n"
-      << "    y[offset] = x_element_t(0.0);\n"
+      << "    " << y_var.SetByOffset("offset", "x_element_t(0.0)", true) << "\n"
       << "  }\n"
       << "}\n";
 

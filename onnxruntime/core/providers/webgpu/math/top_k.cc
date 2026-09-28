@@ -59,7 +59,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& values_var = shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& indices_out = shader.AddOutput("indices", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   const std::string max_float = is_fp16_ ? "65504.0h" : "3.4028234663852886e+38f";
@@ -128,7 +128,7 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // Write top-K results (stride-write for K > wg_size case)
       << "for (var idx = local_idx; idx < u32(k); idx += " << wg_ << "u) {\n"
       << "  let out_offset = u32(i32(row) * k + i32(idx));\n"
-      << "  values[out_offset] = shared_vals[idx];\n"
+      << "  " << values_var.SetByOffset("out_offset", "shared_vals[idx]", true) << "\n"
       << "  " << indices_out.SetByOffset("out_offset", "shared_idxs[idx]") << "\n"
       << "}\n";
 
@@ -137,8 +137,8 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
+  const auto& vals_buf_var = shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& idxs_buf_var = shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
 
   const std::string max_float = is_fp16_ ? "65504.0h" : "3.4028234663852886e+38f";
   const std::string pad_value = largest_ ? ("-" + max_float) : max_float;
@@ -150,11 +150,11 @@ Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var idx = local_idx; idx < u32(pcols); idx += 256u) {\n"
       << "  let out_idx = u32(i32(row) * pcols + i32(idx));\n"
       << "  if (i32(idx) < cols) {\n"
-      << "    vals_buf[out_idx] = x_element_t(" << input.GetByOffset("u32(i32(row) * cols + i32(idx))") << ");\n"
-      << "    idxs_buf[out_idx] = i32(idx);\n"
+      << vals_buf_var.SetByOffset("out_idx", "x_element_t(" + input.GetByOffset("u32(i32(row) * cols + i32(idx))") + ")") << "\n"
+      << "    " << idxs_buf_var.SetByOffset("out_idx", "i32(idx)", true) << "\n"
       << "  } else {\n"
-      << "    vals_buf[out_idx] = x_element_t(" << pad_value << ");\n"
-      << "    idxs_buf[out_idx] = -1;\n"
+      << vals_buf_var.SetByOffset("out_idx", "x_element_t(" + pad_value + ")") << "\n"
+      << "    " << idxs_buf_var.SetByOffset("out_idx", "-1", true) << "\n"
       << "  }\n"
       << "}\n";
 
@@ -162,8 +162,8 @@ Status TopKInitProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status TopKSortStepProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
+  const auto& vals_buf_var = shader.AddOutput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& idxs_buf_var = shader.AddOutput("idxs_buf", ShaderUsage::UseUniform);
 
   // Same composite-key tiebreaker as shared-memory path
   // Use within-row position (i - base) for direction, not global index
@@ -186,25 +186,25 @@ Status TopKSortStepProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "let i = base + block * 2u * gap + pos;\n"
       << "let j = i + gap;\n"
       << "let asc = " << asc_expr << ";\n"
-      << "let va = vals_buf[i];\n"
-      << "let vb = vals_buf[j];\n"
-      << "let ia = idxs_buf[i];\n"
-      << "let ib = idxs_buf[j];\n"
+      << "let va = " << vals_buf_var.GetByOffset("i", true) << ";\n"
+      << "let vb = " << vals_buf_var.GetByOffset("j", true) << ";\n"
+      << "let ia = " << idxs_buf_var.GetByOffset("i", true) << ";\n"
+      << "let ib = " << idxs_buf_var.GetByOffset("j", true) << ";\n"
       << "let do_swap = select(" << desc_swap << ", " << asc_swap << ", asc);\n"
       << "if (do_swap) {\n"
-      << "  vals_buf[i] = vb;\n"
-      << "  vals_buf[j] = va;\n"
-      << "  idxs_buf[i] = ib;\n"
-      << "  idxs_buf[j] = ia;\n"
+      << "  " << vals_buf_var.SetByOffset("i", "vb", true) << "\n"
+      << "  " << vals_buf_var.SetByOffset("j", "va", true) << "\n"
+      << "  " << idxs_buf_var.SetByOffset("i", "ib", true) << "\n"
+      << "  " << idxs_buf_var.SetByOffset("j", "ia", true) << "\n"
       << "}\n";
 
   return Status::OK();
 }
 
 Status TopKOutputProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("idxs_buf", ShaderUsage::UseUniform);
-  shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& vals_buf_var = shader.AddInput("vals_buf", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& idxs_buf_var = shader.AddInput("idxs_buf", ShaderUsage::UseUniform);
+  const auto& values_var = shader.AddOutput("values", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& indices_out = shader.AddOutput("indices", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody()
@@ -214,8 +214,8 @@ Status TopKOutputProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "for (var idx = local_idx; idx < u32(k); idx += 256u) {\n"
       << "  let in_idx = u32(i32(row) * pcols + i32(idx));\n"
       << "  let out_idx = u32(i32(row) * k + i32(idx));\n"
-      << "  values[out_idx] = vals_buf[in_idx];\n"
-      << "  " << indices_out.SetByOffset("out_idx", "idxs_buf[in_idx]") << "\n"
+      << "  " << values_var.SetByOffset("out_idx", vals_buf_var.GetByOffset("in_idx", true), true) << "\n"
+      << "  " << indices_out.SetByOffset("out_idx", idxs_buf_var.GetByOffset("in_idx", true)) << "\n"
       << "}\n";
 
   return Status::OK();

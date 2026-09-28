@@ -79,7 +79,7 @@ $MAIN {
     let a_global = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M);
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[a_global];
+    let actual_weight_idx = weight_index_indirect.getByOffset(a_global);
 #else
     let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -101,7 +101,7 @@ $MAIN {
 #if has_bias
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx_bias = weight_index_indirect[a_global];
+    let actual_weight_idx_bias = weight_index_indirect.getByOffset(a_global);
 #else
     let actual_weight_idx_bias = uniforms.weight_idx;
 #endif
@@ -133,7 +133,7 @@ $MAIN {
     let zero = mm_read_zero(actual_weight_idx, 0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let own_scale_b = scales_b.getByOffset(weight_index_indirect[a_global]);
+    let own_scale_b = scales_b.getByOffset(weight_index_indirect.getByOffset(a_global));
 #else
     let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
 #endif
@@ -163,7 +163,7 @@ $MAIN {
             {
 #if has_weight_idx
 #if has_weight_idx_indirect
-                let actual_weight_idx = weight_index_indirect[a_global];
+                let actual_weight_idx = weight_index_indirect.getByOffset(a_global);
 #else
                 let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -218,7 +218,7 @@ $MAIN {
       let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
-        let bias_value = acc_element_t(bias[b_global + b_bias_offset]);
+        let bias_value = acc_element_t(bias.getByOffset(b_global + b_bias_offset));
         // Downcast to the output element type only at the final store.
         output.setByOffset(output_idx, output_element_t(output_value + bias_value));
 #else

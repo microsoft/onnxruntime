@@ -178,8 +178,6 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_shared_code_map = {
 };
 
 std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
-    {ReduceOpType::Max, "_A[offset]"},
-    {ReduceOpType::Min, "_A[offset]"},
     {ReduceOpType::Mean, "0"},
     {ReduceOpType::Sum, "0"},
     {ReduceOpType::Prod, "1"},
@@ -289,7 +287,7 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "}\n";
   shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
                             << "let offset = outputIndex * uniforms.reduceSize;\n"
-                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
+                            << "var bestValue = output_value_t(" << ((reduce_op_type_ == ReduceOpType::Max || reduce_op_type_ == ReduceOpType::Min) ? input.GetByOffset("offset") : reduce_op_init_values_map[reduce_op_type_]) << ");\n"
                             << "let length = uniforms.reduceSize;\n"
                             << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
                             << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"

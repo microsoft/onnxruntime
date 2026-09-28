@@ -15,8 +15,9 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* data = nullptr;
   if (!dim_value_zero_) {
-    shader.AddInput("data", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
+    data = &shader.AddInput("data", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
@@ -24,6 +25,7 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(dim_value_zero, dim_value_zero_),
                              WGSL_TEMPLATE_PARAMETER(is_float16, is_float16_),
                              WGSL_TEMPLATE_PARAMETER(pad_mode, mode_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(data, data),
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 

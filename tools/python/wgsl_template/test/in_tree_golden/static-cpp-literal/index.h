@@ -75,6 +75,7 @@ struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
     int param_tile_n;
     int param_use_subgroup;
     int param_vec_size;
+    const ShaderVariableHelper* var_bias;
     const ShaderVariableHelper* var_output;
     const ShaderVariableHelper* var_src;
     const ShaderVariableHelper* var_weight;
@@ -109,6 +110,7 @@ struct TemplateParameter<"tensor/pad.wgsl.template"> {
     int param_dim_value_zero;
     int param_is_float16;
     int param_pad_mode;
+    const ShaderVariableHelper* var_data;
     const ShaderVariableHelper* var_output;
   };
 };

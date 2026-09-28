@@ -35,6 +35,7 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       program_{program},
       program_metadata_{program_metadata},
       additional_implementation_ss_{kStringInitialSizeShaderSourceCodeAdditionalImplementation},
+      main_function_prologue_ss_{1024},
       body_ss_{kStringInitialSizeShaderSourceCodeMain} {}
 
 Status ShaderHelper::Init() {
@@ -72,21 +73,23 @@ Status ShaderHelper::Init() {
                       "Workgroup size x (", workgroup_size_x, ") must be a multiple of the requested subgroup size (", subgroup_size, ")");
   }
 
-  // init body string stream
+  // Keep the prologue separate so indirect-dispatch reads can use the helper
+  // registered after the operator's GenerateShaderCode call.
+  auto& prologue = main_function_prologue_ss_;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
 
   // append header for main function so it is ready for user to append main function body
-  body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)";
+  prologue << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)";
   if (program_.SubgroupSize() != 0) {
-    body_ss_ << " @subgroup_size(subgroup_size)";
+    prologue << " @subgroup_size(subgroup_size)";
   }
-  body_ss_ << "\n"
+  prologue << "\n"
               "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
-    body_ss_ << ",\n"
+    prologue << ",\n"
                 "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
                 "        @builtin(subgroup_size) sg_size : u32";
   }
@@ -94,18 +97,11 @@ Status ShaderHelper::Init() {
   // and duplication overhead in TransformIndirectDispatchBuffer.
   // Instead, the dispatch dimensions will be read from the indirect buffer at runtime.
   if (use_indirect_dispatch) {
-    body_ss_ << ") {\n";
-    // For indirect dispatch, read the actual dispatch dimensions from the indirect buffer.
-    // The indirect buffer format is: [x, y, z] where x, y, z are the workgroup counts.
-    // We read these values to calculate workgroup_idx accurately based on actual dispatch.
-    body_ss_ << "  let num_workgroups_x = indirect_buffer[0];\n"
-                "  let num_workgroups_y = indirect_buffer[1];\n"
-                "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
-                "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+    prologue << ") {\n";
   } else {
-    body_ss_ << ",\n"
+    prologue << ",\n"
                 "        @builtin(num_workgroups) num_workgroups : vec3<u32>) {\n";
-    body_ss_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
+    prologue << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
                 "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
   }
 
@@ -121,9 +117,11 @@ const ShaderVariableHelper& ShaderHelper::AddInput(const std::string& name, Shad
                                                                        : program_.Inputs()[input_index].tensor->Shape();
   const size_t owner_index = program_.InputBufferOwner(input_index);
   const bool owns_storage_binding = owner_index == input_index;
-  std::string_view storage_name{name};
+  // Physical names are private to the helpers. Raw indexing by the logical name
+  // must fail WGSL compilation instead of silently bypassing buffer views.
+  std::string storage_name = "storage_" + name;
   if (!owns_storage_binding) {
-    storage_name = input_vars_[owner_index]->name_;
+    storage_name = input_vars_[owner_index]->storage_name_;
   }
   return AddVariableImpl(true,
                          name,
@@ -144,9 +142,9 @@ const ShaderVariableHelper& ShaderHelper::AddOutput(const std::string& name, Sha
                                                                          : program_.Outputs()[output_index].tensor->Shape();
   const size_t owner_index = program_.OutputBufferOwner(output_index);
   const bool owns_storage_binding = owner_index == output_index;
-  std::string_view storage_name{name};
+  std::string storage_name = "storage_" + name;
   if (!owns_storage_binding) {
-    storage_name = output_vars_[owner_index]->name_;
+    storage_name = output_vars_[owner_index]->storage_name_;
   }
   return AddVariableImpl(false,
                          name,
@@ -528,9 +526,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     for (uint32_t seg = 0; seg < segments; ++seg) {
       ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read> ";
       if (seg == 0) {
-        ss << input->name_;
+        ss << input->storage_name_;
       } else {
-        ss << input->name_ << seg;  // naming convention matches ShaderVariableHelper::Impl usage (name + index)
+        ss << input->storage_name_ << seg;  // matches ShaderVariableHelper::Impl (storage name + index)
       }
       ss << ": array<" << input->StorageType() << ">;\n";
     }
@@ -546,9 +544,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     for (uint32_t seg = 0; seg < segments; ++seg) {
       ss << "@group(0) @binding(" << binding_index++ << ") var<storage, read_write> ";
       if (seg == 0) {
-        ss << output->name_;
+        ss << output->storage_name_;
       } else {
-        ss << output->name_ << seg;
+        ss << output->storage_name_ << seg;
       }
       ss << ": array<";
       if (is_atomic) {
@@ -713,6 +711,14 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Main Function Body
   //
+  ss << SS_GET(main_function_prologue_ss_);
+  if (program_.IndirectDispatchTensor() != nullptr) {
+    const auto& indirect = *input_vars_.back();
+    ss << "  let num_workgroups_x = " << indirect.GetByOffset("0u") << ";\n"
+       << "  let num_workgroups_y = " << indirect.GetByOffset("1u") << ";\n"
+       << "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
+       << "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+  }
   ss << SS_GET(body_ss_);
   ss << "\n"
         "}\n";

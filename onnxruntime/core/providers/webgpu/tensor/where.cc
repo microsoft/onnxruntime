@@ -60,7 +60,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& c_input = shader.AddInput("c_data", ShaderUsage::UseUniform);
   const auto& a_input = shader.AddInput("a_data", ShaderUsage::UseUniform);
   const auto& b_input = shader.AddInput("b_data", ShaderUsage::UseUniform);
-  const auto& output = shader.AddOutput("output_data", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output_data", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
@@ -103,12 +103,12 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& output_indices = shader.AddIndices("output_indices");
 
     const auto single_assignment =
-        [&expression, &shader, &output_indices, &a_indices, &b_indices, &c_indices](
+        [&expression, &shader, &output_indices, &a_indices, &b_indices, &c_indices, &a_input, &b_input, &c_input](
             std::string_view rest_str, const std::string& x, std::string_view type_cast = "")
         -> void {
-      const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
-      const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
-      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << u32(component_c" + x + " * 8)))";
+      const std::string a_expression = a_input.GetByOffset("index_a" + x) + "[component_a" + x + "]";
+      const std::string b_expression = b_input.GetByOffset("index_b" + x) + "[component_b" + x + "]";
+      const std::string c_expression = c_input.GetByOffset("index_c" + x) + "[component_c" + x + "]";
 
       shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
                                 << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
@@ -123,19 +123,12 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                 << rest_str << "[" << x << "] = " << type_cast << "(" << expression(a_expression, b_expression, c_expression) << ");\n";
     };
 
-    if (Outputs()[0].tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
-      shader.MainFunctionBody() << "var data = vec4<u32>(0);\n";
-      single_assignment("data", "0", "u32");
-      single_assignment("data", "1", "u32");
-      single_assignment("data", "2", "u32");
-      single_assignment("data", "3", "u32");
-      shader.MainFunctionBody() << "output_data[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));\n";
-    } else {
-      single_assignment("output_data[global_idx]", "0");
-      single_assignment("output_data[global_idx]", "1");
-      single_assignment("output_data[global_idx]", "2");
-      single_assignment("output_data[global_idx]", "3");
-    }
+    shader.MainFunctionBody() << "var data: output_data_value_t;\n";
+    single_assignment("data", "0");
+    single_assignment("data", "1");
+    single_assignment("data", "2");
+    single_assignment("data", "3");
+    shader.MainFunctionBody() << output.SetByOffset("global_idx", "data") << "\n";
   }
 
   return Status::OK();

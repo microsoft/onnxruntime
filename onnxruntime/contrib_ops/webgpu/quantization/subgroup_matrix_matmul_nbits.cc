@@ -62,6 +62,7 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   const ShaderVariableHelper& b,
                                   const ShaderVariableHelper& scales_b,
                                   const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* zero_points,
                                   uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   // Use the 128x128 tile shader for the 16x16x16 config.
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
@@ -76,13 +77,15 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                              WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
                              WGSL_TEMPLATE_VARIABLE(input_b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                                  const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  const ShaderVariableHelper& output,
+                                 const ShaderVariableHelper* zero_points,
                                  uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
                                  bool has_tail_buffer) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
@@ -98,12 +101,14 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                              WGSL_TEMPLATE_PARAMETER(sg_mat_n, config.N),
                              WGSL_TEMPLATE_VARIABLE(input_b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper& a, const ShaderVariableHelper& b,
                                const ShaderVariableHelper& scales_b,
-                               const ShaderVariableHelper& output, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+                               const ShaderVariableHelper& output, const ShaderVariableHelper* zero_points,
+                               uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x8x8.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
@@ -114,15 +119,17 @@ Status GenerateShaderCode8x8x8(ShaderHelper& shader, const ShaderVariableHelper&
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
                              WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* zero_points = nullptr;
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    zero_points = &shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
@@ -136,11 +143,11 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   }
 
   if (config_.Is(8, 8, 8)) {
-    return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, zero_points, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else if (config_.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, has_tail_buffer_);
+    return GenerateShaderCode8x16x16(shader, b, scales_b, output, zero_points, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, has_tail_buffer_);
   } else if (config_.Is(16, 16, 16)) {
-    return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCode16x16x16(shader, b, scales_b, output, zero_points, nbits_, config_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "Unsupported subgroup matrix config dimensions.");

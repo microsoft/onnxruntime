@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#use .getByOffset
+
 #param n_bits
 #param has_zero_points
 #param has_bias
@@ -33,7 +35,7 @@
       // u32 holds elements_in_uint32 packed nbits.
       let array_index = offset / elements_in_uint32;
       let component_index = offset % elements_in_uint32;
-      let packed_value = zero_points[array_index];
+      let packed_value = zero_points.getByOffset(array_index);
 
       // Extract the nbits component
       let shift_amount = component_index * n_bits;

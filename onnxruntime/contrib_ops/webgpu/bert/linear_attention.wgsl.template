@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#use .getByOffset .setByOffset
+
 //
 // LinearAttention shader
 //
@@ -101,9 +103,9 @@ $MAIN {
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
 #if initial_state_in_present_state
-        state[j] = vtype(present_state[state_base + j]);
+        state[j] = vtype(present_state.getByOffset(state_base + j));
 #else
-        state[j] = vtype(initial_state[state_base + j]);
+        state[j] = vtype(initial_state.getByOffset(state_base + j));
 #endif
       }
     }
@@ -117,18 +119,18 @@ $MAIN {
     if (dk_idx < uniforms.head_dim_k) {
       let k_head_idx = head_idx / uniforms.kv_per_k_head;
       let k_idx = bt_offset * packed_dk_k + k_head_idx * uniforms.head_dim_k + dk_idx;
-      k_val = f32(key[k_idx]);
+      k_val = f32(key.getByOffset(k_idx));
     }
 
     // Step 1: Apply decay (for gated and gated_delta modes)
 #if update_rule == UPDATE_GATED || update_rule == UPDATE_GATED_DELTA
     // Apply exponential decay: S *= exp(decay)
 #if decay_broadcast_dk
-    let exp_g = exp(f32(decay[bt_offset * uniforms.num_heads + head_idx]));
+    let exp_g = exp(f32(decay.getByOffset(bt_offset * uniforms.num_heads + head_idx)));
 #else
     var exp_g: f32 = 1.0;
     if (dk_idx < uniforms.head_dim_k) {
-      exp_g = exp(f32(decay[bt_offset * packed_dk_kv + head_idx * uniforms.head_dim_k + dk_idx]));
+      exp_g = exp(f32(decay.getByOffset(bt_offset * packed_dk_kv + head_idx * uniforms.head_dim_k + dk_idx)));
     }
 #endif
     for (var j = 0u; j < TILE_V; j++) {
@@ -152,7 +154,7 @@ $MAIN {
     }
     var q0_val: f32 = 0.0;
     if (dk_idx < uniforms.head_dim_k) {
-      q0_val = f32(query[bt_offset * packed_dk_q + q_head_0 * uniforms.head_dim_k + dk_idx]);
+      q0_val = f32(query.getByOffset(bt_offset * packed_dk_q + q_head_0 * uniforms.head_dim_k + dk_idx));
     }
 
     // Fused reduction: compute retrieved = S^T@k, pre_output = S^T@q_0,
@@ -186,12 +188,12 @@ $MAIN {
         preout_sum += sg_preout[sg * TILE_V + j];
         kq_dot += sg_kq[sg];
       }
-      let beta_val = f32(beta[beta_base]);
+      let beta_val = f32(beta.getByOffset(beta_base));
       if (dv_start + j < uniforms.head_dim_v) {
-        let v_val = vtype(value[v_base + j]);
+        let v_val = vtype(value.getByOffset(v_base + j));
         let delta_j = beta_val * (v_val - retrieved_sum);
         broadcast_buf[j] = delta_j;
-        output[bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((preout_sum + delta_j * kq_dot) * uniforms.scale);
+        output.setByOffset(bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j, otype((preout_sum + delta_j * kq_dot) * uniforms.scale));
       } else {
         broadcast_buf[j] = vtype(0.0);
       }
@@ -219,16 +221,16 @@ $MAIN {
     let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
     let beta_base = bt_offset * uniforms.num_heads + head_idx;
     if (dk_idx == 0u) {
-      let beta_val = f32(beta[beta_base]);
+      let beta_val = f32(beta.getByOffset(beta_base));
       let kq_dot = red_kq[0];
       for (var j = 0u; j < TILE_V; j++) {
         if (dv_start + j < uniforms.head_dim_v) {
           let retrieved = red_retrieved[j * workgroup_size_x];
           let pre_out = red_preout[j * workgroup_size_x];
-          let v_val = vtype(value[v_base + j]);
+          let v_val = vtype(value.getByOffset(v_base + j));
           let delta_j = beta_val * (v_val - retrieved);
           broadcast_buf[j] = delta_j;
-          output[bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((pre_out + delta_j * kq_dot) * uniforms.scale);
+          output.setByOffset(bt_offset * packed_dv_out + out_head_0 * uniforms.head_dim_v + dv_start + j, otype((pre_out + delta_j * kq_dot) * uniforms.scale));
         } else {
           broadcast_buf[j] = vtype(0.0);
         }
@@ -249,7 +251,7 @@ $MAIN {
       let q_head_g = head_idx * uniforms.heads_per_group + qg;
       var qg_val: f32 = 0.0;
       if (dk_idx < uniforms.head_dim_k) {
-        qg_val = f32(query[bt_offset * packed_dk_q + q_head_g * uniforms.head_dim_k + dk_idx]);
+        qg_val = f32(query.getByOffset(bt_offset * packed_dk_q + q_head_g * uniforms.head_dim_k + dk_idx));
       }
 #if subgroup_min_size
       // Subgroup reduction of state*qg
@@ -268,7 +270,7 @@ $MAIN {
           preout_sum += sg_preout[sg * TILE_V + j];
         }
         if (dv_start + j < uniforms.head_dim_v) {
-          output[bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(preout_sum * uniforms.scale);
+          output.setByOffset(bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j, otype(preout_sum * uniforms.scale));
         }
       }
 #else
@@ -287,7 +289,7 @@ $MAIN {
       if (dk_idx == 0u) {
         for (var j = 0u; j < TILE_V; j++) {
           if (dv_start + j < uniforms.head_dim_v) {
-            output[bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(red_preout[j * workgroup_size_x] * uniforms.scale);
+            output.setByOffset(bt_offset * packed_dv_out + q_head_g * uniforms.head_dim_v + dv_start + j, otype(red_preout[j * workgroup_size_x] * uniforms.scale));
           }
         }
       }
@@ -300,7 +302,7 @@ $MAIN {
     let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
-        state[j] += k_val * vtype(value[v_base + j]);
+        state[j] += k_val * vtype(value.getByOffset(v_base + j));
       }
     }
 
@@ -311,7 +313,7 @@ $MAIN {
         let q_head_idx = head_idx * uniforms.heads_per_group + qg;
         var q_val_g: f32 = 0.0;
         if (dk_idx < uniforms.head_dim_k) {
-          q_val_g = f32(query[bt_offset * packed_dk_q + q_head_idx * uniforms.head_dim_k + dk_idx]);
+          q_val_g = f32(query.getByOffset(bt_offset * packed_dk_q + q_head_idx * uniforms.head_dim_k + dk_idx));
         }
 #if subgroup_min_size
         for (var j = 0u; j < TILE_V; j++) {
@@ -329,7 +331,7 @@ $MAIN {
           }
           let out_base = bt_offset * packed_dv_out + q_head_idx * uniforms.head_dim_v + dv_start;
           if (dv_start + j < uniforms.head_dim_v) {
-            output[out_base + j] = otype(preout_sum * uniforms.scale);
+            output.setByOffset(out_base + j, otype(preout_sum * uniforms.scale));
           }
         }
 #else
@@ -349,7 +351,7 @@ $MAIN {
           let out_base = bt_offset * packed_dv_out + q_head_idx * uniforms.head_dim_v + dv_start;
           for (var j = 0u; j < TILE_V; j++) {
             if (dv_start + j < uniforms.head_dim_v) {
-              output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
+              output.setByOffset(out_base + j, otype(reduction_buf[j * workgroup_size_x] * uniforms.scale));
             }
           }
         }
@@ -361,7 +363,7 @@ $MAIN {
       let q_head_inv = head_idx * uniforms.q_num_heads / uniforms.num_heads;
       var q_val_inv: f32 = 0.0;
       if (dk_idx < uniforms.head_dim_k) {
-        q_val_inv = f32(query[bt_offset * packed_dk_q + q_head_inv * uniforms.head_dim_k + dk_idx]);
+        q_val_inv = f32(query.getByOffset(bt_offset * packed_dk_q + q_head_inv * uniforms.head_dim_k + dk_idx));
       }
 #if subgroup_min_size
       for (var j = 0u; j < TILE_V; j++) {
@@ -379,7 +381,7 @@ $MAIN {
         }
         let out_base = bt_offset * packed_dv_out + head_idx * uniforms.head_dim_v + dv_start;
         if (dv_start + j < uniforms.head_dim_v) {
-          output[out_base + j] = otype(preout_sum * uniforms.scale);
+          output.setByOffset(out_base + j, otype(preout_sum * uniforms.scale));
         }
       }
 #else
@@ -399,7 +401,7 @@ $MAIN {
         let out_base = bt_offset * packed_dv_out + head_idx * uniforms.head_dim_v + dv_start;
         for (var j = 0u; j < TILE_V; j++) {
           if (dv_start + j < uniforms.head_dim_v) {
-            output[out_base + j] = otype(reduction_buf[j * workgroup_size_x] * uniforms.scale);
+            output.setByOffset(out_base + j, otype(reduction_buf[j * workgroup_size_x] * uniforms.scale));
           }
         }
       }
@@ -414,7 +416,7 @@ $MAIN {
     let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
-        present_state[state_base + j] = otype(state[j]);
+        present_state.setByOffset(state_base + j, otype(state[j]));
       }
     }
   }

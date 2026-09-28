@@ -306,7 +306,7 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "fn write_output(output_offset: u32, bias_offset: u32, value_in: output_value_t) {\n"
          "  var value = value_in;\n";
   if (has_bias_) {
-    additional_implementation << "  value += output_value_t(bias[bias_offset]);\n";
+    additional_implementation << "  value += output_value_t(storage_bias[bias_offset]);\n";
   }
   additional_implementation
       << "  " << GetActivationSnippet(activation_, "output_value_t", "output_element_t") << "\n"

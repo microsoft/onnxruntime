@@ -59,7 +59,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let k_offset = k_chunk_idx * 8;
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+    let actual_weight_idx = storage_weight_index_indirect[uniforms.weight_idx];
 #else
     let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -104,7 +104,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let k_offset = k_chunk_idx * 8;
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+    let actual_weight_idx = storage_weight_index_indirect[uniforms.weight_idx];
 #else
     let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -168,7 +168,7 @@ $MAIN {
                 // Syntax: subgroupMatrixLoad<type, majorness>(src_ptr, src_offset, src_stride)
                 var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
                     subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                        &input_a, sg_mat_offset_a, kSgMatK);
+                        &storage_input_a, sg_mat_offset_a, kSgMatK);
                 sg_mat_offset_a += kSgMatSizeLeft;
 
                 // Load B from shared local memory.
@@ -217,7 +217,7 @@ $MAIN {
             let scratch_base = out_m * kTileN + out_n_base;
             let out_base = global_m * uniforms.N + global_n_base;
 #if has_weight_idx_indirect
-            let bias_offset = weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+            let bias_offset = storage_weight_index_indirect[uniforms.weight_idx] * uniforms.N;
 #elif has_weight_idx
             let bias_offset = uniforms.weight_idx * uniforms.N;
 #else
@@ -226,7 +226,7 @@ $MAIN {
             for (var i: u32 = 0; i < 16; i++) {
                 if (global_n_base + i < uniforms.N) {
                     let val = output_element_t(scratch[scratch_base + i])
-                        + bias[bias_offset + global_n_base + i];
+                        + storage_bias[bias_offset + global_n_base + i];
                     output.setByOffset(out_base + i, val);
                 }
             }
@@ -248,26 +248,26 @@ $MAIN {
         // output with a follow-up copy dispatch.
         if (global_base_a + kTileM <= uniforms.M) {
             let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
         } else {
             let sg_mat_offset_c = global_base_b + sg_idx * kSgMatM * uniforms.N;
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_tail_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_tail_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_tail_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
+            subgroupMatrixStore<row_major>(&storage_tail_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
         }
 #else
         // ApplySubgroupMatrixMatMulNBits only sets has_tail_buffer when M isn't a
         // multiple of kTileM, so here M is guaranteed aligned: every tile -
         // including the last - is always fully in bounds.
         let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+        subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
+        subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
+        subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
+        subgroupMatrixStore<row_major>(&storage_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
 #endif
 #endif
     } // end M-tile loop

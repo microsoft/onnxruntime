@@ -44,14 +44,14 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
 
-static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
+static std::string CalcResult(const ShaderVariableHelper& a, const ShaderVariableHelper& b, int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
   for (int i = 0; i < a_components; ++i) {
-    oss << "let b_data" << i << " = b[(b_offset + (k + " << i << ") * uniforms.N + col) / " << components << "];\n";
+    oss << "let b_data" << i << " = " << b.GetByOffset(MakeStringWithClassicLocale("(b_offset + (k + ", i, ") * uniforms.N + col) / ", components)) << ";\n";
   }
   for (int i = 0; i < output_number; ++i) {
-    oss << "a_data = a[(a_offset + (row + " << i << ") * uniforms.K + k) / " << a_components << "];\n";
+    oss << "a_data = " << a.GetByOffset(MakeStringWithClassicLocale("(a_offset + (row + ", i, ") * uniforms.K + k) / ", a_components)) << ";\n";
 
     for (int j = 0; j < a_components; j++) {
       oss << "values[" << i << "] = fma(b_value_t(a_data" << (a_components == 1 ? "" : "[" + std::to_string(j) + "]") << "), b_data" << j << ", values[" << i << "]);\n";
@@ -61,6 +61,7 @@ static std::string CalcResult(int64_t components, int64_t a_components, int64_t 
 }
 
 Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias_var = nullptr;
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
@@ -71,10 +72,10 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   std::string process_bias;
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias_var = &shader.AddInput("bias", ShaderUsage::UseUniform);
     process_bias = is_channels_last_
-                       ? "value += output_value_t(bias[col / " + std::to_string(components) + "]);"
-                       : "value += output_value_t(bias[row + i]);";
+                       ? "value += output_value_t(" + bias_var->GetByOffset("col / " + std::to_string(components)) + ");"
+                       : MakeStringWithClassicLocale("value += output_value_t(", bias_var->GetByOffset("row + i", true), ");");
   }
 
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
@@ -104,7 +105,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let b_offset = " << b.IndicesToOffset("b_indices") << " * " << components << ";\n"
                             << "var values: array<output_value_t, " << output_number_ << ">;\n"
                             << "for (var k: u32 = 0u; k < uniforms.K; k = k + " << a_components << ") {\n"
-                            << CalcResult(components, a_components, output_number_) << "\n"
+                            << CalcResult(a, b, components, a_components, output_number_) << "\n"
                             << "}\n"
                             << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"

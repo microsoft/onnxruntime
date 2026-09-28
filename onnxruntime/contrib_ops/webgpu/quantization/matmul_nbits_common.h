@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <string>
 #include <cstdint>
 
 namespace onnxruntime {
@@ -19,17 +18,6 @@ namespace contrib {
 namespace webgpu {
 
 inline constexpr uint32_t kMinMForTileOptimization = 4u;
-
-/**
- * Generates WebGPU shader code for reading zero points in quantized matrix multiplication
- *
- * @param nbits Number of bits for quantization (4 or 8)
- * @param has_zero_points Whether zero points are provided as an input
- * @param output_type Type name to use for zero point values in the generated code (default: "output_element_t")
- * @return String containing the generated WebGPU shader code
- */
-std::string GenerateZeroPointReadingCode(uint32_t nbits, bool has_zero_points,
-                                         const std::string& output_type = "output_element_t");
 
 /// Returns true when the default WebGPU device supports the DP4A kernel path
 /// (Subgroups feature present and non-Apple vendor).

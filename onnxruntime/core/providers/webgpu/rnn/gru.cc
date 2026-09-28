@@ -81,9 +81,10 @@ Gru::Gru(const OpKernelInfo& info) : WebGpuKernel(info) {
 // GruStateCopyProgram
 // ===========================================================================
 Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* seq_lens_var = nullptr;
+  const auto& src_var = shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) seq_lens_var = &shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  const auto& dst_var = shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
   auto& body = shader.MainFunctionBody();
   body << "  let H = uniforms.hidden_size;\n"
        << "  let B = uniforms.batch_size;\n"
@@ -100,14 +101,14 @@ Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   if (to_state_) {
     if (has_seq_lens_) {
-      body << "  if (u32(seq_lens[batch_idx]) == 0u) {\n"
-           << "    dst[state_idx] = dst_element_t(0.0);\n"
+      body << "  if (u32(" << seq_lens_var->GetByOffset("batch_idx", true) << ") == 0u) {\n"
+           << "    " << dst_var.SetByOffset("state_idx", "dst_element_t(0.0)", true) << "\n"
            << "    return;\n"
            << "  }\n";
     }
-    body << "  dst[state_idx] = src[flat_idx];\n";
+    body << "  " << dst_var.SetByOffset("state_idx", src_var.GetByOffset("flat_idx", true), true) << "\n";
   } else {
-    body << "  dst[flat_idx] = src[state_idx];\n";
+    body << "  " << dst_var.SetByOffset("flat_idx", src_var.GetByOffset("state_idx", true), true) << "\n";
   }
   return Status::OK();
 }
@@ -116,14 +117,15 @@ Status GruStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // GruGateProgram - compute update (z) and reset (r) gates for the whole [batch, H].
 // ===========================================================================
 Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* b_var = nullptr;
+  const auto& x_var = shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  const auto& w_var = shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
+  const auto& r_var = shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
+  const auto& h_prev_var = shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
+  if (has_bias_) b_var = &shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
 
-  shader.AddOutput("z_out", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("reset_out", ShaderUsage::UseElementTypeAlias);
+  const auto& z_out_var = shader.AddOutput("z_out", ShaderUsage::UseElementTypeAlias);
+  const auto& reset_out_var = shader.AddOutput("reset_out", ShaderUsage::UseElementTypeAlias);
 
   AppendActivationImpl(shader);
 
@@ -148,25 +150,25 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  let x_base = (batch_idx * uniforms.seq_length + uniforms.timestep) * I;\n";
   }
   body << "  for (var k: u32 = 0u; k < I; k++) {\n"
-       << "    let xv = f32(x[x_base + k]);\n"
-       << "    gate_z += xv * f32(w[w_base + j * I + k]);\n"
-       << "    gate_r += xv * f32(w[w_base + (H + j) * I + k]);\n"
+       << "    let xv = f32(" << x_var.GetByOffset("x_base + k", true) << ");\n"
+       << "    gate_z += xv * f32(" << w_var.GetByOffset("w_base + j * I + k", true) << ");\n"
+       << "    gate_r += xv * f32(" << w_var.GetByOffset("w_base + (H + j) * I + k", true) << ");\n"
        << "  }\n\n";
 
   // H_prev * R^T  (h_prev is flat [batch, H])
   body << "  let r_base = dir * 3u * H * H;\n"
        << "  let h_base = batch_idx * H;\n"
        << "  for (var k: u32 = 0u; k < H; k++) {\n"
-       << "    let hv = f32(h_prev[h_base + k]);\n"
-       << "    gate_z += hv * f32(r[r_base + j * H + k]);\n"
-       << "    gate_r += hv * f32(r[r_base + (H + j) * H + k]);\n"
+       << "    let hv = f32(" << h_prev_var.GetByOffset("h_base + k", true) << ");\n"
+       << "    gate_z += hv * f32(" << r_var.GetByOffset("r_base + j * H + k", true) << ");\n"
+       << "    gate_r += hv * f32(" << r_var.GetByOffset("r_base + (H + j) * H + k", true) << ");\n"
        << "  }\n\n";
 
   // Bias: B = [Wbz, Wbr, Wbh, Rbz, Rbr, Rbh] per direction.
   if (has_bias_) {
     body << "  let bb = dir * 6u * H;\n"
-         << "  gate_z += f32(b[bb + j]) + f32(b[bb + 3u * H + j]);\n"
-         << "  gate_r += f32(b[bb + H + j]) + f32(b[bb + 4u * H + j]);\n\n";
+         << "  gate_z += f32(" << b_var->GetByOffset("bb + j", true) << ") + f32(" << b_var->GetByOffset("bb + 3u * H + j", true) << ");\n"
+         << "  gate_r += f32(" << b_var->GetByOffset("bb + H + j", true) << ") + f32(" << b_var->GetByOffset("bb + 4u * H + j", true) << ");\n\n";
   }
 
   if (has_clip_) {
@@ -178,13 +180,13 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "  gate_r = " << f_activation_fn_ << "(gate_r);\n\n";
 
   body << "  let oi = batch_idx * H + j;\n"
-       << "  z_out[oi] = z_out_element_t(gate_z);\n";
+       << "  " << z_out_var.SetByOffset("oi", "z_out_element_t(gate_z)", true) << "\n";
   if (linear_before_reset_) {
     // The hidden pass applies the reset gate after the recurrent matmul, so pass r[j] through.
-    body << "  reset_out[oi] = reset_out_element_t(gate_r);\n";
+    body << "  " << reset_out_var.SetByOffset("oi", "reset_out_element_t(gate_r)", true) << "\n";
   } else {
     // The hidden pass consumes (r (.) H_prev) directly, so fold the multiply in here.
-    body << "  reset_out[oi] = reset_out_element_t(gate_r * f32(h_prev[oi]));\n";
+    body << "  " << reset_out_var.SetByOffset("oi", MakeStringWithClassicLocale("reset_out_element_t(gate_r * f32(", h_prev_var.GetByOffset("oi", true), "))"), true) << "\n";
   }
   return Status::OK();
 }
@@ -193,17 +195,20 @@ Status GruGateProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // GruHiddenProgram - compute hidden gate (h) and new hidden state.
 // ===========================================================================
 Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("z", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("reset", ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* b_var = nullptr;
+  const ShaderVariableHelper* seq_lens_var = nullptr;
+  const ShaderVariableHelper* y_out_var = nullptr;
+  const auto& x_var = shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  const auto& w_var = shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
+  const auto& r_var = shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
+  const auto& h_prev_var = shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
+  const auto& z_var = shader.AddInput("z", ShaderUsage::UseElementTypeAlias);
+  const auto& reset_var = shader.AddInput("reset", ShaderUsage::UseElementTypeAlias);
+  if (has_bias_) b_var = &shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) seq_lens_var = &shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
 
-  shader.AddOutput("h_new", ShaderUsage::UseElementTypeAlias);
-  if (has_Y_) shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
+  const auto& h_new_var = shader.AddOutput("h_new", ShaderUsage::UseElementTypeAlias);
+  if (has_Y_) y_out_var = &shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
 
   AppendActivationImpl(shader);
 
@@ -221,14 +226,14 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Sequence length masking - carry the previous hidden state forward past the batch's seq length.
   // Use timestep (not the processing step) so reverse direction masks the correct positions.
   if (has_seq_lens_) {
-    body << "  let batch_seq_len = u32(seq_lens[batch_idx]);\n"
+    body << "  let batch_seq_len = u32(" << seq_lens_var->GetByOffset("batch_idx", true) << ");\n"
          << "  if (uniforms.timestep >= batch_seq_len) {\n"
-         << "    h_new[flat_idx] = h_prev[flat_idx];\n";
+         << "    " << h_new_var.SetByOffset("flat_idx", h_prev_var.GetByOffset("flat_idx", true), true) << "\n";
     if (has_Y_) {
       if (layout_ == 0) {
-        body << "    y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(0.0);\n";
+        body << "    " << y_out_var->SetByOffset("((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j", "y_out_element_t(0.0)", true) << "\n";
       } else {
-        body << "    y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(0.0);\n";
+        body << "    " << y_out_var->SetByOffset("((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j", "y_out_element_t(0.0)", true) << "\n";
       }
     }
     body << "    return;\n"
@@ -244,7 +249,7 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  let x_base = (batch_idx * uniforms.seq_length + uniforms.timestep) * I;\n";
   }
   body << "  for (var k: u32 = 0u; k < I; k++) {\n"
-       << "    gate_h += f32(x[x_base + k]) * f32(w[w_base + (2u * H + j) * I + k]);\n"
+       << "    gate_h += f32(" << x_var.GetByOffset("x_base + k", true) << ") * f32(" << w_var.GetByOffset("w_base + (2u * H + j) * I + k", true) << ");\n"
        << "  }\n\n";
 
   // Recurrent term depends on linear_before_reset.
@@ -254,25 +259,25 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // ht = g(Xt*Wh + r (.) (H_prev*Rh + Rbh) + Wbh)
     body << "  var rec: f32 = 0.0;\n"
          << "  for (var k: u32 = 0u; k < H; k++) {\n"
-         << "    rec += f32(h_prev[h_base + k]) * f32(r[r_base + (2u * H + j) * H + k]);\n"
+         << "    rec += f32(" << h_prev_var.GetByOffset("h_base + k", true) << ") * f32(" << r_var.GetByOffset("r_base + (2u * H + j) * H + k", true) << ");\n"
          << "  }\n";
     if (has_bias_) {
-      body << "  rec += f32(b[dir * 6u * H + 5u * H + j]);\n";  // Rbh inside the reset gate
+      body << "  rec += f32(" << b_var->GetByOffset("dir * 6u * H + 5u * H + j", true) << ");\n";  // Rbh inside the reset gate
     }
-    body << "  gate_h += f32(reset[h_base + j]) * rec;\n\n";
+    body << "  gate_h += f32(" << reset_var.GetByOffset("h_base + j", true) << ") * rec;\n\n";
   } else {
     // ht = g(Xt*Wh + (r (.) H_prev)*Rh + Rbh + Wbh); reset[] already holds (r (.) H_prev).
     body << "  for (var k: u32 = 0u; k < H; k++) {\n"
-         << "    gate_h += f32(reset[h_base + k]) * f32(r[r_base + (2u * H + j) * H + k]);\n"
+         << "    gate_h += f32(" << reset_var.GetByOffset("h_base + k", true) << ") * f32(" << r_var.GetByOffset("r_base + (2u * H + j) * H + k", true) << ");\n"
          << "  }\n";
     if (has_bias_) {
-      body << "  gate_h += f32(b[dir * 6u * H + 5u * H + j]);\n";  // Rbh
+      body << "  gate_h += f32(" << b_var->GetByOffset("dir * 6u * H + 5u * H + j", true) << ");\n";  // Rbh
     }
     body << "\n";
   }
 
   if (has_bias_) {
-    body << "  gate_h += f32(b[dir * 6u * H + 2u * H + j]);\n\n";  // Wbh
+    body << "  gate_h += f32(" << b_var->GetByOffset("dir * 6u * H + 2u * H + j", true) << ");\n\n";  // Wbh
   }
 
   if (has_clip_) {
@@ -281,14 +286,14 @@ Status GruHiddenProgram::GenerateShaderCode(ShaderHelper& shader) const {
   body << "  gate_h = " << g_activation_fn_ << "(gate_h);\n\n";
 
   // Ht = (1 - z) (.) h + z (.) H_prev
-  body << "  let zv = f32(z[flat_idx]);\n"
-       << "  let hu = (1.0 - zv) * gate_h + zv * f32(h_prev[flat_idx]);\n"
-       << "  h_new[flat_idx] = h_new_element_t(hu);\n";
+  body << "  let zv = f32(" << z_var.GetByOffset("flat_idx", true) << ");\n"
+       << "  let hu = (1.0 - zv) * gate_h + zv * f32(" << h_prev_var.GetByOffset("flat_idx", true) << ");\n"
+       << "  " << h_new_var.SetByOffset("flat_idx", "h_new_element_t(hu)", true) << "\n";
   if (has_Y_) {
     if (layout_ == 0) {
-      body << "  y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(hu);\n";
+      body << "  " << y_out_var->SetByOffset("((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j", "y_out_element_t(hu)", true) << "\n";
     } else {
-      body << "  y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(hu);\n";
+      body << "  " << y_out_var->SetByOffset("((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j", "y_out_element_t(hu)", true) << "\n";
     }
   }
   return Status::OK();

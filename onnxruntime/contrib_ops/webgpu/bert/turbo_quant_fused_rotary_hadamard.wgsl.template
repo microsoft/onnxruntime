@@ -60,7 +60,7 @@ $MAIN {
 
   // Compute the logical total sequence length for this batch.
 #if use_seqlen_k
-  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;
+  let raw_total_seq_length = u32(max(seqlen_k.getByOffset(batch), 0)) + 1u;
   let per_batch_total_seq_length = min(raw_total_seq_length, uniforms.present_seq_length);
 #else
   let per_batch_total_seq_length = uniforms.total_sequence_length;
@@ -69,7 +69,7 @@ $MAIN {
 
   // Base position offset for rotary embedding cos/sin cache lookup.
 #if prepare_indirect_dispatch
-  let raw_global_total_seq_length = total_sequence_length_input[0];
+  let raw_global_total_seq_length = total_sequence_length_input.getByOffset(0);
   let global_total_seq_length =
       min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_seq_length);
 #else

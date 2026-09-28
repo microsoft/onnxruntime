@@ -62,7 +62,7 @@ var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * 4>;  // 16*16*4 = 1
 fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+    let actual_weight_idx = storage_weight_index_indirect[uniforms.weight_idx];
 #else
     let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -136,7 +136,7 @@ fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+    let actual_weight_idx = storage_weight_index_indirect[uniforms.weight_idx];
 #else
     let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -272,7 +272,7 @@ $MAIN {
             // A row 0: load from global prepacked memory
             var a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                    &input_a, sg_mat_offset_a0, kSgMatK);
+                    &storage_input_a, sg_mat_offset_a0, kSgMatK);
             sg_mat_offset_a0 += kSgMatSizeLeft;
             c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
             c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
@@ -282,7 +282,7 @@ $MAIN {
             // A row 1
             var a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                    &input_a, sg_mat_offset_a1, kSgMatK);
+                    &storage_input_a, sg_mat_offset_a1, kSgMatK);
             sg_mat_offset_a1 += kSgMatSizeLeft;
             c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
             c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
@@ -292,7 +292,7 @@ $MAIN {
             // A row 2
             var a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                    &input_a, sg_mat_offset_a2, kSgMatK);
+                    &storage_input_a, sg_mat_offset_a2, kSgMatK);
             sg_mat_offset_a2 += kSgMatSizeLeft;
             c20 = subgroupMatrixMultiplyAccumulate(a2, b0, c20);
             c21 = subgroupMatrixMultiplyAccumulate(a2, b1, c21);
@@ -302,7 +302,7 @@ $MAIN {
             // A row 3
             var a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
                 subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                    &input_a, sg_mat_offset_a3, kSgMatK);
+                    &storage_input_a, sg_mat_offset_a3, kSgMatK);
             sg_mat_offset_a3 += kSgMatSizeLeft;
             c30 = subgroupMatrixMultiplyAccumulate(a3, b0, c30);
             c31 = subgroupMatrixMultiplyAccumulate(a3, b1, c31);
@@ -326,7 +326,7 @@ $MAIN {
     // Bias path: store all 16 tiles via coopmat_stage, add bias, write to output
     let stage_base = sg_idx * kSgMatM * kSgMatN;
 #if has_weight_idx_indirect
-    let bias_offset = weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+    let bias_offset = storage_weight_index_indirect[uniforms.weight_idx] * uniforms.N;
 #elif has_weight_idx
     let bias_offset = uniforms.weight_idx * uniforms.N;
 #else
@@ -344,7 +344,7 @@ $MAIN {
         let r = dr + i / kSgMatN;
         let c = dc + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -354,7 +354,7 @@ $MAIN {
         let r = dr + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -364,7 +364,7 @@ $MAIN {
         let r = dr + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -374,7 +374,7 @@ $MAIN {
         let r = dr + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -385,7 +385,7 @@ $MAIN {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -395,7 +395,7 @@ $MAIN {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -405,7 +405,7 @@ $MAIN {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -415,7 +415,7 @@ $MAIN {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -426,7 +426,7 @@ $MAIN {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -436,7 +436,7 @@ $MAIN {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -446,7 +446,7 @@ $MAIN {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -456,7 +456,7 @@ $MAIN {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -467,7 +467,7 @@ $MAIN {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -477,7 +477,7 @@ $MAIN {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -487,7 +487,7 @@ $MAIN {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -497,7 +497,7 @@ $MAIN {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
         if (r < uniforms.M && c < uniforms.N) {
-            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            let val = output_element_t(coopmat_stage[stage_base + i]) + storage_bias[bias_offset + c];
             output.setByOffset(r * stride + c, val);
         }
     }
@@ -506,25 +506,25 @@ $MAIN {
     if (tile_in_bounds) {
         // Fast path: entire 128x128 tile is in bounds - direct store to global
         let base = dr * stride + dc;
-        subgroupMatrixStore<row_major>(&output, base, c00, stride);
-        subgroupMatrixStore<row_major>(&output, base + 16u, c01, stride);
-        subgroupMatrixStore<row_major>(&output, base + 32u, c02, stride);
-        subgroupMatrixStore<row_major>(&output, base + 48u, c03, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base, c00, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 16u, c01, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 32u, c02, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 48u, c03, stride);
 
-        subgroupMatrixStore<row_major>(&output, base + 16u * stride, c10, stride);
-        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 16u, c11, stride);
-        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 32u, c12, stride);
-        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 48u, c13, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 16u * stride, c10, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 16u * stride + 16u, c11, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 16u * stride + 32u, c12, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 16u * stride + 48u, c13, stride);
 
-        subgroupMatrixStore<row_major>(&output, base + 32u * stride, c20, stride);
-        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 16u, c21, stride);
-        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 32u, c22, stride);
-        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 48u, c23, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 32u * stride, c20, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 32u * stride + 16u, c21, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 32u * stride + 32u, c22, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 32u * stride + 48u, c23, stride);
 
-        subgroupMatrixStore<row_major>(&output, base + 48u * stride, c30, stride);
-        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 16u, c31, stride);
-        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 32u, c32, stride);
-        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 48u, c33, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 48u * stride, c30, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 48u * stride + 16u, c31, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 48u * stride + 32u, c32, stride);
+        subgroupMatrixStore<row_major>(&storage_output, base + 48u * stride + 48u, c33, stride);
     } else {
         // Edge tile: store via coopmat_stage with bounds checking
         // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same

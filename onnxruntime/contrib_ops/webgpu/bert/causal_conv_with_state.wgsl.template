@@ -9,6 +9,8 @@
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 
+#use .getByOffset .setByOffset
+
 #if use_silu
 fn silu(x: input_element_t) -> input_element_t {
   return x / (1.0 + exp(-x));
@@ -81,26 +83,26 @@ $MAIN {
 #if has_conv_state
     if (virtual_pos < state_length) {
       // Read from conv_state
-      val = conv_state[state_base + virtual_pos * state_pos_stride];
+      val = conv_state.getByOffset(state_base + virtual_pos * state_pos_stride);
     } else {
       // Read from input
       let input_pos = virtual_pos - state_length;
-      val = input[input_base + input_pos * input_pos_stride];
+      val = input.getByOffset(input_base + input_pos * input_pos_stride);
     }
 #else
     // No conv_state: pad with zeros for positions before the input
     if (virtual_pos >= state_length) {
       let input_pos = virtual_pos - state_length;
-      val = input[input_base + input_pos * input_pos_stride];
+      val = input.getByOffset(input_base + input_pos * input_pos_stride);
     }
 #endif
 
-    let w = weight[weight_base + j];
+    let w = weight.getByOffset(weight_base + j);
     acc = acc + val * w;
   }
 
 #if has_bias
-  acc = acc + bias[channel_idx];
+  acc = acc + bias.getByOffset(channel_idx);
 #endif
 
 #if use_silu
@@ -108,7 +110,7 @@ $MAIN {
 #endif
 
   // Write output
-  output[input_base + pos * input_pos_stride] = acc;
+  output.setByOffset(input_base + pos * input_pos_stride, acc);
 
 #if output_present_state
   // Write present_state: the last state_length elements from the
@@ -123,19 +125,19 @@ $MAIN {
 
 #if has_conv_state
       if (vp < state_length) {
-        state_val = conv_state[state_base + vp * state_pos_stride];
+        state_val = conv_state.getByOffset(state_base + vp * state_pos_stride);
       } else {
         let ip = vp - state_length;
-        state_val = input[input_base + ip * input_pos_stride];
+        state_val = input.getByOffset(input_base + ip * input_pos_stride);
       }
 #else
       if (vp >= state_length) {
         let ip = vp - state_length;
-        state_val = input[input_base + ip * input_pos_stride];
+        state_val = input.getByOffset(input_base + ip * input_pos_stride);
       }
 #endif
 
-      present_state[state_base + s * state_pos_stride] = state_val;
+      present_state.setByOffset(state_base + s * state_pos_stride, state_val);
     }
   }
 #endif
