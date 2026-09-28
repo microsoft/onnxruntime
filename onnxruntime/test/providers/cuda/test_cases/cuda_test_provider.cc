@@ -126,9 +126,9 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     char* argv[] = {mock_exe_name, nullptr};
     // char* argv[] = {mock_exe_name, "--gtest_filter=ReductionFunctionsTest.*", nullptr};
     ::testing::InitGoogleTest(&argc, argv);
-    ORT_ENFORCE(::testing::UnitTest::GetInstance()->test_to_run_count() > 0,
-                "CUDA EP internal-test module contains no runnable tests.");
     ORT_ENFORCE(RUN_ALL_TESTS() == 0);
+    ORT_ENFORCE(::testing::UnitTest::GetInstance()->successful_test_count() > 0,
+                "CUDA EP internal-test module must execute at least one non-skipped test.");
   }
 };
 ProviderInfo_CUDA_TestImpl g_test_info;

@@ -1026,14 +1026,30 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
 
   # onnxruntime_providers_cuda_ut is only for unittests.
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
-  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
-  target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils)
-  target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS}
-                                                        onnxruntime_test_utils ${PROTOBUF_LIB})
+  set(onnxruntime_cuda_ut_compile_targets onnxruntime_providers_cuda_ut)
+  if (WIN32)
+    # Inspect the compiled tests before linking the host, without depending on the module's link.
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_ut_objects ${onnxruntime_test_providers_cuda_ut_src})
+    set(onnxruntime_cuda_ut_sources $<TARGET_OBJECTS:onnxruntime_providers_cuda_ut_objects>)
+    list(APPEND onnxruntime_cuda_ut_compile_targets onnxruntime_providers_cuda_ut_objects)
+  else()
+    set(onnxruntime_cuda_ut_sources ${onnxruntime_test_providers_cuda_ut_src})
+  endif()
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_cuda_ut_sources} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  foreach(cuda_ut_target IN LISTS onnxruntime_cuda_ut_compile_targets)
+    config_cuda_provider_shared_module(${cuda_ut_target})
+    target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+    onnxruntime_add_include_to_target(${cuda_ut_target} GTest::gtest GTest::gmock)
+    add_dependencies(${cuda_ut_target} onnxruntime_test_utils)
+    target_include_directories(${cuda_ut_target} PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
+    target_link_libraries(${cuda_ut_target} PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS}
+                                                  onnxruntime_test_utils ${PROTOBUF_LIB})
+    if (MSVC)
+      # Cutlass code has an issue with warning C4100: 'magic': unreferenced formal parameter.
+      target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
+                    "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
+    endif()
+  endforeach()
   # Link architecture-specific OBJECT libraries (same as onnxruntime_providers_cuda).
   if(TARGET onnxruntime_providers_cuda_sm90_tma)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_sm90_tma)
@@ -1052,12 +1068,6 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   endif()
   if(TARGET onnxruntime_providers_cuda_llm_fp4)
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm_fp4)
-  endif()
-  if (MSVC)
-    # Cutlass code has an issue with the following:
-    # warning C4100: 'magic': unreferenced formal parameter
-    target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4100>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4100>")
   endif()
   list(APPEND onnxruntime_test_providers_runtime_dependencies onnxruntime_providers_cuda_ut)
 endif()
@@ -1490,11 +1500,15 @@ block()
   # without this the module fails to load with an undefined-symbol error.
   set_target_properties(${onnxruntime_provider_test_target} PROPERTIES ENABLE_EXPORTS 1)
 
-  # A Windows executable needs explicitly exported symbols before CMake can produce its import
-  # library. Export the symbols from its objects and linked static libraries, then link the CUDA
-  # test module against that import library. Linux uses the runtime -rdynamic export path above.
+  # Export only host symbols referenced by the module, including definitions in static libraries.
+  # Exporting every provider-test symbol exceeds the Windows import-library limit.
   if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
-    set_target_properties(${onnxruntime_provider_test_target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS 1)
+    include(onnxruntime_test_exports)
+    get_target_property(cuda_ut_link_libraries onnxruntime_providers_cuda_ut LINK_LIBRARIES)
+    onnxruntime_export_test_symbols(${onnxruntime_provider_test_target}
+      OBJECT_TARGET onnxruntime_providers_cuda_ut_objects
+      HOST_LIBS ${onnxruntime_provider_test_libs}
+      MODULE_LIBS onnxruntime_providers_cuda_obj ${cuda_ut_link_libraries})
     target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE ${onnxruntime_provider_test_target})
   endif()
 

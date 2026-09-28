@@ -124,9 +124,14 @@ jobs:
       - name: Verify targeted provider-test build
         shell: pwsh
         run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\test_gen_test_exports.py
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
           $buildDir = Join-Path $env:OnnxRuntimeBuildDirectory "RelWithDebInfo"
           $binaryDir = Join-Path $buildDir "RelWithDebInfo"
-          $testBinaries = @("onnxruntime_provider_test.exe", "onnxruntime_providers_cuda_ut.dll")
+          $testBinaries = @("onnxruntime_provider_test.exe", "onnxruntime_provider_test.lib", "onnxruntime_providers_cuda_ut.dll")
           foreach ($binary in $testBinaries) {
             $path = Join-Path $binaryDir $binary
             if (Test-Path -LiteralPath $path) {
