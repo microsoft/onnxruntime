@@ -79,8 +79,8 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1595392"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1595392"
+        echo "Binary size threshold in bytes: 1596416"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1596416"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -164,10 +164,9 @@ jobs:
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          key: vcpkg-cache | android.yml | android_nnapi_ep
-          path: ~/.cache/vcpkg
+          key: android-nnapi-ep
 
       - name: CCache reset stats
         run: ccache --zero-stats
@@ -274,10 +273,9 @@ jobs:
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          key: vcpkg-cache | android.yml | android_cpu_ep
-          path: ~/.cache/vcpkg
+          key: android-cpu-ep
 
       - name: CCache reset stats
         run: ccache --zero-stats

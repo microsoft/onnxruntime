@@ -934,6 +934,24 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+TEST(UpsampleOpTest, UpsampleOpScalesCountMismatch_opset9) {
+  OpTester test("Upsample", 9);
+
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> scales(16, 1.0f);
+  std::vector<float> Y(16, 0.0f);
+  test.AddAttribute("mode", "nearest");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in scales should be equal to rank of the data when axes is not provided.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
 TEST(UpsampleOpTest, NhwcUpsampleOpNearest2XTest_opset9) {
   OpTester test("Upsample", 9);
 

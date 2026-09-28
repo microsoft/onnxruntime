@@ -40,6 +40,35 @@ TEST(RMSNormalizationOpTest, RMSNorm_float16) {
             kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(RMSNormalizationOpTest, RMSNorm_float16_OptimizedRow) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu_ep, nullptr);
+
+  constexpr size_t norm_size = 31;
+  constexpr float epsilon = 1e-05f;
+  std::vector<float> input(norm_size);
+  std::vector<float> scale(norm_size);
+  float sum_squares = 0.0f;
+  for (size_t i = 0; i < norm_size; ++i) {
+    input[i] = static_cast<float>(i % 9) - 4.0f;
+    scale[i] = 0.5f + static_cast<float>(i % 7) * 0.125f;
+    sum_squares += input[i] * input[i];
+  }
+
+  const float inv_rms = 1.0f / std::sqrt(sum_squares / static_cast<float>(norm_size) + epsilon);
+  std::vector<float> expected(norm_size);
+  for (size_t i = 0; i < norm_size; ++i) {
+    expected[i] = input[i] * inv_rms * scale[i];
+  }
+
+  OpTester test("RMSNormalization", 23);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddInput<MLFloat16>("X", {1, static_cast<int64_t>(norm_size)}, ToFloat16(input));
+  test.AddInput<MLFloat16>("scale", {static_cast<int64_t>(norm_size)}, ToFloat16(scale));
+  test.AddOutput<MLFloat16>("Y", {1, static_cast<int64_t>(norm_size)}, ToFloat16(expected));
+  test.ConfigEp(std::move(cpu_ep)).RunWithConfig();
+}
+
 TEST(RMSNormalizationOpTest, RMSNorm_Scale) {
   OpTester test("RMSNormalization", 23);
   test.AddAttribute<float>("epsilon", 1e-05f);

@@ -105,7 +105,7 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
                       "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
   }
   if (eos_token_id != nullptr) {
-    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().NumDimensions() == 0, "eos_token_id must be a scalar");
   }
   if (segment_ids != nullptr) {
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({total_tokens}),

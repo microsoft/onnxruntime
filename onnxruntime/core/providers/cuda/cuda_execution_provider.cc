@@ -14,6 +14,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_external_data_loader.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
@@ -3429,6 +3430,15 @@ static bool ArgMaxOrArgMinNeedFallbackToCPU(const onnxruntime::Node& node) {
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
   return std::make_unique<onnxruntime::GPUDataTransfer>();
+}
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+  if (info_.external_data_loader_reading_threads == 0) {
+    return nullptr;
+  }
+
+  return std::make_unique<cuda::ExternalDataLoader>(
+      info_.device_id, info_.external_data_loader_reading_threads);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
