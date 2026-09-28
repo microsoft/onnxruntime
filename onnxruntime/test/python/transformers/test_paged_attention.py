@@ -1758,10 +1758,7 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         dense_key = torch.zeros(total_length, config.kv_num_heads, config.head_size, dtype=torch.float16)
         # Equal logits make the output depend only on which distinct values are visible.
         dense_value = (
-            torch.arange(1, total_length + 1, dtype=torch.float16)
-            .reshape(-1, 1, 1)
-            .expand_as(dense_key)
-            .contiguous()
+            torch.arange(1, total_length + 1, dtype=torch.float16).reshape(-1, 1, 1).expand_as(dense_key).contiguous()
         )
         num_blocks = math.ceil(total_length / config.paged_kv_block_size)
         block_table = torch.arange(num_blocks - 1, -1, -1, dtype=torch.int32).reshape(1, num_blocks)
