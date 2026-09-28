@@ -42,6 +42,9 @@ VarlenNGramHashMapping<T>::VarlenNGramHashMapping(const OpKernelInfo& info) : Cu
   ORT_ENFORCE(info.GetAttr<int64_t>("pad_id", &pad_id).IsOK(), "pad_id attribute is required");
   ORT_ENFORCE(max_ngram_size_ >= 2, "max_ngram_size must be at least 2");
   ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
+  state_update_capacity_ = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
+              "state_update_capacity must be in [0, 8]");
   ORT_ENFORCE(pad_id >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
                   pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
               "pad_id is out of range for the input id type");
@@ -60,9 +63,12 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* eos_token_id = context->Input<Tensor>(6);
   const Tensor* segment_ids = context->Input<Tensor>(7);
   const Tensor* past_segment_ids = context->Input<Tensor>(8);
+  const Tensor* capture_count = context->Input<Tensor>(9);
 
   ORT_RETURN_IF_NOT(input_ids != nullptr, "input_ids is required");
   ORT_RETURN_IF_NOT(cu_seqlens != nullptr, "cumulative_sequence_length input is required");
+  ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
+                    "capture_count must be present exactly when state_update_capacity is positive");
   ORT_RETURN_IF_NOT(input_ids->Shape().NumDimensions() == 1, "input_ids must have rank 1 (total_tokens)");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
                         multipliers->Shape()[0] >= max_ngram_size_,
@@ -107,10 +113,16 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_NOT(past_segment_ids->Shape() == TensorShape({batch_size, state_length}),
                       "past_segment_ids must have shape (batch_size, max_ngram_size - 1)");
   }
+  if (capture_count != nullptr) {
+    ORT_RETURN_IF_NOT(capture_count->Shape() == TensorShape({batch_size}),
+                      "capture_count must have shape (batch_size)");
+  }
 
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
   Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
   Tensor* present_segment_ids = context->Output(2, TensorShape({batch_size, state_length}));
+  Tensor* state_update = context->Output(
+      3, TensorShape({batch_size, state_update_capacity_, state_length}));
   ORT_RETURN_IF_NOT(present_segment_ids == nullptr || segment_ids != nullptr,
                     "present_segment_ids requires segment_ids");
 
@@ -136,13 +148,16 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
       eos_token_id == nullptr ? nullptr : eos_token_id->Data<T>(),
       segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>(),
       past_segment_ids == nullptr ? nullptr : past_segment_ids->Data<int32_t>(),
+      capture_count == nullptr ? nullptr : capture_count->Data<int32_t>(),
       output->MutableData<T>(),
       present_ids == nullptr ? nullptr : present_ids->MutableData<T>(),
       present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>(),
+      state_update == nullptr ? nullptr : state_update->MutableData<T>(),
       batch_size,
       total_tokens,
       max_ngram_size_,
       n_head_per_ngram_,
+      state_update_capacity_,
       pad_id_,
       reset_on_eos_,
       GetDeviceProp().maxThreadsPerBlock,

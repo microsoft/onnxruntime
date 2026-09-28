@@ -2845,6 +2845,8 @@ Optional inputs add Qwen4-Exp-style n-gram embedding support:
   subsequent calls to preserve boundaries across chunked prefill and decode calls.
 - head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
   in the input id type on overflow.
+- capture_count enables compact prefix state capture when state_update_capacity is positive. For
+  each request, state_update contains the trailing state after each captured prefix token.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2864,6 +2866,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("reset_on_eos",
               "When non-zero and eos_token_id is provided, reset causal n-gram history at EOS "
               "boundaries. Default is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("state_update_capacity",
+              "Static number of compact contiguous-prefix states to expose per request. Valid range "
+              "is [0, 8]. capture_count is required exactly when this is positive.",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Input(0,
@@ -2921,6 +2928,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "into this input to preserve segment boundaries across calls.",
                "S",
                OpSchema::Optional)
+        .Input(9,
+               "capture_count",
+               "Optional device int32 tensor with shape (batch_size). For each request, captures "
+               "that many local prefix states, clamped to the request length and "
+               "state_update_capacity. Required exactly when state_update_capacity is positive.",
+               "S",
+               OpSchema::Optional)
         .Output(0,
                 "hash_ids",
                 "Token-major packed hash ids with shape (total_tokens, "
@@ -2939,6 +2953,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.",
                 "S",
                 OpSchema::Optional)
+        .Output(3,
+                "state_update",
+                "Optional trailing id states after each captured prefix token, with shape "
+                "(batch_size, state_update_capacity, max_ngram_size - 1). Unused slots are pad_id.",
+                "M",
+                OpSchema::Optional)
         .TypeConstraint("M",
                         {"tensor(int32)", "tensor(int64)"},
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
@@ -2953,14 +2973,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 2) {
             propagateElemTypeFromInputToOutput(ctx, 3, 2);
           }
+          if (ctx.getNumOutputs() > 3) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 3);
+          }
 
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", int64_t{0});
           if (max_ngram_size < 2) {
             fail_shape_inference("VarlenNGramHashMapping: max_ngram_size must be at least 2");
           }
           if (n_head_per_ngram < 1) {
             fail_shape_inference("VarlenNGramHashMapping: n_head_per_ngram must be positive");
+          }
+          if (state_update_capacity < 0 || state_update_capacity > 8) {
+            fail_shape_inference("VarlenNGramHashMapping: state_update_capacity must be in [0, 8]");
           }
           // max_ngram_size and n_head_per_ngram are model-controlled attributes with only
           // lower-bound checks above, so (max_ngram_size - 1) * n_head_per_ngram must be
@@ -3008,6 +3035,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               updateOutputShape(ctx, 1, present_shape);
               if (ctx.getNumOutputs() > 2) {
                 updateOutputShape(ctx, 2, present_shape);
+              }
+              if (ctx.getNumOutputs() > 3) {
+                TensorShapeProto state_update_shape;
+                *state_update_shape.add_dim() = present_shape.dim(0);
+                state_update_shape.add_dim()->set_dim_value(state_update_capacity);
+                state_update_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+                updateOutputShape(ctx, 3, state_update_shape);
+              }
+            }
+            if (hasInputShape(ctx, 9)) {
+              const auto& capture_count_shape = getInputShape(ctx, 9);
+              if (capture_count_shape.dim_size() != 1) {
+                fail_shape_inference("VarlenNGramHashMapping: capture_count must have rank 1");
+              }
+              if (cu_dim.has_dim_value() && capture_count_shape.dim(0).has_dim_value() &&
+                  capture_count_shape.dim(0).dim_value() != cu_dim.dim_value() - 1) {
+                fail_shape_inference("VarlenNGramHashMapping: capture_count must have shape (batch_size)");
               }
             }
           }

@@ -37,19 +37,23 @@ class VarlenNGramValidateCuSeqlensProgram final : public Program<VarlenNGramVali
 // whole output regardless of what cu_seqlens contains.
 class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaultProgram> {
  public:
-  VarlenNGramFillDefaultProgram(bool has_present_ids, bool has_present_segment_ids, bool has_eos_token_id)
+  VarlenNGramFillDefaultProgram(bool has_present_ids, bool has_present_segment_ids, bool has_state_update,
+                                bool has_eos_token_id)
       : Program{"VarlenNGramFillDefault"},
         has_present_ids_(has_present_ids),
         has_present_segment_ids_(has_present_segment_ids),
+        has_state_update_(has_state_update),
         has_eos_token_id_(has_eos_token_id) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
                                           {"present_count", ProgramUniformVariableDataType::Uint32},
+                                          {"state_update_count", ProgramUniformVariableDataType::Uint32},
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
   bool has_present_ids_;
   bool has_present_segment_ids_;
+  bool has_state_update_;
   bool has_eos_token_id_;
 };
 
@@ -139,6 +143,24 @@ class VarlenNGramPresentIdsProgram final : public Program<VarlenNGramPresentIdsP
   bool has_eos_token_id_;
 };
 
+class VarlenNGramStateUpdateProgram final : public Program<VarlenNGramStateUpdateProgram> {
+ public:
+  VarlenNGramStateUpdateProgram(bool has_past_ids, bool has_eos_token_id)
+      : Program{"VarlenNGramStateUpdate"},
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
+                                          {"total_tokens", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
+
+ private:
+  bool has_past_ids_;
+  bool has_eos_token_id_;
+};
+
 class VarlenNGramHashMapping final : public WebGpuKernel {
  public:
   explicit VarlenNGramHashMapping(const OpKernelInfo& info);
@@ -147,6 +169,7 @@ class VarlenNGramHashMapping final : public WebGpuKernel {
  private:
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
+  int64_t state_update_capacity_;
   int64_t pad_id_;
   bool reset_on_eos_;
 };

@@ -44,6 +44,9 @@ VarlenNGramHashMapping<T>::VarlenNGramHashMapping(const OpKernelInfo& info) : Op
   ORT_ENFORCE(info.GetAttr<int64_t>("pad_id", &pad_id).IsOK(), "pad_id attribute is required");
   ORT_ENFORCE(max_ngram_size_ >= 2, "max_ngram_size must be at least 2");
   ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
+  state_update_capacity_ = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
+  ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
+              "state_update_capacity must be in [0, 8]");
   ORT_ENFORCE(pad_id >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
                   pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
               "pad_id is out of range for the input id type");
@@ -73,6 +76,10 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const Tensor* eos_token_id = context->Input<Tensor>(6);
   const Tensor* segment_ids = context->Input<Tensor>(7);
   const Tensor* past_segment_ids = context->Input<Tensor>(8);
+  const Tensor* capture_count = context->Input<Tensor>(9);
+
+  ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
+                    "capture_count must be present exactly when state_update_capacity is positive");
 
   ORT_RETURN_IF_NOT(input_ids->Shape().NumDimensions() == 1, "input_ids must have rank 1 (total_tokens)");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
@@ -93,8 +100,10 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const int64_t state_length = max_ngram_size_ - 1;
   int64_t output_count = 0;
   int64_t present_count = 0;
+  int64_t state_update_count = 0;
   ORT_RETURN_IF_NOT(engram_helper::TryMultiplyDims(total_tokens, num_heads, output_count) &&
-                        engram_helper::TryMultiplyDims(batch_size, state_length, present_count),
+                        engram_helper::TryMultiplyDims(batch_size, state_length, present_count) &&
+                        engram_helper::TryMultiplyDims(present_count, state_update_capacity_, state_update_count),
                     "VarlenNGramHashMapping: output dimensions overflow int64_t");
   if (past_ids != nullptr) {
     ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
@@ -116,6 +125,10 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(past_segment_ids->Shape() == TensorShape({batch_size, state_length}),
                       "past_segment_ids must have shape (batch_size, max_ngram_size - 1)");
   }
+  if (capture_count != nullptr) {
+    ORT_RETURN_IF_NOT(capture_count->Shape() == TensorShape({batch_size}),
+                      "capture_count must have shape (batch_size)");
+  }
 
   const int32_t* cu_data = cu_seqlens->Data<int32_t>();
   ORT_RETURN_IF_NOT(cu_data[0] == 0, "cumulative_sequence_length[0] must be 0");
@@ -130,6 +143,8 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
   Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
   Tensor* present_segment_ids = context->Output(2, TensorShape({batch_size, state_length}));
+  Tensor* state_update = context->Output(
+      3, TensorShape({batch_size, state_update_capacity_, state_length}));
   ORT_RETURN_IF_NOT(present_segment_ids == nullptr || segment_ids != nullptr,
                     "present_segment_ids requires segment_ids");
 
@@ -157,6 +172,7 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   T* present_data = present_ids == nullptr ? nullptr : present_ids->MutableData<T>();
   int32_t* present_segment_data =
       present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>();
+  T* state_update_data = state_update == nullptr ? nullptr : state_update->MutableData<T>();
   T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
 
   const bool has_boundaries = do_reset || segment_data != nullptr;
@@ -266,6 +282,28 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
                 : (past_segment_data != nullptr
                        ? past_segment_data[b * state_length + state_length + source_t]
                        : segment_data[start]);
+      }
+    }
+  }
+  if (state_update_data != nullptr) {
+    const int32_t* capture_count_data = capture_count->Data<int32_t>();
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      const int64_t captured = std::min<int64_t>(
+          std::max<int32_t>(capture_count_data[b], 0),
+          std::min(local_length, state_update_capacity_));
+      for (int64_t t = 0; t < state_update_capacity_; ++t) {
+        for (int64_t j = 0; j < state_length; ++j) {
+          T token = pad_id_;
+          if (t < captured) {
+            const int64_t source_t = t + 1 - state_length + j;
+            token = source_t >= 0
+                        ? input_data[start + source_t]
+                        : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+          }
+          state_update_data[(b * state_update_capacity_ + t) * state_length + j] = token;
+        }
       }
     }
   }
