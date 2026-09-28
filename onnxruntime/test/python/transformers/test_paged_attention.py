@@ -475,6 +475,15 @@ def rotary_options_for_current_os():
     return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
 
 
+def create_webgpu_session(onnx_model_str, sess_options):
+    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+    webgpu_devices = [device for device in get_ep_devices() if device.ep_name == "WebGpuExecutionProvider"]
+    if not webgpu_devices:
+        raise RuntimeError("No WebGPU EP device found.")
+    sess_options.add_provider_for_devices([webgpu_devices[0]], {})
+    return InferenceSession(onnx_model_str, sess_options)
+
+
 def paged_attention_func(
     config,
     query,
@@ -538,17 +547,13 @@ def paged_attention_func(
         ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache_np, config.ort_device, 0)
     sess_options = SessionOptions()
     if config.ep == "WebGpuExecutionProvider":
-        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-        webgpu_devices = [device for device in get_ep_devices() if device.ep_name == config.ep]
-        if not webgpu_devices:
-            raise RuntimeError("No WebGPU EP device found.")
-        sess_options.add_provider_for_devices([webgpu_devices[0]], {})
-        providers = None
-    elif sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
-        providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+        ort_session = create_webgpu_session(onnx_model_str, sess_options)
     else:
-        providers = [config.ep]
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
+        if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+            providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+        else:
+            providers = [config.ep]
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
     io_binding = ort_session.io_binding()
     if key is not None and value is not None:
         ort_inputs["key"] = key.detach().cpu().numpy()
@@ -1739,6 +1744,56 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
                 local_window_size_override=4,
             )
 
+    def test_qwen38_non_causal_local_window_dense_prefill(self):
+        # Q=32 reaches dense prefill; fp16 head_size=256 selects 16-key tiles.
+        # The query-relative window partially masks the first tile for early
+        # rows and fully masks it for later rows in the same workgroup.
+        query_length, past_length, window = 32, 33, 4
+        total_length = past_length + query_length
+        config = Config(
+            1, query_length, total_length, 24, 4, 256, 16, True, False, False, False, 0.0, ep="WebGpuExecutionProvider"
+        )
+        config.is_causal = False
+        query = torch.zeros(query_length, config.num_heads * config.head_size, dtype=torch.float16)
+        dense_key = torch.zeros(total_length, config.kv_num_heads, config.head_size, dtype=torch.float16)
+        # Equal logits make the output depend only on which distinct values are visible.
+        dense_value = (
+            torch.arange(1, total_length + 1, dtype=torch.float16)
+            .reshape(-1, 1, 1)
+            .expand_as(dense_key)
+            .contiguous()
+        )
+        num_blocks = math.ceil(total_length / config.paged_kv_block_size)
+        block_table = torch.arange(num_blocks - 1, -1, -1, dtype=torch.int32).reshape(1, num_blocks)
+        key_cache = torch.zeros(
+            num_blocks, config.paged_kv_block_size, config.kv_num_heads, config.head_size, dtype=torch.float16
+        )
+        value_cache = torch.zeros_like(key_cache)
+        for position in range(past_length):
+            block = block_table[0, position // config.paged_kv_block_size]
+            value_cache[block, position % config.paged_kv_block_size] = dense_value[position]
+
+        reference, _ = attention_ref(
+            query.reshape(1, query_length, config.num_heads, config.head_size),
+            dense_key.unsqueeze(0),
+            dense_value.unsqueeze(0),
+            causal=False,
+            window_size=(window, total_length),
+        )
+        output, _, _ = paged_attention_func(
+            config,
+            query,
+            dense_key[past_length:].reshape(query_length, -1),
+            dense_value[past_length:].reshape(query_length, -1),
+            key_cache,
+            value_cache,
+            torch.tensor([0, query_length], dtype=torch.int32),
+            torch.tensor([past_length], dtype=torch.int32),
+            block_table,
+            window_size=window,
+        )
+        numpy.testing.assert_allclose(output.numpy(), reference.reshape(output.shape).numpy(), rtol=5e-3, atol=5e-3)
+
     @parameterized.expand([("split", 4), ("prefill", 65)])
     def test_non_causal_local_window_query_bounds(self, _, query_length):
         # Equal logits make each output the mean of the visible key positions.
@@ -1888,7 +1943,7 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
 
         options = SessionOptions()
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
-        session = InferenceSession(model.SerializeToString(), options, providers=["WebGpuExecutionProvider"])
+        session = create_webgpu_session(model.SerializeToString(), options)
         output = session.run(["output"], feed)[0]
         values = torch.ones(1, total_length, 1, head_size)
         values[0, :past_length] = torch.arange(100, 100 + past_length).reshape(-1, 1, 1)
