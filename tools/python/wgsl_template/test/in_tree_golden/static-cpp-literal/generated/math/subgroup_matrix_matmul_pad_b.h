@@ -18,7 +18,7 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
 //  3 |
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
-//  6 | // Gives B an even row stride so the subgroup-matrix f16 load's 4-byte row-start
+//  6 | // Gives B an aligned row stride so the subgroup-matrix f16 load's row-start
 //  7 | // alignment holds for odd N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
 //  8 |
 //  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
