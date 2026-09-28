@@ -80,6 +80,24 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
   it('run without LoRA adapter', async () => {
     expect(session.inputNames).to.deep.equal(['input_x']);
     expectOutput(await session.run(createFeeds()), EXPECTED_OUTPUT_ROW_BASE);
+    expectOutput(await session.run(createFeeds(), { activeLoraAdapters: [] }), EXPECTED_OUTPUT_ROW_BASE);
+  });
+
+  it('create LoRA adapter with invalid argument', async () => {
+    for (const arg of [42, null, new Float32Array(4)]) {
+      await expectRejected(LoraAdapter.create(arg as unknown as Uint8Array), "must be 'path' or 'buffer'");
+    }
+  });
+
+  it('run with invalid activeLoraAdapters', async () => {
+    await expectRejected(
+      session.run(createFeeds(), { activeLoraAdapters: {} as LoraAdapter[] }),
+      "'activeLoraAdapters' must be an array.",
+    );
+    await expectRejected(
+      session.run(createFeeds(), { activeLoraAdapters: [{ release: async () => {} }] as LoraAdapter[] }),
+      'must be an array of LoraAdapter objects',
+    );
   });
 
   if (env.wasm.proxy && typeof document !== 'undefined') {
@@ -101,6 +119,20 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
       }
     });
 
+    it('run with LoRA adapter created from a subarray', async () => {
+      const buffer = new Uint8Array(ONNX_ADAPTER_TWO_PARAMS_LORA.byteLength + 16);
+      buffer.set(ONNX_ADAPTER_TWO_PARAMS_LORA, 8);
+      const adapter = await LoraAdapter.create(buffer.subarray(8, 8 + ONNX_ADAPTER_TWO_PARAMS_LORA.byteLength));
+      try {
+        expectOutput(
+          await session.run(createFeeds(), { activeLoraAdapters: [adapter] }),
+          EXPECTED_OUTPUT_ROW_WITH_ADAPTER,
+        );
+      } finally {
+        await adapter.release();
+      }
+    });
+
     it('create LoRA adapter from invalid data', async () => {
       await expectRejected(LoraAdapter.create(new Uint8Array([1, 2, 3, 4])), "Can't create a LoRA adapter.");
     });
@@ -110,14 +142,6 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
       await adapter.release();
       await expectRejected(session.run(createFeeds(), { activeLoraAdapters: [adapter] }), 'invalid LoRA adapter id');
       await expectRejected(adapter.release(), 'invalid adapter id');
-    });
-
-    it('run with invalid activeLoraAdapters', async () => {
-      const activeLoraAdapters = [{ release: async () => {} }] as LoraAdapter[];
-      await expectRejected(
-        session.run(createFeeds(), { activeLoraAdapters }),
-        'must be an array of LoraAdapter objects',
-      );
     });
 
     if (typeof window !== 'undefined') {
