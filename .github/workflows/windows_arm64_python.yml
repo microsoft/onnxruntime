@@ -65,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           python tools\ci_build\build.py `
-            --config Release `
+            --config RelWithDebInfo `
             --compile_no_warning_as_error `
             --build_dir "${{ github.workspace }}\build" `
             --skip_submodule_sync `
