@@ -65,7 +65,7 @@ void HGEMM(benchmark::State& state, bool transA, bool transB) {
   }
 }
 
-static void GemmSizeWithOne(benchmark::internal::Benchmark* b) {
+static void GemmSizeWithOne(benchmark::Benchmark* b) {
   b->ArgNames(hgemm_bench_arg_names);
   b->ArgsProduct({{1}, {63, 255, 1023}, {63, 255, 1023}});
   b->ArgsProduct({{63, 255, 1023}, {1}, {63, 255, 1023}});
@@ -74,14 +74,14 @@ static void GemmSizeWithOne(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(HGEMM, GEMV_TransB, false, true)->Apply(GemmSizeWithOne)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, GEMV_B, false, false)->Apply(GemmSizeWithOne)->UseRealTime();
 
-static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
+static void GemmSizeProducts(benchmark::Benchmark* b) {
   b->ArgNames(hgemm_bench_arg_names);
   b->ArgsProduct({{63, 255, 1023}, {63, 255, 1023}, {63, 255, 1023}});
 }
 BENCHMARK_CAPTURE(HGEMM, NORMAL_TransB, false, true)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, NORMAL_B, false, false)->Apply(GemmSizeProducts)->UseRealTime();
 
-static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
+static void GemmLLMSizeProducts(benchmark::Benchmark* b) {
   b->ArgNames(hgemm_bench_arg_names);
   b->ArgsProduct({{1, 1024, 2048}, {4096, 11008}, {4096, 11008}});
 }

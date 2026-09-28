@@ -565,6 +565,18 @@ TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
+TEST(QuantizeLinearOpMLFloat16Test, Int8RoundsFractionalValues) {
+  OpTester test("QuantizeLinear", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<MLFloat16>("x", dims,
+                           {MLFloat16(0.050018310546875f), MLFloat16(-0.050018310546875f),
+                            MLFloat16(0.04998779296875f), MLFloat16(-0.04998779296875f)});
+  test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(0.0999755859375f)});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, -1, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8) {
   // TODO: Unskip when fixed #41968513
@@ -1133,6 +1145,23 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt2) {
   test.AddInput<float>("scale", {}, {scale}, true);
   test.AddInput<UInt2x4>("zero_point", {}, {UInt2x4(zp, unused_val, unused_val, unused_val)}, true);
   test.AddOutput<UInt2x4>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test int2 QuantizeLinear per axis on the last axis. Each scale covers a single element, so every
+// scale interval starts and ends inside a packed byte and must not overwrite its neighbors.
+TEST(QuantizeLinearOpTest, Int2_PerAxis_LastAxis) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<float>("x", dims, {1.0f, 1.0f, 1.0f, 1.0f, -2.0f, -2.0f, -2.0f, -2.0f});
+  test.AddInput<float>("scale", {4}, {1.0f, 1.0f, 4.0f, 1.0f}, true);
+  test.AddInput<Int2x4>("zero_point", {4}, {Int2x4(0, 0, 0, 0)}, true);
+  // y = clamp(round(x / scale), -2, 1)
+  // row 0: [1, 1, round(0.25), 1] = [1, 1, 0, 1]
+  // row 1: [-2, -2, round(-0.5), -2] = [-2, -2, 0, -2]
+  test.AddOutput<Int2x4>("y", dims, {Int2x4(1, 1, 0, 1), Int2x4(-2, -2, 0, -2)});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
