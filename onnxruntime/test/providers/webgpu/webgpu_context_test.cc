@@ -150,6 +150,81 @@ std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuCont
   return result;
 }
 
+void TestCopyAfterDeferredDispatch(bool upload) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& buffer_manager = context.BufferManager();
+
+  std::array<uint32_t, 16> input_data;
+  input_data.fill(7);
+  wgpu::BufferDescriptor buffer_desc{};
+  buffer_desc.size = sizeof(input_data);
+  buffer_desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto input = context.Device().CreateBuffer(&buffer_desc);
+  auto output = context.Device().CreateBuffer(&buffer_desc);
+  auto copy = context.Device().CreateBuffer(&buffer_desc);
+  buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+
+  wgpu::ShaderSourceWGSL source{};
+  source.code = R"(
+    @group(0) @binding(0) var<storage, read> input: array<u32>;
+    @group(0) @binding(1) var<storage, read_write> output: array<u32>;
+    @compute @workgroup_size(16)
+    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+      output[id.x] = input[id.x] + 1u;
+    }
+  )";
+  wgpu::ShaderModuleDescriptor shader_desc{};
+  shader_desc.nextInChain = &source;
+  wgpu::ComputePipelineDescriptor pipeline_desc{};
+  pipeline_desc.compute.module = context.Device().CreateShaderModule(&shader_desc);
+  pipeline_desc.compute.entryPoint = "main";
+  auto pipeline = context.Device().CreateComputePipeline(&pipeline_desc);
+  std::array<wgpu::BindGroupEntry, 2> entries{};
+  entries[0].binding = 0;
+  entries[0].buffer = input;
+  entries[0].size = sizeof(input_data);
+  entries[1].binding = 1;
+  entries[1].buffer = output;
+  entries[1].size = sizeof(input_data);
+  wgpu::BindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = pipeline.GetBindGroupLayout(0);
+  bind_group_desc.entryCount = entries.size();
+  bind_group_desc.entries = entries.data();
+  webgpu::CapturedCommandInfo dispatch;
+  dispatch.compute_pipeline = pipeline;
+  dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_desc);
+  recording.deferred_dispatches.push_back(std::move(dispatch));
+  recording.has_unsubmitted_work = true;
+
+  if (upload) {
+    // The dispatch must consume the original input before Upload overwrites it.
+    input_data.fill(42);
+    buffer_manager.Upload(recording, input_data.data(), input.Get(), sizeof(input_data));
+  } else {
+    // MemCpy must read the dispatch result, not the output buffer's initial zeros.
+    buffer_manager.MemCpy(recording, output.Get(), copy.Get(), sizeof(input_data));
+  }
+  EXPECT_TRUE(recording.deferred_dispatches.empty());
+
+  std::array<uint32_t, 16> result{};
+  buffer_manager.Download(recording, upload ? output.Get() : copy.Get(), result.data(), sizeof(result));
+  std::array<uint32_t, 16> expected;
+  expected.fill(8);
+  EXPECT_EQ(result, expected);
+}
+
+TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
+  TestCopyAfterDeferredDispatch(true);
+}
+
+TEST(WebGpuContextTest, MemCpyFollowsDeferredDispatch) {
+  TestCopyAfterDeferredDispatch(false);
+}
+
 TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -164,6 +239,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -172,7 +248,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
   allocation = allocator.Alloc(sizeof(nonzero_data));
@@ -181,7 +257,7 @@ TEST(WebGpuContextTest, SessionAllocatorSubmitsReusedBufferClearOutsideRun) {
   EXPECT_EQ(reused_buffer, dirty_buffer);
 
   const auto downloaded_data = ReadBufferWithExternalCommandEncoder(context, reused_buffer);
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   const std::array<uint32_t, 16> expected_data{};
   EXPECT_EQ(downloaded_data, expected_data);
 
@@ -192,6 +268,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
+  auto* webgpu_ep = static_cast<WebGpuExecutionProvider*>(ep.get());
 
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   webgpu::BufferManager buffer_manager(context,
@@ -202,6 +279,7 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   std::vector<webgpu::CapturedCommandInfo> captured_commands;
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false);
 
   std::array<uint32_t, 16> nonzero_data;
@@ -209,19 +287,19 @@ TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
   allocator.Free(allocation);
 
-  context.CaptureBegin(&captured_commands, buffer_manager);
+  context.CaptureBegin(&captured_commands, buffer_manager, webgpu_ep->Recording());
   allocation = allocator.Alloc(sizeof(nonzero_data));
   if (allocation == nullptr) {
-    context.CaptureEnd();
+    context.CaptureEnd(webgpu_ep->Recording());
     FAIL() << "Failed to reacquire a device allocation during graph capture.";
   }
   WGPUBuffer reused_buffer = static_cast<WGPUBuffer>(allocation);
   EXPECT_EQ(reused_buffer, dirty_buffer);
-  const Status flush_status = context.Flush(buffer_manager);
-  context.CaptureEnd();
+  const Status flush_status = context.Flush(buffer_manager, webgpu_ep->Recording());
+  context.CaptureEnd(webgpu_ep->Recording());
   if (!flush_status.IsOK()) {
     allocator.Free(allocation);
     FAIL() << flush_status.ErrorMessage();
@@ -246,6 +324,7 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
                                        webgpu::BufferCacheMode::Disabled);
   webgpu::GpuBufferAllocator allocator(
       [&buffer_manager]() -> const webgpu::BufferManager& { return buffer_manager; },
+      [webgpu_ep]() -> webgpu::CommandRecordingState& { return webgpu_ep->Recording(); },
       false,
       [webgpu_ep]() { return !webgpu_ep->IsRunActive(); });
 
@@ -254,8 +333,8 @@ TEST(WebGpuContextTest, SessionAllocatorDefersReusedBufferClearDuringRun) {
   void* allocation = allocator.Alloc(sizeof(nonzero_data));
   ASSERT_NE(allocation, nullptr);
   WGPUBuffer dirty_buffer = static_cast<WGPUBuffer>(allocation);
-  buffer_manager.Upload(nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
-  ASSERT_STATUS_OK(context.Flush(buffer_manager));
+  buffer_manager.Upload(webgpu_ep->Recording(), nonzero_data.data(), dirty_buffer, sizeof(nonzero_data));
+  ASSERT_STATUS_OK(context.Flush(buffer_manager, webgpu_ep->Recording()));
   allocator.Free(allocation);
 
   RunOptions run_options;
@@ -285,6 +364,64 @@ TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
   EXPECT_TRUE(webgpu_ep->IsRunActive());
   ASSERT_STATUS_OK(webgpu_ep->OnRunEnd(false, run_options));
   EXPECT_FALSE(webgpu_ep->IsRunActive());
+}
+
+TEST(WebGpuContextTest, EnablesImplicitDeviceSynchronization) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "ImplicitDeviceSynchronization is a Dawn native feature.";
+#else
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(0).DeviceHasFeature(
+      wgpu::FeatureName::ImplicitDeviceSynchronization));
+#endif
+}
+
+TEST(WebGpuContextTest, ExternalDeviceRequiresImplicitDeviceSynchronization) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  // Initialize ORT's Dawn proc table before using externally created devices.
+  ConfigOptions options;
+  auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(owned_ep, nullptr);
+
+  dawn::native::Instance instance;
+  wgpu::RequestAdapterOptions adapter_options{};
+  adapter_options.backendType = static_cast<wgpu::BackendType>(webgpu::WebGpuContextConfig{}.backend_type);
+
+  for (bool enable_synchronization : {false, true}) {
+    SCOPED_TRACE(enable_synchronization);
+    auto adapters = instance.EnumerateAdapters(&adapter_options);
+    ASSERT_FALSE(adapters.empty());
+    const auto feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+    wgpu::DeviceDescriptor device_desc{};
+    device_desc.requiredFeatureCount = enable_synchronization ? 1 : 0;
+    device_desc.requiredFeatures = enable_synchronization ? &feature : nullptr;
+    auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
+    ASSERT_NE(device, nullptr);
+    ASSERT_EQ(device.HasFeature(feature), enable_synchronization);
+
+    ConfigOptions external_options;
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+
+    if (enable_synchronization) {
+      auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+      ASSERT_NE(external_ep, nullptr);
+      EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(1).DeviceHasFeature(feature));
+    } else {
+      EXPECT_THAT([&]() { WebGpuProviderFactoryCreator::Create(external_options); },
+                  ::testing::ThrowsMessage<OnnxRuntimeException>(::testing::HasSubstr(
+                      "an externally supplied native device must enable ImplicitDeviceSynchronization "
+                      "in DeviceDescriptor.requiredFeatures when it is created.")));
+    }
+  }
+#endif
 }
 
 TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
