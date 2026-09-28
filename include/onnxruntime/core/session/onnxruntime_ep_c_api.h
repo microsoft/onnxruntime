@@ -3006,7 +3006,8 @@ struct OrtEpFactory {
    *
    * \note Implementation of this function is optional.
    *       An EP factory should only implement this if it supports external resource import.
-   *       If not implemented or not supported, return ORT_NOT_IMPLEMENTED or set out_importer to nullptr.
+   *       If not supported for ep_device, set out_importer to nullptr and return nullptr (success).
+   *       Any error status returned is propagated to the application as a failure.
    *
    * \since Version 1.24.
    */

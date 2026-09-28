@@ -274,7 +274,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::InitGraphicsInteropForEpDevice, _In_ const Or
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
   }
 
-  if (factory->InitGraphicsInterop == nullptr) {
+  // OrtEpFactory::InitGraphicsInterop was added in ORT 1.25; older factories do not have this field.
+  if (factory->ort_version_supported < 25 || factory->InitGraphicsInterop == nullptr) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
   }
 
@@ -294,7 +295,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::DeinitGraphicsInteropForEpDevice, _In_ const 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
   }
 
-  if (factory->DeinitGraphicsInterop == nullptr) {
+  // OrtEpFactory::DeinitGraphicsInterop was added in ORT 1.25; older factories do not have this field.
+  if (factory->ort_version_supported < 25 || factory->DeinitGraphicsInterop == nullptr) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
   }
 
