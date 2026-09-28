@@ -849,6 +849,87 @@ void RunNGramHashMappingInPlaceTest(std::unique_ptr<IExecutionProvider> ep) {
   EXPECT_EQ(std::vector<T>(present_span.begin(), present_span.end()), expected_final_present);
 }
 
+void RunVarlenNGramHashMappingInPlaceCudaTest() {
+  constexpr int64_t kStateLength = kMaxNGramSize - 1;
+  constexpr int64_t kNumHeads = kStateLength * kHeadsPerNGram;
+  constexpr size_t kSteps = 3;
+  const std::vector<int32_t> multipliers{11, 13, 17};
+  const std::vector<int32_t> vocab_sizes{101, 103, 107, 109};
+  const std::vector<int32_t> cu_seqlens{0, 1};
+  const std::vector<int32_t> initial_past{1, 2};
+  const std::vector<int32_t> step_tokens{3, 4, 5};
+
+  std::vector<int32_t> expected_hash;
+  std::vector<int32_t> history = initial_past;
+  for (const int32_t token : step_tokens) {
+    const auto hash = NGramHashMappingReference<int32_t>(
+        {token}, history, multipliers, vocab_sizes);
+    expected_hash.insert(expected_hash.end(), hash.begin(), hash.end());
+    history.erase(history.begin());
+    history.push_back(token);
+  }
+
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 17}, {kMSDomain, 1}};
+  Model model("VarlenNGramHashMappingInPlace", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  NodeAttributes attributes;
+  attributes["max_ngram_size"] = utils::MakeAttribute(std::string("max_ngram_size"), kMaxNGramSize);
+  attributes["n_head_per_ngram"] = utils::MakeAttribute(std::string("n_head_per_ngram"), kHeadsPerNGram);
+  attributes["pad_id"] = utils::MakeAttribute(std::string("pad_id"), kPadId);
+
+  auto* multipliers_arg = builder.MakeInput<int32_t>({kMaxNGramSize}, multipliers);
+  auto* vocab_sizes_arg = builder.MakeInput<int32_t>({kNumHeads}, vocab_sizes);
+  auto* cu_seqlens_arg = builder.MakeInput<int32_t>({2}, cu_seqlens);
+  auto* past_arg = builder.MakeInput<int32_t>({1, kStateLength}, initial_past);
+  std::vector<std::string> present_names;
+  for (size_t step = 0; step < kSteps; ++step) {
+    auto* input_ids_arg = builder.MakeInput<int32_t>({1}, {step_tokens[step]});
+    auto* hash_arg = builder.MakeOutput();
+    auto* present_arg = step + 1 == kSteps ? builder.MakeOutput() : builder.MakeIntermediate();
+    builder.AddNode("VarlenNGramHashMapping",
+                    {input_ids_arg, multipliers_arg, vocab_sizes_arg, cu_seqlens_arg, past_arg},
+                    {hash_arg, present_arg}, kMSDomain, &attributes);
+    present_names.push_back(present_arg->Name());
+    past_arg = present_arg;
+  }
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+  InferenceSessionWrapper session{SessionOptions{}, GetEnvironment()};
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_istream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_istream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& session_state = session.GetSessionState();
+  int middle_present = -1;
+  int middle_past = -1;
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[1], middle_present));
+  ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(present_names[0], middle_past));
+  const auto& alloc_plan = session_state.GetPerValueAllocPlan();
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].alloc_kind, AllocKind::kReuse);
+  EXPECT_EQ(alloc_plan[static_cast<size_t>(middle_present)].reused_buffer, middle_past);
+
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+  ASSERT_EQ(fetches.size(), kSteps + 1);
+  for (size_t step = 0; step < kSteps; ++step) {
+    const auto& hash = fetches[step].Get<Tensor>();
+    EXPECT_EQ(std::vector<int32_t>(hash.DataAsSpan<int32_t>().begin(), hash.DataAsSpan<int32_t>().end()),
+              std::vector<int32_t>(expected_hash.begin() + step * kNumHeads,
+                                   expected_hash.begin() + (step + 1) * kNumHeads));
+  }
+}
+
 template <typename T>
 std::vector<int32_t> CuSeqLensFrom(const std::vector<std::vector<T>>& sequences) {
   std::vector<int32_t> cu_seqlens{0};
@@ -1326,6 +1407,10 @@ TEST(EngramOpsTest, NGramHashMappingInPlaceCuda) {
   }
   RunNGramHashMappingInPlaceTest<int64_t>(DefaultCudaExecutionProvider());
   RunNGramHashMappingInPlaceTest<int32_t>(DefaultCudaExecutionProvider());
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingInPlaceCuda) {
+  RunVarlenNGramHashMappingInPlaceCudaTest();
 }
 
 TEST(EngramOpsTest, NGramHashMappingHeadOffsetsSkipInvalidVocabCuda) {

@@ -146,8 +146,8 @@ template <typename T>
 __global__ void VarlenNGramPresentIdsKernel(
     const T* __restrict__ input_ids,
     const int32_t* __restrict__ cu_seqlens,
-    const T* __restrict__ past_ids,
-    T* __restrict__ present_ids,
+    const T* past_ids,
+    T* present_ids,
     int batch_size,
     int64_t max_ngram_size,
     T pad_id,
