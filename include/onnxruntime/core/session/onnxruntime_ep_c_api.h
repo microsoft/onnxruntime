@@ -2808,10 +2808,6 @@ struct OrtEpFactory {
    *          Environment configuration entries are populated before any library is registered, so
    *          OrtEpApi::GetEnvConfigEntries may be called from this function.
    *
-   *          ORT holds internal environment locks across this call. An implementation must not call
-   *          OrtApi::RegisterExecutionProviderLibrary or OrtApi::UnregisterExecutionProviderLibrary, as that
-   *          deadlocks, and should otherwise limit the ORT APIs it calls and the work it does.
-   *
    * \since Version 1.22.
    */
   ORT_API2_STATUS(GetSupportedDevices, _In_ OrtEpFactory* this_ptr,
