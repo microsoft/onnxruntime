@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -85,6 +86,136 @@ GetComputeType<MLFloat16>(size_t nbits, size_t block_size, int64_t accuracy_leve
 }
 #endif  // !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
 
+// Largest block length implemented by the MLAS QNBit GEMM and blockwise dequantization kernels.
+constexpr size_t kMaxExecutionBlockSize = 256;
+
+constexpr size_t GetExecutionBlockSize(size_t logical_block_size) {
+  return logical_block_size > kMaxExecutionBlockSize ? kMaxExecutionBlockSize : logical_block_size;
+}
+
+// Maps the authored (logical) MatMulNBits block layout to the layout the CPU kernels execute with.
+// An authored power-of-two block larger than kMaxExecutionBlockSize is split into `repeat` execution
+// sub-blocks that each reuse the logical block's scale and zero point. The represented weights are unchanged.
+struct ExecutionBlockLayout {
+  size_t n{};
+  size_t bits{};
+  size_t logical_block_size{};
+  size_t block_size{};
+  size_t repeat{};
+  size_t logical_k_blocks{};
+  size_t k_blocks{};
+  size_t logical_b_row_bytes{};
+  size_t b_row_bytes{};
+  size_t logical_zp_row_bytes{};  // uint8 (bit-packed) zero points
+  size_t zp_row_bytes{};
+};
+
+ExecutionBlockLayout MakeExecutionBlockLayout(size_t n, size_t k, size_t bits, size_t logical_block_size) {
+  // Checked int64 arithmetic: the int64 shape validators derive the same quantities from the attributes.
+  using SafeInt64 = SafeInt<int64_t>;
+  ExecutionBlockLayout layout;
+  layout.n = n;
+  layout.bits = bits;
+  layout.logical_block_size = logical_block_size;
+  layout.block_size = GetExecutionBlockSize(logical_block_size);
+  layout.repeat = logical_block_size / layout.block_size;
+  const SafeInt64 logical_k_blocks = (SafeInt64(k) + logical_block_size - 1) / logical_block_size;
+  const SafeInt64 k_blocks = (SafeInt64(k) + layout.block_size - 1) / layout.block_size;
+  const SafeInt64 logical_b_row_bytes = logical_k_blocks * (SafeInt64(logical_block_size) * bits / 8);
+  const SafeInt64 b_row_bytes = k_blocks * (SafeInt64(layout.block_size) * bits / 8);
+  const SafeInt64 logical_zp_row_bytes = (logical_k_blocks * bits + 7) / 8;
+  const SafeInt64 zp_row_bytes = (k_blocks * bits + 7) / 8;
+  // Whole-tensor sizes must be representable as well.
+  ORT_IGNORE_RETURN_VALUE(static_cast<int64_t>(logical_b_row_bytes * n));
+  ORT_IGNORE_RETURN_VALUE(static_cast<int64_t>(logical_k_blocks * n));
+  ORT_IGNORE_RETURN_VALUE(static_cast<int64_t>(logical_zp_row_bytes * n));
+  layout.logical_k_blocks = static_cast<size_t>(static_cast<int64_t>(logical_k_blocks));
+  layout.k_blocks = static_cast<size_t>(static_cast<int64_t>(k_blocks));
+  layout.logical_b_row_bytes = static_cast<size_t>(static_cast<int64_t>(logical_b_row_bytes));
+  layout.b_row_bytes = static_cast<size_t>(static_cast<int64_t>(b_row_bytes));
+  layout.logical_zp_row_bytes = static_cast<size_t>(static_cast<int64_t>(logical_zp_row_bytes));
+  layout.zp_row_bytes = static_cast<size_t>(static_cast<int64_t>(zp_row_bytes));
+  // Execution sub-blocks never extend past the authored padded row, and each maps to a valid logical block.
+  ORT_ENFORCE(layout.b_row_bytes <= layout.logical_b_row_bytes &&
+                  (layout.k_blocks == 0 || (layout.k_blocks - 1) / layout.repeat < layout.logical_k_blocks),
+              "Invalid MatMulNBits execution block layout.");
+  return layout;
+}
+
+// Copies each output channel's first b_row_bytes. Execution padding (K up to k_blocks * block_size) lies inside
+// the authored padding, so no new padding values are introduced.
+Status ConvertQuantizedBToExecutionLayout(const ExecutionBlockLayout& layout, const Tensor& src, Tensor& dst) {
+  const size_t src_bytes = src.SizeInBytes();
+  const size_t dst_bytes = dst.SizeInBytes();
+  ORT_RETURN_IF_NOT(src_bytes == SafeInt<size_t>(layout.n) * layout.logical_b_row_bytes &&
+                        dst_bytes == SafeInt<size_t>(layout.n) * layout.b_row_bytes,
+                    "MatMulNBits: quantized B size does not match block layout.");
+  const auto* src_data = static_cast<const uint8_t*>(src.DataRaw());
+  auto* dst_data = static_cast<uint8_t*>(dst.MutableDataRaw());
+  for (size_t n = 0; n < layout.n; ++n) {
+    std::memcpy(dst_data + n * layout.b_row_bytes, src_data + n * layout.logical_b_row_bytes, layout.b_row_bytes);
+  }
+  return Status::OK();
+}
+
+template <typename T>
+void RepeatPerBlockValues(const ExecutionBlockLayout& layout, const T* src, T* dst) {
+  for (size_t n = 0; n < layout.n; ++n) {
+    const T* src_row = src + n * layout.logical_k_blocks;
+    T* dst_row = dst + n * layout.k_blocks;
+    for (size_t h = 0; h < layout.k_blocks; ++h) {
+      dst_row[h] = src_row[h / layout.repeat];
+    }
+  }
+}
+
+// Decodes bit-packed zero points (low bits first), repeats each value per execution sub-block and repacks.
+void RepeatPackedZeroPoints(const ExecutionBlockLayout& layout, const uint8_t* src, uint8_t* dst) {
+  const size_t bits = layout.bits;
+  const size_t per_byte = 8 / bits;
+  const uint8_t mask = static_cast<uint8_t>((1u << bits) - 1);
+  std::memset(dst, 0, static_cast<size_t>(SafeInt<size_t>(layout.n) * layout.zp_row_bytes));
+  for (size_t n = 0; n < layout.n; ++n) {
+    const uint8_t* src_row = src + n * layout.logical_zp_row_bytes;
+    uint8_t* dst_row = dst + n * layout.zp_row_bytes;
+    for (size_t h = 0; h < layout.k_blocks; ++h) {
+      const size_t g = h / layout.repeat;
+      const uint8_t value = static_cast<uint8_t>((src_row[g / per_byte] >> ((g % per_byte) * bits)) & mask);
+      dst_row[h / per_byte] |= static_cast<uint8_t>(value << ((h % per_byte) * bits));
+    }
+  }
+}
+
+// Expands constant or runtime scales / zero points from the authored layout to the execution layout.
+Status ConvertQuantParamToExecutionLayout(const ExecutionBlockLayout& layout, const Tensor& src,
+                                          bool is_zero_point, const AllocatorPtr& alloc,
+                                          std::optional<Tensor>& dst) {
+  const int32_t elem_type = src.GetElementType();
+  if (is_zero_point && elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    ORT_RETURN_IF_NOT(static_cast<size_t>(src.Shape().Size()) == SafeInt<size_t>(layout.n) * layout.logical_zp_row_bytes,
+                      "MatMulNBits: zero_points size does not match block layout.");
+    dst.emplace(src.DataType(),
+                TensorShape({static_cast<int64_t>(layout.n), static_cast<int64_t>(layout.zp_row_bytes)}), alloc);
+    RepeatPackedZeroPoints(layout, src.Data<uint8_t>(), dst->MutableData<uint8_t>());
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(static_cast<size_t>(src.Shape().Size()) == SafeInt<size_t>(layout.n) * layout.logical_k_blocks,
+                    "MatMulNBits: ", is_zero_point ? "zero_points" : "scales",
+                    " size does not match block layout.");
+  dst.emplace(src.DataType(), TensorShape({static_cast<int64_t>(layout.n), static_cast<int64_t>(layout.k_blocks)}),
+              alloc);
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    RepeatPerBlockValues(layout, src.Data<float>(), dst->MutableData<float>());
+  } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    RepeatPerBlockValues(layout, src.Data<MLFloat16>(), dst->MutableData<MLFloat16>());
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MatMulNBits: unsupported ",
+                           is_zero_point ? "zero_points" : "scales", " type ", elem_type);
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {
@@ -107,7 +238,8 @@ class MatMulNBits final : public OpKernel {
       : OpKernel(info),
         K_{narrow<size_t>(info.GetAttr<int64_t>("K"))},
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
-        block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
+        logical_block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
+        block_size_{GetExecutionBlockSize(logical_block_size_)},
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
@@ -119,10 +251,7 @@ class MatMulNBits final : public OpKernel {
         prefer_lut_gemm_{std::is_same_v<T1, float> &&
                          !force_fp32_ &&
                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
-                         MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
-                                                narrow<size_t>(info.GetAttr<int64_t>("K")),
-                                                narrow<size_t>(info.GetAttr<int64_t>("bits")),
-                                                narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
+                         MlasIsLutGemmAvailable(N_, K_, nbits_, block_size_)},
         compute_type_{force_fp32_
                           ? SQNBIT_CompFp32
                           : GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
@@ -143,15 +272,32 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
-    ORT_ENFORCE(block_size_ == 16 || block_size_ == 32 || block_size_ == 64 ||
-                    block_size_ == 128 || block_size_ == 256,
-                "Only block sizes 16, 32, 64, 128, and 256 are supported for MatMulNBits op, got: ",
-                block_size_);
+    ORT_ENFORCE(logical_block_size_ >= 16 && (logical_block_size_ & (logical_block_size_ - 1)) == 0,
+                "Only power-of-two block sizes >= 16 are supported for MatMulNBits op, got: ", logical_block_size_);
     const Tensor* tensor_scales = nullptr;
     has_scales_initializer_ = info.TryGetConstantInput(InputIndex::scales, &tensor_scales);
 
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
+
+    if (IsBlockLayoutAdapted()) {
+      ORT_ENFORCE(nbits_ != 2, "2-bit MatMulNBits block_size must not exceed 256. Got ", logical_block_size_);
+      ORT_ENFORCE(!has_g_idx_, "MatMulNBits with g_idx does not support block_size > ", kMaxExecutionBlockSize,
+                  " on CPU. Got ", logical_block_size_);
+      exec_layout_ = MakeExecutionBlockLayout(N_, K_, nbits_, logical_block_size_);
+
+      // Expand constant scales / zero points once so neither PrePack ordering nor disabled prepacking matters.
+      // Shape mismatches are left for the PrePack/Compute validation to report.
+      AllocatorPtr alloc = info.GetAllocator(OrtMemTypeDefault);
+      if (tensor_scales != nullptr) {
+        ORT_IGNORE_RETURN_VALUE(ConvertQuantParamToExecutionLayout(exec_layout_, *tensor_scales, false, alloc,
+                                                                   exec_scales_));
+      }
+      if (has_zp_arg_ && tensor_zero_point != nullptr) {
+        ORT_IGNORE_RETURN_VALUE(ConvertQuantParamToExecutionLayout(exec_layout_, *tensor_zero_point, true, alloc,
+                                                                   exec_zero_points_));
+      }
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -168,6 +314,9 @@ class MatMulNBits final : public OpKernel {
  private:
   const size_t K_;
   const size_t N_;
+  // Authored block_size attribute. B, scales and zero_points inputs use this layout.
+  const size_t logical_block_size_;
+  // Block size used by MLAS, the packed buffers and the dequantization kernels.
   const size_t block_size_;
   const size_t nbits_;
   const bool has_g_idx_;
@@ -194,7 +343,38 @@ class MatMulNBits final : public OpKernel {
   bool has_scales_initializer_{false};
   bool has_zp_input_{false};  // true only when zero_points is a constant initializer available during PrePack
 
+  // Valid when IsBlockLayoutAdapted(). exec_scales_ / exec_zero_points_ hold constant inputs converted to it.
+  ExecutionBlockLayout exec_layout_{};
+  std::optional<Tensor> exec_scales_{};
+  std::optional<Tensor> exec_zero_points_{};
+
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
+  bool IsBlockLayoutAdapted() const { return logical_block_size_ != block_size_; }
+
+  Status ValidatePrePackInputShape(const Tensor& tensor, int input_idx) const;
+
+  // Returns the constant scales (input_idx == scales) or zero points in the execution layout, or nullptr.
+  const Tensor* GetConstantQuantParam(int input_idx) const {
+    const Tensor* tensor = nullptr;
+    if (!OpKernel::Info().TryGetConstantInput(input_idx, &tensor) || tensor == nullptr) {
+      return nullptr;
+    }
+    if (!IsBlockLayoutAdapted()) {
+      return tensor;
+    }
+    const auto& converted = input_idx == InputIndex::scales ? exec_scales_ : exec_zero_points_;
+    return converted.has_value() ? &*converted : nullptr;
+  }
+
+  // Converts a PrePack input from the authored layout to the execution layout. `storage` receives any new buffer.
+  Status ToExecutionLayout(const Tensor& tensor, int input_idx, const AllocatorPtr& alloc,
+                           std::optional<Tensor>& storage, const Tensor*& result);
+
+  // Compute-time counterpart for B (when not prepacked) and scales / zero points. Constant scales and zero
+  // points reuse the converted copies; runtime-provided ones are converted into `storage`.
+  Status ToExecutionLayoutForCompute(const Tensor* tensor, int input_idx, const AllocatorPtr& alloc,
+                                     std::optional<Tensor>& storage, const Tensor*& result) const;
 
   // dequantize B first and then compute float gemm
   Status ComputeBUnpacked(const Tensor* a,
@@ -270,7 +450,133 @@ bool RequiresDynamicQuantizationParameterPrepackFallback(
 #endif
 
 template <typename T1>
-Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+Status MatMulNBits<T1>::ValidatePrePackInputShape(const Tensor& tensor, int input_idx) const {
+  // Initializers are in the authored layout, so validate against logical_block_size_.
+  const int64_t n = static_cast<int64_t>(N_);
+  const int64_t k = static_cast<int64_t>(K_);
+  const int64_t bs = static_cast<int64_t>(logical_block_size_);
+  const int64_t bits = static_cast<int64_t>(nbits_);
+  // Layout derivations live in matmul_nbits_helper.h so this guard and the Compute-time
+  // CheckInputs stay in lockstep if the canonical packing layout ever changes.
+  const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
+  const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
+  const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
+
+  auto validate_scales_shape = [&](const TensorShape& s) -> Status {
+    // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
+    ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                      "MatMulNBits PrePack: scales initializer shape ", s,
+                      " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                      n, ",", k_blocks, "]");
+    return Status::OK();
+  };
+
+  auto validate_zero_points_shape = [&](const TensorShape& s, int32_t element_type) -> Status {
+    if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      ORT_RETURN_IF_NOT(s == TensorShape({n * zp_blob_size_uint8}) || s == TensorShape({n, zp_blob_size_uint8}),
+                        "MatMulNBits PrePack: zero_points initializer shape ", s,
+                        " does not match attribute-derived shape [", n * zp_blob_size_uint8, "] or [",
+                        n, ",", zp_blob_size_uint8, "]");
+    } else {
+      ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                        "MatMulNBits PrePack: zero_points initializer shape ", s,
+                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                        n, ",", k_blocks, "]");
+    }
+    return Status::OK();
+  };
+
+  const TensorShape& shape = tensor.Shape();
+
+  if (input_idx == InputIndex::B) {
+    ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
+                      "MatMulNBits PrePack: B initializer shape ", shape,
+                      " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
+                      "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", logical_block_size_, ")");
+
+    // Also validate constant scales / zero_points, which the B prepack path below dereferences
+    // (via TryGetConstantInput) and hands to MLAS, before their own PrePack calls run.
+    const Tensor* scales_tensor = nullptr;
+    if (OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
+      ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
+    }
+    const Tensor* zp_tensor = nullptr;
+    if (has_zp_arg_ && has_zp_input_ &&
+        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
+      ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
+    }
+  } else if (input_idx == InputIndex::scales) {
+    ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
+  } else if (input_idx == InputIndex::zero_points) {
+    ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
+  }
+
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::ToExecutionLayout(const Tensor& tensor, int input_idx, const AllocatorPtr& alloc,
+                                          std::optional<Tensor>& storage, const Tensor*& result) {
+  result = &tensor;
+  if (!IsBlockLayoutAdapted()) {
+    return Status::OK();
+  }
+
+  if (input_idx == InputIndex::B) {
+    if (exec_layout_.b_row_bytes != exec_layout_.logical_b_row_bytes) {
+      storage.emplace(tensor.DataType(),
+                      TensorShape({static_cast<int64_t>(N_), static_cast<int64_t>(exec_layout_.k_blocks),
+                                   static_cast<int64_t>(block_size_ * nbits_ / 8)}),
+                      alloc);
+      ORT_RETURN_IF_ERROR(ConvertQuantizedBToExecutionLayout(exec_layout_, tensor, *storage));
+      result = &*storage;
+    }
+  } else if (input_idx == InputIndex::scales || input_idx == InputIndex::zero_points) {
+    const bool is_zero_point = input_idx == InputIndex::zero_points;
+    auto& converted = is_zero_point ? exec_zero_points_ : exec_scales_;
+    if (!converted.has_value()) {
+      ORT_RETURN_IF_ERROR(ConvertQuantParamToExecutionLayout(exec_layout_, tensor, is_zero_point, alloc, converted));
+    }
+    result = &*converted;
+  }
+
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::ToExecutionLayoutForCompute(const Tensor* tensor, int input_idx, const AllocatorPtr& alloc,
+                                                    std::optional<Tensor>& storage, const Tensor*& result) const {
+  result = tensor;
+  if (!IsBlockLayoutAdapted() || tensor == nullptr) {
+    return Status::OK();
+  }
+
+  if (input_idx == InputIndex::B) {
+    if (exec_layout_.b_row_bytes != exec_layout_.logical_b_row_bytes) {
+      storage.emplace(tensor->DataType(),
+                      TensorShape({static_cast<int64_t>(N_), static_cast<int64_t>(exec_layout_.k_blocks),
+                                   static_cast<int64_t>(block_size_ * nbits_ / 8)}),
+                      alloc);
+      ORT_RETURN_IF_ERROR(ConvertQuantizedBToExecutionLayout(exec_layout_, *tensor, *storage));
+      result = &*storage;
+    }
+    return Status::OK();
+  }
+
+  const bool is_zero_point = input_idx == InputIndex::zero_points;
+  const auto& constant = is_zero_point ? exec_zero_points_ : exec_scales_;
+  if (constant.has_value()) {
+    result = &*constant;
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(ConvertQuantParamToExecutionLayout(exec_layout_, *tensor, is_zero_point, alloc, storage));
+  result = &*storage;
+  return Status::OK();
+}
+
+template <typename T1>
+Status MatMulNBits<T1>::PrePack(const Tensor& input_tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
@@ -300,66 +606,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // check never sees it. Running the validation first makes session init reject bad-shape models
   // consistently across all build configurations. The checks are cheap (a few TensorShape
   // equality comparisons) and independent of any MLAS kernel availability.
-  {
-    const int64_t n = static_cast<int64_t>(N_);
-    const int64_t k = static_cast<int64_t>(K_);
-    const int64_t bs = static_cast<int64_t>(block_size_);
-    const int64_t bits = static_cast<int64_t>(nbits_);
-    // Layout derivations live in matmul_nbits_helper.h so this guard and the Compute-time
-    // CheckInputs stay in lockstep if the canonical packing layout ever changes.
-    const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
-    const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
-    const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
-
-    auto validate_scales_shape = [&](const TensorShape& s) -> Status {
-      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
-      ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
-                        "MatMulNBits PrePack: scales initializer shape ", s,
-                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                        n, ",", k_blocks, "]");
-      return Status::OK();
-    };
-
-    auto validate_zero_points_shape = [&](const TensorShape& s, int32_t element_type) -> Status {
-      if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        ORT_RETURN_IF_NOT(s == TensorShape({n * zp_blob_size_uint8}) || s == TensorShape({n, zp_blob_size_uint8}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", s,
-                          " does not match attribute-derived shape [", n * zp_blob_size_uint8, "] or [",
-                          n, ",", zp_blob_size_uint8, "]");
-      } else {
-        ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", s,
-                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                          n, ",", k_blocks, "]");
-      }
-      return Status::OK();
-    };
-
-    const TensorShape& shape = tensor.Shape();
-
-    if (input_idx == InputIndex::B) {
-      ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
-                        "MatMulNBits PrePack: B initializer shape ", shape,
-                        " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
-                        "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", block_size_, ")");
-
-      // Also validate constant scales / zero_points, which the B prepack path below dereferences
-      // (via TryGetConstantInput) and hands to MLAS, before their own PrePack calls run.
-      const Tensor* scales_tensor = nullptr;
-      if (OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
-        ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
-      }
-      const Tensor* zp_tensor = nullptr;
-      if (has_zp_arg_ && has_zp_input_ &&
-          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
-        ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
-      }
-    } else if (input_idx == InputIndex::scales) {
-      ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
-    } else if (input_idx == InputIndex::zero_points) {
-      ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
-    }
-  }
+  ORT_RETURN_IF_ERROR(ValidatePrePackInputShape(input_tensor, input_idx));
 
   if (has_g_idx_) {
     return Status::OK();
@@ -387,6 +634,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
+  // The initializer is in the authored block layout; everything below consumes the execution layout.
+  std::optional<Tensor> exec_tensor_storage;
+  const Tensor* exec_tensor = nullptr;
+  ORT_RETURN_IF_ERROR(ToExecutionLayout(input_tensor, input_idx, alloc, exec_tensor_storage, exec_tensor));
+  const Tensor& tensor = *exec_tensor;
+
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
   if (prefer_lut_gemm_ && input_idx == InputIndex::B && !IsOuterPrePackParallelismEnabled()) {
@@ -400,8 +653,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 
   if (input_idx == InputIndex::B) {
-    const Tensor* scales = nullptr;
-    OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+    const Tensor* scales = GetConstantQuantParam(InputIndex::scales);
 
     if (prefer_lut_gemm_) {
       MlasInitLutGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
@@ -418,8 +670,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       bool is_float_zp = false;
       std::vector<float> zp_fp32_buf;
       if (scales_ptr != nullptr && has_zp_input_) {
-        const Tensor* zero_points = nullptr;
-        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
+        const Tensor* zero_points = GetConstantQuantParam(InputIndex::zero_points);
         if (zero_points != nullptr) {
           if (has_unquantized_zero_point_) {
             is_float_zp = true;
@@ -475,8 +726,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
       const void* zp_ptr = nullptr;
       if (has_zp_input_) {
-        const Tensor* zero_points = nullptr;
-        ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+        const Tensor* zero_points = GetConstantQuantParam(InputIndex::zero_points);
         if (zero_points != nullptr) {
           zp_ptr = zero_points->DataRaw();
         }
@@ -584,8 +834,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // in order to safely use the KleidiAI packed-scales path. If zero_points is not
       // constant, fall back to the non-KleidiAI path by leaving scales unpacked.
       if (has_zp_input_) {
-        const Tensor* zp_tensor = nullptr;
-        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        const Tensor* zp_tensor = GetConstantQuantParam(InputIndex::zero_points);
         if (zp_tensor == nullptr) {
           // zero_points is dynamic: do not mark scales as packed so that the
           // execution falls back to the non-KleidiAI path.
@@ -609,8 +858,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // hash captures them), so re-folding them here must be skipped: packing is single-shot and
       // packed_b_ may now be a buffer shared from another session.
       if (has_zp_input_ && nbits_ == 4 && !packed_b_finalized_) {
-        const Tensor* zp_tensor = nullptr;
-        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+        const Tensor* zp_tensor = GetConstantQuantParam(InputIndex::zero_points);
         if (zp_tensor != nullptr) {
           auto sptr = tensor.Data<float>();
           auto zptr = zp_tensor->Data<uint8_t>();
@@ -631,8 +879,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                     has_zp_input_, &mlas_backend_kernel_selector_config_)) {
         // For asymmetric quantization, require zero_points to be constant for KleidiAI.
         if (has_zp_input_) {
-          const Tensor* zp_tensor = nullptr;
-          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
+          const Tensor* zp_tensor = GetConstantQuantParam(InputIndex::zero_points);
           if (zp_tensor == nullptr) {
             // zero_points is dynamic: fall back to non-KleidiAI path.
             // Convert scales to fp32 for use at compute time.
@@ -706,8 +953,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       bool is_float_zp = false;
       std::vector<float> zp_fp32_buf;
       if (has_zp_input_) {
-        const Tensor* zero_points = nullptr;
-        OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
+        const Tensor* zero_points = GetConstantQuantParam(InputIndex::zero_points);
         if (zero_points != nullptr) {
           if (has_unquantized_zero_point_) {
             is_float_zp = true;
@@ -738,9 +984,18 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #if !defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || !defined(MLAS_TARGET_ARM64)
 // Non-ARM-with-fp16-intrinsics fall back fp16 to fp32.
 template <>
-Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+Status MatMulNBits<MLFloat16>::PrePack(const Tensor& input_tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
+  // The initializer is in the authored block layout; everything below consumes the execution layout.
+  std::optional<Tensor> exec_tensor_storage;
+  const Tensor* exec_tensor = &input_tensor;
+  if (IsBlockLayoutAdapted()) {
+    ORT_RETURN_IF_ERROR(ValidatePrePackInputShape(input_tensor, input_idx));
+    ORT_RETURN_IF_ERROR(ToExecutionLayout(input_tensor, input_idx, alloc, exec_tensor_storage, exec_tensor));
+  }
+  const Tensor& tensor = *exec_tensor;
+
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
     auto sptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
@@ -772,8 +1027,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
   const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
   if (input_idx == InputIndex::B) {
-    const Tensor* scales = nullptr;
-    OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+    const Tensor* scales = GetConstantQuantParam(InputIndex::scales);
     // Convert the constant fp16 scales to fp32 up front so they (and the zero points) can be folded
     // into packed_b_ during this B PrePack, mirroring the primary float PrePack above. Pre-packed
     // weight sharing content-hashes the buffer right after this B PrePack returns, so for CompInt8
@@ -797,8 +1051,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     const void* zp_ptr = nullptr;
     if (has_zp_input_) {
-      const Tensor* zero_points = nullptr;
-      ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+      const Tensor* zero_points = GetConstantQuantParam(InputIndex::zero_points);
       if (zero_points != nullptr) {
         zp_ptr = zero_points->DataRaw();
       }
@@ -1536,7 +1789,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
-      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, logical_block_size_, nbits_));
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
@@ -1551,6 +1804,13 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+
+  // Inputs were validated in the authored block layout; the kernels below consume the execution layout.
+  std::optional<Tensor> exec_b_storage, exec_scales_storage, exec_zero_points_storage;
+  ORT_RETURN_IF_ERROR(ToExecutionLayoutForCompute(b, InputIndex::B, allocator, exec_b_storage, b));
+  ORT_RETURN_IF_ERROR(ToExecutionLayoutForCompute(scales, InputIndex::scales, allocator, exec_scales_storage, scales));
+  ORT_RETURN_IF_ERROR(ToExecutionLayoutForCompute(zero_points, InputIndex::zero_points, allocator,
+                                                  exec_zero_points_storage, zero_points));
 
   // clang-format off
   const bool has_single_b_matrix = std::all_of(

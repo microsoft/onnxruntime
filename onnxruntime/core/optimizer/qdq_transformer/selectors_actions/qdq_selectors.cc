@@ -7,8 +7,10 @@
 
 #include <cmath>
 
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -726,12 +728,13 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
 
 // Validate that a DQ node has the correct structure for MatMulNBits fusion.
 // Supports three quantization granularities:
-// - Blockwise: axis=0, block_size is a power-of-two in [16, 256], scale/zp rank 2
+// - Blockwise: axis=0, block_size is a power-of-two in [16, 256], scale/zp rank 2. When
+//   allow_cpu_large_block is set, larger power-of-two blocks are also accepted for 4/8-bit weights.
 // - Per-tensor: scale is scalar (rank 0), no block_size attribute
 // - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
 // In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
 // weight/scale/zp are constant initializers.
-static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node, bool allow_cpu_large_block) {
   const auto* weight_arg = dq_node.InputDefs()[0];
   const auto* scale_arg = dq_node.InputDefs()[1];
   const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
@@ -777,7 +780,12 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
 
     const auto block_size = block_size_iter->second.i();
     if (!IsValidMatMulNBitsBlockSize(block_size)) {
-      return false;
+      const int64_t bits = Is8BitIntType(dt_weight) ? 8 : (Is4BitIntType(dt_weight) ? 4 : 2);
+      if (!allow_cpu_large_block || !IsValidCpuLargeMatMulNBitsBlockSize(block_size, bits) ||
+          !MlasQDQBlockwiseShapeIsValid(weight_tensor_proto->dims()[0], weight_tensor_proto->dims()[1], block_size,
+                                        bits, true, true)) {
+        return false;
+      }
     }
 
     if (scale_tensor_proto->dims_size() != 2 ||
@@ -976,7 +984,8 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     }
   }
 
-  return ValidateDQForMatMulNBits(graph, *weight_dq);
+  return ValidateDQForMatMulNBits(graph, *weight_dq,
+                                  node.GetExecutionProviderType() == kCpuExecutionProvider);
 }
 
 // Check if a QDQ node's scale/zero_point shape is scalar or 1D with a compatible size.
