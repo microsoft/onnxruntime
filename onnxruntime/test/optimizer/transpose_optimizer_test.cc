@@ -220,6 +220,62 @@ TEST(TransposeOptimizerTests, GraphOutputBlocksSharedTransposePush) {
                     std::make_unique<TransposeOptimizer>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0]));
 }
 
+// q1 has two node consumers, so the cancel walk runs. One branch reaches an inverse transpose only by
+// passing through a value that is also a graph output. That hidden use cannot cancel, so the transpose
+// stays in front of the QuantizeLinear.
+TEST(TransposeOptimizerTests, IntermediateGraphOutputBlocksCancelingPath) {
+  std::string q1_name;
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({2, 3, 4}, 0.0f, 1.0f);
+    auto add_qdq = [&](NodeArg* data) {
+      auto* q = builder.MakeIntermediate();
+      auto* dq = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(data, 0.01f, 0, q);
+      builder.AddDequantizeLinearNode<uint8_t>(q, 0.01f, 0, dq);
+      return dq;
+    };
+    auto* dq0 = add_qdq(input);
+    auto* t1 = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {dq0}, {t1}).AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    auto* q1 = builder.MakeIntermediate();
+    q1_name = builder.AddQuantizeLinearNode<uint8_t>(t1, 0.01f, 0, q1).Name();
+
+    auto add_slice = [&](NodeArg* data, NodeArg* slice_out) {
+      auto* dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(data, 0.01f, 0, dq);
+      auto* starts = builder.MakeInitializer<int64_t>({1}, {0});
+      auto* ends = builder.MakeInitializer<int64_t>({1}, {2});
+      auto* axes = builder.MakeInitializer<int64_t>({1}, {0});
+      builder.AddNode("Slice", {dq, starts, ends, axes}, {slice_out});
+    };
+    add_slice(q1, builder.MakeOutput());
+
+    auto* mid = builder.MakeOutput();
+    add_slice(q1, mid);
+    auto* dq_b = add_qdq(mid);
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Transpose", {dq_b}, {output}).AddAttribute("perm", std::vector<int64_t>{2, 0, 1});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto& graph = session.GetGraph();
+    auto counts = CountOpsInGraph(graph);
+    EXPECT_EQ(counts["Transpose"], 2);
+    bool q1_has_transpose_input = false;
+    for (const auto& node : graph.Nodes()) {
+      if (node.Name() == q1_name) {
+        const auto* producer = graph.GetProducerNode(node.InputDefs()[0]->Name());
+        q1_has_transpose_input = producer != nullptr && producer->OpType() == "Transpose";
+      }
+    }
+    EXPECT_TRUE(q1_has_transpose_input);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Default, TransformerLevel::Level1,
+                    15, 0.0, 0.0,
+                    std::make_unique<TransposeOptimizer>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0]));
+}
+
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);

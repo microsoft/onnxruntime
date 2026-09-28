@@ -2986,6 +2986,11 @@ static bool HasPathToCancelingTranspose(OptimizerCtx& ctx, std::string_view outp
     }
 
     auto consumers = ctx.graph.GetValueConsumers(value);
+    // A graph output or subgraph input is another use that cannot cancel. Do not credit a
+    // transpose reached through that value.
+    if (!consumers->comprehensive) {
+      continue;
+    }
     for (auto& consumer : consumers->nodes) {
       if (consumer->IsOp("Transpose")) {
         auto downstream_perm = GetPermAttrIfValid(*consumer);
