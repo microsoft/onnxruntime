@@ -488,6 +488,68 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, PartitioningTwoNegsThenEqual) {
+  const auto model_file_name = ORT_TSTR("testdata/coreml_partition_tests/two_negs_then_equal.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> x1_shape = {3};
+  std::vector<int64_t> x1_data = gen.Uniform<int64_t>(x1_shape, -10, 10);
+  OrtValue x1 = CreateInputOrtValueOnCPU<int64_t>(x1_shape, x1_data);
+
+  std::vector<int64_t> x2_data = gen.Uniform<int64_t>(x1_shape, -10, 10);
+  OrtValue x2 = CreateInputOrtValueOnCPU<int64_t>(x1_shape, x2_data);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            {{"x1", x1}, {"x2", x2}},
+                            EPVerificationParams{ExpectedEPNodeAssignment::None});
+#endif
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, PartitioningWhereAddEqual) {
+  const auto model_file_name = ORT_TSTR("testdata/coreml_partition_tests/where_add_equal.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> x_shape = {2, 3};
+  std::vector<float> x_data = gen.Uniform<float>(x_shape, -10, 10);
+  OrtValue x = CreateInputOrtValueOnCPU<float>(x_shape, x_data);
+
+  std::vector<int64_t> cond_shape = {2, 3};
+  std::vector<uint8_t> cond_data_u8 = gen.Uniform<uint8_t>(cond_shape, 0, 1);
+  auto cond_data = std::make_unique<bool[]>(cond_data_u8.size());
+  for (size_t i = 0; i < cond_data_u8.size(); ++i) {
+    cond_data[i] = cond_data_u8[i] != 0;
+  }
+  OrtValue cond = CreateInputOrtValueOnCPU<bool>(cond_shape, gsl::make_span(cond_data.get(), cond_data_u8.size()));
+
+  const std::function<void(const Graph&)> count_nodes = [](const Graph& graph) {
+    const int coreml_node_count = CountAssignedNodes(graph, kCoreMLExecutionProvider);
+    const int cpu_node_count = CountAssignedNodes(graph, kCpuExecutionProvider);
+
+    const int expected_coreml_nodes = 1;
+    const int expected_cpu_nodes = 2;
+
+    EXPECT_EQ(coreml_node_count, expected_coreml_nodes)
+        << "Expected " << expected_coreml_nodes << " nodes assigned to CoreML EP, but found " << coreml_node_count;
+    EXPECT_EQ(cpu_node_count, expected_cpu_nodes)
+        << "Expected " << expected_cpu_nodes << " nodes assigned to CPU EP, but found " << cpu_node_count;
+  };
+
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.graph_verifier = &count_nodes;
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            {{"cond", cond}, {"X", x}},
+                            params);
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::Some);
+#endif
+}
+
 // Test that CoreML EP can load a model with initializers stored in an external data file.
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28005
 // The bug was that TensorProtoWithExternalDataToTensorProto passed a model file path
