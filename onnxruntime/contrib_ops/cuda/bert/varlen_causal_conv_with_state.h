@@ -44,6 +44,7 @@ Status LaunchVarlenCausalConvWithStateKernel(
     T* state_update,               // [batch_size, state_update_capacity, channels] or nullptr
     const int32_t* cu_seqlens,     // [batch_size + 1], device-resident
     const int32_t* capture_count,  // [batch_size] or nullptr
+    bool state_update_active,
     int batch_size,
     int total_tokens,
     bool all_ones,
