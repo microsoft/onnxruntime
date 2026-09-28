@@ -18,7 +18,9 @@
 //    │   ├── dlls
 //    │   │   ├── onnxruntime.dll
 //    │   │   ├── webgpu_dawn.dll
-//    │   │   └── dxcompiler.dll
+//    │   │   ├── dxcompiler.dll
+//    │   │   ├── dstorage.dll
+//    │   │   └── dstoragecore.dll
 //    │   └── test.exe
 //    └── onnxruntime_webgpu_delay_load_test.exe (this binary)
 //
@@ -65,6 +67,12 @@ int prepare_main() {
   fs::copy_file(L"dxcompiler.dll", dlls_folder / L"dxcompiler.dll");
   if (fs::exists(L"webgpu_dawn.dll")) {
     fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
+  }
+  if (fs::exists(L"dstorage.dll")) {
+    fs::copy_file(L"dstorage.dll", dlls_folder / L"dstorage.dll");
+  }
+  if (fs::exists(L"dstoragecore.dll")) {
+    fs::copy_file(L"dstoragecore.dll", dlls_folder / L"dstoragecore.dll");
   }
 
   // copy the test binary to the root folder
@@ -113,7 +121,11 @@ int run() {
 }
 
 int test_main() {
-  HMODULE hModule = LoadLibraryA("dlls\\onnxruntime.dll");
+  const auto onnxruntime_dll_path =
+      std::filesystem::absolute(L"dlls\\onnxruntime.dll");
+  HMODULE hModule = LoadLibraryExW(
+      onnxruntime_dll_path.c_str(), nullptr,
+      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
   if (hModule == NULL) {
     std::cout << "Failed to load dlls\\onnxruntime.dll" << std::endl;
     std::cout << "Error code: " << GetLastError() << std::endl;
