@@ -21,6 +21,12 @@ enum class SelectedKvSource {
   kAuxiliary,
 };
 
+int ComputeSparsePagedAttentionSplits(
+    int token_count,
+    int num_heads,
+    int max_candidate_count,
+    int multi_processor_count);
+
 template <typename T, typename TCACHE>
 Status SparseQkvToContext(
     const cudaDeviceProp& device_prop,
@@ -37,7 +43,11 @@ Status SparseQkvToContext(
     int auxiliary_num_heads,
     SparseAttentionMode attention_mode,
     SelectedKvSource selected_kv_source,
-    bool auxiliary_kv_shared);
+    bool auxiliary_kv_shared,
+    float* partial_out,
+    float* partial_max,
+    float* partial_sum,
+    int num_splits);
 
 }  // namespace cuda
 }  // namespace contrib
