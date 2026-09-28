@@ -73,6 +73,12 @@ def write_exports(path: Path, exports: dict[str, bool]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_force_includes(path: Path, exports: dict[str, bool]) -> None:
+    # MSVC must extract exported symbols from static archives even when the host never references them.
+    lines = [f'#pragma comment(linker, "/include:{name}")' for name in sorted(exports)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def dump_symbols(linker: str, response_file: Path) -> Symbols:
     # CUDA object symbol dumps can be large; do not retain the dump and split lines in memory.
     with tempfile.TemporaryFile(mode="w+t") as output:
@@ -94,9 +100,11 @@ def main() -> None:
     parser.add_argument("--host", required=True, type=Path)
     parser.add_argument("--module", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--force-include", required=True, type=Path)
     args = parser.parse_args()
     exports = select_exports(dump_symbols(args.linker, args.host), dump_symbols(args.linker, args.module))
     write_exports(args.output, exports)
+    write_force_includes(args.force_include, exports)
     print(f"Exporting {len(exports)} host symbols required by the CUDA internal-test module.")
 
 

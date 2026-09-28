@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen_test_exports import Symbols, read_symbols, select_exports, write_exports
+from gen_test_exports import Symbols, read_symbols, select_exports, write_exports, write_force_includes
 
 
 class TestTestExports(unittest.TestCase):
@@ -111,6 +111,16 @@ Archive member name at 34: helpers.obj
                 'EXPORTS\n  "?Data@@3HA" DATA\n  "?Run@Session@@QEAAHXZ"\n',
             )
 
+    def test_force_includes_preserve_function_and_data_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "force_include.cc"
+            write_force_includes(output, {"?Run@Session@@QEAAHXZ": False, "?Data@@3HA": True})
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                '#pragma comment(linker, "/include:?Data@@3HA")\n'
+                '#pragma comment(linker, "/include:?Run@Session@@QEAAHXZ")\n',
+            )
+
     @unittest.skipUnless(sys.platform == "win32", "Requires the Windows MSVC toolchain")
     def test_windows_targeted_build_and_incremental_exports(self):
         repo_root = Path(__file__).resolve().parents[2]
@@ -161,6 +171,11 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
             for artifact in ("provider_test.exe", "provider_test.lib", "test_module.dll"):
                 self.assertTrue((output_dir / artifact).is_file(), artifact)
             definition = build / "provider_test_executable_exports/Release/exports.def"
+            force_includes = definition.with_name("force_include.cc")
+            self.assertEqual(
+                force_includes.read_text(encoding="utf-8"),
+                '#pragma comment(linker, "/include:?required@test_runtime@@YAHH@Z")\n',
+            )
             self.assertEqual(
                 definition.read_text(encoding="utf-8").splitlines(),
                 [
@@ -186,6 +201,11 @@ file(GENERATE OUTPUT "${{CMAKE_BINARY_DIR}}/linker.txt" CONTENT "${{CMAKE_LINKER
             subprocess.run(command, check=True, timeout=120)
             self.assertEqual(len(definition.read_text(encoding="utf-8").splitlines()), 3)
             self.assertIn("?unused_0@test_runtime@@YAHH@Z", definition.read_text(encoding="utf-8"))
+            self.assertEqual(len(force_includes.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertIn(
+                '#pragma comment(linker, "/include:?unused_0@test_runtime@@YAHH@Z")',
+                force_includes.read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

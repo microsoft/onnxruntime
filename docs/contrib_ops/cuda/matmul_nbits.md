@@ -489,7 +489,9 @@ present. `ComputeInternal` then:
 
   On Windows, this is an aggregate build target: it compiles the internal-test
   objects, exports only the host symbols they require from the executable's static
-  libraries, then links the executable. The module links against its import library.
+  libraries, then links the executable. Generated `/INCLUDE` directives ensure MSVC
+  extracts those symbols even when only the module references them.
+  The module links against its import library.
   The tests remain in the module; there is no additional runtime interface. The executable
   remains named `onnxruntime_provider_test.exe`, and the CTest name remains
   `onnxruntime_provider_test`. The default build also includes both artifacts.

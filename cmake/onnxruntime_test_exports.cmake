@@ -43,15 +43,18 @@ function(onnxruntime_export_test_symbols host)
   file(GENERATE OUTPUT "${export_dir}/module.rsp" CONTENT "\"$<JOIN:${module_files},\"\n\">\"\n")
   set(export_script "${REPO_ROOT}/tools/ci_build/gen_test_exports.py")
   set(export_file "${export_dir}/exports.def")
-  add_custom_command(OUTPUT "${export_file}"
+  set(force_include_file "${export_dir}/force_include.cc")
+  add_custom_command(OUTPUT "${export_file}" "${force_include_file}"
     COMMAND ${Python_EXECUTABLE} "${export_script}"
       --linker "${CMAKE_LINKER}"
       --host "${export_dir}/host.rsp"
       --module "${export_dir}/module.rsp"
       --output "${export_file}"
+      --force-include "${force_include_file}"
     DEPENDS "${export_script}" "${export_dir}/host.rsp" "${export_dir}/module.rsp"
       ${EXPORTS_OBJECT_TARGET} ${library_dependencies} ${host_files} ${module_files}
     VERBATIM)
   set_target_properties(${host} PROPERTIES ENABLE_EXPORTS ON WINDOWS_EXPORT_ALL_SYMBOLS OFF)
-  target_sources(${host} PRIVATE "${export_file}")
+  set_source_files_properties("${force_include_file}" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  target_sources(${host} PRIVATE "${export_file}" "${force_include_file}")
 endfunction()
