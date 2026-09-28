@@ -158,7 +158,7 @@ Exit gate: CUDA executes synthetic and reduced Qwen mixed-width models correctly
 
 ### Workstream 3: CUDA Packed Decode
 
-Status: In review. [#32761](https://github.com/microsoft/onnxruntime/pull/32761) adds direct packed CUDA decode for uniform INT2 and mixed INT2/INT4 widths. As of September 24, 2026, it is rebased on `main`, is mergeable, and has no completed failing checks. Model-level performance and quality gates remain open.
+Status: Merged. [#32761](https://github.com/microsoft/onnxruntime/pull/32761) merged as `a11b4e5931` and adds direct SM80 packed CUDA decode for uniform INT2 and mixed INT2/INT4 widths, with a bounded dense fallback for packed-ineligible configurations. Model-level performance and quality gates remain open.
 
 The first performance milestone is fused packed execution for decode and low expanded-row counts, where expanded rows are approximately `num_tokens * top_k`.
 
@@ -249,9 +249,9 @@ Merged as [#32743](https://github.com/microsoft/onnxruntime/pull/32743).
 - Bounded fallback.
 - Scalar-reference and quantized-PyTorch parity tests.
 
-### PR 3: CUDA Packed Decode - In Review
+### PR 3: CUDA Packed Decode - Merged
 
-Open as [#32761](https://github.com/microsoft/onnxruntime/pull/32761), rebased on `main` after PR 2 merged.
+Merged as [#32761](https://github.com/microsoft/onnxruntime/pull/32761) in `a11b4e5931`.
 
 - Runtime prepack.
 - Fused FC1 INT2 decode.
