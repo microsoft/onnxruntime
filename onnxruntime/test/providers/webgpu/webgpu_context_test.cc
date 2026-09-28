@@ -141,9 +141,11 @@ bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
 }
 
-std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,
-                                                              WGPUBuffer buffer) {
-  constexpr size_t kBufferSize = sizeof(std::array<uint32_t, 16>);
+template <size_t ElementCount = 16>
+std::array<uint32_t, ElementCount> ReadBufferWithExternalCommandEncoder(
+    webgpu::WebGpuContext& context, WGPUBuffer buffer) {
+  constexpr size_t kBufferSize =
+      sizeof(std::array<uint32_t, ElementCount>);
   wgpu::BufferDescriptor readback_desc{};
   readback_desc.size = kBufferSize;
   readback_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
@@ -163,7 +165,7 @@ std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuCont
       &map_status)));
   ORT_ENFORCE(map_status == wgpu::MapAsyncStatus::Success);
 
-  std::array<uint32_t, 16> result;
+  std::array<uint32_t, ElementCount> result;
   const auto* mapped_data = static_cast<const uint32_t*>(readback_buffer.GetConstMappedRange());
   ORT_ENFORCE(mapped_data != nullptr);
   std::copy_n(mapped_data, result.size(), result.begin());
@@ -680,8 +682,8 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   constexpr size_t kDataOffset = 32;
-  const std::array<uint32_t, 16> expected{
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  const std::array<uint32_t, 15> expected{
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
   {
     std::ofstream stream{data_path,
                          std::ios::binary | std::ios::trunc};
@@ -727,12 +729,12 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
       Env::Default(), data_path, "empty", kDataOffset + sizeof(expected), 0));
   ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
 
-  Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({16}),
+  Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({15}),
                  nullptr, allocator};
   ASSERT_STATUS_OK(loader->LoadTensor(
       Env::Default(), data_path, "weights", kDataOffset, sizeof(expected),
       allocator, weights));
-  EXPECT_EQ(ReadBufferWithExternalCommandEncoder(
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<15>(
                 webgpu::WebGpuContextFactory::GetContext(0),
                 reinterpret_cast<WGPUBuffer>(weights.MutableDataRaw())),
             expected);

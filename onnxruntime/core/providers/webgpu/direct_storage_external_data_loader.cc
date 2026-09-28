@@ -936,7 +936,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
 
       wgpu::BufferDescriptor buffer_descriptor{};
       buffer_descriptor.label = tensor.key.name.c_str();
-      buffer_descriptor.size = properties.size;
+      buffer_descriptor.size = static_cast<uint64_t>(tensor.key.length);
       buffer_descriptor.usage = wgpu::BufferUsage::Storage |
                                 wgpu::BufferUsage::CopySrc |
                                 wgpu::BufferUsage::CopyDst;

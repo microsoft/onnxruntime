@@ -20,25 +20,7 @@
 
     set(_directstorage_native_root "${onnxruntime_DIRECT_STORAGE_ROOT}")
     if(NOT _directstorage_native_root)
-      set(_directstorage_package_dir "${CMAKE_BINARY_DIR}/directstorage/Microsoft.Direct3D.DirectStorage.1.3.0")
-      set(_directstorage_nupkg "${CMAKE_BINARY_DIR}/directstorage/Microsoft.Direct3D.DirectStorage.1.3.0.nupkg")
-      set(_directstorage_native_root "${_directstorage_package_dir}/native")
-      if(NOT EXISTS "${_directstorage_native_root}/include/dstorage.h")
-        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/directstorage")
-        file(DOWNLOAD
-          "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DirectStorage/1.3.0"
-          "${_directstorage_nupkg}"
-          EXPECTED_HASH "SHA256=8ab6c1082537565388b79050d94fdd7f5f437cd0f1d909e7b19f786042b97177"
-          TLS_VERIFY ON
-          STATUS _directstorage_download_status)
-        list(GET _directstorage_download_status 0 _directstorage_download_code)
-        if(NOT _directstorage_download_code EQUAL 0)
-          list(GET _directstorage_download_status 1 _directstorage_download_message)
-          message(FATAL_ERROR "Failed to download DirectStorage NuGet package: ${_directstorage_download_message}")
-        endif()
-        file(MAKE_DIRECTORY "${_directstorage_package_dir}")
-        file(ARCHIVE_EXTRACT INPUT "${_directstorage_nupkg}" DESTINATION "${_directstorage_package_dir}")
-      endif()
+      set(_directstorage_native_root "${directstorage_SOURCE_DIR}/native")
     endif()
 
     set(_directstorage_target_arch "${CMAKE_GENERATOR_PLATFORM}")
