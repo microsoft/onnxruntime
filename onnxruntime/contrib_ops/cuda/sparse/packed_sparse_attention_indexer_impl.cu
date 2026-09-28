@@ -130,9 +130,10 @@ template <typename T>
 __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, const T* cos_cache,
                                      const T* sin_cache, const int32_t* cumulative_sequence_lengths,
                                      const int32_t* past_sequence_lengths, const T* past_kv_buffer,
-                                     const int32_t* past_state_lengths,
+                                     const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
+                                     const int32_t* state_update_active,
                                      T* present_key_state, T* present_kv_buffer,
-                                     int32_t* present_state_lengths, int32_t* overflow_flags,
+                                     int32_t* present_state_lengths, T* state_update, int32_t* overflow_flags,
                                      PackedSparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
   float* pooled = shared;
@@ -166,6 +167,12 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     const bool rejected = invalid_metadata || full_new_block_count > capacity_left;
     const int new_block_count = rejected ? 0 : full_new_block_count;
     const int new_buf_len = rejected ? old_buf_len : (pending % params.compress_ratio);
+    const bool capture_active = !rejected && state_update != nullptr && state_update_capture_count != nullptr &&
+                                (state_update_active == nullptr || state_update_active[0] != 0);
+    const int capture_count = capture_active
+                                  ? min(max(state_update_capture_count[b], 0),
+                                        min(req_len, params.state_update_capacity))
+                                  : 0;
 
     // Barrier: every thread has now read past_state_lengths (identically) before any thread below
     // writes present_state_lengths, which keeps this correct even if the two tensors alias.
@@ -176,6 +183,18 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       present_state_lengths[b * 2 + psai::kBufferLength] = new_buf_len;
       overflow_flags[b] = rejected ? 1 : 0;
     }
+
+    for (int t = static_cast<int>(threadIdx.x); t < capture_count; t += static_cast<int>(blockDim.x)) {
+      if ((old_buf_len + t + 1) % params.compress_ratio != 0) {
+        const int64_t capture_base =
+            (static_cast<int64_t>(b) * params.state_update_capacity + t) * params.head_size;
+        const int64_t key_base = (static_cast<int64_t>(req_start) + t) * params.key_row_stride;
+        for (int d = 0; d < params.head_size; ++d) {
+          state_update[capture_base + d] = key[key_base + d];
+        }
+      }
+    }
+    __syncthreads();
 
     for (int k = 0; k < new_block_count; ++k) {
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
@@ -218,8 +237,14 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
       __syncthreads();
 
       const int64_t out_base = (static_cast<int64_t>(b) * params.state_capacity + entry) * params.head_size;
+      const int completion_token = (k + 1) * params.compress_ratio - old_buf_len - 1;
+      const int64_t capture_base =
+          (static_cast<int64_t>(b) * params.state_update_capacity + completion_token) * params.head_size;
       for (int d = static_cast<int>(threadIdx.x); d < params.head_size; d += static_cast<int>(blockDim.x)) {
         present_key_state[out_base + d] = from_float<T>(rotated[d]);
+        if (completion_token < capture_count) {
+          state_update[capture_base + d] = from_float<T>(rotated[d]);
+        }
       }
       __syncthreads();
     }
@@ -1188,9 +1213,10 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const T* query_norm_weight, const T* key_norm_weight, const T* cos_cache, const T* sin_cache,
     const int32_t* cumulative_sequence_lengths,
     const int32_t* past_sequence_lengths, const int64_t* position_ids, const T* past_key_state,
-    const T* past_kv_buffer, const int32_t* past_state_lengths, int32_t* selected_indices,
+    const T* past_kv_buffer, const int32_t* past_state_lengths, const int32_t* state_update_capture_count,
+    const int32_t* state_update_active, int32_t* selected_indices,
     int32_t* selected_counts, T* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
-    float* float_workspace, int32_t* overflow_flags) {
+    T* state_update, float* float_workspace, int32_t* overflow_flags) {
   if (params.batch_size > 0) {
     const int64_t key_state_elems =
         static_cast<int64_t>(params.batch_size) * params.state_capacity * params.head_size;
@@ -1218,7 +1244,8 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
   QsaUpdateStateKernel<T><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
       key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
-      past_state_lengths, present_key_state, present_kv_buffer, present_state_lengths, overflow_flags, params);
+      past_state_lengths, state_update_capture_count, state_update_active, present_key_state, present_kv_buffer,
+      present_state_lengths, state_update, overflow_flags, params);
 
   if (params.total_tokens == 0) {
     return CUDA_CALL(cudaGetLastError());
@@ -1372,8 +1399,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
       const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*,     \
-      int32_t*,                                                                                                   \
-      int32_t*, T*, T*, int32_t*, float*, int32_t*);                                                              \
+      const int32_t*, const int32_t*, int32_t*, int32_t*, T*, T*, int32_t*, T*, float*, int32_t*);                \
   template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
       const T*, const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, \

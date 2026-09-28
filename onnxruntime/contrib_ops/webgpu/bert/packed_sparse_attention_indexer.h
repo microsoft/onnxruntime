@@ -32,9 +32,12 @@ class PackedSparseAttentionIndexerCopyProgram final
 class PackedSparseAttentionIndexerQsaUpdateProgram final
     : public Program<PackedSparseAttentionIndexerQsaUpdateProgram> {
  public:
-  explicit PackedSparseAttentionIndexerQsaUpdateProgram(bool cos_cache_batched)
+  PackedSparseAttentionIndexerQsaUpdateProgram(bool cos_cache_batched, bool capture_state_update,
+                                               bool has_state_update_active)
       : Program{"PackedSparseAttentionIndexerQsaUpdate"},
-        cos_cache_batched_{cos_cache_batched} {}
+        cos_cache_batched_{cos_cache_batched},
+        capture_state_update_{capture_state_update},
+        has_state_update_active_{has_state_update_active} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -47,10 +50,13 @@ class PackedSparseAttentionIndexerQsaUpdateProgram final
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
+      {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
       {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
   bool cos_cache_batched_;
+  bool capture_state_update_;
+  bool has_state_update_active_;
 };
 
 // One invocation per query token: rotates the query, scores it against every causally visible
@@ -146,6 +152,7 @@ class PackedSparseAttentionIndexer final : public WebGpuKernel {
   packed_sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
   int64_t state_capacity_;
+  int64_t state_update_capacity_;
   int64_t token_budget_;
   int64_t index_topk_;
   float epsilon_;
