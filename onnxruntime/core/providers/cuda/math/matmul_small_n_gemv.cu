@@ -92,6 +92,8 @@ __global__ void SmallNGemvSplitKKernel(const half* __restrict__ a, const half* _
       c[static_cast<size_t>(m) * n + col] = __float2half(sum);
     }
   }
+  // Every block of this column tile has arrived, so the next row chunk can reuse the counter.
+  if (threadIdx.x == 0) counter[blockIdx.x] = 0u;
 }
 
 // Vectorized variant for even N, K % 8 == 0 and 16-byte aligned A rows. Each lane owns two adjacent
@@ -199,6 +201,14 @@ __global__ void __launch_bounds__(kThreads)
       c[static_cast<size_t>(m) * n + out_col] = __float2half((sum[0] + sum[1]) + (sum[2] + sum[3]));
     }
   }
+  // Every block of this column tile has arrived, so the next row chunk can reuse the counter.
+  if (threadIdx.x == 0) counter[blockIdx.x] = 0u;
+}
+
+// Inside a CUDA graph a memset node adds several microseconds of dependency latency, while a kernel
+// node adds well under one, so the completion counters are cleared with a kernel.
+__global__ void ZeroCountersKernel(unsigned int* __restrict__ counter, int count) {
+  for (int i = static_cast<int>(threadIdx.x); i < count; i += static_cast<int>(blockDim.x)) counter[i] = 0u;
 }
 
 template <int M>
@@ -269,13 +279,15 @@ Status LaunchSmallNGemv(cudaStream_t stream, const half* a, const half* b, half*
                     "SmallNGemv supports M in [1, ", kMaxSupportedM, "], got ", m, ".");
   const bool vec = CanUseVec(n, k, a, b);
   const int split_k = vec ? VecSplitK(n, k) : SmallNGemvSplitK(n, k);
+  // The scalar kernel always takes the completion counters; the vector kernel only when split. The
+  // last block of each column tile resets its counter, so one clear covers every row chunk.
+  if (split_k > 1 || !vec) {
+    const int counters = static_cast<int>(SmallNGemvCounterElements(n));
+    ZeroCountersKernel<<<1, 32, 0, stream>>>(counter, counters);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
   for (int row = 0; row < m; row += kRowsPerLaunch) {
     const int rows = (m - row < kRowsPerLaunch) ? m - row : kRowsPerLaunch;
-    // The scalar kernel always takes the completion counter; the vector kernel only when split.
-    if (split_k > 1 || !vec) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-          counter, 0, SmallNGemvCounterElements(n) * sizeof(unsigned int), stream));
-    }
     const half* chunk_a = a + static_cast<size_t>(row) * k;
     half* chunk_c = c + static_cast<size_t>(row) * n;
 #define ORT_SMALL_N_GEMV_CASE(R)                                                                    \
