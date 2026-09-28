@@ -80,7 +80,7 @@ ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
                          28,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypesIRv14())
+                             .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv14())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv14())
                              .Alias(0, 0),
                          OptionalGetElement);

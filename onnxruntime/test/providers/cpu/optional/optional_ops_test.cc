@@ -78,6 +78,22 @@ TEST(OptionalOpTest, OptionalFloat6TensorSequenceGetElementOpset28) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(OptionalOpTest, OptionalGetElementFromTensorOpset28) {
+  OpTester test("OptionalGetElement", 28);
+  test.AddInput<float>("A", {2}, {1.0f, -2.0f});
+  test.AddOutput<float>("Y", {2}, {1.0f, -2.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(OptionalOpTest, OptionalGetElementFromSequenceOpset28) {
+  OpTester test("OptionalGetElement", 28);
+  SeqTensors<float> data;
+  data.AddTensor({2}, {1.0f, -2.0f});
+  test.AddSeqInput("A", data);
+  test.AddSeqOutput("Y", data);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(OptionalOpTest, OptionalFloat6HasElementOpset28) {
   OpTester test("OptionalHasElement", 28);
   const std::initializer_list<Float6E2M3> data = {Float6E2M3(1.0f)};
