@@ -20,10 +20,20 @@ Status CreateAndWrapEpAllocator(OrtEp* ep,
                                 const OrtKeyValuePairs* ep_factory_allocator_options,
                                 AllocatorPtr& allocator_out,
                                 OrtAllocator** raw_allocator_out) {
-  ORT_RETURN_IF_NOT(ep_factory.CreateAllocator != nullptr && ep_factory.ReleaseAllocator != nullptr,
-                    "OrtEpFactory must implement CreateAllocator and ReleaseAllocator.");
+  const bool has_ep_create = ep != nullptr && ep->CreateAllocator != nullptr;
+  const bool has_factory_create = ep_factory.CreateAllocator != nullptr;
 
-  const bool create_with_ep = ep != nullptr && ep->CreateAllocator != nullptr;
+  ORT_RETURN_IF_NOT((!has_ep_create && !has_factory_create) || ep_factory.ReleaseAllocator != nullptr,
+                    "OrtEpFactory must implement ReleaseAllocator when OrtEp::CreateAllocator or "
+                    "OrtEpFactory::CreateAllocator is implemented.");
+
+  if (!has_ep_create && !has_factory_create) {
+    allocator_out = nullptr;
+    if (raw_allocator_out != nullptr) {
+      *raw_allocator_out = nullptr;
+    }
+    return Status::OK();
+  }
 
   std::function<void(OrtAllocator*)> allocator_deleter = [&ep_factory](OrtAllocator* allocator) {
     ep_factory.ReleaseAllocator(&ep_factory, allocator);
@@ -31,7 +41,7 @@ Status CreateAndWrapEpAllocator(OrtEp* ep,
 
   OrtAllocator* raw_allocator = nullptr;
   OrtStatus* creation_ort_status =
-      create_with_ep
+      has_ep_create
           ? ep->CreateAllocator(ep, &memory_info, &raw_allocator)
           : ep_factory.CreateAllocator(&ep_factory, &memory_info, ep_factory_allocator_options, &raw_allocator);
   OrtAllocatorUniquePtr owned_allocator{raw_allocator, std::move(allocator_deleter)};
@@ -42,7 +52,7 @@ Status CreateAndWrapEpAllocator(OrtEp* ep,
 
   AllocatorPtr wrapped_allocator;
   if (owned_allocator != nullptr) {
-    const std::string_view creator = create_with_ep ? "OrtEp" : "OrtEpFactory";
+    const std::string_view creator = has_ep_create ? "OrtEp" : "OrtEpFactory";
 
     const OrtMemoryInfo* allocator_memory_info = owned_allocator->Info(owned_allocator.get());
     ORT_RETURN_IF_NOT(allocator_memory_info != nullptr, creator, " returned an allocator with null memory info.");

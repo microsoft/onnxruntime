@@ -10,8 +10,8 @@
 namespace onnxruntime {
 namespace ep_allocator_utils {
 
-// Creates a plugin EP allocator using OrtEp::CreateAllocator when available, otherwise OrtEpFactory::CreateAllocator,
-// and wraps the result as an IAllocator.
+// Creates a plugin EP allocator using OrtEp::CreateAllocator when available, otherwise OrtEpFactory::CreateAllocator
+// when available, and wraps the result as an IAllocator. Returns a null allocator if neither callback is implemented.
 // Outputs are modified only on success.
 Status CreateAndWrapEpAllocator(OrtEp* ep,
                                 OrtEpFactory& ep_factory,
@@ -20,7 +20,8 @@ Status CreateAndWrapEpAllocator(OrtEp* ep,
                                 AllocatorPtr& allocator_out,
                                 OrtAllocator** raw_allocator_out = nullptr);
 
-// Creates a plugin EP allocator using OrtEpFactory::CreateAllocator and wraps the result as an IAllocator.
+// Creates a plugin EP allocator using OrtEpFactory::CreateAllocator when available and wraps the result as an
+// IAllocator. Returns a null allocator if the callback is not implemented.
 // Outputs are modified only on success.
 inline Status CreateAndWrapEpAllocator(OrtEpFactory& ep_factory,
                                        const OrtMemoryInfo& memory_info,

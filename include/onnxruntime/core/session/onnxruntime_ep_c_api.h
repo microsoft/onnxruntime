@@ -2360,11 +2360,14 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * Implementation of this function is optional. If nullptr, OrtEpFactory::CreateAllocator will be used if
+   * implemented. If neither callback is implemented, the EP does not provide a preferred allocator for the memory
+   * location. For default CPU memory, this allows ORT to use its default CPU allocator.
    *
-   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] this_ptr The OrtEp instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the EP does not provide a preferred
+   *                       allocator for the memory location.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2913,10 +2916,15 @@ struct OrtEpFactory {
    * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
+   * Implementation of this function is optional. It is required if ORT needs to create a shared allocator for an
+   * OrtMemoryInfo advertised by the EP.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
-   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
+   * \param[out] allocator The created OrtAllocator instance. When called to create an allocator for a session, this
+   *                       may be set to nullptr if the EP does not provide a preferred allocator for the memory
+   *                       location. When called to create a shared allocator, this must be set to a non-null value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2928,6 +2936,9 @@ struct OrtEpFactory {
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
+   *
+   * Implementation of this function is required if OrtEpFactory::CreateAllocator or OrtEp::CreateAllocator is
+   * implemented.
    *
    * \since Version 1.23.
    */
