@@ -159,6 +159,10 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "selected_indices must have shape (token_count, max_selected_entries).");
   }
+  if (selected_dims[1] > std::numeric_limits<int>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "max_selected_entries must not exceed INT_MAX.");
+  }
   const int max_selected_entries = static_cast<int>(selected_dims[1]);
   const auto& count_dims = selected_counts->Shape().GetDims();
   if (count_dims.size() != 1 ||
@@ -265,6 +269,24 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   auto workspace =
       GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
+  int64_t max_local_entries = 0;
+  if (attention_mode_ == SparseAttentionMode::kLocalPlusSelected) {
+        max_local_entries = is_causal_ && local_window_size_ > 0
+                            ? local_window_size_
+                            : static_cast<int64_t>(parameters.max_num_blocks_per_seq) * parameters.block_size;
+  }
+  const int64_t max_candidate_entries =
+      std::min<int64_t>(static_cast<int64_t>(max_selected_entries) + max_local_entries,
+                        std::numeric_limits<int>::max());
+  const int num_splits = ComputeSparsePagedAttentionSplits(
+      parameters.token_count, parameters.num_heads, static_cast<int>(max_candidate_entries),
+      device_prop.multiProcessorCount);
+  const size_t partial_rows =
+      static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
+  auto partial_out = GetScratchBuffer<float>(partial_rows * parameters.head_size, GetComputeStream(context));
+  auto partial_max = GetScratchBuffer<float>(partial_rows, GetComputeStream(context));
+  auto partial_sum = GetScratchBuffer<float>(partial_rows, GetComputeStream(context));
+
   using CudaT = typename onnxruntime::cuda::ToCudaType<T>::MappedType;
   using CudaTCache = typename onnxruntime::cuda::ToCudaType<TCACHE>::MappedType;
   PagedAttentionData<CudaT, CudaTCache> data;
@@ -319,7 +341,8 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
       auxiliary_lengths == nullptr ? nullptr
                                    : auxiliary_lengths->Data<int32_t>(),
       auxiliary_capacity, auxiliary_num_heads, attention_mode_,
-      selected_kv_source_, auxiliary_kv_shared_);
+      selected_kv_source_, auxiliary_kv_shared_, partial_out.get(),
+      partial_max.get(), partial_sum.get(), num_splits);
 }
 
 }  // namespace cuda

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -434,6 +435,40 @@ TEST(SparsePagedAttention, Cuda_LocalWindowAndSelectedMainUseSetUnion) {
   tester.AddAttribute<std::string>("attention_mode", "local_plus_selected");
   tester.AddAttribute<int64_t>("local_window_size", 1);
   tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(2.0f));
+  RunCuda(tester);
+}
+
+TEST(SparsePagedAttention, Cuda_MergesMultipleSelectedMainSplits) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int kPastLength = 128;
+  constexpr int kSelectedCount = kPastLength + 1;
+  constexpr int kNumBlocks = (kSelectedCount + kBlockSize - 1) / kBlockSize;
+  std::vector<int32_t> selected_indices(kSelectedCount);
+  std::iota(selected_indices.begin(), selected_indices.end(), 0);
+  std::vector<int32_t> block_table(kNumBlocks);
+  std::iota(block_table.begin(), block_table.end(), 0);
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddInput<MLFloat16>("query", {1, kHeadSize}, HalfVector(0.0f));
+  tester.AddInput<MLFloat16>("key", {1, kHeadSize}, HalfVector(0.0f));
+  tester.AddInput<MLFloat16>("value", {1, kHeadSize}, HalfVector(3.0f));
+  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kCacheElementCount));
+  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(1.0f, kNumBlocks * kCacheElementCount));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {kPastLength});
+  tester.AddInput<int32_t>("block_table", {1, kNumBlocks}, block_table);
+  tester.AddInput<int32_t>("slot_mapping", {1}, {kPastLength});
+  tester.AddInput<int32_t>("selected_indices", {1, kSelectedCount}, selected_indices);
+  tester.AddInput<int32_t>("selected_counts", {1}, {kSelectedCount});
+  const float expected_value = static_cast<float>(kPastLength + 3) / kSelectedCount;
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(expected_value),
+                              false, 0.002f, 0.002f);
   RunCuda(tester);
 }
 
