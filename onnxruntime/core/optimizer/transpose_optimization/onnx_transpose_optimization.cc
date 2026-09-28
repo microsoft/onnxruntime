@@ -3670,9 +3670,15 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
         if (perm != std::nullopt) {
           // Prefer folding a Transpose on a constant initializer over pushing it. See
-          // TryFoldTransposeIntoInitializer for details. Transpose and Reshape consumers go through their
-          // handlers first so a cancel/merge with the consumer still removes both nodes.
-          const bool try_handler_first = node.IsOp("Transpose") || node.IsOp("Reshape");
+          // TryFoldTransposeIntoInitializer for details. Transpose consumers and same-rank Reshape consumers
+          // (the only ones HandleReshapeAsTranspose can merge/cancel) go through their handlers first so a
+          // cancel/merge with the consumer still removes both nodes. Other Reshapes (e.g. rank-increasing splits
+          // handled by HandleReshapeSplit) would only move the Transpose, so fold first.
+          bool try_handler_first = node.IsOp("Transpose");
+          if (!try_handler_first && node.IsOp("Reshape")) {
+            std::unique_ptr<api::TensorRef> reshape_shape = ctx.graph.GetConstant(node.Inputs()[1]);
+            try_handler_first = reshape_shape != nullptr && reshape_shape->NumElements() == perm->size();
+          }
           if (!try_handler_first && TryFoldTransposeIntoInitializer(ctx, *transpose, node, *perm)) {
             changed = true;
             // Subsequent inputs may have changed and the Transpose was removed.

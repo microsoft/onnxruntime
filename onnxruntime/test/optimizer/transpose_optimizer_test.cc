@@ -6909,5 +6909,54 @@ TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerCancelingReshapeGraphO
   EXPECT_EQ(op_to_count["Reshape"], 0);
 }
 
+TEST(TransposeOptimizerTests, FoldTransposeIntoInitializerSplitReshape) {
+  // Constant counterpart of TestReshapeSplit: const {1,12,20,24} -> Transpose {0,3,1,2} -> {1,24,12,20} ->
+  // Reshape to {1,3,8,12,20}. The Reshape can't cancel the Transpose, so the Transpose should be folded into the
+  // initializer rather than pushed through the Reshape by HandleReshapeSplit.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 18}};
+  Model model("FoldTransposeIntoInitializerSplitReshape", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> const_shape{1, 12, 20, 24};
+  const std::vector<int64_t> perm{0, 3, 1, 2};
+  std::vector<float> const_data(1 * 12 * 20 * 24);
+  for (size_t i = 0; i < const_data.size(); ++i) {
+    const_data[i] = static_cast<float>(i);
+  }
+  auto* const_init = builder.MakeInitializer<float>(const_shape, const_data);
+  const std::string init_name = const_init->Name();
+  auto* shape = builder.MakeInitializer<int64_t>({5}, {1, 3, 8, 12, 20});
+  auto* transpose_out = builder.MakeIntermediate();
+  auto* reshape_out = builder.MakeOutput();
+
+  auto& transpose = builder.AddNode("Transpose", {const_init}, {transpose_out});
+  transpose.AddAttribute("perm", perm);
+  builder.AddNode("Reshape", {transpose_out, shape}, {reshape_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(RunTransposeOptimizerWithAggressiveCostCheck(graph));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 1);
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      EXPECT_EQ(node.InputDefs()[0]->Name(), init_name);
+    }
+  }
+
+  std::vector<float> folded;
+  std::vector<int64_t> folded_dims;
+  ReadInitializerFloats(graph, init_name, folded, folded_dims);
+  EXPECT_EQ(folded_dims, (std::vector<int64_t>{1, 24, 12, 20}));
+  EXPECT_EQ(folded, ReferenceTransposeFloat(const_data, const_shape, perm));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
