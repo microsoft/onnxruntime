@@ -63,6 +63,11 @@ class TestWeightOnlyKQuant(unittest.TestCase):
         error = np.abs(dequantize(q_weight, scale, zero_point) - data)
         self.assertTrue(np.all(error <= scale / 2 + 1e-6))
 
+    def test_quant_tensor_k_quant_cpu_does_not_overflow_when_group_is_large(self):
+        data = np.linspace(-1, 1, GROUP_SIZE, dtype=np.float32).reshape(1, GROUP_SIZE) * np.float32(1e14)
+        error = squared_error(quant_tensor_k_quant_cpu(data, 4, GROUP_SIZE), data)
+        self.assertLess(error / np.sum(data.astype(np.float64) ** 2), 0.01)
+
     def test_quant_tensor_k_quant_cpu_is_scale_invariant(self):
         data = self.weights()
         q_weight, scale, zero_point = quant_tensor_k_quant_cpu(data, 4, GROUP_SIZE)
