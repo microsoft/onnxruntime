@@ -1,0 +1,323 @@
+{
+  "earlier_ort_llama_cpp_gguf_provenance": {
+    "scope": "Earlier ORT/llama.cpp comparison only; not used in the GenAI baseline/patched allocation-fix experiments",
+    "repository": "unsloth/Phi-4-mini-instruct-GGUF",
+    "repository_revision": "78eb92a46fc37e6b524df991ed9aca9bc6aa7b80",
+    "revision_source": "Saved local Hugging Face download metadata; not a new remote resolution",
+    "filename": "Phi-4-mini-instruct-Q4_K_M.gguf",
+    "bytes": 2491874272,
+    "sha256": "88c00229914083cd112853aab84ed51b87bdf6b9ce42f532d8c85c7c63b1730a",
+    "hash_source": "Earlier artifact manifest; same digest in download metadata; GGUF was not rehashed during packaging",
+    "quantization_note": "GGUF Q4_K_M and ONNX INT4 RTN block 32 are not identical quantizers"
+  },
+  "hardware": {
+    "cuda_runtime": "13.0.48",
+    "cudnn": "9.12.0",
+    "driver": "580.105.08",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_count_used": 1
+  },
+  "measurement": {
+    "arena_registration": true,
+    "arena_snapshots": "BFC capacity/live/slack; device and pinned-host separate; no shrinking",
+    "diagnostic_logits_copying_during_phase_b": false,
+    "fresh_processes": 12,
+    "order": "baseline then patched within context/repetition; 2K then 32K",
+    "peaks": "External NVML process and whole-device usage, complete queries inside inference",
+    "profiling": false,
+    "repetitions_per_condition": 3,
+    "sampling_requested_ms": 10,
+    "unit": "MiB (2^20 bytes)",
+    "verbose_allocation_tracing": false
+  },
+  "model": {
+    "artifacts": [
+      {
+        "bytes": 249,
+        "download_etag": "d4f2aceb0f20b71dd1f4bcc7e052e4412946bf281840b8f83d39f259571af486",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "added_tokens.json",
+        "sha256": "d4f2aceb0f20b71dd1f4bcc7e052e4412946bf281840b8f83d39f259571af486"
+      },
+      {
+        "bytes": 2504,
+        "download_etag": "ac65d86061d3d0d704ee2511fd0eb8713ef19eb6eedba17c3080a4165d5b933b",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "config.json",
+        "sha256": "ac65d86061d3d0d704ee2511fd0eb8713ef19eb6eedba17c3080a4165d5b933b"
+      },
+      {
+        "bytes": 10875,
+        "download_etag": "01446e12bf573a1e96c8aa9c7af73a05e2096dec",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "name": "configuration_phi3.py",
+        "sha256": "ec2044b77d0b8111640ac134daa3af1f40dc552a739f8959626e7e58ea3352df"
+      },
+      {
+        "bytes": 1568,
+        "download_etag": "3cdbd2ff0b2cda7829b262cda331a72b99daaa758d55bb056bb4d098d22b1140",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "genai_config.json",
+        "sha256": "3cdbd2ff0b2cda7829b262cda331a72b99daaa758d55bb056bb4d098d22b1140"
+      },
+      {
+        "bytes": 2418348,
+        "download_etag": "dcecc4524288b351bbd0da8028e74e9b5bcdb9b5",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "name": "merges.txt",
+        "sha256": "856ce61180bb689282eed6b3a6838bb1f438399be23aefe9d20eb379791fb4ad"
+      },
+      {
+        "bytes": 286690,
+        "download_etag": "f8ff300b85719f79f1c220c88575626c62cc772a228244a6b96031d1a8d25250",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "model.onnx",
+        "sha256": "f8ff300b85719f79f1c220c88575626c62cc772a228244a6b96031d1a8d25250"
+      },
+      {
+        "bytes": 3413194752,
+        "download_etag": "b32f38f9211040b01c1483759cef7a6cce28df9f83b6b8bb91a474575d559d0f",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "model.onnx.data",
+        "sha256": "b32f38f9211040b01c1483759cef7a6cce28df9f83b6b8bb91a474575d559d0f"
+      },
+      {
+        "bytes": 587,
+        "download_etag": "aff38493227d813e29fcf8406e8e90062f1f031aa47d589325e9c31d89ac7cc3",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "special_tokens_map.json",
+        "sha256": "aff38493227d813e29fcf8406e8e90062f1f031aa47d589325e9c31d89ac7cc3"
+      },
+      {
+        "bytes": 15524095,
+        "download_etag": "382cc235b56c725945e149cc25f191da667c836655efd0857b004320e90e91ea",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "tokenizer.json",
+        "sha256": "382cc235b56c725945e149cc25f191da667c836655efd0857b004320e90e91ea"
+      },
+      {
+        "bytes": 2960,
+        "download_etag": "c565326a315fbe62cda093a59d298828c8f3f823122661325f41f3ba577a7dec",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "tokenizer_config.json",
+        "sha256": "c565326a315fbe62cda093a59d298828c8f3f823122661325f41f3ba577a7dec"
+      },
+      {
+        "bytes": 3910310,
+        "download_etag": "6cb65a857824fa6615bb1782d95d882617a8bbce1da0317118586b36f39e98bd",
+        "download_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+        "matches_download_sha256": true,
+        "name": "vocab.json",
+        "sha256": "6cb65a857824fa6615bb1782d95d882617a8bbce1da0317118586b36f39e98bd"
+      }
+    ],
+    "config_note": "Local genai_config.json plus the recorded API overlay; effective configs below are authoritative",
+    "hash_provenance": "Full artifact SHA-256 recomputed during local packaging; large weights match saved download SHA-256",
+    "name": "Phi-4-mini-instruct",
+    "repository": "microsoft/Phi-4-mini-instruct-onnx",
+    "repository_revision": "fc04c8f93df696602fd9f300a30d1bf2e3081347",
+    "revision_source": "Local Hugging Face download metadata, not a new remote resolution",
+    "variant": "gpu/gpu-int4-rtn-block-32"
+  },
+  "runtimes": {
+    "phase_a": {
+      "baseline": {
+        "libcublas.so.13.0.0.19": "ea443b3d282af9c82e16be974860b5ba993020bbe98988a7be201bf0c0215e88",
+        "libcublasLt.so.13.0.0.19": "c92c4c24c257d638a61130f8a5f7f31eb6d6262c24f8e19816ff56b58b73a857",
+        "libcudart.so.13.0.48": "6876f4841bdbe30b187dcf8d7a7d2d6579bf12a36eeb430c7b28484ccdeed89a",
+        "libcudnn.so.9.12.0": "d1c725dbf288746db2a2bdb5d95749444acdfb3fbd19d350f82578885cc7bbfa",
+        "libcudnn_graph.so.9.12.0": "5415eeedc09f78ae4c7709feceec3a8d3daca425e765c3af16c81abfc107f20e",
+        "libonnxruntime-genai-cuda.so": "559838acb930e8892abb3f6a6deb890c63395e4d3da3f8aa18881da3fd8fefb3",
+        "libonnxruntime-genai.so": "ce72b4f5d61cf2f21fcd64dc05972898b032f76925999328935f32061b32fab5",
+        "libonnxruntime.so.1.31.0": "3b48b4813d80044d153441a532d24b9849c924b53492a619bbbb3569ebb4f342",
+        "libonnxruntime_providers_cuda.so": "09eb6e57f6148e0a85963b8f6663eab7b33fd6fa6212731ee5fd2e474e61fe9b",
+        "libonnxruntime_providers_shared.so": "ed328e9f3360f9ade1f104fcedbff745dd53748e0e9ed76e5751d0f8ba6d48f7"
+      },
+      "patched": {
+        "libcublas.so.13.0.0.19": "ea443b3d282af9c82e16be974860b5ba993020bbe98988a7be201bf0c0215e88",
+        "libcublasLt.so.13.0.0.19": "c92c4c24c257d638a61130f8a5f7f31eb6d6262c24f8e19816ff56b58b73a857",
+        "libcudart.so.13.0.48": "6876f4841bdbe30b187dcf8d7a7d2d6579bf12a36eeb430c7b28484ccdeed89a",
+        "libcudnn.so.9.12.0": "d1c725dbf288746db2a2bdb5d95749444acdfb3fbd19d350f82578885cc7bbfa",
+        "libcudnn_graph.so.9.12.0": "5415eeedc09f78ae4c7709feceec3a8d3daca425e765c3af16c81abfc107f20e",
+        "libonnxruntime-genai-cuda.so": "9d9393e982b2bac3a6c23b2b90fdf1007041b1c9a7e3291852966f3690cf6fd2",
+        "libonnxruntime-genai.so": "2a3fdb76ae7f3683b2b73f2acef4792bcd8443ba233cafe7922506ff7c6a2682",
+        "libonnxruntime.so.1.31.0": "3b48b4813d80044d153441a532d24b9849c924b53492a619bbbb3569ebb4f342",
+        "libonnxruntime_providers_cuda.so": "09eb6e57f6148e0a85963b8f6663eab7b33fd6fa6212731ee5fd2e474e61fe9b",
+        "libonnxruntime_providers_shared.so": "ed328e9f3360f9ade1f104fcedbff745dd53748e0e9ed76e5751d0f8ba6d48f7"
+      }
+    },
+    "phase_b": {
+      "baseline": {
+        "libonnxruntime-genai-cuda.so": "559838acb930e8892abb3f6a6deb890c63395e4d3da3f8aa18881da3fd8fefb3",
+        "libonnxruntime-genai.so": "ce72b4f5d61cf2f21fcd64dc05972898b032f76925999328935f32061b32fab5",
+        "libonnxruntime.so.1.31.0": "3b48b4813d80044d153441a532d24b9849c924b53492a619bbbb3569ebb4f342",
+        "libonnxruntime_providers_cuda.so": "09eb6e57f6148e0a85963b8f6663eab7b33fd6fa6212731ee5fd2e474e61fe9b",
+        "libonnxruntime_providers_shared.so": "ed328e9f3360f9ade1f104fcedbff745dd53748e0e9ed76e5751d0f8ba6d48f7"
+      },
+      "patched": {
+        "libonnxruntime-genai-cuda.so": "9d9393e982b2bac3a6c23b2b90fdf1007041b1c9a7e3291852966f3690cf6fd2",
+        "libonnxruntime-genai.so": "2a3fdb76ae7f3683b2b73f2acef4792bcd8443ba233cafe7922506ff7c6a2682",
+        "libonnxruntime.so.1.31.0": "3b48b4813d80044d153441a532d24b9849c924b53492a619bbbb3569ebb4f342",
+        "libonnxruntime_providers_cuda.so": "09eb6e57f6148e0a85963b8f6663eab7b33fd6fa6212731ee5fd2e474e61fe9b",
+        "libonnxruntime_providers_shared.so": "ed328e9f3360f9ade1f104fcedbff745dd53748e0e9ed76e5751d0f8ba6d48f7"
+      }
+    }
+  },
+  "schema_version": 1,
+  "source_revisions": {
+    "experimental_genai": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+    "experimental_ort": "94e76459dc9a759888707aa430d51a95d878da8f",
+    "historical_native_test_preparation_base": "1e13f4e2911c646d9240461cbeb2c282241570fe",
+    "note": "Historical runtime measurements; not a benchmark of current GenAI main or its later allocation correction."
+  },
+  "workloads": {
+    "2048": {
+      "effective_config": {
+        "model": {
+          "bos_token_id": 199999,
+          "context_length": 131072,
+          "decoder": {
+            "filename": "model.onnx",
+            "head_size": 128,
+            "hidden_size": 3072,
+            "inputs": {
+              "attention_mask": "attention_mask",
+              "input_ids": "input_ids",
+              "past_key_names": "past_key_values.%d.key",
+              "past_value_names": "past_key_values.%d.value",
+              "position_ids": "position_ids"
+            },
+            "num_attention_heads": 24,
+            "num_hidden_layers": 32,
+            "num_key_value_heads": 8,
+            "outputs": {
+              "logits": "logits",
+              "present_key_names": "present.%d.key",
+              "present_value_names": "present.%d.value"
+            },
+            "session_options": {
+              "log_id": "onnxruntime-genai",
+              "provider_options": [
+                {
+                  "CUDA": {
+                    "device_id": "0"
+                  }
+                }
+              ],
+              "session.use_device_allocator_for_initializers": "0"
+            }
+          },
+          "eos_token_id": [
+            200020,
+            199999
+          ],
+          "pad_token_id": 199999,
+          "type": "phi3",
+          "vocab_size": 200064
+        },
+        "search": {
+          "batch_size": 1,
+          "chunk_size": 0,
+          "diversity_penalty": 0,
+          "do_sample": false,
+          "early_stopping": true,
+          "length_penalty": 1,
+          "max_length": 1865,
+          "min_length": 0,
+          "no_repeat_ngram_size": 0,
+          "num_beams": 1,
+          "num_return_sequences": 1,
+          "past_present_share_buffer": true,
+          "repetition_penalty": 1,
+          "temperature": 1,
+          "top_k": 1,
+          "top_p": 1
+        }
+      },
+      "effective_config_file_sha256": "e953d924a6a81b23c9e25be5139cb4597661b6d8f6907aded0a17e50a22f777f",
+      "input_ids_sha256": "a7100ece1396cf13e81616381b11fed562406cadf539c72a7cae8c955b0877f4",
+      "input_tokens": 1801,
+      "nominal_context": 2048,
+      "output_tokens": 64,
+      "source_config_sha256": "6699885ad26335fffbdb3b3b09e0666f6311b64d81f34bb9f9c44b8f53d44ef9"
+    },
+    "32768": {
+      "effective_config": {
+        "model": {
+          "bos_token_id": 199999,
+          "context_length": 131072,
+          "decoder": {
+            "filename": "model.onnx",
+            "head_size": 128,
+            "hidden_size": 3072,
+            "inputs": {
+              "attention_mask": "attention_mask",
+              "input_ids": "input_ids",
+              "past_key_names": "past_key_values.%d.key",
+              "past_value_names": "past_key_values.%d.value",
+              "position_ids": "position_ids"
+            },
+            "num_attention_heads": 24,
+            "num_hidden_layers": 32,
+            "num_key_value_heads": 8,
+            "outputs": {
+              "logits": "logits",
+              "present_key_names": "present.%d.key",
+              "present_value_names": "present.%d.value"
+            },
+            "session_options": {
+              "log_id": "onnxruntime-genai",
+              "provider_options": [
+                {
+                  "CUDA": {
+                    "device_id": "0"
+                  }
+                }
+              ],
+              "session.use_device_allocator_for_initializers": "0"
+            }
+          },
+          "eos_token_id": [
+            200020,
+            199999
+          ],
+          "pad_token_id": 199999,
+          "type": "phi3",
+          "vocab_size": 200064
+        },
+        "search": {
+          "batch_size": 1,
+          "chunk_size": 0,
+          "diversity_penalty": 0,
+          "do_sample": false,
+          "early_stopping": true,
+          "length_penalty": 1,
+          "max_length": 28811,
+          "min_length": 0,
+          "no_repeat_ngram_size": 0,
+          "num_beams": 1,
+          "num_return_sequences": 1,
+          "past_present_share_buffer": true,
+          "repetition_penalty": 1,
+          "temperature": 1,
+          "top_k": 1,
+          "top_p": 1
+        }
+      },
+      "effective_config_file_sha256": "7c31a5416f68bb25c38ed30bf5a604b46d3b516c746d0ac8912a94aabebcb194",
+      "input_ids_sha256": "fbe6fe0929666ac5a91dd152aea07bc2bf7675c765f31ad57e701604ccaa3831",
+      "input_tokens": 28747,
+      "nominal_context": 32768,
+      "output_tokens": 64,
+      "source_config_sha256": "6699885ad26335fffbdb3b3b09e0666f6311b64d81f34bb9f9c44b8f53d44ef9"
+    }
+  }
+}
