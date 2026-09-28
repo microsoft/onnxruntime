@@ -8,6 +8,7 @@
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -19,7 +20,9 @@
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
+#include <gsl/gsl>
 
+#include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/file_util.h"
 
@@ -100,7 +103,8 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0) {
+    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0 &&
+        device.EpMetadata().GetValue("cuda_device_id") != nullptr) {
       return device;
     }
   }
@@ -108,6 +112,70 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
 }
 
 }  // namespace
+
+TEST(CudaPluginDeviceDiscoveryTest, ReturnsDeviceWhenCudaRuntimeFindsGpu) {
+  int device_count = 0;
+  cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  Ort::Env env;
+  ScopedCudaPluginRegistration registration(env, "CudaPluginDeviceDiscoveryTest");
+  if (!registration.IsAvailable()) {
+    GTEST_SKIP() << "CUDA plugin EP library not found.";
+  }
+
+  auto cuda_device = FindCudaPluginDevice(env);
+  ASSERT_TRUE(cuda_device) << "CUDA runtime found " << device_count
+                           << " device(s), but GetEpDevices() did not return the CUDA plugin EP.";
+}
+
+TEST(CudaPluginDeviceDiscoveryTest, CreatesRuntimeDevicesWithoutPlatformDevices) {
+  int device_count = 0;
+  cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  Ort::Env env;
+  ScopedCudaPluginRegistration registration(env, "CudaPluginRuntimeDiscoveryTest");
+  if (!registration.IsAvailable()) {
+    GTEST_SKIP() << "CUDA plugin EP library not found.";
+  }
+
+  auto registered_cuda_device = FindCudaPluginDevice(env);
+  ASSERT_TRUE(registered_cuda_device);
+  const auto* registered_ep_device =
+      static_cast<const OrtEpDevice*>(registered_cuda_device);
+  OrtEpFactory* factory = registered_ep_device->GetMutableFactory();
+  ASSERT_NE(factory, nullptr);
+
+  std::array<OrtEpDevice*, 8> runtime_devices{};
+  size_t num_runtime_devices = 0;
+  Ort::Status status{factory->GetSupportedDevices(
+      factory, nullptr, 0, runtime_devices.data(), runtime_devices.size(),
+      &num_runtime_devices)};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  auto release_runtime_devices = gsl::finally([&]() {
+    for (size_t i = 0; i < num_runtime_devices; ++i) {
+      Ort::GetApi().GetEpApi()->ReleaseEpDevice(runtime_devices[i]);
+    }
+  });
+
+  ASSERT_EQ(num_runtime_devices,
+            std::min(static_cast<size_t>(device_count), runtime_devices.size()));
+  for (size_t i = 0; i < num_runtime_devices; ++i) {
+    Ort::ConstEpDevice runtime_device{runtime_devices[i]};
+    EXPECT_STREQ(runtime_device.Device().Metadata().GetValue("cuda_runtime_discovered"), "1");
+
+    cudaDeviceProp prop;
+    ASSERT_EQ(cudaGetDeviceProperties(&prop, static_cast<int>(i)), cudaSuccess);
+    EXPECT_STREQ(runtime_device.Device().Metadata().GetValue("Discrete"),
+                 prop.integrated == 0 ? "1" : "0");
+  }
+}
 
 class CudaPluginArenaTest : public ::testing::Test {
  protected:
@@ -131,8 +199,8 @@ class CudaPluginArenaTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
     registration_.reset();
-    cudaDeviceSynchronize();
   }
 
   std::unique_ptr<ScopedCudaPluginRegistration> registration_;
@@ -201,6 +269,61 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ArenaReusesMemory) {
 
   EXPECT_EQ(extensions_after_first, extensions_after_second)
       << "Arena should reuse previously freed chunk without extending.";
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_ActiveCaptureReleaseQuarantinesChunk) {
+  auto allocator = ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+  ASSERT_NE(allocator, nullptr);
+  auto restore_default = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_DEFAULT,
+            OrtDeviceAllocator, {});
+      });
+
+  Ort::SyncStream stream = cuda_device_.CreateSyncStream();
+  auto* raw_allocator = static_cast<OrtAllocator*>(allocator);
+  auto* raw_stream = static_cast<OrtSyncStream*>(stream);
+  ASSERT_NE(raw_allocator->AllocOnStream, nullptr);
+
+  constexpr size_t kBytes = 4096;
+  void* quarantined_ptr = raw_allocator->AllocOnStream(raw_allocator, kBytes, raw_stream);
+  ASSERT_NE(quarantined_ptr, nullptr);
+  allocator.Free(quarantined_ptr);
+
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream.GetHandle());
+  bool capture_active = false;
+  cudaGraph_t graph = nullptr;
+  auto capture_cleanup = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        if (capture_active) {
+          cudaGraph_t cleanup_graph = nullptr;
+          if (cudaStreamEndCapture(cuda_stream, &cleanup_graph) == cudaSuccess && cleanup_graph != nullptr) {
+            cudaGraphDestroy(cleanup_graph);
+          }
+        }
+        if (graph != nullptr) {
+          cudaGraphDestroy(graph);
+        }
+      });
+
+  ASSERT_EQ(cudaSuccess, cudaStreamBeginCapture(cuda_stream, cudaStreamCaptureModeThreadLocal));
+  capture_active = true;
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(quarantined_ptr, 0, kBytes, cuda_stream));
+
+  const int64_t allocated_before_release = GetStatInt(allocator.GetStats(), "TotalAllocatedBytes");
+  stream = Ort::SyncStream{nullptr};
+
+  ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(cuda_stream, &graph));
+  capture_active = false;
+  ASSERT_NE(graph, nullptr);
+
+  EXPECT_EQ(allocator.Alloc(kBytes), nullptr);
+
+  allocator.Shrink();
+  EXPECT_GE(GetStatInt(allocator.GetStats(), "TotalAllocatedBytes"), allocated_before_release);
 }
 
 // Verify multiple concurrent allocations from the arena.

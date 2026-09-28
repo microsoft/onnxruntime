@@ -102,7 +102,7 @@ class ComputeContextBase {
   }
 
   //
-  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  // Get the KV cache quantization bit width (0 = disabled, 4 = TurboQuant, 8 = symmetric block quantization).
   //
   inline uint32_t KvCacheQuantizationBits() const {
     return ep_.KvCacheQuantizationBits();
@@ -116,9 +116,16 @@ class ComputeContextBase {
   }
 
   //
+  // Get whether MatMulNBits dot products accumulate in f32 rather than in the output element type.
+  //
+  inline bool EnableMatmulFp32Accumulation() const {
+    return ep_.EnableMatmulFp32Accumulation();
+  }
+
+  //
   // Get the logger.
   //
-  inline const logging::Logger& Logger() const {
+  inline const auto& Logger() const {
 #if defined(ORT_USE_EP_API_ADAPTERS)
     return ep_.GetEpLogger();
 #else

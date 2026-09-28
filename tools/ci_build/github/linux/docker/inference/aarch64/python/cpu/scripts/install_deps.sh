@@ -9,10 +9,17 @@ fi
 popd
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+FREE_THREADED_REQUIREMENTS=$(mktemp)
+grep -v '^onnx==' requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
+trap 'rm -f "${FREE_THREADED_REQUIREMENTS}"' EXIT
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   PIP_REQUIREMENTS=(-r requirements.txt)
+  if [[ "${PYTHON_EXE}" == */cp3??-cp3??t/* ]]; then
+    # ONNX does not publish free-threaded aarch64 wheels, and its source build requires the unavailable stable ABI.
+    PIP_REQUIREMENTS=(-r "${FREE_THREADED_REQUIREMENTS}")
+  fi
   if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
     # mypy 1.19+ dependencies do not support free-threaded CPython 3.13.
     PIP_REQUIREMENTS+=("mypy<1.19")

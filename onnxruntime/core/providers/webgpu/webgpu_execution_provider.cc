@@ -46,6 +46,16 @@
 
 namespace onnxruntime {
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+onnxruntime::ep::adapter::Logger& WebGpuExecutionProvider::GetEpLogger() const {
+  return *ep_logger_;
+}
+
+void WebGpuExecutionProvider::SetEpLogger(const OrtLogger* logger) {
+  ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
+}
+#endif
+
 namespace webgpu {
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -604,6 +614,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+      enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {

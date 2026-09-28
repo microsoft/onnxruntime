@@ -193,6 +193,57 @@ TEST(SliceTest, Slice2D_OneAxis) {
                        20.0f, 21.0f, 22.0f, 23.0f});
 }
 
+// The innermost axis is taken as a contiguous, four-aligned run: start, input extent and output
+// extent are all multiples of four and the step is +1. A kernel that moves four elements per
+// thread may take that path only under exactly these conditions.
+TEST(SliceTest, Slice2D_InnermostAxisFourAligned) {
+  RunSliceTest<float>({3, 8},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 04.0f, 05.0f, 06.0f, 07.0f,
+                       10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f,
+                       20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f},
+                      {4},
+                      {8},
+                      {1},
+                      {},
+                      {3, 4},
+                      {04.0f, 05.0f, 06.0f, 07.0f,
+                       14.0f, 15.0f, 16.0f, 17.0f,
+                       24.0f, 25.0f, 26.0f, 27.0f});
+}
+
+// Same extents, but the run does not begin on a four-element boundary, so the four-at-a-time path
+// must not be taken.
+TEST(SliceTest, Slice2D_InnermostAxisUnalignedStart) {
+  RunSliceTest<float>({3, 8},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 04.0f, 05.0f, 06.0f, 07.0f,
+                       10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f,
+                       20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f},
+                      {2},
+                      {6},
+                      {1},
+                      {},
+                      {3, 4},
+                      {02.0f, 03.0f, 04.0f, 05.0f,
+                       12.0f, 13.0f, 14.0f, 15.0f,
+                       22.0f, 23.0f, 24.0f, 25.0f});
+}
+
+// A negative step reverses the innermost axis, so four consecutive outputs no longer come from
+// four consecutive inputs.
+TEST(SliceTest, Slice2D_InnermostAxisNegativeStep) {
+  RunSliceTest<float>({2, 8},
+                      {00.0f, 01.0f, 02.0f, 03.0f, 04.0f, 05.0f, 06.0f, 07.0f,
+                       10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f},
+                      {7},
+                      {3},
+                      {1},
+                      {-1},
+                      {2, 4},
+                      {07.0f, 06.0f, 05.0f, 04.0f,
+                       17.0f, 16.0f, 15.0f, 14.0f},
+                      true);
+}
+
 TEST(SliceTest, Slice2D_TwoAxes) {
   RunSliceTest<float>({6, 4},
                       {00.0f, 01.0f, 02.0f, 03.0f,
@@ -263,6 +314,54 @@ TEST(SliceTest, Slice3D) {
 
                        322.0f, 323.0f,
                        332.0f, 333.0f});
+}
+
+// Contiguous leading-axis slices exercise the CUDA EP single-memcpy fast path
+// (only leading dimensions are trimmed, all trailing dimensions fully included).
+TEST(SliceTest, Slice3D_ContiguousLeadingAxis) {
+  RunSliceTest<float>({3, 2, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f},
+                      {1},
+                      {3},
+                      {0},
+                      {},
+                      {2, 2, 2},
+                      {211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f});
+}
+
+// Selecting a single leading index plus a partial second axis with full trailing
+// dims is still contiguous (input_ptr + offset).
+TEST(SliceTest, Slice3D_ContiguousSingleLeadingIndex) {
+  RunSliceTest<float>({3, 3, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+                       131.0f, 132.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+                       231.0f, 232.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f,
+                       331.0f, 332.0f},
+                      {1, 1},
+                      {2, 3},
+                      {0, 1},
+                      {},
+                      {1, 2, 2},
+                      {221.0f, 222.0f,
+                       231.0f, 232.0f});
 }
 
 template <typename T>

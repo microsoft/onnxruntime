@@ -93,6 +93,7 @@ Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : CudaKernel(info) {
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -128,7 +129,9 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(gate->Data<T>()),
       num_rows,
       static_cast<int>(norm_size),
-      epsilon_);
+      epsilon_,
+      activation_,
+      GetDeviceProp().maxThreadsPerBlock);
 }
 
 template class LinearAttentionGate<float>;

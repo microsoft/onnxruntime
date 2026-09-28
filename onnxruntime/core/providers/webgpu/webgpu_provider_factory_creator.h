@@ -17,6 +17,8 @@ struct ConfigOptions;
 
 struct WebGpuProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
+  static std::shared_ptr<IExecutionProviderFactory> CreateForTesting(
+      const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size);
 };
 
 // C API to create data transfer for WebGPU EP with lazy initialization

@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -10,10 +11,16 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import build_args
+build = importlib.import_module("build")
+build_args = importlib.import_module("build_args")
+
+_UNRELEASED_OPSET_ENVIRONMENT = {
+    "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
+    "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+}
 
 
-class TelemetryBuildArgsTest(unittest.TestCase):
+class BuildArgsTest(unittest.TestCase):
     def _parse(self, *arguments: str, platform_name: str, machine: str = "x86_64"):
         argv = ["build.py", "--build_dir", "build/test", *arguments]
         with (
@@ -53,6 +60,36 @@ class TelemetryBuildArgsTest(unittest.TestCase):
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
+
+    def test_use_acl_emits_deprecation_warning(self):
+        with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
+            self._parse("--use_acl", platform_name="linux")
+
+    def test_acl_deprecation_warning_not_emitted_without_use_acl(self):
+        with mock.patch.object(build_args.warnings, "warn") as warn:
+            self._parse(platform_name="linux")
+
+        warn.assert_not_called()
+
+
+class OnnxBackendTestEnvironmentTest(unittest.TestCase):
+    def test_cpu_and_cuda_enable_unreleased_opsets_by_default(self):
+        with mock.patch.dict(build.os.environ, {}, clear=True):
+            for use_cuda in (False, True):
+                with self.subTest(use_cuda=use_cuda):
+                    self.assertEqual(
+                        build.get_onnx_backend_test_environment(use_cuda),
+                        _UNRELEASED_OPSET_ENVIRONMENT,
+                    )
+
+    def test_cpu_and_cuda_override_explicit_parent_strict_opset_mode(self):
+        with mock.patch.dict(build.os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "1"}, clear=True):
+            for use_cuda in (False, True):
+                with self.subTest(use_cuda=use_cuda):
+                    self.assertEqual(
+                        build.get_onnx_backend_test_environment(use_cuda),
+                        _UNRELEASED_OPSET_ENVIRONMENT,
+                    )
 
 
 if __name__ == "__main__":

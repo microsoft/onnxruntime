@@ -284,10 +284,14 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     split_node.AddAttribute("axis", axis);
     split_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
 
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_fuse.size());
     for (Node& node : nodes_to_fuse) {
+      source_node_indices.push_back(node.Index());
       graph_utils::RemoveNodeOutputEdges(graph, node);
       graph.RemoveNode(node.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, split_node.Index());
 
     modified = true;
   }
@@ -398,10 +402,14 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                      {gather_node.MutableOutputDefs()[0]});
     slice_node.SetExecutionProviderType(gather_node.GetExecutionProviderType());
 
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_fuse.size());
     for (Node& n : nodes_to_fuse) {
+      source_node_indices.push_back(n.Index());
       graph_utils::RemoveNodeOutputEdges(graph, n);
       graph.RemoveNode(n.Index());
     }
+    graph.NotifyNodeReplacement(source_node_indices, slice_node.Index());
 
     modified = true;
   }
