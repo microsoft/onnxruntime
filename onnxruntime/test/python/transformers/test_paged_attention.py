@@ -1708,6 +1708,37 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
             local_window_size_override=window,
         )
 
+    @parameterized.expand([("decode", 1, 65), ("multi_query_prefill", 4, 33)])
+    def test_qwen38_non_causal_local_window(self, _, query_length, past_length):
+        # The 256-wide heads select the Qwen3.8 split-reduce workgroup-storage
+        # specialization for both single-token decode and multi-row prefill.
+        config = Config(
+            1,
+            query_length,
+            128,
+            24,
+            4,
+            256,
+            16,
+            True,
+            False,
+            False,
+            False,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.is_causal = False
+        with torch.random.fork_rng(devices=[torch.cuda.current_device()] if torch.cuda.is_available() else []):
+            torch.manual_seed(0)
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                new_seqlens_override=torch.tensor([query_length], dtype=torch.int32),
+                past_seqlens_override=torch.tensor([past_length], dtype=torch.int32),
+                local_window_size_override=4,
+            )
+
     @parameterized.expand([("split", 4), ("prefill", 65)])
     def test_non_causal_local_window_query_bounds(self, _, query_length):
         # Equal logits make each output the mean of the visible key positions.
