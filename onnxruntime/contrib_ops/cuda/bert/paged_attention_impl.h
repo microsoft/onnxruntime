@@ -28,7 +28,11 @@ Status PreparePagedAttentionQueryAndCache(
     Stream* stream,
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<T, TCACHE>& data,
-    T** query);
+    T** query,
+    T** key,
+    T** value,
+    int* key_stride,
+    int* value_stride);
 
 template <typename T>
 Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
