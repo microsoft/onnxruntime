@@ -885,6 +885,25 @@ TEST(PackedSparseAttentionIndexerTest, QsaHierarchicalTopK) {
   RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaRaggedPrefill) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 65};
+  problem.past_sequence_lengths = {1024};
+  problem.head_size = 128;
+  problem.num_heads = 4;
+  problem.rotary_width = 64;
+  problem.compress_ratio = 4;
+  problem.token_budget = 128;
+  problem.state_capacity = 512;
+  problem.max_position = 2048;
+  problem = MakeQsaPackedProblem(std::move(problem));
+  std::fill(problem.query_norm_weight.begin(), problem.query_norm_weight.end(), 1.0f);
+  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
+  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
+  RunQsaPackedTest<float>(1.0e-4f, std::move(problem));
+}
+
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
