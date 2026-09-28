@@ -41,58 +41,34 @@ const validateInputs = (inputs: readonly TensorView[], axis: number): void => {
   });
 };
 
-const calculateInputIndexImpl = (numberOfTensors: number, sizeInConcatAxisStr: string): string => `
-  fn calculateInputIndex(index: u32) -> u32 {
-    let sizeInConcatAxis = array<u32, ${numberOfTensors}u>(${sizeInConcatAxisStr});
-    for (var i: u32 = 0u; i < ${numberOfTensors}; i += 1u ) {
-      if (index < sizeInConcatAxis[i]) {
-        return i;
-      }
-    }
-    return ${numberOfTensors}u;
-  }`;
-
-const assignOutputData = (inputs: readonly IndicesHelper[], output: IndicesHelper) => {
-  const numberOfTensors = inputs.length;
-
-  const codeLines: string[] = [];
-  for (let i = 0; i < numberOfTensors; ++i) {
-    const returnSnippet = output.setByOffset('global_idx', inputs[i].getByIndices('indices'));
-    if (numberOfTensors === 1) {
-      codeLines.push(returnSnippet);
-    } else if (i === 0) {
-      codeLines.push(`if (inputIndex == ${i}u) { ${returnSnippet} }`);
-    } else if (i === numberOfTensors - 1) {
-      codeLines.push(`else { ${returnSnippet} }`);
-    } else {
-      codeLines.push(`else if (inputIndex == ${i}) { ${returnSnippet} }`);
-    }
-  }
-  return codeLines.join('\n');
-};
-
 const createConcatProgramInfo = (
   inputs: readonly TensorView[],
   adjustedAxis: number,
   outputShape: number[],
   dataType: DataType,
+  outputAxisOffset = 0,
 ): ProgramInfo => {
-  const outputSize = ShapeUtil.size(outputShape);
+  const outputSize = inputs.reduce((sum, input) => sum + ShapeUtil.size(input.dims), 0);
 
-  const sizeInConcatAxis = new Array<number>(inputs.length);
+  const inputOffsets = new Array<number>(inputs.length);
+  const outputAxisOffsets = new Array<number>(inputs.length);
   const inputVars = new Array<IndicesHelper>(inputs.length);
 
-  let previousSum = 0;
+  let inputOffset = 0;
+  let axisOffset = outputAxisOffset;
   const inputDependencies: ProgramInputTensorInfoDependency[] = [];
   const inputRanks = [];
   const programUniforms: ProgramUniform[] = [{ type: DataType.uint32, data: outputSize }];
   for (let i = 0; i < inputs.length; ++i) {
-    previousSum += inputs[i].dims[adjustedAxis];
-    sizeInConcatAxis[i] = previousSum;
+    inputOffsets[i] = inputOffset;
+    outputAxisOffsets[i] = axisOffset;
+    inputOffset += ShapeUtil.size(inputs[i].dims);
+    axisOffset += inputs[i].dims[adjustedAxis];
     inputRanks.push(inputs[i].dims.length);
     inputVars[i] = inputVariable(`input${i}`, dataType, inputRanks[i]);
     inputDependencies.push('rank');
-    programUniforms.push({ type: DataType.uint32, data: sizeInConcatAxis[i] });
+    programUniforms.push({ type: DataType.uint32, data: inputOffsets[i] });
+    programUniforms.push({ type: DataType.uint32, data: outputAxisOffsets[i] });
   }
   for (let i = 0; i < inputs.length; ++i) {
     programUniforms.push(...createTensorShapeVariables(inputs[i].dims));
@@ -100,34 +76,54 @@ const createConcatProgramInfo = (
   programUniforms.push(...createTensorShapeVariables(outputShape));
 
   const output = outputVariable('output', dataType, outputShape.length);
-  const indicesAxis = output.indicesGet('indices', adjustedAxis);
-  const sizeInConcatAxisStr = Array.from(Array(sizeInConcatAxis.length).keys())
-    .map((i) => `uniforms.sizeInConcatAxis${i}`)
-    .join(',');
+  const assignOutputData = inputVars
+    .map((input, i) => {
+      const inputOffset = `global_idx - uniforms.inputOffset${i}`;
+      const assignment = `
+        let inputOffset = ${inputOffset};
+        var outputIndices = ${input.offsetToIndices('inputOffset')};
+        ${output.indicesGet('outputIndices', adjustedAxis)} += uniforms.outputAxisOffset${i};
+        ${output.setByIndices('outputIndices', input.getByOffset('inputOffset'))}`;
+      if (inputs.length === 1) {
+        return assignment;
+      }
+      if (i === 0) {
+        return `if (inputIndex == 0u) {${assignment}}`;
+      }
+      if (i === inputs.length - 1) {
+        return `else {${assignment}}`;
+      }
+      return `else if (inputIndex == ${i}u) {${assignment}}`;
+    })
+    .join('\n');
   const getShaderSource = (shaderHelper: ShaderHelper) => `
 
   ${(() => {
     shaderHelper.registerUniform('outputSize', 'u32');
     for (let i = 0; i < inputs.length; i++) {
-      shaderHelper.registerUniform(`sizeInConcatAxis${i}`, 'u32');
+      shaderHelper.registerUniform(`inputOffset${i}`, 'u32');
+      shaderHelper.registerUniform(`outputAxisOffset${i}`, 'u32');
     }
     return shaderHelper.declareVariables(...inputVars, output);
   })()}
 
-  ${calculateInputIndexImpl(sizeInConcatAxis.length, sizeInConcatAxisStr)}
+  fn calculateInputIndex(global_idx: u32) -> u32 {
+    ${inputVars
+      .slice(1)
+      .map(
+        (_, i) => `if (global_idx < uniforms.inputOffset${i + 1}) {
+      return ${i}u;
+    }`,
+      )
+      .join('\n')}
+    return ${inputs.length - 1}u;
+  }
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
-    var indices = ${output.offsetToIndices('global_idx')};
-
-    let inputIndex = calculateInputIndex(${indicesAxis});
-    if (inputIndex != 0u) {
-      let sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}u>(${sizeInConcatAxisStr});
-      ${indicesAxis} -= sizeInConcatAxis[inputIndex - 1u];
-    }
-
-    ${assignOutputData(inputVars, output)}
+    let inputIndex = calculateInputIndex(global_idx);
+    ${assignOutputData}
   }`;
 
   return {
@@ -154,9 +150,24 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
   );
   // 0 length tensors are valid for concat, remove them
   const nonEmptyInputs = inputs.filter((input) => ShapeUtil.size(input.dims) > 0);
-  context.compute(createConcatProgramInfo(nonEmptyInputs, adjustedAxis, outputShape, inputs[0].dataType), {
-    inputs: nonEmptyInputs,
-  });
+  if (nonEmptyInputs.length === 0) {
+    context.output(0, outputShape);
+    return;
+  }
+
+  const maxInputsPerDispatch = context.deviceLimits.maxStorageBuffersPerShaderStage - 1;
+  let outputAxisOffset = 0;
+  for (let inputIndex = 0; inputIndex < nonEmptyInputs.length; inputIndex += maxInputsPerDispatch) {
+    const batchInputs = nonEmptyInputs.slice(inputIndex, inputIndex + maxInputsPerDispatch);
+    context.compute(
+      createConcatProgramInfo(batchInputs, adjustedAxis, outputShape, inputs[0].dataType, outputAxisOffset),
+      {
+        inputs: batchInputs,
+        outputs: [0],
+      },
+    );
+    outputAxisOffset += batchInputs.reduce((sum, input) => sum + input.dims[adjustedAxis], 0);
+  }
 };
 
 export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>

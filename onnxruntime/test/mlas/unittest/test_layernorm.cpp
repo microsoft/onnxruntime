@@ -29,9 +29,11 @@ Abstract:
 
 #include "test_util.h"
 #include "mlas.h"
+#include "mlas_float16.h"
 #include "core/mlas/lib/mlasi.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -50,6 +52,10 @@ Abstract:
 // on ARM, older x86, or any future platform that hasn't wired up a kernel.
 static bool HasLayerNormKernel() {
   return GetMlasPlatform().LayerNormF32Kernel != nullptr;
+}
+
+static bool HasLayerNormF16Kernel() {
+  return GetMlasPlatform().LayerNormF16Kernel != nullptr;
 }
 
 // Returns true when the platform uses the **centered two-pass** kernel
@@ -140,6 +146,67 @@ static void ReferenceLayerNorm(
   }
   if (mean_out) *mean_out = static_cast<float>(mean);
   if (inv_std_out) *inv_std_out = static_cast<float>(inv_denom);
+}
+
+TEST(MlasLayerNormF16Test, MatchesFloatReference) {
+  if (!HasLayerNormF16Kernel()) {
+    GTEST_SKIP() << "FP16 LayerNorm kernel is unavailable";
+  }
+
+  constexpr float epsilon = 1e-5f;
+  std::array<uint16_t, 15> short_input{};
+  std::array<float, 15> short_scale{};
+  std::array<uint16_t, 15> short_output{};
+  EXPECT_FALSE(MlasLayerNormF16(
+      short_input.data(), short_scale.data(), nullptr, short_output.data(),
+      nullptr, nullptr, short_input.size(), epsilon, false));
+
+  for (const bool simplified : {false, true}) {
+    for (const bool has_bias : {false, true}) {
+      if (simplified && has_bias) {
+        continue;
+      }
+
+      for (const size_t n : {size_t{16}, size_t{31}, size_t{128}}) {
+        SCOPED_TRACE(::testing::Message()
+                     << "simplified=" << simplified << ", has_bias=" << has_bias << ", n=" << n);
+
+        std::vector<uint16_t> input(n);
+        std::vector<float> input_float(n);
+        std::vector<float> scale(n);
+        std::vector<float> bias(n);
+        for (size_t i = 0; i < n; ++i) {
+          input[i] = MLAS_Float2Half(
+              std::sin(static_cast<float>(i) * 0.37f) * 3.0f + static_cast<float>(i % 7) * 0.125f);
+          input_float[i] = MLAS_Half2Float(input[i]);
+          scale[i] = 0.5f + static_cast<float>((i * 13) % 17) / 16.0f;
+          bias[i] = static_cast<float>(static_cast<int>(i % 5) - 2) * 0.2f;
+        }
+
+        std::vector<float> expected(n);
+        float expected_mean = 0.0f;
+        float expected_inv_std = 0.0f;
+        ReferenceLayerNorm(input_float.data(), scale.data(), has_bias ? bias.data() : nullptr,
+                           expected.data(), &expected_mean, &expected_inv_std, n, epsilon, simplified);
+
+        std::vector<uint16_t> actual(n);
+        float actual_mean = 0.0f;
+        float actual_inv_std = 0.0f;
+        ASSERT_TRUE(MlasLayerNormF16(
+            input.data(), scale.data(), has_bias ? bias.data() : nullptr, actual.data(),
+            &actual_mean, &actual_inv_std, n, epsilon, simplified));
+
+        for (size_t i = 0; i < n; ++i) {
+          const float actual_value = MLAS_Half2Float(actual[i]);
+          const float tolerance = 1e-3f + std::abs(expected[i]) * 5e-3f;
+          EXPECT_NEAR(actual_value, expected[i], tolerance) << "i=" << i;
+        }
+        EXPECT_NEAR(actual_mean, expected_mean, 1e-5f);
+        EXPECT_NEAR(actual_inv_std, expected_inv_std,
+                    1e-4f + std::abs(expected_inv_std) * 5e-3f);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

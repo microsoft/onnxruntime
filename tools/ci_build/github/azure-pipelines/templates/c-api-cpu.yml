@@ -453,9 +453,3 @@ stages:
           dotnet build csharp\ApiDocs\ApiDocs.csproj --no-restore
           docfx build csharp\ApiDocs\docfx.json
         workingDirectory: '$(Build.SourcesDirectory)'
-
-
-- template: ../stages/nodejs-npm-packaging-stage.yml
-  parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}

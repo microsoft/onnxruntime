@@ -495,12 +495,12 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ValidatesQuantizedCacheMetadata) 
     config.kv_cache_bit_width = bit_width;
     config.k_quantization = GQAKvQuantizationType::PerTensor;
     config.v_quantization = GQAKvQuantizationType::PerChannel;
-    auto shapes = SeparateShapes();
-    const int64_t stored_head = bit_width == 4 ? 32 : 64;
+    auto shapes = SeparateShapes(/*sequence=*/4, /*head=*/128);
+    const int64_t stored_head = bit_width == 4 ? 64 : 128;
     shapes[3] = Known({2, 2, 256, stored_head});
     shapes[4] = Known({2, 2, 256, stored_head});
     shapes[12] = Known({1});
-    shapes[13] = Known({1, 2, 1, 64});
+    shapes[13] = Known({1, 2, 1, 128});
     EXPECT_TRUE(EstimateGroupQueryAttentionWorkspace(
                     config, shapes, Device(), options)
                     .has_value());

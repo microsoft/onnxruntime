@@ -1315,6 +1315,59 @@ TEST(FunctionTest, InlinedNodesInheritDistinctAnnotationsPerCallSite) {
   EXPECT_TRUE(found_b) << "No node found with AnnotationB";
 }
 
+static ONNX_NAMESPACE::FunctionProto MakeIdentityFunction(
+    const std::string& domain, const std::string& name, const std::string& overload = {}) {
+  ONNX_NAMESPACE::FunctionProto function;
+  function.set_domain(domain);
+  function.set_name(name);
+  function.set_overload(overload);
+  function.add_input("x");
+  function.add_output("y");
+  auto* opset = function.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(17);
+  auto* node = function.add_node();
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  return function;
+}
+
+TEST(FunctionTest, RejectDuplicateFunctionIdentifiersFromModelProto) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(10);
+  auto* default_opset = model_proto.add_opset_import();
+  default_opset->set_domain("");
+  default_opset->set_version(17);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+  model_proto.mutable_graph()->set_name("duplicate_functions");
+  *model_proto.add_functions() = MakeIdentityFunction("local", "myfun");
+  *model_proto.add_functions() = MakeIdentityFunction("local", "myfun");
+
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  const auto status = session.Load(serialized_model.data(), static_cast<int>(serialized_model.size()));
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Duplicate model-local function identifier"));
+}
+
+TEST(FunctionTest, RejectDuplicateFunctionIdentifiersFromFunctionVector) {
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions{
+      MakeIdentityFunction("local", "myfun", "same_overload"),
+      MakeIdentityFunction("local", "myfun", "same_overload")};
+  const std::unordered_map<std::string, int> domain_to_version{{"", 17}, {"local", 1}};
+
+  EXPECT_THROW(
+      Model("duplicate_functions", false, ModelMetaData(), PathString(),
+            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, functions,
+            DefaultLoggingManager().DefaultLogger()),
+      OnnxRuntimeException);
+}
+
 // Test that overloaded functions (IR version 10+) are resolved correctly.
 // Two functions with the same domain and name but different overload identifiers.
 TEST(FunctionTest, OverloadedFunctions) {
