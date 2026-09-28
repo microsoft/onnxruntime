@@ -890,37 +890,63 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // Should not have any Q nodes
-  if (!q_nodes.empty()) {
+  const auto& graph = graph_viewer.GetGraph();
+  const bool is_gemm = node.OpType() == "Gemm";
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.size() < 2) {
     return false;
   }
 
-  const auto& graph = graph_viewer.GetGraph();
-  const bool is_gemm = node.OpType() == "Gemm";
+  // Assign DQ roles by the target input they feed, not by their position in dq_nodes.
+  const Node* activation_dq = nullptr;
+  const Node* weight_dq = nullptr;
+  const Node* bias_dq = nullptr;
+  for (const auto* dq : dq_nodes) {
+    const NodeArg* dq_output = dq->OutputDefs()[0];
+    if (dq_output == input_defs[0] && activation_dq == nullptr) {
+      activation_dq = dq;
+    } else if (dq_output == input_defs[1] && weight_dq == nullptr) {
+      weight_dq = dq;
+    } else if (is_gemm && input_defs.size() > 2 && dq_output == input_defs[2] && bias_dq == nullptr) {
+      bias_dq = dq;
+    } else {
+      return false;
+    }
+  }
 
-  if (is_gemm) {
-    // Gemm: accept 1 DQ (weight only) or 2 DQs (weight + bias).
-    if (dq_nodes.size() < 1 || dq_nodes.size() > 2) {
+  if (!weight_dq || activation_dq == weight_dq) {
+    return false;
+  }
+
+  if (!allow_16bit_activation_boundaries_) {
+    // Float activations only: no activation DQ and no output Q.
+    if (activation_dq != nullptr || !q_nodes.empty()) {
       return false;
     }
   } else {
-    // MatMul: exactly 1 DQ input
-    if (dq_nodes.size() != 1) {
+    // Only INT16/UINT16 activation boundaries are accepted here. They are kept in the graph as-is.
+    if (activation_dq == nullptr && q_nodes.empty()) {
       return false;
     }
-  }
 
-  // Find the weight DQ node — the one feeding input 1 (B)
-  const Node* weight_dq = nullptr;
-  for (const auto* dq : dq_nodes) {
-    if (node.InputDefs()[1] == dq->OutputDefs()[0]) {
-      weight_dq = dq;
-      break;
+    if (activation_dq != nullptr &&
+        !Is16BitIntType(activation_dq->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type())) {
+      return false;
     }
-  }
 
-  if (!weight_dq) {
-    return false;
+    if (!q_nodes.empty()) {
+      // Every consumer of the target output must be a 16-bit Q, and the output must not be a graph output.
+      if (q_nodes.size() != node.GetOutputEdgesCount() || graph_viewer.NodeProducesGraphOutput(node)) {
+        return false;
+      }
+
+      for (const auto* q : q_nodes) {
+        if (q->InputDefs()[0] != node.OutputDefs()[0] ||
+            !Is16BitIntType(q->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type())) {
+          return false;
+        }
+      }
+    }
   }
 
   // Weight DQ must have exactly 1 output edge and not be a graph output
@@ -944,15 +970,6 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   }
 
   if (is_gemm) {
-    // If there's a second DQ node (for bias), it must feed input 2
-    if (dq_nodes.size() == 2) {
-      const Node* bias_dq = (dq_nodes[0] == weight_dq) ? dq_nodes[1] : dq_nodes[0];
-      if (node.InputDefs().size() <= 2 || !node.InputDefs()[2] ||
-          node.InputDefs()[2] != bias_dq->OutputDefs()[0]) {
-        return false;
-      }
-    }
-
     // Validate Gemm attributes (alpha=1, transA=0, transB=0, beta=1 if bias)
     if (!ValidateGemmForDQMatMulNBits(graph, node, *weight_dq)) {
       return false;
@@ -1116,11 +1133,32 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-void DQMatMulToMatMulNBitsSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
-  // Keep only the weight DQ (first entry). If a Gemm has a bias DQ, it will be in
-  // position 1 — trim it so RemoveNodes does not delete it. The bias DQ's output
-  // is wired to MatMulNBits input 5 in ProcessNewNode.
-  builder.input_nodes.resize(1);
+std::optional<NodesToOptimizeIndices> DQMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer,
+                                                                            const Node& node) const {
+  const auto selection = BaseSelector::Select(graph_viewer, node);
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+
+  const NodeArg* weight_def = node.InputDefs()[1];
+  NodeIndex weight_dq_index = NodesToOptimizeIndices::kEmptyNodeIndex;
+  for (int i = 0; i < selection->num_inputs; ++i) {
+    const NodeIndex index = selection->nodes[i];
+    const Node* dq = index == NodesToOptimizeIndices::kEmptyNodeIndex ? nullptr : graph_viewer.GetNode(index);
+    if (dq != nullptr && dq->OutputDefs()[0] == weight_def) {
+      weight_dq_index = dq->Index();
+      break;
+    }
+  }
+
+  if (weight_dq_index == NodesToOptimizeIndices::kEmptyNodeIndex) {
+    return std::nullopt;
+  }
+
+  NodesToOptimizeIndicesBuilder builder;
+  builder.input_nodes.push_back(weight_dq_index);
+  builder.target_node = node.Index();
+  return builder.Build();
 }
 
 bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
