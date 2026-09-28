@@ -85,7 +85,7 @@ INT2 QMoE is a meaningful follow-up because expert weights dominate the storage 
 | --- | --- | --- |
 | QMoE schema | Independent FC1, FC2, and FC3 widths merged in [#32697](https://github.com/microsoft/onnxruntime/pull/32697) | Maintain backward compatibility and add model-level conformance coverage |
 | CPU QMoE | Accepts blockwise INT2 and has an optimized LUT path | Add mixed-width semantics and model-level conformance coverage |
-| CUDA QMoE | Bounded INT2/mixed-width correctness fallback merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743); packed decode is in review in [#32761](https://github.com/microsoft/onnxruntime/pull/32761) | Complete review, benchmark packed decode, and add a bounded or native prefill path |
+| CUDA QMoE | Bounded INT2/mixed-width correctness fallback merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743); SM80 packed decode merged in [#32761](https://github.com/microsoft/onnxruntime/pull/32761) | Benchmark packed decode and add a native packed prefill path |
 | WebGPU QMoE | Rejects INT2 and uses a 4/8-bit-specific pack-size calculation | Use `8 / bits`, complete reachable INT2 shader support, and add QMoE tests |
 | Model production | Dense mixed-bit export is the initial Olive/Mobius target | Define and qualify a distinct fused QMoE graph and weight-binding contract |
 
