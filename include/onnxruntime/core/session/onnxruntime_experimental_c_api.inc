@@ -83,6 +83,13 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
 //
 // Opaque handles (OrtModelPackageOptions, OrtModelPackageContext, OrtModelPackageComponentContext)
 // are declared in onnxruntime_experimental_c_api.h.
+//
+// The OrtEnv and any EP libraries used for selection must outlive the options, component contexts,
+// and sessions that use them. Package queries return borrowed storage; do not free it. Concurrent
+// calls on the same package or component context require external synchronization. A component
+// context can be reused to create multiple sessions sequentially.
+// Unless a path is explicitly ORTCHAR_T, strings (including path references) are UTF-8.
+// Failed calls leave output parameters unchanged.
 // ---------------------------------------------------------------------------
 
 /** \brief Create model package options from an existing OrtSessionOptions.
@@ -90,7 +97,8 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
  * Captures EP configuration (registered execution providers and their devices) from
  * the session options for use during variant selection. The resulting OrtModelPackageOptions
  * is passed to OrtModelPackageApi_SelectComponent to resolve the best variant for the
- * available EPs.
+ * first configured EP. This captures EP selection and provider factories, not a copy of all
+ * session options. See OrtModelPackageApi_CreateSession for configuration precedence.
  *
  * \param[in] env The ORT environment.
  * \param[in] session_options Session options containing registered EPs.
@@ -130,16 +138,18 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateModelPackageCont
 ORT_EXPERIMENTAL_API(28, void, OrtModelPackageApi_ReleaseModelPackageContext,
                      _Frees_ptr_opt_ OrtModelPackageContext* ctx)
 
-/** \brief Get the schema version declared in the model package manifest.
+/** \brief Get the schema major and minor versions declared in the model package manifest.
  *
  * \param[in] ctx The model package context.
- * \param[out] out_version Receives the schema version number.
+ * \param[out] out_major Receives the schema major version.
+ * \param[out] out_minor Receives the schema minor version.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
-ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetSchemaVersion,
+ORT_EXPERIMENTAL_API(31, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetSchemaVersion,
                      _In_ const OrtModelPackageContext* ctx,
-                     _Out_ int64_t* out_version)
+                     _Out_ int64_t* out_major,
+                     _Out_ int64_t* out_minor)
 
 /** \brief Get the number of components in the model package.
  *
@@ -205,13 +215,18 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVarian
  * When the variant does not declare an EP, the returned pointer is NULL.
  * String memory is owned by `ctx` and remains valid until the context is released.
  *
+ * \param[in] ctx The package context.
+ * \param[in] component_name Name of the component.
+ * \param[in] variant_name Name of the variant.
+ * \param[out] out_ep Optional output for the EP name. May be NULL to only validate the lookup.
+ *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVariantEpName,
                      _In_ const OrtModelPackageContext* ctx,
                      _In_ const char* component_name,
                      _In_ const char* variant_name,
-                     _Outptr_result_maybenull_ const char** out_ep)
+                     _Out_opt_ const char** out_ep)
 
 /** \brief Resolve a path reference declared inside the package against the model_package rules.
  *
@@ -219,8 +234,9 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVarian
  *   - "sha256:<hex>" or "sha256:<hex>/<tail>": a content-addressed shared asset. Resolves to
  *     the asset's on-disk directory (honoring manifest shared_assets overrides), optionally
  *     joined with the confined tail. Errors if the asset is not declared/discovered.
- *   - any other value: a relative path resolved against `base_dir` (or the package root when
- *     `base_dir` is NULL), with portable-layout confinement (no absolute paths, no "..").
+ *   - any other value: a path resolved against `base_dir` (or the package root when
+ *     `base_dir` is NULL). Portable layout rejects absolute paths and ".."; installed layout
+ *     permits them.
  *
  * When `must_exist` is non-zero the resolved path must exist on disk. `out_path` is owned by
  * `ctx` and remains valid until the next call to this function on the same context.
@@ -246,6 +262,11 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_ResolveSt
  * metadata and the provided options. The returned `OrtModelPackageComponentContext*` is
  * independent of `context` lifetime and must be released via
  * OrtModelPackageApi_ReleaseModelPackageComponentContext.
+ *
+ * \param[in] context The package context.
+ * \param[in] component_name Name of the component.
+ * \param[in] options EP selection captured from session options.
+ * \param[out] out Receives a component context independent of the package and options handles.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
@@ -293,15 +314,26 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackageComponent_
  *
  * Session options precedence:
  *   1. session_options == NULL (default path):
- *      ORT uses the OrtSessionOptions that was captured when `context` was created.
- *      Any variant-specific session and provider options declared in the package
- *      metadata are merged on top.
+ *      ORT starts with default OrtSessionOptions and applies variant-specific session and
+ *      provider options from the package. Provider options require OrtEpDevice support.
+ *      The captured provider factory is reused when available; a legacy factory retains
+ *      its EP-specific configuration.
  *
  *   2. session_options != NULL (advanced path):
- *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
- *      session and provider options from the package metadata are NOT applied.
- *      Use this when custom EP setup is required (e.g., shared CUDA streams,
- *      shared QNN EP contexts, custom allocators).
+ *      ORT copies the caller-provided options, preserving explicit provider factories and their
+ *      order. Package provider options and non-path session options are not applied. Package
+ *      path-valued session options are added only when the caller has not set the key.
+ *      Use this for custom EP setup, such as shared streams or custom allocators.
+ *
+ * If no explicit factories are supplied, ORT uses the EP captured during variant selection,
+ * adds its default options without overriding configured values, and registers its custom-op
+ * domains before loading the model. It does not re-run the EP selection policy.
+ * When supplying explicit factories, the caller must keep them compatible with the selected variant.
+ *
+ * \param[in] env The environment used for EP selection.
+ * \param[in] context The selected component context. It can be reused for later session creations.
+ * \param[in] session_options Optional session options. The caller's options are not modified.
+ * \param[out] session Receives the created session. Release with OrtApi::ReleaseSession.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
