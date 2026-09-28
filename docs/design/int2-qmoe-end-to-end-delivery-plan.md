@@ -209,13 +209,44 @@ Exit gate: a clean environment can convert the selected checkpoint and run the e
 
 Long-context prefill must not dequantize every expert into persistent FP16 storage.
 
-Evaluate in this order:
+Full-model GPT-OSS-20B validation demonstrates why a separate prefill path is required. Its `top_k=4` routing produces 76 expanded rows for a 19-token prompt, outside the packed GEMV gate of eight expanded rows. The correctness fallback then requests 1,592,524,800 bytes to materialize all FC1 and FC2 expert weights, exceeding the default 1 GiB scratch limit. Raising the limit is useful only for bounded diagnosis and is not a production solution.
 
-1. Bounded selected-expert or row-tiled dequantization for functional integration.
-2. Chunked execution with a documented scratch cap.
-3. Native W2A16 grouped GEMM for the production performance target.
+The estimates below assume one engineer familiar with ORT CUDA and QMoE, one initial architecture (SM80/A100), symmetric FP16 mixed FC1 INT2 / FC2 INT4 with block size 64, and include implementation, focused correctness tests, and profiling. They exclude external review and CI queue time. BF16, asymmetric zero points, additional block sizes, and broad architecture tuning require follow-up estimates.
 
-A native grouped path requires packed INT2 iterators, converters, block-scale loading, grouped expert pointers and strides, tactic selection, and architecture-specific tuning.
+#### Option A: Full Temporary Dequantization
+
+Dequantize every expert into temporary FP16/BF16 FC1 and FC2 buffers, then reuse the existing dense grouped-MoE runner. This is the current correctness fallback.
+
+- **Implementation estimate: 3-5 engineering days** to harden error reporting, memory accounting, and reduced-model coverage because the execution path already exists.
+- **Qualification estimate: 2-3 additional engineering days** for model-level parity and bounded-memory failure tests.
+- **Total: approximately 1-1.5 engineering weeks.**
+- **Use:** correctness oracle, reduced models, and explicitly bounded diagnostics.
+- **Limitation:** GPT-OSS-20B already exceeds the default scratch cap; this option does not satisfy the production memory or TTFT gate.
+
+#### Option B: Selected-Expert or Chunked Dequantization
+
+Use routing results to dequantize only active experts, or process expert/row tiles through reusable bounded scratch before invoking the existing dense grouped-MoE runner.
+
+- **Prototype estimate: 1.5-2 engineering weeks** for routing compaction, scratch planning, and a functional FC1/FC2 pipeline.
+- **Hardening estimate: 1.5-2 engineering weeks** for stream ordering, buffer lifetime, empty/duplicate expert handling, multi-token/top-k coverage, and parity tests.
+- **Performance qualification: 1 engineering week** for M=128/512/2048 profiling, TTFT, peak-memory measurement, and threshold tuning.
+- **Total: approximately 4-5 engineering weeks.**
+- **Use:** the preferred bounded intermediate path and the fastest credible route to functional long-prompt inference.
+- **Limitation:** large prefill batches may activate most experts, reducing memory and bandwidth savings; this should not be assumed to be the final production-performance solution.
+
+#### Option C: Native Packed W2A16 Grouped GEMM
+
+Consume packed INT2/INT4 expert weights directly in a grouped GEMM without materializing A16 weights. This is the preferred production path.
+
+- **Kernel foundation: 2-3 engineering weeks** for packed INT2 iterators, conversion, block-scale loading, mixed FC widths, and explicit instantiations.
+- **QMoE integration: 2-3 engineering weeks** for grouped expert descriptors, routing, SwiGLU/finalization epilogues, workspace planning, and dispatch.
+- **Correctness and tuning: 2-3 engineering weeks** for tactic profiling, M=128/512/2048 parity and performance, and regression coverage on SM80.
+- **Total: approximately 6-9 engineering weeks for one architecture and the primary configuration.**
+- **Follow-up: 2-4 engineering weeks** for BF16, additional block sizes, asymmetric zero points where required, and SM90/SM100/SM120 tuning.
+- **Use:** production TTFT and memory target.
+- **Risk:** largest implementation and review surface; architecture-specific profiling may require separate dispatch thresholds or kernels.
+
+Recommended sequencing is Option B first, while Option C proceeds as the production optimization when staffing permits. Option A remains a correctness oracle and must not be represented as product prefill support.
 
 Exit gate: representative prefill values such as M=128, 512, and 2048 complete within the memory budget and improve TTFT or provide an explicitly accepted intermediate baseline.
 
@@ -275,9 +306,10 @@ PR 4 and PR 5 can proceed in parallel after the CUDA execution contract is estab
 
 ### PR 6: CUDA Prefill
 
-- Bounded integration path.
-- Native grouped GEMM when required by the performance gate.
-- TTFT and memory benchmarks.
+- Option B bounded selected-expert or chunked integration path (approximately 4-5 engineering weeks).
+- Option C native packed grouped GEMM as the production path (approximately 6-9 engineering weeks for the primary SM80 configuration).
+- Option A full temporary dequantization remains a correctness oracle only (approximately 1-1.5 engineering weeks to harden and qualify, largely complete).
+- TTFT, peak-memory, and M=128/512/2048 benchmarks.
 
 ### PR 7: End-to-End Qualification
 
@@ -293,11 +325,12 @@ With one engineer, a production-quality mixed-width QMoE path spanning schema, t
 | --- | --- | --- | --- | --- |
 | 1-2 | Maintain merged contract and deterministic test vectors | Prototype recipe/export against merged contract | Complete bounded correctness path | Freeze models, metrics, and baselines |
 | 3-4 | Support CUDA reference validation | Continue graph and initializer work | Implement and tune packed decode | Run first CUDA quality comparison |
-| 5-6 | Complete CPU mixed-width reference and parity | Produce full external-data model | Harden packed decode; prototype bounded prefill | Validate decode quality and memory |
-| 7-8 | Regression and compatibility tests | Reproducible conversion package | Integrate bounded prefill; prototype grouped GEMM | End-to-end decode and TTFT report |
-| 9-12 | Follow-up coverage | Export hardening | Native grouped-GEMM tuning and architecture coverage | Release qualification |
+| 5-6 | Complete CPU mixed-width reference and parity | Produce full external-data model | Design Option B scratch/routing plan; prototype bounded prefill | Validate decode quality and memory |
+| 7-9 | Regression and compatibility tests | Reproducible conversion package | Implement and harden Option B; profile prefill memory and TTFT | End-to-end decode and bounded-prefill report |
+| 10-15 | Follow-up coverage | Export hardening | Implement and tune Option C native packed grouped GEMM on SM80 | Native-prefill qualification |
+| 16-19 | Additional provider coverage | Export regression coverage | BF16, additional quantization configurations, and architecture tuning | Release qualification |
 
-An eight-week milestone should commit to the merged mixed-width contract, CUDA correctness and packed decode on one GPU architecture, a CPU parity path, and reproducible export. Production prefill performance and broad architecture coverage are follow-up commitments unless additional CUDA staffing is assigned.
+An eight-week milestone should commit to the merged mixed-width contract, CUDA correctness and packed decode on one GPU architecture, a CPU parity path, reproducible export, and at most an Option B bounded-prefill baseline. Option C production prefill and broad architecture coverage are follow-up commitments unless an additional CUDA engineer is assigned.
 
 ## Acceptance Criteria
 
