@@ -673,10 +673,10 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
           ? direct_storage_initializer_allocator_
           :
 #endif
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
-          [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
+          CreateWebGpuAllocator(
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+              [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
@@ -794,7 +794,8 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
   return std::make_unique<webgpu::DataTransfer>(
       [&context = context_]() -> const webgpu::BufferManager& {
         return context.BufferManager();
-      }, Recording());
+      },
+      Recording());
 }
 
 #if defined(__wasm__)

@@ -31,6 +31,7 @@ class Status;
 }
 
 // Data transfer interface.
+// Keep default virtual methods inline so shared providers do not require a non-exported RTTI symbol.
 class IExternalDataLoader {
  public:
   virtual ~IExternalDataLoader() = default;
@@ -38,33 +39,41 @@ class IExternalDataLoader {
   virtual bool CanLoad(const OrtMemoryInfo& target_memory_info) const = 0;
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  virtual bool SupportsDataType(int32_t tensor_data_type) const;
+  virtual bool SupportsDataType([[maybe_unused]] int32_t tensor_data_type) const { return true; }
 
   // Returns true when the loader creates the tensor's backing allocation instead of
   // writing into a tensor allocated by the framework.
-  virtual bool CreatesTensorForDevice(const OrtDevice& target_device) const;
+  virtual bool CreatesTensorForDevice([[maybe_unused]] const OrtDevice& target_device) const { return false; }
 
   // Optional preload hooks allow a loader to start I/O after model parsing but
   // before execution-provider assignment is finalized.
-  virtual bool SupportsPreload() const;
-  virtual common::Status BeginPreload() const;
-  virtual common::Status PreloadTensor(const Env& env,
-                                       const std::filesystem::path& data_file_path,
-                                       std::string_view tensor_name,
-                                       FileOffsetType data_offset,
-                                       SafeInt<size_t> data_length) const;
-  virtual common::Status FinalizePreload(const std::function<bool()>& is_canceled) const;
+  virtual bool SupportsPreload() const { return false; }
+  virtual common::Status BeginPreload() const { return common::Status::OK(); }
+  virtual common::Status PreloadTensor([[maybe_unused]] const Env& env,
+                                       [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                       [[maybe_unused]] std::string_view tensor_name,
+                                       [[maybe_unused]] FileOffsetType data_offset,
+                                       [[maybe_unused]] SafeInt<size_t> data_length) const {
+    return common::Status::OK();
+  }
+  virtual common::Status FinalizePreload([[maybe_unused]] const std::function<bool()>& is_canceled) const {
+    return common::Status::OK();
+  }
 
   // Batch hooks allow loaders to prepare all external tensors before any initializer
   // is exposed to prepacking. The default implementations are no-ops.
-  virtual common::Status BeginLoad() const;
-  virtual common::Status PrepareTensor(const Env& env,
-                                       const std::filesystem::path& data_file_path,
-                                       std::string_view tensor_name,
-                                       FileOffsetType data_offset,
-                                       SafeInt<size_t> data_length) const;
-  virtual common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const;
-  virtual void AbortLoad() const noexcept;
+  virtual common::Status BeginLoad() const { return common::Status::OK(); }
+  virtual common::Status PrepareTensor([[maybe_unused]] const Env& env,
+                                       [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                       [[maybe_unused]] std::string_view tensor_name,
+                                       [[maybe_unused]] FileOffsetType data_offset,
+                                       [[maybe_unused]] SafeInt<size_t> data_length) const {
+    return common::Status::OK();
+  }
+  virtual common::Status FinalizeLoad([[maybe_unused]] const std::function<bool()>& is_canceled) const {
+    return common::Status::OK();
+  }
+  virtual void AbortLoad() const noexcept {}
 #endif
 
   // Tensor should be allocated with the correct memory info and size unless
@@ -74,17 +83,19 @@ class IExternalDataLoader {
 #else
   // the loader writes into the framework-provided allocation.
 #endif
-  virtual common::Status LoadTensor(const Env& env,
-                                    const std::filesystem::path& data_file_path,
+  virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
+                                    [[maybe_unused]] const std::filesystem::path& data_file_path,
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-                                    std::string_view tensor_name,
+                                    [[maybe_unused]] std::string_view tensor_name,
 #endif
-                                    FileOffsetType data_offset,
-                                    SafeInt<size_t> data_length,
+                                    [[maybe_unused]] FileOffsetType data_offset,
+                                    [[maybe_unused]] SafeInt<size_t> data_length,
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-                                    const std::shared_ptr<IAllocator>& allocator,
+                                    [[maybe_unused]] const std::shared_ptr<IAllocator>& allocator,
 #endif
-                                    Tensor& tensor) const;
+                                    [[maybe_unused]] Tensor& tensor) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 };
 
 #if defined(__wasm__)
