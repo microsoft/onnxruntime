@@ -80,7 +80,7 @@ input tokens → router (top-k softmax) → permute by expert
 | `activation_beta` | float | `0.0` | SwiGLU beta. Default `0.0` (Standard SwiGLU); GPT-OSS uses `1.0`. |
 | `swiglu_limit` | float | unset (`+inf`) | SwiGLU clamp limit. Unset means no clamp (Standard SwiGLU); GPT-OSS uses `7.0`. |
 | `expert_weight_bits` (QMoE only) | int | 4 | 4 (INT4/MXFP4) or 8 (INT8/FP8). |
-| `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. FP4/WFP4AFP8 normalize an omitted value to 32 and require 32 when present; NVFP4 normalizes an omitted value to 16 and requires 16 when present. |
+| `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. FP4/WFP4AFP8 normalize an omitted value to 32 and require 32 when present; NVFP4 normalizes an omitted value to 16 and requires 16 when present. FP8 uses square blocks for positive values, per-expert globals otherwise. |
 | `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"nvfp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
 | `weights_prepacked` (QMoE only) | int | -1 | Tri-state, only meaningful when `quant_type="int"`. The prepacked layouts selected by `-1` and `1` are **EP-determined**. `-1` (default): the INT4/INT8 `fc1`/`fc2` initializers are already prepacked in the EP's default layout (e.g. from `pack_weights_for_cuda_mixed_gemm` for the CUDA EP). `1`: already prepacked in an alternate EP-selected layout. `0`: the initializers are raw `[E, N, K/pack]` tensors (as produced by `quantize_matmul_{4,8}bits`) and the kernel runs the CUTLASS layout transform in `PrePack()`. **Note:** the CUDA EP INT4/INT8 MoE GEMM always runs the Ampere (SM80) kernel — even on SM90 — so it consumes the SM80 `fpA_intB` layout on all architectures; `-1` and `1` are therefore equivalent for the CUDA EP today, and `1` is reserved for a possible future Hopper-specific layout. See [§5.1](#51-weights-input-2--5--8). |
 
@@ -103,10 +103,10 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 0 | `input` | T | packed `(total_tokens, hidden_size)` or padded `(batch, sequence, hidden_size)` | all |
 | 1 | `router_probs` | T | `(total_tokens, num_experts)` | all |
 | 2 | `fc1_experts_weights` | T1 | `(E, fusion×inter, hidden/pack)` | all |
-| 3 | `fc1_scales` | T2 (Opt) | varies — see [§2.4](#24-input-369-interpretation-by-quant_type) | int, fp4, nvfp4, wfp4afp8 |
+| 3 | `fc1_scales` | T2 (Opt) | varies — see [§2.4](#24-input-369-interpretation-by-quant_type) | int, fp4, nvfp4, wfp4afp8, block-scaled fp8 |
 | 4 | `fc1_experts_bias` | T (Opt) | `(E, fusion×inter)` | optional |
 | 5 | `fc2_experts_weights` | T1 | `(E, hidden, inter/pack)` | all |
-| 6 | `fc2_scales` | T2 (Opt) | varies | int, fp4, nvfp4, wfp4afp8 |
+| 6 | `fc2_scales` | T2 (Opt) | varies | int, fp4, nvfp4, wfp4afp8, block-scaled fp8 |
 | 7 | `fc2_experts_bias` | T (Opt) | `(E, hidden)` | optional |
 | 8 | `fc3_experts_weights` | T1 (Opt) | `(E, inter, hidden/pack)` | optional (SwiGLU split-weight) |
 | 9 | `fc3_scales` | T2 (Opt) | varies | optional |
@@ -144,7 +144,8 @@ is used for both (backward compatible).
 | `"int"` (per-channel) | float / fp16 / bf16 | `(E, N)` | per-output-channel scale |
 | `"fp4"` | uint8 (`float_ue8m0_t`) | `(E, N, K/32)` | MXFP4 block scale, group=32 |
 | `"nvfp4"` | uint8 (`float8e4m3fn` bytes) | `(E, N, K/16)` | NVFP4 block scale, group=16 (needs `fc*_global_scale`) |
-| `"fp8"` | — | — | not used; only the per-expert global scale (input 15/16/17) is needed |
+| `"fp8"` (`block_size<=0`) | — | — | not used; per-expert global scales are inputs 15/16 |
+| `"fp8"` (`block_size=B>0`) | float32/float16/bfloat16 | `(E, ceil(N/B), ceil(K/B))` | square `B×B` dequant scales; global scales omitted |
 | `"wfp4afp8"` | uint8 (`float_ue8m0_t`) | `(E, N, K/32)` | MXFP4 block scale, group=32 |
 
 Inputs 11/12/13 (`fc*_zero_points`) are valid only for `"int"`. FP8 e4m3 and
@@ -158,7 +159,7 @@ FP4 e2m1 (both MXFP4 and NVFP4) are symmetric formats with no zero-point.
 |--------------|----------|-----------|--------|-----------|----------|------------|
 | `"int"` (4-bit) | W4A16 | FP16/BF16 | INT4 group-wise | SM75+ (Ampere GemmGrouped) | — | always |
 | `"int"` (8-bit) | W8A16 | FP16/BF16 | INT8 group-wise | SM75+ | — | always |
-| `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native | dequant→A16 on SM<90 | `ENABLE_FP8` (CUDA ≥ 11.8) |
+| `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native (globals only) | dequant→A16 on SM<90 or with block scales | `ENABLE_FP8` (CUDA ≥ 11.8) |
 | `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"nvfp4"` | W4A16-NVFP4 | BF16/FP16 | NVFP4 e2m1, group=16, `float8e4m3fn` block scale + per-expert FP32 global scale | **SM120/SM121** native (block-scaled FP4×FP4 prefill) + **fused GEMV decode** | dequant→A16 on other SMs | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
 | `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
@@ -169,7 +170,7 @@ Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_
 if (quant_type_ == "fp4")      use_fp4_dequant_fallback_      = (sm_ < 120);
 if (quant_type_ == "nvfp4")    use_fp4_dequant_fallback_      = !enable_nvfp4_cutlass_gemm_;  // native SM120+ block-scaled FP4xFP4 prefill (ORT_ENABLE_NVFP4_CUTLASS_GEMM, shape-gated); fused GEMV decode still covers small-decode shapes
 if (quant_type_ == "wfp4afp8") use_wfp4afp8_dequant_fallback_ = (sm_ < 100);
-if (quant_type_ == "fp8")      use_fp8_dequant_fallback_      = (sm_ < 90);
+if (quant_type_ == "fp8")      use_fp8_dequant_fallback_      = (sm_ < 90 || block_size_ > 0);
 ```
 
 `expert_weight_bits` validation:
@@ -464,10 +465,12 @@ Dequantization (symmetric): `W = (W_stored - 128) * scale`.
 
 - **Storage**: `[E, N, K]` `float8e4m3fn` (`Float8E4M3FN` in ORT; `__nv_fp8_e4m3` in CUDA), 1 byte per value.
 - **Packing**: `pack_size = 1` — no offline packing required.
-- **Scales**: per-expert global scale only — `fc1_global_scale` (input 15) of shape `(E,)`,
-  T4 float32. No block scales (inputs 3/6/9 omitted).
+- **Scales**: nonpositive `block_size` uses per-expert float32 globals (inputs 15/16,
+  shape `(E,)`), with inputs 3/6/9 omitted. Positive `block_size=B` instead uses
+  square-block float32/float16/bfloat16 scales `(E,ceil(N/B),ceil(K/B))` in inputs 3/6/9 and omits globals.
 - **Zero-points**: not applicable (FP8 is symmetric); inputs 11/12/13 must be absent.
-- **Dequantization** (applied in the GEMM epilogue): `W_bf16 = fp8_to_bf16(W_fp8) × global_scale`.
+- **Dequantization**: legacy globals are applied in the native GEMM epilogue.
+  Square-block scales are applied by the dense fallback before GEMM; see §10.3.
 
 ### 6.5 MXFP4 e2m1 (`quant_type="fp4"` and `"wfp4afp8"`)
 
@@ -574,7 +577,7 @@ The operator supports three fusion modes via the `swiglu_fusion` attribute:
 > model before June 2025 uses **interleaved** SwiGLU layout but `swiglu_fusion` attribute to `0`.
 > To keep those models working, when `activation_type="swiglu"` and `swiglu_fusion=0`,
 > the CUDA op treats the FC1 weights as interleaved (i.e. as if `swiglu_fusion=1`):
-> unconditionally for **QMoE** (which never has a separate `fc3`).
+> for **QMoE** without a separate `fc3` (block-scaled FP8 can supply separate FC3).
 > A one-time warning is logged. Consequently a SwiGLU model that genuinely intended the
 > non-interleaved split must provide a separate `fc3` (standard MoE) rather than rely on
 > `swiglu_fusion=0`. New exporters should set `swiglu_fusion` explicitly.
@@ -1113,7 +1116,7 @@ so a genuinely broken native kernel (error order ~1.0+) is still caught.
 added so H200 (SM90) has a working narrow-weight QMoE path that does not require
 the FP4 launcher.
 
-### 10.1 Native dispatch (SM90+)
+### 10.1 Native dispatch (SM90+, per-expert scales only)
 
 ```cpp
 // Constructor — sm_ >= 90 with ENABLE_FP8
@@ -1148,10 +1151,67 @@ GroupedGemm with EpilogueOpDefault:
 QMoE op only needs to construct `QuantParams::FP8(dequant_fc1, nullptr, dequant_fc2)`
 from the per-expert global scales (inputs 15/16).
 
-### 10.3 Dequant fallback (SM<90)
+### 10.3 Dequant fallback (SM<90 or square-block scales)
 
 `LaunchQMoEDequantizeFp8Weights` decodes weights into BF16/FP16 and the dense
 A16 runner is used.
+
+Positive `block_size=B` selects square-block FP8, including the official
+`Qwen/Qwen3.8-Flash-Next-FP8` `[128,128]` checkpoint format:
+
+- `expert_weight_bits=8`, `quant_type="fp8"`.
+- Weights are row-major `float8e4m3fn` `[E,N,K]`, not transposed or CUTLASS-prepacked.
+- Inputs 3/6/9 hold float32, float16, or bfloat16 dequantization scales `[E,ceil(N/B),ceil(K/B)]`.
+  Each weight becomes `float(weight[e,n,k]) * scale[e,n/B,k/B]`.
+  The official checkpoint's `weight_scale_inv` tensors are **bfloat16** and are
+  multiplicative dequantization scales despite their name; do not invert them.
+  CUDA converts the small scale grids to float32 on the execution stream.
+- Inputs 15/16 and all zero points must be omitted. Nonpositive `block_size`
+  retains the legacy per-expert global-scale contract and native dispatch.
+- Block FP8 always uses dequantization plus the dense FP16/BF16 runner, even on
+  H200. The native FP8 epilogue supports only one scale per expert and cannot
+  correctly apply these two-dimensional blocks.
+- Separate FC1 gate / FC3 up projections are supported with `activation_type="silu"`
+  and `swiglu_fusion=0`. FC1/FC3 biases are currently rejected in this mode.
+  Fused SwiGLU accepts interleaved (`1`) or contiguous gate/up halves (`2`);
+  layout 2 is converted to interleaved while dequantizing and rejects FC1 bias.
+- Hidden and intermediate sizes must be multiples of 8 and at least 16 for the
+  dense CUDA runner. They need not be divisible by `B`; partial scale blocks work.
+
+The official shape is BF16, hidden size 2560, intermediate size 640, 512 experts,
+top-10 routing, and SiLU with separate gate/up projections. Block FP8 routes
+before dequantizing, compacts the selected expert IDs on the GPU, and decodes
+each selected expert once per row tile. Repeated selections share one dense
+slot. Biases follow the same mapping; routing records retain original expert IDs.
+
+Dense weight scratch and the GEMM profiler's expert count are bounded by
+`C = min(E, rows_per_tile * top_k)`, rather than always using `E`. For separate
+gate/up projections, dense weight scratch is `C * 3 * hidden * inter * 2` bytes:
+**93.75 MiB** for one-token/top-10 decode, versus **4.6875 GiB** for all 512
+experts. Allocation uses this upper bound without copying the active count to
+the CPU; unused slots are not dequantized. The small scale grids are still
+converted in full. Quantized weight storage is unchanged.
+
+The existing `ep.cuda.qmoe_row_tile_size` session option also bounds FP8 weight
+scratch during prefill. Buffers are reused on the same stream between tiles;
+experts selected in multiple tiles are decoded again. Without tiling, a large
+prefill may still reserve all `E` slots. Legacy global-scale FP8 dispatch is
+unchanged. This remains a dense-GEMM fallback, not native block-FP8 execution.
+Router logits use the existing softmax/top-k semantics and
+`normalize_routing_weights` controls renormalization.
+
+With `ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO=1`, block FP8 additionally reports
+`ExpertCapacity` and `DequantWeightBytes` (the dense weight buffers only, not
+total allocator or profiler memory).
+
+CUDA tests are in `test_qmoe_fp8_cuda.py`. The official 512-expert GPU test is
+opt-in with `ORT_RUN_LARGE_FP8_QMOE_TEST=1` and uses runtime weight inputs to avoid
+the protobuf 2 GiB initializer limit. It covers both single-token decode and
+multi-token prefill with BF16 scales. Smaller tests also cover float32/float16
+scales, initializer weights, runtime updates, sparse routing with biases,
+partial final tiles, and the decode scratch bound. Internal CUDA tests in
+`qmoe_fp8_compaction_test.cc` check expert remapping, unused slots, and selected
+weight/bias decoding for separate and fused layouts.
 
 ### 10.4 Kernel instantiation files
 
@@ -1425,7 +1485,7 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 | [test_qmoe_cuda.py](onnxruntime/test/python/transformers/test_qmoe_cuda.py) | INT4/INT8 QMoE — primary regression signal for the production QMoE path. Exercises `pack_weights_for_cuda_mixed_gemm` and dequant-then-matmul reference. `TestQMoEIntPrePackSmoke` covers the raw-weight `weights_prepacked=0` in-`PrePack` layout transform (smoke test: asserts finite output, not bit-parity). |
 | [test_qmoe_cpu.py](onnxruntime/test/python/transformers/test_qmoe_cpu.py) | INT4/INT8 QMoE on CPU (smoke). |
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. End-to-end runs on SM120; on SM<120 the dequant fallback is exercised. |
-| [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | FP8 W8A16 QMoE on SM90+ native path and SM<90 dequant fallback. |
+| [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | Legacy FP8 W8A16 native/dequant paths and square-block FP8 fallback, separate FC3, fused SwiGLU, partial blocks, top-10, validation errors, and opt-in official Qwen dimensions. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
 
 ### Reference computation
