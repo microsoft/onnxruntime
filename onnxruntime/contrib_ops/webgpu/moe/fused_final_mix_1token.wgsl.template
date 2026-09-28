@@ -10,6 +10,8 @@
 // out: output [1, hidden_size] — accumulated weighted output
 // uniform: hidden_size, k
 
+#use .getByOffset .setByOffset
+
 $MAIN {
     let out_idx = workgroup_idx * workgroup_size_x + local_idx;
     if (out_idx >= uniforms.hidden_size) {
@@ -17,9 +19,9 @@ $MAIN {
     }
     var acc = output_element_t(0);
     for (var i = 0u; i < uniforms.k; i++) {
-        let expert_idx = indirect_experts[i];
-        let router_value = router_values[expert_idx];
-        acc += router_value * fc2_outputs[i * uniforms.hidden_size + out_idx];
+        let expert_idx = indirect_experts.getByOffset(i);
+        let router_value = router_values.getByOffset(expert_idx);
+        acc += router_value * fc2_outputs.getByOffset(i * uniforms.hidden_size + out_idx);
     }
-    output[out_idx] = acc;
+    output.setByOffset(out_idx, acc);
 } // MAIN
