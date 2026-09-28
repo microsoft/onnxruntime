@@ -203,6 +203,14 @@ if (WIN32)
       if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
         add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:dawn::webgpu_dawn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:dawn::webgpu_dawn>)
       endif()
+      if (onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+        add_custom_command(
+          TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${_directstorage_runtime}"
+              "${_directstorage_core_runtime}"
+              ${JAVA_PACKAGE_LIB_DIR}/
+        )
+      endif()
     endif()
   endif()
 else()

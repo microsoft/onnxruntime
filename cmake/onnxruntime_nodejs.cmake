@@ -67,6 +67,11 @@ if (onnxruntime_USE_WEBGPU)
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
         list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:dawn::webgpu_dawn>")
     endif()
+    if (WIN32 AND onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+        list(APPEND NODEJS_DLL_DEPS
+            "${_directstorage_runtime}"
+            "${_directstorage_core_runtime}")
+    endif()
 endif()
 if (onnxruntime_USE_TENSORRT)
     set(NODEJS_BINDING_USE_TENSORRT "--use_tensorrt")

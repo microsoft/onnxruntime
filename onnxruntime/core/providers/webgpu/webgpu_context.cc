@@ -259,6 +259,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    const auto* ordinary_adapter_options_chain =
+        req_adapter_options.nextInChain;
     dawn::native::d3d::RequestAdapterOptionsLUID luid_options{};
     if (pipelined_weight_loading_) {
       LUID selected_luid{};
@@ -377,21 +379,44 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         wgpu::Adapter adapter;
         std::string message;
       };
-      RequestAdapterResult adapter_result;
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
-                                                                     &req_adapter_options,
-                                                                     wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
-                                                                        RequestAdapterResult* result) noexcept {
-                                                                       result->status = status;
-                                                                       if (status == wgpu::RequestAdapterStatus::Success) {
-                                                                         result->adapter = std::move(adapter);
-                                                                       } else {
-                                                                         result->message = std::string{message};
-                                                                       }
-                                                                     },
-                                                                     &adapter_result),
-                                                                 UINT64_MAX));
+      const auto request_adapter = [&]() {
+        RequestAdapterResult result;
+        ORT_ENFORCE(wgpu::WaitStatus::Success ==
+                    instance_.WaitAny(instance_.RequestAdapter(
+                                          &req_adapter_options,
+                                          wgpu::CallbackMode::WaitAnyOnly,
+                                          [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter,
+                                             wgpu::StringView message,
+                                             RequestAdapterResult* result) noexcept {
+                                            result->status = status;
+                                            if (status == wgpu::RequestAdapterStatus::Success) {
+                                              result->adapter = std::move(adapter);
+                                            } else {
+                                              result->message = std::string{message};
+                                            }
+                                          },
+                                          &result),
+                                      UINT64_MAX));
+        return result;
+      };
+      RequestAdapterResult adapter_result = request_adapter();
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      if (adapter_result.status != wgpu::RequestAdapterStatus::Success &&
+          pipelined_weight_loading_ &&
+          weight_load_acceleration_mode_ ==
+              WeightLoadAccelerationMode::PreferredPipelined) {
+        LOGS_DEFAULT(WARNING)
+            << "Dawn rejected the adapter selected for pipelined weight "
+               "loading: "
+            << adapter_result.message
+            << " Retrying ordinary Dawn adapter selection and "
+               "non-pipelined weight loading.";
+        pipelined_weight_loading_ = false;
+        direct_storage_d3d12_device_.Reset();
+        req_adapter_options.nextInChain = ordinary_adapter_options_chain;
+        adapter_result = request_adapter();
+      }
+#endif
       ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
                   "Failed to get a WebGPU adapter: ", adapter_result.message);
       adapter = std::move(adapter_result.adapter);

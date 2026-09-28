@@ -23,6 +23,7 @@
 #include "core/framework/config_options.h"
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -30,7 +31,11 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/inference_session.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
@@ -746,6 +751,118 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
       allocator, empty));
   EXPECT_EQ(empty.SizeInBytes(), 0u);
   EXPECT_EQ(empty.MutableDataRaw(), nullptr);
+}
+
+TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Off))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_direct_storage_session_test")};
+  const auto model_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("model.onnx");
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  constexpr size_t kDataOffset = 32;
+  const std::array<float, 15> weights{
+      0.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+      10.0f, 11.0f, 12.0f, 13.0f, 14.0f};
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    const std::array<char, kDataOffset> prefix{};
+    stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    stream.write(reinterpret_cast<const char*>(weights.data()),
+                 static_cast<std::streamsize>(sizeof(weights)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(8);
+  model.set_producer_name("onnxruntime-test");
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_direct_storage_session");
+
+  const auto set_tensor_type = [&weights](
+                                   ONNX_NAMESPACE::ValueInfoProto* value_info,
+                                   const char* name) {
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(weights.size());
+  };
+  set_tensor_type(graph->add_input(), "X");
+  set_tensor_type(graph->add_output(), "Y");
+
+  auto* initializer = graph->add_initializer();
+  initializer->set_name("W");
+  initializer->set_data_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  initializer->add_dims(weights.size());
+  initializer->set_data_location(
+      ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* location = initializer->add_external_data();
+  location->set_key("location");
+  location->set_value("weights.bin");
+  auto* offset = initializer->add_external_data();
+  offset->set_key("offset");
+  offset->set_value(std::to_string(kDataOffset));
+  auto* length = initializer->add_external_data();
+  length->set_key("length");
+  length->set_value(std::to_string(sizeof(weights)));
+
+  auto* add = graph->add_node();
+  add->set_op_type("Add");
+  add->add_input("X");
+  add->add_input("W");
+  add->add_output("Y");
+  {
+    std::ofstream stream{model_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    ASSERT_TRUE(model.SerializeToOstream(&stream));
+  }
+
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+  auto provider = WebGpuProviderFactoryCreator::Create(
+                      WeightLoadAccelerationOptions(
+                          kWeightLoadAcceleration_Required))
+                      ->CreateProvider();
+  ASSERT_NE(provider, nullptr);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::vector<float> input(weights.size(), 1.0f);
+  OrtValue input_value;
+  CreateMLValue<float>(
+      TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+      {static_cast<int64_t>(weights.size())}, input, &input_value);
+  NameMLValMap feeds{{"X", input_value}};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(
+      session.Run(RunOptions{}, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& output = fetches[0].Get<Tensor>();
+  ASSERT_EQ(output.Shape(), TensorShape({static_cast<int64_t>(weights.size())}));
+  const auto* output_data = output.Data<float>();
+  for (size_t index = 0; index < weights.size(); ++index) {
+    EXPECT_FLOAT_EQ(output_data[index], input[index] + weights[index]);
+  }
 }
 
 TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {
