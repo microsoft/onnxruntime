@@ -107,6 +107,85 @@ int EstimateTransposeCost(const Graph& graph) {
   return cost;
 }
 
+TEST(TransposeOptimizerTests, SharedTransposeBranchCancellation) {
+  for (bool qdq : {false, true}) {
+    for (bool inverse : {false, true}) {
+      // Blockers: none, dynamic Slice axes, an intermediate graph output, or another fork.
+      for (int blocker = 0; blocker < 4; ++blocker) {
+        SCOPED_TRACE(testing::Message() << "qdq=" << qdq << " inverse=" << inverse
+                                       << " blocker=" << blocker);
+        std::string branch_slice_name;
+        auto build = [&](ModelTestBuilder& builder) {
+          auto* input = builder.MakeInput<float>({4, 5, 6}, -1.0f, 1.0f);
+          auto add_qdq = [&](NodeArg* value) {
+            auto* q = builder.MakeIntermediate();
+            auto* dq = builder.MakeIntermediate();
+            builder.AddQuantizeLinearNode<uint8_t>(value, 0.05f, 128, q);
+            builder.AddDequantizeLinearNode<uint8_t>(q, 0.05f, 128, dq);
+            return dq;
+          };
+          if (qdq) {
+            input = add_qdq(input);
+          }
+          auto* shared = builder.MakeIntermediate();
+          builder.AddNode("Transpose", {input}, {shared})
+              .AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+          if (qdq) {
+            auto* q = builder.MakeIntermediate();
+            builder.AddQuantizeLinearNode<uint8_t>(shared, 0.05f, 128, q);
+            shared = q;
+          }
+          for (int branch = 0; branch < 3; ++branch) {
+            NodeArg* value = shared;
+            if (qdq) {
+              value = builder.MakeIntermediate();
+              builder.AddDequantizeLinearNode<uint8_t>(shared, 0.05f, 128, value);
+            }
+            auto* starts = builder.MakeInitializer<int64_t>({1}, {0});
+            auto* ends = builder.MakeInitializer<int64_t>({1}, {3});
+            auto* axes = blocker == 1 && branch == 0
+                             ? builder.MakeInput<int64_t>({1}, std::vector<int64_t>{1})
+                             : builder.MakeInitializer<int64_t>({1}, {1});
+            auto* sliced = branch == 0 && blocker != 2 ? builder.MakeIntermediate() : builder.MakeOutput();
+            auto& slice = builder.AddNode("Slice", {value, starts, ends, axes}, {sliced});
+            if (branch == 0) {
+              branch_slice_name = slice.Name();
+              if (blocker == 3) {
+                builder.AddNode("Relu", {sliced}, {builder.MakeOutput()});
+              }
+              if (qdq) {
+                sliced = add_qdq(sliced);
+              }
+              builder.AddNode("Transpose", {sliced}, {builder.MakeOutput()})
+                  .AddAttribute("perm", inverse ? std::vector<int64_t>{2, 0, 1}
+                                                : std::vector<int64_t>{1, 2, 0});
+            }
+          }
+        };
+        auto check = [&](InferenceSessionWrapper& session) {
+          const bool cancel = inverse && blocker == 0;
+          auto counts = CountOpsInGraph(session.GetGraph());
+          EXPECT_EQ(counts["Transpose"], cancel ? 1 : 2);
+          bool found_branch = false;
+          for (const auto& node : session.GetGraph().Nodes()) {
+            if (node.Name() == branch_slice_name) {
+              found_branch = true;
+              ASSERT_NE(node.InputDefs()[0]->Shape(), nullptr);
+              EXPECT_EQ(node.InputDefs()[0]->Shape()->dim(0).dim_value(), cancel ? 4 : 5);
+            }
+          }
+          EXPECT_TRUE(found_branch);
+        };
+        TransformerTester(build, check, TransformerLevel::Default, TransformerLevel::Level1,
+                          18, 0.0, 0.0, std::make_unique<TransposeOptimizer>(std::make_shared<CPUAllocator>()),
+                          [](SessionOptions& options) {
+                            ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+                          });
+      }
+    }
+  }
+}
+
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);

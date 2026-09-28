@@ -1528,11 +1528,11 @@ static int EstimateValueRank(const api::GraphRef& graph, std::string_view input)
 
 static const HandlerInfo* GetHandler(api::NodeRef& node, const HandlerMap& extended_handlers);
 
-// Returns true if the provided transpose node is only consumed by nodes we can likely push it through.
+// Only credit removal when bypassing the consumer can make the transpose unused.
 static bool CanLikelyRemoveTranspose(const api::GraphRef& graph, api::NodeRef& transpose,
                                      const HandlerMap& extended_handlers) {
   auto consumers = graph.GetValueConsumers(transpose.Outputs()[0]);
-  if (!consumers->comprehensive) {
+  if (!consumers->comprehensive || consumers->nodes.size() != 1) {
     return false;
   }
   for (auto& node : consumers->nodes) {
@@ -3021,6 +3021,93 @@ static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   return cost < 0;
 }
 
+static bool CanModifyNode(const OptimizerCtx& ctx, const api::NodeRef& node);
+
+// A shared transpose stays alive on other branches. Only duplicate it onto a branch when we can
+// follow a single-consumer, permutation-preserving path to an inverse transpose.
+static bool CanCancelTransposeOnBranch(OptimizerCtx& ctx, api::NodeRef& first_node,
+                                       const std::vector<int64_t>& perm) {
+  const auto perm_inv = InvertPerm(perm);
+  api::NodeRef* node = &first_node;
+  std::unique_ptr<api::NodeRef> next_node;
+  while (CanModifyNode(ctx, *node)) {
+    const auto* info = GetHandler(*node, ctx.extended_handlers);
+    // Extended handlers may have different preconditions or change the permutation.
+    if (info == nullptr || info != GetHandler(*node, HandlerMap{})) {
+      return false;
+    }
+
+    if (node->IsOp("Transpose")) {
+      auto downstream_perm = GetPermAttrIfValid(*node);
+      return downstream_perm && *downstream_perm == perm_inv;
+    }
+
+    const auto indices = info->transposible_inputs_fn(ctx, *node);
+    const auto inputs = node->Inputs();
+    const auto outputs = node->Outputs();
+    if (indices.size() != 1 || indices[0] != 0 || inputs.empty() || outputs.size() != 1 ||
+        !CanTransposeInputWithQDQ(ctx.graph, inputs[0], perm_inv) ||
+        EstimateValueRank(ctx.graph, outputs[0]) == 0) {
+      return false;
+    }
+
+    if (info->handler_fn == HandleQuantizeDequantizeLinear) {
+      const auto quant_info = GetQuantizationInfo(ctx.graph, *node);
+      if (!quant_info || !IsSupportedQuantizationMode(quant_info->mode)) {
+        return false;
+      }
+      if (ctx.opset >= 13) {
+        const auto scale_shape = ctx.graph.GetValueInfo(inputs[1])->Shape();
+        int64_t axis = node->GetAttributeIntDefault("axis", 1);
+        if ((!scale_shape || !scale_shape->empty()) && !NormalizeAndValidateAxis(axis, perm.size())) {
+          return false;
+        }
+      }
+    } else if (info->handler_fn == HandleSlice) {
+      auto axes = node->GetAttributeInts("axes");
+      if (ctx.opset >= 10 && inputs.size() > 3 && !inputs[3].empty()) {
+        auto constant = ctx.graph.GetConstant(inputs[3]);
+        axes = constant ? TensorIntData(*constant, constant->DType()) : std::nullopt;
+      }
+      const bool has_axes = ctx.opset < 10 ? node->GetAttributeInts("axes").has_value()
+                                           : inputs.size() > 3 && !inputs[3].empty();
+      if (has_axes) {
+        if (!axes || !NormalizeAndValidateAxes(*axes, perm.size())) {
+          return false;
+        }
+      } else if (ctx.opset >= 10) {
+        auto starts_info = ctx.graph.GetValueInfo(inputs[1]);
+        auto shape = starts_info->Shape();
+        auto dtype = starts_info->DType();
+        if (!shape || shape->size() != 1 || (*shape)[0] < 0 ||
+            static_cast<uint64_t>((*shape)[0]) > perm.size() ||
+            (dtype != api::DataType::INT32 && dtype != api::DataType::INT64)) {
+          return false;
+        }
+      } else {
+        auto starts = node->GetAttributeInts("starts");
+        if (!starts || starts->size() > perm.size()) {
+          return false;
+        }
+      }
+    } else if (info->handler_fn != HandleSimpleNode) {
+      return false;
+    }
+
+    auto consumers = ctx.graph.GetValueConsumers(outputs[0]);
+    if (!consumers->comprehensive || consumers->nodes.size() != 1) {
+      return false;
+    }
+    const auto next_inputs = consumers->nodes[0]->Inputs();
+    if (next_inputs.empty() || next_inputs[0] != outputs[0]) {
+      return false;
+    }
+    next_node = std::move(consumers->nodes[0]);
+    node = next_node.get();
+  }
+  return false;
+}
+
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
 bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
                       const std::vector<int64_t>& perm, size_t transpose_input_index,
@@ -3043,8 +3130,12 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    cost = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices,
-                            ctx.extended_handlers)
+    auto consumers = ctx.graph.GetValueConsumers(transpose.Outputs()[0]);
+    const bool shared = !consumers->comprehensive || consumers->nodes.size() > 1;
+    const bool beneficial = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info,
+                                             input_indices, ctx.extended_handlers) ||
+                            (shared && transpose_input_index == 0 && CanCancelTransposeOnBranch(ctx, node, perm));
+    cost = beneficial
                ? CostCheckResult::kPushTranspose
                : CostCheckResult::kStop;
   }
