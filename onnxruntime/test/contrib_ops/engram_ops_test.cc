@@ -849,6 +849,7 @@ void RunNGramHashMappingInPlaceTest(std::unique_ptr<IExecutionProvider> ep) {
   EXPECT_EQ(std::vector<T>(present_span.begin(), present_span.end()), expected_final_present);
 }
 
+#ifdef USE_CUDA
 void RunVarlenNGramHashMappingInPlaceCudaTest() {
   constexpr int64_t kStateLength = kMaxNGramSize - 1;
   constexpr int64_t kNumHeads = kStateLength * kHeadsPerNGram;
@@ -929,6 +930,7 @@ void RunVarlenNGramHashMappingInPlaceCudaTest() {
                                    expected_hash.begin() + (step + 1) * kNumHeads));
   }
 }
+#endif
 
 template <typename T>
 std::vector<int32_t> CuSeqLensFrom(const std::vector<std::vector<T>>& sequences) {
