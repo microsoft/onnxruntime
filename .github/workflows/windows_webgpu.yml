@@ -182,6 +182,7 @@ jobs:
             tools/python
             js
             node
+            cmake
 
       - name: Setup Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
