@@ -8680,6 +8680,64 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightSha
                                         TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionUnfusedMatMulGraph));
 }
 
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaOverflowingQkvShapeTest) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  const auto* capturing_sink_raw = capturing_sink.get();
+  logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kVERBOSE, false,
+                                          logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("MobileClipOverflowTest");
+
+  for (const auto& [num_heads, head_size] :
+       {std::pair{std::numeric_limits<int64_t>::max(), int64_t{2}},
+        std::pair{std::numeric_limits<int64_t>::max() / 3 + 1, int64_t{1}}}) {
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+    };
+
+    auto replace_qkv_shape = [num_heads, head_size](Graph& graph) -> Status {
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() != "Reshape" || node.InputDefs().size() < 2) {
+          continue;
+        }
+
+        const auto& shape_name = node.InputDefs()[1]->Name();
+        const ONNX_NAMESPACE::TensorProto* shape = nullptr;
+        if (!graph.GetInitializedTensor(shape_name, shape) ||
+            shape->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+          continue;
+        }
+
+        Initializer shape_data{graph, *shape, graph.ModelPath()};
+        const auto dimensions = shape_data.DataAsSpan<int64_t>();
+        if (dimensions.size() != 5 || dimensions[2] != 3) {
+          continue;
+        }
+
+        ONNX_NAMESPACE::TensorProto overflow_shape(*shape);
+        overflow_shape.clear_raw_data();
+        for (int64_t dimension : dimensions) {
+          overflow_shape.add_int64_data(dimension);
+        }
+        overflow_shape.set_int64_data(3, num_heads);
+        overflow_shape.set_int64_data(4, head_size);
+        graph.RemoveInitializedTensor(shape_name);
+        graph.AddInitializedTensor(overflow_shape);
+        return Status::OK();
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QKV reshape initializer not found");
+    };
+
+    const size_t previous_message_count = capturing_sink_raw->Messages().size();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::make_unique<AttentionFusion>(),
+                                          TransformerLevel::Level2, 1, replace_qkv_shape,
+                                          CheckMobileClipAttentionUnfusedMatMulGraph));
+    const auto& messages = capturing_sink_raw->Messages();
+    EXPECT_THAT(std::vector<std::string>(messages.begin() + previous_message_count, messages.end()),
+                testing::Contains(testing::HasSubstr("unable to derive num_heads/head_size from qkv reshape initializer")));
+  }
+}
+
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmNonDefaultAttributesTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes, {}, true);
