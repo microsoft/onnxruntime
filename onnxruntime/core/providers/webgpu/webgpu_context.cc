@@ -354,20 +354,20 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
 #endif
 
-      wgpu::Adapter adapter;
-      if (config.adapter_index) {
+    wgpu::Adapter adapter;
+    if (config.adapter_index) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-        const auto adapters = EnumerateBundledDawnAdapters(instance_.Get(), req_adapter_options);
-        ORT_ENFORCE(*config.adapter_index < adapters.size(),
-                    "WebGPU adapterIndex ", *config.adapter_index,
-                    " is out of range; Dawn enumerated ", adapters.size(),
-                    " adapter(s) for the requested backend and power-preference hint.");
-        adapter = adapters[*config.adapter_index];
-        LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
-                           << " of " << adapters.size()
-                           << " adapter(s) for the requested backend and power-preference hint.";
+      const auto adapters = EnumerateBundledDawnAdapters(instance_.Get(), req_adapter_options);
+      ORT_ENFORCE(*config.adapter_index < adapters.size(),
+                  "WebGPU adapterIndex ", *config.adapter_index,
+                  " is out of range; Dawn enumerated ", adapters.size(),
+                  " adapter(s) for the requested backend and power-preference hint.");
+      adapter = adapters[*config.adapter_index];
+      LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
+                         << " of " << adapters.size()
+                         << " adapter(s) for the requested backend and power-preference hint.";
 #endif
-      } else {
+    } else {
       // Capture adapter request result without throwing inside the Dawn callback.
       // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
       // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
@@ -395,8 +395,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
                   "Failed to get a WebGPU adapter: ", adapter_result.message);
       adapter = std::move(adapter_result.adapter);
-      }
-      ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
+    }
+    ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     direct_storage_adapter_ = adapter;
@@ -529,64 +529,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Context is created for: Instance=" << instance_.Get() << ", Device=" << device_.Get() << ".";
 
-<<<<<<< HEAD
-    // cache device queue
-    device_queue_ = device_.GetQueue();
-    // cache device limits
-    ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
-    if (max_storage_buffer_binding_size_ != 0) {
-      device_limits_.maxStorageBufferBindingSize =
-          std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
-    }
-    // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
-    // buffer segment offsets are always properly aligned for WebGPU bind group creation.
-    if (device_limits_.minStorageBufferOffsetAlignment > 0) {
-      device_limits_.maxStorageBufferBindingSize -=
-          (device_limits_.maxStorageBufferBindingSize % device_limits_.minStorageBufferOffsetAlignment);
-    }
-    // cache device features
-    wgpu::SupportedFeatures supported_features;
-    Device().GetFeatures(&supported_features);
-    for (size_t i = 0; i < supported_features.featureCount; i++) {
-      device_features_.insert(supported_features.features[i]);
-    }
-#if !defined(__wasm__)
-    // Dawn native advertises this software feature on all adapters, and ORT requests it when
-    // creating a device. An externally supplied device must have requested it too: per-session
-    // encoders do not protect shared device entry points such as buffer creation and Queue::Submit.
-    ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
-                config.device != nullptr
-                    ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
-                      "in DeviceDescriptor.requiredFeatures when it is created."
-                    : "WebGPU: the internally created native device is missing the required "
-                      "ImplicitDeviceSynchronization feature.");
-#endif
-    // cache adapter info
-    if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
-      adapter_info_.nextInChain = &subgroup_matrix_configs_;
-    }
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
-
-    // create buffer manager
-    buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               config.buffer_cache_config.storage.mode,
-                                               config.buffer_cache_config.uniform.mode,
-                                               config.buffer_cache_config.query_resolve.mode,
-                                               config.buffer_cache_config.default_entry.mode);
-    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                                           BufferCacheMode::LazyRelease,
-                                                           BufferCacheMode::LazyRelease,
-                                                           BufferCacheMode::Disabled,
-                                                           BufferCacheMode::Disabled);
-
-    // create program manager
-    program_mgr_ = std::make_unique<ProgramManager>(*this);
-
-    // create split-k config
-    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
-
-    // set query type
-=======
   // cache device queue
   device_queue_ = device_.GetQueue();
   // cache device limits
@@ -608,8 +550,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_features_.insert(supported_features.features[i]);
   }
   // cache adapter info
->>>>>>> f432237090 (Lint)
 #if !defined(__wasm__)
+  // Native sessions share device entry points outside their per-session command recordings.
+  ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
+              config.device != nullptr
+                  ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
+                    "in DeviceDescriptor.requiredFeatures when it is created."
+                  : "WebGPU: the internally created native device is missing the required "
+                    "ImplicitDeviceSynchronization feature.");
   if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     adapter_info_.nextInChain = &subgroup_matrix_configs_;
   }

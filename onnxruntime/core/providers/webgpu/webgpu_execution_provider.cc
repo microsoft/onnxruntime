@@ -74,7 +74,7 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording());
+    DataTransfer transfer([&ep]() -> const BufferManager& { return ep.BufferManager(); }, ep.Recording());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -620,10 +620,10 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
-      recording_{std::make_unique<webgpu::CommandRecordingState>()},
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
 #endif
+      recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
           context.IsDeviceFree(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },

@@ -566,7 +566,8 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
 
     const auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                        wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-    return context_.InitializerBufferManager().Create(size, usage);
+    std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
+    return context_.InitializerBufferManager().Create(recording_, size, usage);
   }
 
   void Free(void* p) override {
@@ -590,12 +591,14 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
       return;
     }
 
-    context_.InitializerBufferManager().Release(static_cast<WGPUBuffer>(p));
+    std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
+    context_.InitializerBufferManager().Release(recording_, static_cast<WGPUBuffer>(p));
   }
 
  private:
   WebGpuContext& context_;
   std::shared_ptr<DirectStorageInitializerState> state_;
+  CommandRecordingState recording_;
 };
 
 AllocatorPtr CreateDirectStorageWebGpuAllocator(

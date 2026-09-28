@@ -88,7 +88,7 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
     }
     existing_provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     ASSERT_NE(existing_provider, nullptr);
-    existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
+    existing_device = webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get();
   }
 
   EXPECT_EXIT(
@@ -98,7 +98,8 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
       },
       testing::ExitedWithCode(EXIT_SUCCESS), "");
 
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get(),
+            existing_device);
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
   flag_error.clear();
   EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
@@ -528,7 +529,7 @@ TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
     ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
   },
                              /*compile_only_parent=*/true);
 #endif
