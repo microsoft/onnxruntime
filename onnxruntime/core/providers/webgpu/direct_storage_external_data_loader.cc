@@ -399,7 +399,7 @@ common::Status PrepareTensorForBatch(
                 "\" has a negative file offset.");
 
   const size_t length = static_cast<size_t>(data_length);
-  ORT_RETURN_IF(length > std::numeric_limits<uint64_t>::max() - 3,
+  ORT_RETURN_IF(length > std::numeric_limits<uint64_t>::max() - 15,
                 "DirectStorage initializer \"", tensor_name,
                 "\" is too large to align.");
 
