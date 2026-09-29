@@ -62,7 +62,7 @@ jobs:
         if: matrix.vcpkg_option == 'vcpkg'
         uses: ./.github/actions/setup-vcpkg-cache
         with:
-          key: windows-x64-webgpu-${{ matrix.wgsl_template }}-relwithdebinfo
+          key: windows-x64-webgpu-relwithdebinfo
           path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
