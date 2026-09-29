@@ -907,6 +907,42 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithSizeThreshold) {
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
     ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 1);
   }
+
+  // Case 6: the specialized Shape folding path observes the same net-growth threshold.
+  {
+    Model model("ConstantFoldingShapeWithSizeThreshold",
+                false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    TypeProto input_type;
+    input_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    for (int64_t dim : {2, 3, 4}) {
+      input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+
+    TypeProto output_type;
+    output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+    auto& input_arg = graph.GetOrCreateNodeArg("shape_input", &input_type);
+    auto& output_arg = graph.GetOrCreateNodeArg("shape_output", &output_type);
+    graph.AddNode("shape", "Shape", "Shape of a non-constant graph input.", {&input_arg}, {&output_arg});
+    graph.SetInputs({&input_arg});
+    graph.SetOutputs({&output_arg});
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "1"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_options),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Shape"], 1);
+  }
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingCopiesAliasedTensorBuffer) {

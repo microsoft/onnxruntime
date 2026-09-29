@@ -504,6 +504,37 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         have_updated_nodes = true;
       }
     } else if (node->OpType().compare("Shape") == 0) {
+      if (output_size_threshold > 0) {
+        ORT_TRY {
+          const int64_t estimated_output_size = EstimateNodeOutputSizeInBytes(*node, graph);
+          if (estimated_output_size >= 0) {
+            InitializedTensorSet constant_inputs;
+            const auto& input_defs = node->InputDefs();
+            if (!input_defs.empty() && input_defs[0] != nullptr) {
+              constexpr bool check_outer_scope = false;
+              const auto* initializer =
+                  graph.GetConstantInitializer(input_defs[0]->Name(), check_outer_scope);
+              if (initializer != nullptr) {
+                constant_inputs.emplace(input_defs[0]->Name(), initializer);
+              }
+            }
+
+            const int64_t freed_input_size = EstimateFreedInputSizeInBytes(graph, constant_inputs);
+            const int64_t net_increase = std::max<int64_t>(estimated_output_size - freed_input_size, 0);
+            if (net_increase > output_size_threshold) {
+              LOGS(logger, INFO) << "Skipping constant folding for Shape node '" << node->Name()
+                                 << "': estimated net memory increase " << net_increase
+                                 << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
+              continue;
+            }
+          }
+        }
+        ORT_CATCH(const std::exception&) {
+          LOGS(logger, WARNING) << "Integer overflow while estimating net memory increase of Shape node '"
+                                << node->Name() << "'. Skipping constant folding for this node.";
+          continue;
+        }
+      }
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;
