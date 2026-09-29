@@ -21,6 +21,7 @@ struct Activation;
 class ComputeContext;
 class ComputeContextBase;
 
+// Stateful subgroup-matrix implementation owned independently from selection policy.
 class SubgroupMatrixMatMulImpl {
  public:
   SubgroupMatrixMatMulImpl() = default;
@@ -40,6 +41,7 @@ class SubgroupMatrixMatMulImpl {
                          bool b_is_constant) = 0;
 };
 
+// Selects, validates, and dispatches one concrete implementation per invocation.
 class MatMulComputeDispatcher {
  public:
   MatMulComputeDispatcher() = default;

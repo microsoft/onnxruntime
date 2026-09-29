@@ -12,6 +12,12 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
+namespace {
+
+constexpr std::array<uint32_t, 3> kSupportedMatMulSubgroupSizes{32, 16, 8};
+
+}  // namespace
+
 Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -36,16 +42,46 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-bool HasMatMulIntelCapability(const ComputeContext& context) {
-  return context.AdapterInfo().vendor == std::string_view{"intel"} &&
-         context.HasFeature(wgpu::FeatureName::Subgroups);
+std::optional<uint32_t> SelectMatMulSubgroupSize(uint32_t adapter_min_subgroup_size,
+                                                 uint32_t adapter_max_subgroup_size,
+                                                 bool has_subgroup_size_control) {
+  if (adapter_min_subgroup_size == adapter_max_subgroup_size) {
+    for (const uint32_t size : kSupportedMatMulSubgroupSizes) {
+      if (adapter_min_subgroup_size == size) {
+        return size;
+      }
+    }
+    return std::nullopt;
+  }
+
+  if (has_subgroup_size_control) {
+    for (const uint32_t size : kSupportedMatMulSubgroupSizes) {
+      if (adapter_min_subgroup_size <= size && size <= adapter_max_subgroup_size) {
+        return size;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
-Status ApplyMatMulIntel(ComputeContext& context,
-                        const Activation& activation,
-                        const std::vector<const Tensor*>& inputs,
-                        Tensor* output,
-                        bool is_channels_last) {
+std::optional<uint32_t> SelectMatMulSubgroupSize(const ComputeContext& context) {
+  if (!context.HasFeature(wgpu::FeatureName::Subgroups)) {
+    return std::nullopt;
+  }
+
+  const auto& adapter_info = context.AdapterInfo();
+  return SelectMatMulSubgroupSize(
+      adapter_info.subgroupMinSize,
+      adapter_info.subgroupMaxSize,
+      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl));
+}
+
+Status ApplyMatMulSubgroup(ComputeContext& context,
+                           const Activation& activation,
+                           const std::vector<const Tensor*>& inputs,
+                           Tensor* output,
+                           bool is_channels_last,
+                           uint32_t subgroup_size) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -131,6 +167,9 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16,
                                 is_channels_last, elements_per_thread};
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(subgroup_size);
+  }
   program
       .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
                  a_vec4, b_is_fp16, is_channels_last)

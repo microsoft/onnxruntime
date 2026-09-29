@@ -17,6 +17,7 @@
 #include "core/providers/webgpu/math/matmul_algorithm.h"
 #if !defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -95,7 +96,7 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
 #if defined(ORT_USE_EP_API_ADAPTERS)
   ORT_UNUSED_PARAMETER(ep);
   switch (algorithm) {
-    case webgpu::MatMulAlgorithm::IntelSubgroup:
+    case webgpu::MatMulAlgorithm::Subgroup:
     case webgpu::MatMulAlgorithm::PackedSplitK:
     case webgpu::MatMulAlgorithm::SubgroupMatrix:
       return "hardware-specific forced MatMul tests require direct adapter capability inspection.";
@@ -108,14 +109,20 @@ static std::optional<std::string> GetForcedAlgorithmUnsupportedReason(
   auto& context = webgpu::WebGpuContextFactory::GetContext(ep.GetDeviceId());
 
   switch (algorithm) {
-    case webgpu::MatMulAlgorithm::IntelSubgroup:
-      if (context.AdapterInfo().vendor != std::string_view{"intel"}) {
-        return "intel_subgroup requires an Intel adapter.";
-      }
+    case webgpu::MatMulAlgorithm::Subgroup: {
       if (!context.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
-        return "intel_subgroup requires the WebGPU Subgroups feature.";
+        return "subgroup requires the WebGPU Subgroups feature.";
+      }
+      const auto& adapter_info = context.AdapterInfo();
+      if (!webgpu::intel::SelectMatMulSubgroupSize(
+               adapter_info.subgroupMinSize,
+               adapter_info.subgroupMaxSize,
+               context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl))
+               .has_value()) {
+        return "subgroup requires a supported subgroup size (8, 16, or 32).";
       }
       break;
+    }
     case webgpu::MatMulAlgorithm::PackedSplitK:
       if (context.GetSplitKConfig().GetSplitDimInner() == 0) {
         return "packed_split_k is not configured for the selected adapter.";
@@ -304,14 +311,14 @@ TEST(WebGpuMatMulAlgorithmTest, ForcedPackedRejectsZeroContractionDimension) {
                       "MatMul algorithm packed");
 }
 
-TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroup) {
-  RunTestTyped<float>({8, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::IntelSubgroup);
+TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroup) {
+  RunTestTyped<float>({8, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::Subgroup);
 }
 
-TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroupRejectsZeroContractionDimension) {
-  RunTestTyped<float>({1, 0}, {0, 1}, false, webgpu::MatMulAlgorithm::IntelSubgroup,
+TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupRejectsZeroContractionDimension) {
+  RunTestTyped<float>({1, 0}, {0, 1}, false, webgpu::MatMulAlgorithm::Subgroup,
                       OpTester::ExpectResult::kExpectFailure,
-                      "MatMul algorithm intel_subgroup");
+                      "MatMul algorithm subgroup");
 }
 
 TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitK) {
@@ -405,7 +412,7 @@ TEST(MatMul_Large, DISABLED_Broadcast4D) {
 }
 
 // Batched B (true bmm): A [..., M, K] x B [..., K, N] with matching batch. On the
-// Intel subgroup path each (A, B) slice is dispatched on z. Covers small and
+// Subgroup path each (A, B) slice is dispatched on z. Covers small and
 // larger batch counts with tile-aligned per-slice shapes.
 TEST(MatMul_Large, DISABLED_BatchedB) {
   RunBothTypes({2, 128, 64}, {2, 64, 1024});
@@ -458,7 +465,7 @@ TEST(MatMul_Large, DISABLED_ConstantWeightOddN) {
 // Broadcasted batch dims that are NOT identical but share the same batch
 // *product* (A=[2,1,...], B=[1,2,...] -> [2,2,...]; A=[1,4,...], B=[4,1,...] ->
 // [4,4,...]). A product-only batch check would wrongly route these onto the
-// Intel subgroup path, which pairs slice i of A with slice i of B and copies A's
+// Subgroup path, which pairs slice i of A with slice i of B and copies A's
 // shape to the output - producing the wrong output shape and mismatched pairing.
 // N is even and every per-slice shape is tile-aligned, so only the
 // identical-batch-dims guard (not the odd-N or partial-tile fallbacks) keeps them

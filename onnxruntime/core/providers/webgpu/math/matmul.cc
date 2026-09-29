@@ -373,7 +373,8 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   const bool can_use_subgroup_matrix =
       subgroup_impl != nullptr &&
       subgroup_impl->CanApply(context, inputs, is_channels_last, b_is_constant);
-  const bool has_intel_subgroup_capability = intel::HasMatMulIntelCapability(context);
+  const std::optional<uint32_t> subgroup_size = intel::SelectMatMulSubgroupSize(context);
+  const bool has_subgroup_capability = subgroup_size.has_value();
   const int64_t batch_a =
       logical_a_shape.NumDimensions() > 2
           ? logical_a_shape.SizeToDimension(logical_a_shape.NumDimensions() - 2)
@@ -402,7 +403,8 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
   selection_params.a_data_type = a->GetElementType();
   selection_params.b_data_type = b->GetElementType();
   selection_params.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  selection_params.has_intel_subgroup_capability = has_intel_subgroup_capability;
+  selection_params.has_subgroup_capability = has_subgroup_capability;
+  selection_params.subgroup_size = subgroup_size.value_or(0);
   selection_params.is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
   selection_params.deterministic_compute = context.KernelContext().GetUseDeterministicCompute();
   selection_params.has_fused_activation = activation.activation_kind_ != ActivationKind::None;
@@ -416,10 +418,11 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
                     "MatMul algorithm ", MatMulAlgorithmName(algorithm),
                     " received an incompatible vendor configuration.");
   const auto* packed_configuration = std::get_if<MatMulPackedConfiguration>(&plan.configuration);
+  const auto* subgroup_configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
 
   MatMulAlgorithmPrerequisites prerequisites{};
   prerequisites.can_use_subgroup_matrix = can_use_subgroup_matrix;
-  prerequisites.has_intel_subgroup_capability = has_intel_subgroup_capability;
+  prerequisites.has_subgroup_capability = has_subgroup_capability;
   prerequisites.has_nonzero_k = helper.K() > 0;
   prerequisites.split_k_configured =
       packed_configuration != nullptr && packed_configuration->split_dim_inner > 1;
@@ -440,9 +443,10 @@ Status MatMulComputeDispatcher::Compute(ComputeContext& context,
     case MatMulAlgorithm::Naive:
       return ApplyMatMulNaive(
           context, activation, inputs, output_tensor, is_channels_last, helper);
-    case MatMulAlgorithm::IntelSubgroup:
-      return intel::ApplyMatMulIntel(
-          context, activation, inputs, output_tensor, is_channels_last);
+    case MatMulAlgorithm::Subgroup:
+      return intel::ApplyMatMulSubgroup(
+          context, activation, inputs, output_tensor, is_channels_last,
+          subgroup_configuration->subgroup_size);
     case MatMulAlgorithm::Packed:
       return ApplyMatMulPacked(
           context, activation, inputs, output_tensor, is_channels_last, helper,

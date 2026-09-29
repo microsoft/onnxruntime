@@ -129,7 +129,7 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     webgpu_ep_config.forced_matmul_algorithm = ParseMatMulAlgorithm(forced_matmul_algorithm_str);
     ORT_ENFORCE(webgpu_ep_config.forced_matmul_algorithm.has_value(),
                 "Invalid forced MatMul algorithm: ", forced_matmul_algorithm_str,
-                ". Must be one of: subgroup_matrix, naive, intel_subgroup, packed, packed_split_k.");
+                ". Must be one of: subgroup_matrix, naive, subgroup, packed, packed_split_k.");
   }
 
   // parse force CPU node names

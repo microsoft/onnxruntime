@@ -99,7 +99,7 @@ TEST(MatMulAlgorithmParsingTest, RoundTripsEveryAlgorithmName) {
   constexpr TestCase test_cases[] = {
       {"subgroup_matrix", MatMulAlgorithm::SubgroupMatrix},
       {"naive", MatMulAlgorithm::Naive},
-      {"intel_subgroup", MatMulAlgorithm::IntelSubgroup},
+      {"subgroup", MatMulAlgorithm::Subgroup},
       {"packed", MatMulAlgorithm::Packed},
       {"packed_split_k", MatMulAlgorithm::PackedSplitK},
   };
@@ -268,6 +268,28 @@ TEST(MatMulAlgorithmConfigurationTest, PackedConfigurationKeepsBatchAxesUntiled)
   EXPECT_FALSE(IsMatMulPackedConfigurationValid(configuration, /*use_split_k=*/false));
 }
 
+TEST(MatMulAlgorithmConfigurationTest, SubgroupConfigurationCarriesSelectedSize) {
+  MatMulAlgorithmScheduler scheduler;
+  MatMulAlgorithmSelectionParams params{};
+  params.subgroup_size = 16;
+
+  const auto plan = scheduler.CreateExecutionPlan(params, MatMulAlgorithm::Subgroup);
+  const auto* configuration = std::get_if<MatMulSubgroupConfiguration>(&plan.configuration);
+  ASSERT_NE(configuration, nullptr);
+  EXPECT_EQ(configuration->subgroup_size, 16u);
+}
+
+TEST(MatMulAlgorithmConfigurationTest, SubgroupSizeSelectionRequiresSupportedSize) {
+  EXPECT_EQ(intel::SelectMatMulSubgroupSize(8, 8, false), 8u);
+  EXPECT_EQ(intel::SelectMatMulSubgroupSize(16, 16, false), 16u);
+  EXPECT_EQ(intel::SelectMatMulSubgroupSize(32, 32, false), 32u);
+  EXPECT_FALSE(intel::SelectMatMulSubgroupSize(64, 64, false).has_value());
+  EXPECT_FALSE(intel::SelectMatMulSubgroupSize(8, 32, false).has_value());
+  EXPECT_EQ(intel::SelectMatMulSubgroupSize(8, 32, true), 32u);
+  EXPECT_EQ(intel::SelectMatMulSubgroupSize(8, 16, true), 16u);
+  EXPECT_FALSE(intel::SelectMatMulSubgroupSize(4, 4, true).has_value());
+}
+
 TEST(MatMulAlgorithmConfigurationTest, SplitKConfigurationRequiresTileAlignedSplits) {
   MatMulPackedConfiguration configuration{};
   configuration.tile_inner = 32;
@@ -355,9 +377,9 @@ TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerAppliesCurrentVendorRule) {
   params.m = 64;
   params.n = 512;
   params.k = 32;
-  params.has_intel_subgroup_capability = true;
+  params.has_subgroup_capability = true;
 
-  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::IntelSubgroup);
+  EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Subgroup);
 
   params.n = 511;
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
@@ -370,7 +392,7 @@ TEST(MatMulAlgorithmSchedulerTest, IntelSchedulerPreservesSubgroupMatrixPreceden
   params.n = 512;
   params.k = 32;
   params.can_use_subgroup_matrix = true;
-  params.has_intel_subgroup_capability = true;
+  params.has_subgroup_capability = true;
 
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::SubgroupMatrix);
 }
@@ -437,27 +459,27 @@ TEST(MatMulAlgorithmPrerequisiteTest, IntelAVec4RequiresCompatibleRowsPerThread)
 
 TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
   MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_intel_subgroup_capability = true;
+  prerequisites.has_subgroup_capability = true;
   prerequisites.has_nonzero_k = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 
   MatMulAlgorithmSelectionParams below_heuristic_threshold{};
   below_heuristic_threshold.m = 1;
   below_heuristic_threshold.n = 1;
   below_heuristic_threshold.k = 1;
-  below_heuristic_threshold.has_intel_subgroup_capability = true;
+  below_heuristic_threshold.has_subgroup_capability = true;
   intel::IntelMatMulAlgorithmScheduler scheduler;
-  EXPECT_NE(scheduler.Select(below_heuristic_threshold), MatMulAlgorithm::IntelSubgroup);
+  EXPECT_NE(scheduler.Select(below_heuristic_threshold), MatMulAlgorithm::Subgroup);
 }
 
-TEST(MatMulAlgorithmPrerequisiteTest, IntelSubgroupRejectsZeroContractionDimension) {
+TEST(MatMulAlgorithmPrerequisiteTest, SubgroupRejectsZeroContractionDimension) {
   MatMulAlgorithmPrerequisites prerequisites{};
-  prerequisites.has_intel_subgroup_capability = true;
+  prerequisites.has_subgroup_capability = true;
 
-  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 
   prerequisites.has_nonzero_k = true;
-  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::Subgroup, prerequisites));
 }
 
 }  // namespace test

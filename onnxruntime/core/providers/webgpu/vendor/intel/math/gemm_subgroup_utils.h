@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace onnxruntime {
@@ -18,6 +19,10 @@ inline constexpr std::string_view kXe3Lpg = "xe-3lpg";
 bool CanUseAVec4CooperativeLoad(std::string_view architecture,
                                 uint32_t dim_inner,
                                 int64_t elements_per_thread_y);
+
+std::optional<uint32_t> SelectMatMulSubgroupSize(uint32_t adapter_min_subgroup_size,
+                                                 uint32_t adapter_max_subgroup_size,
+                                                 bool has_subgroup_size_control);
 
 }  // namespace intel
 }  // namespace webgpu
