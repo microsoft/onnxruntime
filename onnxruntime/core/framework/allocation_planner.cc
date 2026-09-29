@@ -2629,7 +2629,8 @@ void DeviceBasedPartitioner::Initialize() {
           const auto type_str = device_type.get<std::string>();
           int value = 0;
           const auto [end, error] = std::from_chars(type_str.data(), type_str.data() + type_str.size(), value);
-          if (error != std::errc{} || end != type_str.data() + type_str.size()) {
+          if (error != std::errc{} || end != type_str.data() + type_str.size() ||
+              value < OrtDevice::CPU || value > OrtDevice::DML) {
             EXIT_ON_ERR("Invalid DeviceBasedPartitioner device type");
           }
           device_types_.push_back(static_cast<OrtDevice::DeviceType>(value));
