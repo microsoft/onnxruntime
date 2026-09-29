@@ -694,6 +694,10 @@ export class WebGpuBackend {
   }
 
   upload(gpuDataId: number, data: Uint8Array): void {
+    // queue.writeBuffer() takes effect before any command still recorded in the unsubmitted command encoder. The
+    // allocation planner may give the uploaded tensor the same buffer as a tensor those pending commands still read,
+    // so submit them first to keep the order.
+    this.flush();
     this.gpuDataManager.upload(gpuDataId, data);
   }
 

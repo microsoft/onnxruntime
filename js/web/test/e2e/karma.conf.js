@@ -29,6 +29,7 @@ const files = [
   { pattern: './model.onnx', included: false },
   { pattern: './model_with_orig_ext_data.onnx', included: false },
   { pattern: './model_with_orig_ext_data.bin', included: false },
+  { pattern: './model_cpu_output_upload.onnx', included: false },
   { pattern: './test-wasm-path-override/*', included: false, nocache: true, watched: false },
 ];
 if (ORT_MAIN) {
@@ -71,6 +72,7 @@ module.exports = function (config) {
       '/model.onnx': '/base/model.onnx',
       '/model_with_orig_ext_data.onnx': '/base/model_with_orig_ext_data.onnx',
       '/model_with_orig_ext_data.bin': '/base/model_with_orig_ext_data.bin',
+      '/model_cpu_output_upload.onnx': '/base/model_cpu_output_upload.onnx',
       '/test-wasm-path-override/': '/base/test-wasm-path-override/',
     },
     client: { captureConsole: true, args: normalizedTestArgs, mocha: { expose: ['body'], timeout: 60000 } },
