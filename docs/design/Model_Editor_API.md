@@ -291,7 +291,7 @@ When adding a public function, append it to `OrtModelEditorApi` and to the initi
 remove or reorder existing entries. The C# bindings also depend on the table layout. Keep declarations inside the
 header's `#if !defined(ORT_MINIMAL_BUILD)` block, and add a `\since` tag. Release-boundary markers and `static_assert`
 slot checks are added during release preparation, not with the function; see
-[Versioning](Versioning.md) and `.github/instructions/c-api.instructions.md`. Add the C++ wrapper when appropriate and
+[Versioning](../Versioning.md) and `.github/instructions/c-api.instructions.md`. Add the C++ wrapper when appropriate and
 update the shared-library tests.
 
 ## Design history

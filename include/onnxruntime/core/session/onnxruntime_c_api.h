@@ -7716,7 +7716,7 @@ struct OrtCustomOp {
 /**
  * \brief The OrtModelEditorApi struct provides functions to create or edit an ONNX model.
  *
- * See docs/Model_Editor_API.md for an overview and onnxruntime/test/shared_lib/test_model_builder_api.cc for
+ * See docs/design/Model_Editor_API.md for an overview and onnxruntime/test/shared_lib/test_model_builder_api.cc for
  * complete examples.
  *
  * \since Version 1.22.
