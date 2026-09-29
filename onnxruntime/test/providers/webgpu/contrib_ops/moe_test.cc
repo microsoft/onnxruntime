@@ -702,8 +702,8 @@ TEST(MoETest, QMoETest_WebGPU_MixedWidth_SingleToken) {
 
   constexpr int64_t num_rows = 1;
   constexpr int64_t num_experts = 1;
-  constexpr int64_t hidden_size = 8;
-  constexpr int64_t inter_size = 8;
+  constexpr int64_t hidden_size = 64;
+  constexpr int64_t inter_size = 64;
   constexpr int64_t fc1_bits = 2;
   constexpr int64_t fc2_bits = 4;
   constexpr int64_t fc1_pack_size = 8 / fc1_bits;
@@ -721,7 +721,7 @@ TEST(MoETest, QMoETest_WebGPU_MixedWidth_SingleToken) {
   const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / fc2_pack_size, 0x99);
   const std::vector<float> fc1_scales(num_experts * inter_size, 0.5f);
   const std::vector<float> fc2_scales(num_experts * hidden_size, 0.25f);
-  const std::vector<float> expected(num_rows * hidden_size, 2.0f);
+  const std::vector<float> expected(num_rows * hidden_size, 128.0f);
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("k", 1);
