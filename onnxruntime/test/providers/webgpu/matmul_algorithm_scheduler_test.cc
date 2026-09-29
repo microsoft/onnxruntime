@@ -90,7 +90,7 @@ class VendorSplitKThresholdScheduler final : public MatMulAlgorithmScheduler {
 
 }  // namespace
 
-TEST(MatMulAlgorithmParsingTest, RoundTripsEveryAlgorithmName) {
+TEST(MatMulAlgorithmNameTest, ReturnsEveryAlgorithmName) {
   struct TestCase {
     std::string_view name;
     MatMulAlgorithm algorithm;
@@ -106,13 +106,8 @@ TEST(MatMulAlgorithmParsingTest, RoundTripsEveryAlgorithmName) {
 
   for (const auto& test_case : test_cases) {
     SCOPED_TRACE(test_case.name);
-    EXPECT_EQ(ParseMatMulAlgorithm(test_case.name), test_case.algorithm);
     EXPECT_EQ(MatMulAlgorithmName(test_case.algorithm), test_case.name);
   }
-}
-
-TEST(MatMulAlgorithmParsingTest, RejectsUnknownAlgorithmName) {
-  EXPECT_EQ(ParseMatMulAlgorithm("unknown"), std::nullopt);
 }
 
 TEST(SplitKConfigTest, IntelArchitectureProfilesPreserveCurrentBoundaries) {

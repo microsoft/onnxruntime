@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <optional>
 #include <string_view>
 
 namespace onnxruntime {
@@ -16,8 +15,6 @@ enum class MatMulAlgorithm {
   Packed,
   PackedSplitK,
 };
-
-std::optional<MatMulAlgorithm> ParseMatMulAlgorithm(std::string_view name);
 
 std::string_view MatMulAlgorithmName(MatMulAlgorithm algorithm);
 

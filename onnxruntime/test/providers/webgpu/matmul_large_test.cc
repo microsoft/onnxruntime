@@ -20,7 +20,6 @@
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup_utils.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
-#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -164,12 +163,9 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
 
   std::unique_ptr<IExecutionProvider> webgpu_ep;
   if (forced_algorithm.has_value()) {
-    ConfigOptions config_options{};
-    const std::string algorithm_name{webgpu::MatMulAlgorithmName(*forced_algorithm)};
-    ASSERT_STATUS_OK(config_options.AddConfigEntry(
-        webgpu::options::kForceMatMulAlgorithm,
-        algorithm_name.c_str()));
-    webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+    WebGpuExecutionProviderTestOptions test_options{};
+    test_options.forced_matmul_algorithm = forced_algorithm;
+    webgpu_ep = WebGpuExecutionProviderWithTestOptions(test_options);
   } else {
     webgpu_ep = DefaultWebGpuExecutionProvider();
   }
@@ -236,17 +232,6 @@ TEST(MatMulProgramTest, VectorFallbackExecution) {
   RunTestTyped<float>({8}, {8});
   RunTestTyped<float>({8}, {2, 8, 3});
   RunTestTyped<float>({2, 2, 8}, {8});
-}
-
-TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
-  ConfigOptions valid_config_options{};
-  if (!WebGpuExecutionProviderWithOptions(valid_config_options)) {
-    GTEST_SKIP() << "WebGPU execution provider is unavailable in this build.";
-  }
-
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kForceMatMulAlgorithm, "unknown"));
-  EXPECT_THROW(WebGpuExecutionProviderWithOptions(config_options), OnnxRuntimeException);
 }
 
 static std::string BuildDynamicMatMulModelBytes() {

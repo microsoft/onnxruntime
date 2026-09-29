@@ -132,14 +132,6 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
-  if (std::string forced_matmul_algorithm_str;
-      config_options.TryGetConfigEntry(kForceMatMulAlgorithm, forced_matmul_algorithm_str)) {
-    webgpu_ep_config.forced_matmul_algorithm = ParseMatMulAlgorithm(forced_matmul_algorithm_str);
-    ORT_ENFORCE(webgpu_ep_config.forced_matmul_algorithm.has_value(),
-                "Invalid forced MatMul algorithm: ", forced_matmul_algorithm_str,
-                ". Must be one of: subgroup_matrix, naive, subgroup, packed, packed_split_k.");
-  }
-
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -389,13 +381,14 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 }  // namespace
 
 static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
-    const ConfigOptions& config_options, uint64_t test_only_max_storage_buffer_binding_size) {
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
   // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
+  webgpu_ep_config.forced_matmul_algorithm = test_options.forced_matmul_algorithm;
 
   // prepare WebGpuContextConfig
   WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
-  config.test_only_max_storage_buffer_binding_size = test_only_max_storage_buffer_binding_size;
+  config.test_only_max_storage_buffer_binding_size = test_options.max_storage_buffer_binding_size;
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);
@@ -405,12 +398,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
 }
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
-  return CreateWebGpuProviderFactory(config_options, 0);
+  return CreateWebGpuProviderFactory(config_options, {});
 }
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::CreateForTesting(
-    const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size) {
-  return CreateWebGpuProviderFactory(config_options, max_storage_buffer_binding_size);
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
+  return CreateWebGpuProviderFactory(config_options, test_options);
 }
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization

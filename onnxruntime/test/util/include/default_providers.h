@@ -5,6 +5,7 @@
 #include "core/common/optional.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
+#include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 
@@ -62,7 +63,8 @@ std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const Provid
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc = true);
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
-std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(uint64_t max_size);
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const WebGpuExecutionProviderTestOptions& test_options);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 

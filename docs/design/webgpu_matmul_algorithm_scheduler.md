@@ -36,7 +36,7 @@ The scheduler accepts immutable problem facts rather than mutable policy decisio
 
 ## Execution Configuration
 
-Algorithm selection and execution tuning are separate decisions. After selecting one enum, the scheduler creates a `MatMulExecutionPlan` containing that enum and a typed algorithm configuration. It first asks the protected `SelectVendorConfiguration` hook for tuning, then uses private common defaults when the vendor declines. The tuning hook runs for both automatic and forced algorithms, so the test-only forcing option controls the implementation path without disabling real device tuning.
+Algorithm selection and execution tuning are separate decisions. After selecting one enum, the scheduler creates a `MatMulExecutionPlan` containing that enum and a typed algorithm configuration. It first asks the protected `SelectVendorConfiguration` hook for tuning, then uses private common defaults when the vendor declines. The tuning hook runs for both automatic and forced algorithms, so the test-only factory options control the implementation path without disabling real device tuning.
 
 The packed configuration initially contains workgroup size, elements per thread, inner tile size, and Split-K size. `ApplyMatMulPacked` consumes those values directly and includes shader-affecting values in its cache key. The common configuration preserves the existing `8x8x1` workgroup, `4x1x1` or `4x4x1` elements-per-thread rule, inner tile size 32, and adapter Split-K size. A vendor may replace any of these values without changing `MatMulComputeDispatcher` or the packed implementation.
 
@@ -46,13 +46,11 @@ Configuration is represented by an algorithm-specific variant rather than a bag 
 
 ## Forced Test Selection
 
-Add the internal WebGPU session configuration key `ep.webgpuexecutionprovider.forceMatmulAlgorithm`. Accepted values are `subgroup_matrix`, `naive`, `subgroup`, `packed`, and `packed_split_k`. The option is parsed when the WebGPU EP is created, stored as `std::optional<MatMulAlgorithm>`, and exposed read-only through `ComputeContextBase`.
+`WebGpuExecutionProviderTestOptions` carries an optional `MatMulAlgorithm` through the internal `CreateForTesting` factory path. Production provider-option parsing cannot populate it. The selected value is stored in the execution provider and exposed read-only through `ComputeContextBase`.
 
 When set, the scheduler returns the requested enum before applying heuristic rules. The dispatcher then validates the algorithm's hard prerequisites. Unsupported device features, data types, layouts, deterministic-compute settings, or other correctness constraints produce a descriptive failure naming the forced algorithm; forced mode never silently falls back.
 
 Heuristic thresholds are not hard prerequisites. For example, forcing subgroup bypasses Intel's current `M/N/K` performance thresholds while still requiring subgroup support. Forcing Split-K bypasses performance thresholds while still requiring a usable Split-K configuration, non-deterministic compute, compatible packing/activation, and supported bias layout.
-
-Invalid option strings fail during WebGPU provider creation and list accepted values.
 
 ## Dispatch and Implementation Boundaries
 
@@ -75,12 +73,12 @@ This replaces `MatMulOptImplCache` and the generic `MatMulOptImpl` interface. If
 
 With no forcing option or vendor override, the common scheduler remains equivalent to the previous selection order. The MatMul, pointwise Conv, and contrib Attention operator APIs and model semantics do not change; only their internal MatMul compute ownership moves behind the dispatcher.
 
-The option is intentionally internal and test-only: it is declared with WebGPU provider options for configuration plumbing but is not added to public user documentation.
+Forced selection is available only through the internal test factory and cannot be set through session or provider options.
 
 ## Testing
 
 - Add device-independent scheduler unit tests covering every common branch, forced-over-vendor precedence, the zero-K correctness guard, vendor-over-common precedence, Intel override, default fallback, independent vendor thresholds, common packed defaults, vendor tuning of a forced algorithm, Split-K profile routing, and current Intel architecture boundaries.
-- Add parser/configuration tests for every accepted value and invalid input.
+- Add typed configuration tests for every algorithm.
 - Add WebGPU MatMul tests that choose shapes which normally select a different path, force a compatible algorithm, and verify numerical output. Hardware-specific forced algorithms are tested only when their hard capabilities are present; strict-failure tests cover unsupported forced choices.
 - Run hardware-backed tests on the build's default WebGPU backend. Hardware-specific tests inspect the selected adapter's capabilities and skip unsupported algorithms.
 - Verify the selected adapter exposes subgroup size control, f16, and the cooperative/subgroup-matrix configuration required by the 8x16x16 kernel before claiming subgroup-matrix execution coverage.
