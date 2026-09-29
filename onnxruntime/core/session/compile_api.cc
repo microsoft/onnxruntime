@@ -416,6 +416,21 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessEnabled,
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ OrtWeightlessSupport weightless_mode) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetWeightlessMode(weightless_mode));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(weightless_mode);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
@@ -485,6 +500,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
+    &OrtCompileAPI::ModelCompilationOptions_SetWeightlessMode,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

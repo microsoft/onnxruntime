@@ -5,16 +5,20 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 #include "core/framework/compute_capability.h"
+#include "core/framework/ep_context_options.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/parse_string.h"
 #include <limits>
 
 #include "core/graph/ep_api_types.h"
@@ -29,10 +33,61 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
+
+namespace {
+// Parses the value of the "weightless_support" EP metadata entry. Also accepts the string values documented in
+// version 1.29 ("none", "external_only" and "all"). Returns std::nullopt if the value is invalid.
+std::optional<uint32_t> ParseWeightlessSupportEpMetadata(const std::string& value) {
+  if (value == "none") {
+    return OrtWeightlessSupport_NONE;
+  }
+  if (value == "external_only") {
+    return OrtWeightlessSupport_EXTERNAL_ONLY;
+  }
+  if (value == "all") {
+    return OrtWeightlessSupport_ALL;
+  }
+
+  uint32_t supported_modes = 0;
+  if (!TryParseStringWithClassicLocale(value, supported_modes)) {
+    return std::nullopt;
+  }
+
+  return supported_modes;
+}
+
+// Returns a description of the OrtEpDevice instances whose "weightless_support" EP metadata does not match the
+// weightless modes reported by OrtEp::GetWeightlessSupport(), or an empty string if they all match.
+// A missing metadata entry means OrtWeightlessSupport_NONE.
+std::string GetWeightlessSupportEpMetadataMismatch(gsl::span<const OrtEpDevice* const> ep_devices,
+                                                   uint32_t supported_modes) {
+  std::ostringstream mismatch;
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    const auto& ep_metadata = ep_device->ep_metadata.Entries();
+    auto it = ep_metadata.find(kOrtEpDevice_EpMetadataKey_WeightlessSupport);
+    const std::string value = it != ep_metadata.end() ? it->second
+                                                      : std::to_string(static_cast<int>(OrtWeightlessSupport_NONE));
+    if (ParseWeightlessSupportEpMetadata(value) == supported_modes) {
+      continue;
+    }
+
+    if (mismatch.tellp() == 0) {
+      mismatch << "The weightless modes reported by GetWeightlessSupport() (" << supported_modes
+               << ") do not match the '" << kOrtEpDevice_EpMetadataKey_WeightlessSupport << "' EP metadata:";
+    }
+    mismatch << " '" << value << "' for "
+             << (ep_device->device != nullptr ? ep_device->device->ToString() : std::string("unknown device"))
+             << ";";
+  }
+
+  return mismatch.str();
+}
+}  // namespace
 
 //
 // PluginExecutionProviderFactory
@@ -187,8 +242,10 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
-  // Record if the app requested weightless mode. Validation is deferred to Compile().
-  weightless_requested_ =
+  // Record the weightless mode requested by the app. Validation is deferred to Compile().
+  weightless_mode_ =
+      session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
+  legacy_weightless_requested_ =
       session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
 
   // Extract EP-scoped session config entries.
@@ -588,28 +645,53 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
 
+  // Determine the weightless mode requested by the app. "ep.enable_weightless_mode" takes precedence over the
+  // deprecated "ep.enable_weightless" option.
+  uint32_t requested_mode = OrtWeightlessSupport_NONE;
+  std::string requested_option;
+  if (!weightless_mode_.empty()) {
+    OrtWeightlessSupport mode = OrtWeightlessSupport_NONE;
+    ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_, mode));
+    requested_mode = mode;
+    requested_option = std::string(kOrtSessionOptionEpEnableWeightlessMode) + "=" + weightless_mode_;
+  } else if (legacy_weightless_requested_) {
+    // The deprecated option does not select a mode, so any mode supported by the EP is accepted.
+    requested_mode = std::numeric_limits<uint32_t>::max();
+    requested_option = std::string(kOrtSessionOptionEpEnableWeightless) + "=1";
+  }
+
   // Validate EP weightless support if the app requested it.
-  if (weightless_requested_) {
+  if (requested_mode != OrtWeightlessSupport_NONE) {
     if (ort_ep_->ort_version_supported >= 29) {
       if (ort_ep_->GetWeightlessSupport == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "Weightless mode requested (", requested_option, ") but EP '", Type(),
                                "' does not implement GetWeightlessSupport.");
       }
 
-      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
-      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      // The EP reports the bitwise OR of all the weightless modes it supports, or OrtWeightlessSupport_NONE (0)
+      // if it does not support weightless mode at all.
+      uint32_t supported_modes = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &supported_modes);
       if (ort_status != nullptr) {
         return ToStatusAndRelease(ort_status);
       }
 
-      if (support == OrtWeightlessSupport_NONE) {
+      // The modes must match the "weightless_support" EP metadata, which the app may have used to choose the mode.
+      // A mismatch is an EP bug. It is only a warning because the requested mode may still be supported.
+      const std::string metadata_mismatch = GetWeightlessSupportEpMetadataMismatch(ep_devices_, supported_modes);
+      if (!metadata_mismatch.empty()) {
+        LOGS(GetEpLoggerOrDefault(), WARNING) << "EP '" << Type() << "': " << metadata_mismatch;
+      }
+
+      if ((supported_modes & requested_mode) == 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
-                               "' does not support weightless mode on this device.");
+                               "Weightless mode requested (", requested_option, ") but EP '", Type(),
+                               "' does not support it on this device. Supported weightless modes: ",
+                               supported_modes, ".", metadata_mismatch.empty() ? "" : " ", metadata_mismatch);
       }
     } else {
-      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
+      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (" << requested_option << ") but EP '"
                                          << Type() << "' was compiled with API version "
                                          << ort_ep_->ort_version_supported
                                          << " which predates GetWeightlessSupport (version 29). "

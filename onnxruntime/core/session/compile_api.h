@@ -64,4 +64,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextDataWriteFunc,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
 
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetWeightlessMode,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtWeightlessSupport weightless_mode);
+
 }  // namespace OrtCompileAPI
