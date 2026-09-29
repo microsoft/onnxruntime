@@ -312,21 +312,18 @@ common::Status LoadBatchToD3D12(
   for (auto& tensor : batch.tensors) {
     IDStorageFile* file =
         files.at(tensor.key.path.lexically_normal()).Get();
-    for (uint64_t tensor_offset = 0; tensor_offset < tensor.key.length;
-         tensor_offset += kMaxRequestSize) {
-      const UINT32 request_size = static_cast<UINT32>(
-          std::min(kMaxRequestSize,
-                   static_cast<uint64_t>(tensor.key.length) - tensor_offset));
+    for (const auto& chunk : detail::SplitDirectStorageRequests(
+             tensor.key.offset, tensor.key.length)) {
       DSTORAGE_REQUEST request{};
       request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
       request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_BUFFER;
       request.Options.CompressionFormat = DSTORAGE_COMPRESSION_FORMAT_NONE;
       request.Source.File.Source = file;
-      request.Source.File.Offset = tensor.key.offset + tensor_offset;
-      request.Source.File.Size = request_size;
+      request.Source.File.Offset = chunk.source_offset;
+      request.Source.File.Size = chunk.size;
       request.Destination.Buffer.Resource = tensor.resource.Get();
-      request.Destination.Buffer.Offset = tensor_offset;
-      request.Destination.Buffer.Size = request_size;
+      request.Destination.Buffer.Offset = chunk.destination_offset;
+      request.Destination.Buffer.Size = chunk.size;
       request.CancellationTag = kCancellationTag;
       request.Name = tensor.key.name.c_str();
       queue->EnqueueRequest(&request);
@@ -479,6 +476,27 @@ void EndAccessNoThrow(ImportedAllocation& allocation) noexcept {
 }
 
 }  // namespace
+
+std::vector<detail::DirectStorageRequestChunk>
+detail::SplitDirectStorageRequests(uint64_t source_offset,
+                                   uint64_t length,
+                                   uint64_t max_request_size) {
+  ORT_ENFORCE(max_request_size > 0 &&
+                  max_request_size <= std::numeric_limits<uint32_t>::max(),
+              "Invalid DirectStorage maximum request size.");
+  std::vector<DirectStorageRequestChunk> chunks;
+  chunks.reserve(static_cast<size_t>(
+      length / max_request_size + (length % max_request_size != 0)));
+  for (uint64_t destination_offset = 0; destination_offset < length;
+       destination_offset += max_request_size) {
+    chunks.push_back(
+        {source_offset + destination_offset,
+         destination_offset,
+         static_cast<uint32_t>(
+             std::min(max_request_size, length - destination_offset))});
+  }
+  return chunks;
+}
 
 common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context) {
   context.WaitForStartInitializeComplete();

@@ -6,6 +6,7 @@
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 
 #include <memory>
+#include <vector>
 
 #include "core/framework/allocator.h"
 #include "core/framework/external_data_loader.h"
@@ -17,6 +18,21 @@ namespace onnxruntime {
 namespace webgpu {
 
 class WebGpuContext;
+
+namespace detail {
+
+struct DirectStorageRequestChunk {
+  uint64_t source_offset;
+  uint64_t destination_offset;
+  uint32_t size;
+};
+
+std::vector<DirectStorageRequestChunk> SplitDirectStorageRequests(
+    uint64_t source_offset,
+    uint64_t length,
+    uint64_t max_request_size = 64ull * 1024ull * 1024ull);
+
+}  // namespace detail
 
 common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context);
 

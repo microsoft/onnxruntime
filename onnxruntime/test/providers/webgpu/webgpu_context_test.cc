@@ -631,6 +631,53 @@ TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport)
 }
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+TEST(WebGpuContextTest, DirectStorageSplitsRequestsAt64MiBBoundary) {
+  constexpr uint64_t kRequestSize = 64ull * 1024ull * 1024ull;
+  constexpr uint64_t kSourceOffset = 37;
+
+  const auto exact = webgpu::detail::SplitDirectStorageRequests(
+      kSourceOffset, kRequestSize);
+  ASSERT_EQ(exact.size(), 1u);
+  EXPECT_EQ(exact[0].source_offset, kSourceOffset);
+  EXPECT_EQ(exact[0].destination_offset, 0u);
+  EXPECT_EQ(exact[0].size, kRequestSize);
+
+  const auto boundary_plus_one =
+      webgpu::detail::SplitDirectStorageRequests(
+          kSourceOffset, kRequestSize + 1);
+  ASSERT_EQ(boundary_plus_one.size(), 2u);
+  EXPECT_EQ(boundary_plus_one[0].source_offset, kSourceOffset);
+  EXPECT_EQ(boundary_plus_one[0].destination_offset, 0u);
+  EXPECT_EQ(boundary_plus_one[0].size, kRequestSize);
+  EXPECT_EQ(boundary_plus_one[1].source_offset,
+            kSourceOffset + kRequestSize);
+  EXPECT_EQ(boundary_plus_one[1].destination_offset, kRequestSize);
+  EXPECT_EQ(boundary_plus_one[1].size, 1u);
+
+  const auto multi_chunk = webgpu::detail::SplitDirectStorageRequests(
+      kSourceOffset, 2 * kRequestSize + 17);
+  ASSERT_EQ(multi_chunk.size(), 3u);
+  EXPECT_EQ(multi_chunk[0].size, kRequestSize);
+  EXPECT_EQ(multi_chunk[1].source_offset,
+            kSourceOffset + kRequestSize);
+  EXPECT_EQ(multi_chunk[1].destination_offset, kRequestSize);
+  EXPECT_EQ(multi_chunk[1].size, kRequestSize);
+  EXPECT_EQ(multi_chunk[2].source_offset,
+            kSourceOffset + 2 * kRequestSize);
+  EXPECT_EQ(multi_chunk[2].destination_offset, 2 * kRequestSize);
+  EXPECT_EQ(multi_chunk[2].size, 17u);
+
+  const std::array<uint8_t, 13> source{
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  std::array<uint8_t, source.size()> reconstructed{};
+  for (const auto& chunk : webgpu::detail::SplitDirectStorageRequests(
+           0, source.size(), 5)) {
+    std::copy_n(source.begin() + chunk.source_offset, chunk.size,
+                reconstructed.begin() + chunk.destination_offset);
+  }
+  EXPECT_EQ(reconstructed, source);
+}
+
 TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
   auto off_factory = WebGpuProviderFactoryCreator::Create(
       WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));

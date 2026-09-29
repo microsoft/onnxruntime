@@ -351,9 +351,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                    std::chrono::steady_clock::now() - selection_start)
                    .count()
             << " ms.";
-        // Model parsing may now proceed. Dawn continues adapter initialization
-        // for the same LUID while ORT discovers external initializer ranges.
-        SignalStartInitializeComplete();
       }
     }
 #endif
@@ -422,6 +419,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
                   "Failed to get a WebGPU adapter: ", adapter_result.message);
       adapter = std::move(adapter_result.adapter);
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      if (pipelined_weight_loading_) {
+        // The pinned adapter has now been accepted, so fallback state can no
+        // longer change while model parsing discovers external initializer
+        // ranges. Dawn device creation continues concurrently.
+        SignalStartInitializeComplete();
+      }
+#endif
     }
     ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
