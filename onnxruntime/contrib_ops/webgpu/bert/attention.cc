@@ -698,6 +698,7 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   }
 
   AttentionParameters params;
+  ORT_RETURN_IF_NOT(weights->Shape().NumDimensions() == 2, "Input 'weights' is expected to have 2 dimensions");
   // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
   std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
   const TensorShape bias_shape{bias_dims};

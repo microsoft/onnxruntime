@@ -1201,6 +1201,14 @@ endif()
 
 partition_provider_test_srcs(all_tests onnxruntime_provider_test_srcs onnxruntime_test_all_srcs)
 
+if ((onnxruntime_MINIMAL_BUILD OR onnxruntime_REDUCED_OPS_BUILD)
+    AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # Shape-only validation does not require ONNX loading; minimal builds have no provider test binary.
+  list(APPEND onnxruntime_test_all_srcs
+    "${TEST_SRC_DIR}/contrib_ops/attention_validation_test.cc"
+  )
+endif()
+
 if (onnxruntime_USE_OPENVINO)
   # ov_protobuf_utils.cpp lives under core/providers (not test/), so partition_provider_test_srcs
   # would route it to onnxruntime_test_all. Append it here after the partition so it is compiled into
