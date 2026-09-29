@@ -585,6 +585,8 @@ TEST(MatMulNBitsLargeBlock, RuntimeScalesAndZeroPoints) {
   CheckAgainstTwin(MakeWeights(10, 1500, 8, 512, ZeroPoint::kRandom, 704), cfg, 705);
 }
 
+#if !defined(__EMSCRIPTEN__)
+// WASM cannot load host filesystem external data without a Module.MountedFiles mapping.
 TEST(MatMulNBitsLargeBlock, ExternalDataInitializers) {
   RunConfig cfg;
   cfg.external_data = true;
@@ -606,6 +608,7 @@ TEST(MatMulNBitsLargeBlock, ExternalDataInitializers) {
   ASSERT_STATUS_OK(embedded.status);
   ExpectBitwiseEqual(external.y, embedded.y);
 }
+#endif
 
 TEST(MatMulNBitsLargeBlock, WeightReconstructionWithIdentityInput) {
   // A = I makes Y[m][n] the dequantized weight W[k=m][n].
