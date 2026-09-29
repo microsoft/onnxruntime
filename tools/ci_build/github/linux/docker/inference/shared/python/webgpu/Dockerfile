@@ -19,7 +19,7 @@ ARG BASEIMAGE
 # ---------------------------------------------------------------------------
 FROM $BASEIMAGE AS swiftshader_builder
 
-ARG SWIFTSHADER_COMMIT=b7b7fd22e5f28079b92412f47f6da4df43e4cd37
+ARG SWIFTSHADER_COMMIT=694585a05946e1ed49b6bd577ca6537cbb57f025
 
 RUN dnf install -y git ninja-build && dnf clean all
 

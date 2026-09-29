@@ -318,7 +318,10 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -431,7 +434,10 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       for (auto domain : domains) {
-        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+        // Multiple EP devices can expose the same custom-op domain. Keep one copy
+        // in this session's collection before its custom registry is created.
+        if (ShouldAddDomain(domain, options->custom_op_domains_) &&
+            !DoesDomainWithNameExist(domain->domain_, all_ep_custom_op_domains)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }

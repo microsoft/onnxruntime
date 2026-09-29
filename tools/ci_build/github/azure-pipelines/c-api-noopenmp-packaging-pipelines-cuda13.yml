@@ -89,14 +89,12 @@ variables:
 # Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
   value: '75-real;80-real;86-real;89-real;120-real'
-- ${{ if and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'none')) }}:
-  - name: NpmPackagingMode
+- name: NpmPackagingMode
+  ${{ if and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'none')) }}:
     value: release
-- ${{ elseif and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'rc')) }}:
-  - name: NpmPackagingMode
+  ${{ elseif and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'rc')) }}:
     value: rc
-- ${{ else }}:
-  - name: NpmPackagingMode
+  ${{ else }}:
     value: dev
 
 extends:
