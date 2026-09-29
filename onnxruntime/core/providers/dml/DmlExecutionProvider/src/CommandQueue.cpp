@@ -18,11 +18,14 @@ namespace Dml
 
     void CommandQueue::ExecuteCommandList(ID3D12CommandList* commandList)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         ExecuteCommandLists(gsl::make_span(&commandList, 1));
     }
 
     void CommandQueue::ExecuteCommandLists(gsl::span<ID3D12CommandList*> commandLists)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
         m_queue->ExecuteCommandLists(gsl::narrow<uint32_t>(commandLists.size()), commandLists.data());
 
         ++m_lastFenceValue;
@@ -31,6 +34,8 @@ namespace Dml
 
     void CommandQueue::Wait(ID3D12Fence* fence, uint64_t value)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
         ORT_THROW_IF_FAILED(m_queue->Wait(fence, value));
 
         ++m_lastFenceValue;
@@ -39,16 +44,20 @@ namespace Dml
 
     GpuEvent CommandQueue::GetCurrentCompletionEvent()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         return GpuEvent{ m_lastFenceValue, m_fence };
     }
 
     GpuEvent CommandQueue::GetNextCompletionEvent()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         return GpuEvent{ m_lastFenceValue + 1, m_fence };
     }
 
     void CommandQueue::QueueReference(IUnknown* object, bool waitForUnsubmittedWork)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
         // If the CommandQueue is closing, then m_queuedReferences is being cleared -- it is not OK
         // to queue additional references at this time, since those references would be leaked. This
         // affects any objects in m_queuedReferences whose destructors indirectly call QueueReference;
@@ -72,6 +81,8 @@ namespace Dml
 
     void CommandQueue::Close()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
         // Wait for flushed work:
         assert(!m_closing);
         m_closing = true;
@@ -83,6 +94,8 @@ namespace Dml
 
     void CommandQueue::ReleaseCompletedReferences()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
         uint64_t completedValue = GetFence()->GetCompletedValue();
         while (!m_queuedReferences.empty() && m_queuedReferences.front().fenceValue <= completedValue)
         {
