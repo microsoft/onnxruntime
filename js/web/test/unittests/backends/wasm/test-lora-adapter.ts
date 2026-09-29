@@ -180,6 +180,17 @@ describe('#UnitTest# - wasm - LoRA adapter', () => {
       await expectRejected(adapter.release(), 'invalid adapter id');
     });
 
+    it('release LoRA adapter while a run is in progress', async () => {
+      const adapter = await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA);
+      try {
+        const runPromise = session.run(createFeeds(), { activeLoraAdapters: [adapter] });
+        await expectRejected(adapter.release(), 'the adapter is used by a run in progress');
+        expectOutput(await runPromise, EXPECTED_OUTPUT_ROW_WITH_ADAPTER);
+      } finally {
+        await adapter.release();
+      }
+    });
+
     it('run with released LoRA adapter after creating new ones', async () => {
       // the released adapter must stay invalid even when a new adapter reuses its native memory.
       const releasedAdapter = await LoraAdapter.create(ONNX_ADAPTER_TWO_PARAMS_LORA);

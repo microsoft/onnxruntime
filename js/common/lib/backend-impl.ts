@@ -19,7 +19,7 @@ const backendsSortedByPriority: string[] = [];
 
 // The same backend object can be registered with multiple names (e.g. the WebAssembly backend as "wasm" and "cpu").
 // Its init() is called once for each name, but calls for different names are not run concurrently.
-const backendInitQueues: Map<Backend, Promise<void>> = new Map();
+const backendInitQueues: WeakMap<Backend, Promise<void>> = new WeakMap();
 
 /**
  * Register a backend.

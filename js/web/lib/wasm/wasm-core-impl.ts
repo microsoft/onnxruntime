@@ -571,6 +571,8 @@ export const releaseSession = (sessionId: number): void => {
 // memory of a released adapter can be reused by a new one.
 const loraAdapters = new Map<number, number>();
 let nextLoraAdapterId = 1;
+// number of runs in progress that use each LoRA adapter. An adapter cannot be released while it is in use.
+const loraAdapterRunCounts = new Map<number, number>();
 
 /**
  * create a LoRA adapter from a buffer in the LoRA adapter format.
@@ -605,6 +607,9 @@ export const releaseLoraAdapter = (adapterId: number): void => {
   const adapterHandle = loraAdapters.get(adapterId);
   if (adapterHandle === undefined) {
     throw new Error(`cannot release LoRA adapter. invalid adapter id: ${adapterId}`);
+  }
+  if (loraAdapterRunCounts.has(adapterId)) {
+    throw new Error(`cannot release LoRA adapter. the adapter is used by a run in progress. adapter id: ${adapterId}`);
   }
   if (wasm._OrtReleaseLoraAdapter(adapterHandle) !== 0) {
     checkLastError("Can't release LoRA adapter.");
@@ -772,7 +777,8 @@ export const run = async (
     // ORT does not apply active LoRA adapters in RunWithBinding(). Fail instead of silently ignoring them.
     if (ioBindingState) {
       throw new Error(
-        'LoRA adapters are not supported for a session that uses IO binding, e.g. when an output is preferred to be on GPU.',
+        'LoRA adapters are not supported for a session that uses IO binding, e.g. when an output is preferred to be ' +
+          'on GPU, or when the WebNN execution provider produces an output.',
       );
     }
     for (const adapterId of loraAdapterIds) {
@@ -802,6 +808,9 @@ export const run = async (
   const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
   try {
+    for (const adapterId of loraAdapterIds) {
+      loraAdapterRunCounts.set(adapterId, (loraAdapterRunCounts.get(adapterId) ?? 0) + 1);
+    }
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options, loraAdapterHandles);
 
     TRACE_EVENT_BEGIN('wasm prepareInputOutputTensor');
@@ -1165,6 +1174,15 @@ export const run = async (
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
     runOptionsAllocs.forEach((p) => wasm._free(p));
+
+    for (const adapterId of loraAdapterIds) {
+      const count = loraAdapterRunCounts.get(adapterId)! - 1;
+      if (count === 0) {
+        loraAdapterRunCounts.delete(adapterId);
+      } else {
+        loraAdapterRunCounts.set(adapterId, count);
+      }
+    }
   }
 };
 
