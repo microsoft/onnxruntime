@@ -1736,13 +1736,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # coverage gap this feature exists to close.
   # ---------------------------------------------------------------------------
   if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # Read the expected wheel version from the fetched ONNX source so the parity check cannot drift from the archive.
-    file(STRINGS "${onnx_SOURCE_DIR}/VERSION_NUMBER" _onnx_pinned_version LIMIT_COUNT 1)
-    if(_onnx_pinned_version MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+([a-z]+[0-9]+)?$")
-      string(STRIP "${_onnx_pinned_version}" _onnx_pinned_version)
+    # Derive the expected wheel version from the archive URL so this also works with installed ONNX packages.
+    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_version "${DEP_URL_onnx}")
+    if(CMAKE_MATCH_1)
+      set(_onnx_pinned_version ${CMAKE_MATCH_1})
     else()
-      message(FATAL_ERROR "Could not parse the ONNX version from ${onnx_SOURCE_DIR}/VERSION_NUMBER. "
-        "Fix the ONNX source pin or this parser.")
+      message(FATAL_ERROR "Could not parse the pinned ONNX version from DEP_URL_onnx='${DEP_URL_onnx}' "
+        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this parser.")
     endif()
 
     # Python interpreter is not guaranteed for static test-only builds (the top-level
