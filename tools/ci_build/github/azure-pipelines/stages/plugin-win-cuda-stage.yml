@@ -86,9 +86,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -311,9 +309,7 @@ stages:
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:

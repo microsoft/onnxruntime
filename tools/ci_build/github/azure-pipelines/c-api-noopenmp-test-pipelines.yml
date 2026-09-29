@@ -231,9 +231,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_cuda_build_artifacts'
@@ -286,9 +284,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'

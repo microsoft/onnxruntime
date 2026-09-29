@@ -127,8 +127,8 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         CUDA_VERSION_MAJOR: '12'
     steps:
-    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
-    - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
+    - template: ../templates/jobs/checkout-and-git-redirect.yml   # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+    - checkout: onnxruntime-inference-examples                    # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
     - task: PowerShell@2

@@ -43,10 +43,7 @@ stages:
         build_py_lto_flag: --enable_lto
 
     steps:
-      - checkout: self
-        clean: true
-        submodules: none
-
+      - template: ../../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../../templates/setup-build-tools.yml
         parameters:
