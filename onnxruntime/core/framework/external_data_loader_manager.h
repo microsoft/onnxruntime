@@ -27,6 +27,7 @@ class ExternalDataLoaderManager {
   ExternalDataLoaderManager() = default;
 
   common::Status RegisterExternalDataLoader(std::unique_ptr<IExternalDataLoader> external_data_loader);
+  common::Status UnregisterExternalDataLoader(IExternalDataLoader* external_data_loader);
 
   const IExternalDataLoader* GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const;
 

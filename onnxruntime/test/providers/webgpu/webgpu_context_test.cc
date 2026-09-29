@@ -911,18 +911,8 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorsAcrossFilesAndRanges) {
   EXPECT_EQ(empty.MutableDataRaw(), nullptr);
 }
 
-TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
-  auto probe_provider = WebGpuProviderFactoryCreator::Create(
-                            WeightLoadAccelerationOptions(
-                                kWeightLoadAcceleration_Off))
-                            ->CreateProvider();
-  ASSERT_NE(probe_provider, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
-      webgpu::WebGpuContextFactory::GetContext(0));
-  if (!support_status.IsOK()) {
-    GTEST_SKIP() << support_status.ErrorMessage();
-  }
-
+void RunDirectStorageExternalInitializerSessionTest(
+    const char* mode, bool fail_late_registration = false) {
   TemporaryDirectory temp_dir{
       ORT_TSTR("webgpu_direct_storage_session_test")};
   const auto model_path =
@@ -996,10 +986,23 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
   SessionOptions session_options;
   InferenceSession session{session_options, GetEnvironment()};
   auto provider = WebGpuProviderFactoryCreator::Create(
-                      WeightLoadAccelerationOptions(
-                          kWeightLoadAcceleration_Required))
+                      WeightLoadAccelerationOptions(mode))
                       ->CreateProvider();
   ASSERT_NE(provider, nullptr);
+  if (fail_late_registration) {
+    auto allocators = provider->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    const auto memory_info = allocators.front()->Info();
+    ASSERT_STATUS_OK(session.Load(model_path.native()));
+    ASSERT_TRUE(std::filesystem::remove(data_path));
+    const auto status =
+        session.RegisterExecutionProvider(std::move(provider));
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_EQ(session.GetExternalDataLoaderManager().GetExternalDataLoader(
+                  memory_info),
+              nullptr);
+    return;
+  }
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
   ASSERT_STATUS_OK(session.Load(model_path.native()));
   ASSERT_STATUS_OK(session.Initialize());
@@ -1021,6 +1024,57 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
   for (size_t index = 0; index < weights.size(); ++index) {
     EXPECT_FLOAT_EQ(output_data[index], input[index] + weights[index]);
   }
+}
+
+TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Off))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+  RunDirectStorageExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required);
+}
+
+TEST(WebGpuContextTest,
+     RequiredPipelinedLoadsExternalInitializerThroughSession) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_PreferredPipelined))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  const auto support_status =
+      webgpu::CheckDirectStorageExternalWeightsSupport(context);
+  const bool pipelined = context.PipelinedWeightLoadingEnabled();
+  probe_provider.reset();
+  if (!support_status.IsOK() || !pipelined) {
+    GTEST_SKIP() << (support_status.IsOK()
+                         ? "Pipelined DirectStorage initialization is unavailable."
+                         : support_status.ErrorMessage());
+  }
+  RunDirectStorageExternalInitializerSessionTest(
+      kWeightLoadAcceleration_RequiredPipelined);
+}
+
+TEST(WebGpuContextTest, LateRegistrationFailureRollsBackDirectStorageLoader) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Off))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+  RunDirectStorageExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required, true);
 }
 
 TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {

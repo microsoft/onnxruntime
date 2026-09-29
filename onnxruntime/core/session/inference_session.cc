@@ -1063,9 +1063,38 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
+  IDataTransfer* registered_data_transfer = nullptr;
+  IExternalDataLoader* registered_external_data_loader = nullptr;
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  const bool external_data_preload_was_started =
+      external_data_preload_started_;
+#endif
+  bool provider_registration_succeeded = false;
+  auto rollback_registration = gsl::finally([&]() {
+    if (provider_registration_succeeded) {
+      return;
+    }
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    if (registered_external_data_loader != nullptr) {
+      ORT_IGNORE_RETURN_VALUE(
+          external_data_loader_mgr_.UnregisterExternalDataLoader(
+              registered_external_data_loader));
+      if (!external_data_preload_was_started) {
+        external_data_preload_started_ = false;
+      }
+    }
+#endif
+    if (registered_data_transfer != nullptr) {
+      ORT_IGNORE_RETURN_VALUE(
+          data_transfer_mgr_.UnregisterDataTransfer(
+              registered_data_transfer));
+    }
+  });
   if (p_data_xfr) {
+    registered_data_transfer = p_data_xfr.get();
     auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
     if (!st.IsOK()) {
+      registered_data_transfer = nullptr;
       return st;
     }
   }
@@ -1074,6 +1103,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   if (provider_type == onnxruntime::kWebGpuExecutionProvider) {
     auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
     if (p_external_data_loader) {
+      registered_external_data_loader = p_external_data_loader.get();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader)));
       ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
@@ -1083,7 +1113,9 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
-  return execution_providers_.Add(provider_type, p_exec_provider);
+  auto status = execution_providers_.Add(provider_type, p_exec_provider);
+  provider_registration_succeeded = status.IsOK();
+  return status;
 }
 
 // Custom Op support

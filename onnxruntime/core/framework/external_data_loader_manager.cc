@@ -3,9 +3,9 @@
 
 #include "core/framework/external_data_loader_manager.h"
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 #include <algorithm>
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
@@ -20,6 +20,21 @@ Status ExternalDataLoaderManager::RegisterExternalDataLoader(std::unique_ptr<IEx
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "external_data_loader registered is nullptr.");
   }
   external_data_loaders_.push_back(std::move(external_data_loader));
+  return Status::OK();
+}
+
+Status ExternalDataLoaderManager::UnregisterExternalDataLoader(
+    IExternalDataLoader* external_data_loader) {
+  const auto iterator = std::find_if(
+      external_data_loaders_.begin(), external_data_loaders_.end(),
+      [external_data_loader](const auto& registered_loader) {
+        return registered_loader.get() == external_data_loader;
+      });
+  if (iterator == external_data_loaders_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "External data loader is not registered.");
+  }
+  external_data_loaders_.erase(iterator);
   return Status::OK();
 }
 
