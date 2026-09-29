@@ -876,6 +876,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.compaction_scratch = compaction_buffer.get();
   }
 
+  // Runtime geometry shared by the memory-efficient and unfused fallback workspace recipes.
+  // Both fallbacks are only reached when the KV cache is not quantized, so the recipe's
+  // quantization granularities stay at their default None. Sizing both fallbacks through
+  // these shared recipes keeps runtime allocation and the Level-1 workspace estimator in sync.
+  GQAWorkspaceProblem workspace_problem;
+  workspace_problem.qkv_element_size = sizeof(T);
+  workspace_problem.batch_size = parameters.batch_size;
+  workspace_problem.sequence_length = parameters.sequence_length;
+  workspace_problem.num_heads = parameters.num_heads;
+  workspace_problem.kv_num_heads = parameters.kv_num_heads;
+  workspace_problem.head_size = parameters.head_size;
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
@@ -891,14 +903,20 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
-    // KV buffer for head expansion (when num_heads != kv_num_heads)
-    size_t kv_buffer_bytes = (use_memory_efficient_attention && (parameters.num_heads != parameters.kv_num_heads))
-                                 ? (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.seqlen_present_kv_cache * parameters.head_size)
-                                 : 0;
-    // FMHA workspace
-    size_t fmha_buffer_bytes = (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float)))
-                                   ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
-                                   : 0;
+    // Head-expansion (K/V) and FP32 FMHA-accumulator scratch sizes come from the shared
+    // MEA workspace recipe. It returns zero for the expansion buffers when num_heads ==
+    // kv_num_heads and zero for the accumulator when head_size <= 128, matching the prior
+    // inline gating (MemoryEfficientAttentionParams::need_workspace).
+    size_t kv_buffer_bytes = 0;
+    size_t fmha_buffer_bytes = 0;
+    if (use_memory_efficient_attention) {
+      const auto mea = GetGQAMemoryEfficientWorkspaceRecipe(
+          workspace_problem, parameters.seqlen_present_kv_cache);
+      ORT_RETURN_IF_NOT(mea.status.IsOK(),
+                        "GQA memory-efficient attention workspace sizing failed: ", mea.status.message);
+      kv_buffer_bytes = mea.recipe.expanded_key_bytes;
+      fmha_buffer_bytes = mea.recipe.output_accumulator_bytes;
+    }
 
     k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
     v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
@@ -937,34 +955,21 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
     data.use_unfused = true;
 
-    const size_t B = static_cast<size_t>(parameters.batch_size);
-    const size_t N_q = static_cast<size_t>(parameters.num_heads);
-    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
-    const size_t H = static_cast<size_t>(parameters.head_size);
-    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
-    // so the allocation stays correct if a distinct v_head_size is ever exposed.
-    const size_t H_v = (parameters.v_head_size > 0)
-                           ? static_cast<size_t>(parameters.v_head_size)
-                           : H;
-    // This is the same resident/staged cache bound passed to the unfused kernel.
-    const size_t S_kv = static_cast<size_t>(effective_workspace_kv_length);
+    // The unfused fallback's Q/Y materialization buffers and FP32 QK/softmax scratch layout
+    // come from the shared unfused workspace recipe. The recipe reproduces the previous inline
+    // math exactly: 256-byte-aligned Q and Y regions (GQA guarantees head_size == v_head_size)
+    // followed by the two GetUnfusedAttentionWorkspaceSize-equivalent QK/softmax regions. The
+    // KV extent is the same resident/staged cache bound passed to the unfused kernel.
+    const auto unfused = GetGQAUnfusedWorkspaceRecipe(workspace_problem, effective_workspace_kv_length);
+    ORT_RETURN_IF_NOT(unfused.status.IsOK(),
+                      "GQA unfused attention workspace sizing failed: ", unfused.status.message);
+    const GQAUnfusedWorkspaceRecipe& recipe = unfused.recipe;
 
-    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
-      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
-    };
-    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
-    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
-    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
-        onnxruntime::contrib::cuda::GetUnfusedAttentionWorkspaceSize(
-            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
-    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
-
-    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
-                                             GetComputeStream(context));
+    unfused_scratch = GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
     auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
-    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
-    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
-    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base + recipe.q_bnsh_offset_bytes);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
+    data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
   }
 
   if (kernel_options_->AllowDebugInfo()) {
