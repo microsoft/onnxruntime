@@ -16,7 +16,7 @@ namespace {
 
 using Microsoft::Applications::Events::EventProperty;
 
-TEST(PosixTelemetryWindowsTest, BuildsExecutionProviderEvent) {
+TEST(OneDsTelemetryWindowsTest, BuildsExecutionProviderEvent) {
   LUID adapter_luid{};
   adapter_luid.LowPart = 0x89abcdef;
   adapter_luid.HighPart = static_cast<LONG>(0xfedcba98);
@@ -31,7 +31,7 @@ TEST(PosixTelemetryWindowsTest, BuildsExecutionProviderEvent) {
   EXPECT_EQ(properties.at("adapterLuidHighPart").as_int64, UINT64_C(0xfedcba98));
 }
 
-TEST(PosixTelemetryWindowsTest, BuildsUtf8DriverInfoEvent) {
+TEST(OneDsTelemetryWindowsTest, BuildsUtf8DriverInfoEvent) {
   const auto event = telemetry_internal::BuildDriverInfoEvent(
       "Display", L"Driver \u6d4b\u8bd5", L"Version \u7248\u672c");
   EXPECT_EQ(event.GetName(), "DriverInfo");
@@ -41,6 +41,25 @@ TEST(PosixTelemetryWindowsTest, BuildsUtf8DriverInfoEvent) {
   EXPECT_STREQ(properties.at("deviceClass").as_string, "Display");
   EXPECT_STREQ(properties.at("driverNames").as_string, "Driver \xe6\xb5\x8b\xe8\xaf\x95");
   EXPECT_STREQ(properties.at("driverVersions").as_string, "Version \xe7\x89\x88\xe6\x9c\xac");
+}
+
+TEST(OneDsTelemetryWindowsTest, ProviderOptionsRedactPathsForNormalAndCaptureStateEvents) {
+  for (bool capture_state : {false, true}) {
+    const auto event = telemetry_internal::BuildProviderOptionsEvent(
+        "CUDAExecutionProvider", "device_id:0,cache_dir:C:\\Users\\First Last\\cache", capture_state);
+    EXPECT_EQ(event.GetName(), capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions");
+    const auto& properties = event.GetProperties();
+    EXPECT_EQ(properties.at("schemaVersion").as_int64, 0);
+    EXPECT_STREQ(properties.at("providerId").as_string, "CUDAExecutionProvider");
+    EXPECT_STREQ(properties.at("providerOptions").as_string, "device_id:0,cache_dir:[path]");
+  }
+}
+
+TEST(OneDsTelemetryWindowsTest, ProviderOptionsWithoutPathsArePreserved) {
+  const auto event = telemetry_internal::BuildProviderOptionsEvent(
+      "CUDAExecutionProvider", "device_id:0,arena_extend_strategy:kSameAsRequested", false);
+  EXPECT_STREQ(event.GetProperties().at("providerOptions").as_string,
+               "device_id:0,arena_extend_strategy:kSameAsRequested");
 }
 
 }  // namespace

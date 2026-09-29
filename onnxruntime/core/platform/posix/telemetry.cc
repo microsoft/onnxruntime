@@ -21,6 +21,10 @@
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
 
+#ifdef _WIN32
+#include "core/platform/windows/telemetry.h"
+#endif
+
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #include <mach-o/dyld.h>
@@ -1331,6 +1335,15 @@ EventProperties BuildDriverInfoEvent(
       .Build();
 }
 
+EventProperties BuildProviderOptionsEvent(
+    const std::string& provider_id, const std::string& provider_options, bool capture_state) {
+  return EventBuilder(capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions", EventPriority::NORMAL)
+      .AddUInt32("schemaVersion", 0)
+      .AddStringAllowEmpty("providerId", provider_id)
+      .AddStringAllowEmpty("providerOptions", ScrubStringForTelemetry(provider_options))
+      .Build();
+}
+
 }  // namespace telemetry_internal
 #endif
 
@@ -1361,11 +1374,18 @@ void PosixTelemetry::LogAutoEpSelection(
 void PosixTelemetry::LogProviderOptions(const std::string& provider_id,
                                         const std::string& provider_options_string,
                                         bool capture_state) const {
-  // Provider options can contain paths, credentials, or custom EP data. Keep them on the
-  // local Windows TraceLogging channel rather than uploading them through 1DS.
-  (void)provider_id;
-  (void)provider_options_string;
-  (void)capture_state;
+  RunTelemetryOperation("LogProviderOptions", [&]() {
+    if (!IsEnabled()) {
+      return;
+    }
+
+    WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_string, capture_state);
+    auto event = telemetry_internal::BuildProviderOptionsEvent(provider_id, provider_options_string, capture_state);
+    if (!PrepareSampledProcessEvent(event)) {
+      return;
+    }
+    LogEventAsync(std::move(event));
+  });
 }
 #endif
 

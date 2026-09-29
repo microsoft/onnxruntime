@@ -1260,7 +1260,8 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
-if(onnxruntime_USE_1DS_TELEMETRY)
+if(WIN32 AND onnxruntime_USE_1DS_TELEMETRY)
+  # The Windows 1DS event tests include EventProperties.hpp directly; onnxruntime_common links mat privately.
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
     onnxruntime_add_include_to_target(onnxruntime_test_all MSTelemetry::mat)
   elseif(TARGET mat)

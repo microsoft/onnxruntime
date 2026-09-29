@@ -158,13 +158,7 @@ class ExecutionProviders {
       }
       provider_options_str += config_pair.first + ":" + config_pair.second;
     }
-#if defined(_WIN32) && defined(USE_1DS_TELEMETRY)
-    if (env.GetTelemetryProvider().IsEnabled()) {
-      WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_str, capture_state);
-    }
-#else
     env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
-#endif
   }
 
   std::vector<std::shared_ptr<IExecutionProvider>> exec_providers_;

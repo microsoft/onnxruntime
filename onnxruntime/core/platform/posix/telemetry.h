@@ -31,6 +31,8 @@ namespace telemetry_internal {
     std::string_view device_class,
     std::wstring_view driver_names,
     std::wstring_view driver_versions);
+::Microsoft::Applications::Events::EventProperties BuildProviderOptionsEvent(
+    const std::string& provider_id, const std::string& provider_options, bool capture_state);
 }  // namespace telemetry_internal
 #endif
 
