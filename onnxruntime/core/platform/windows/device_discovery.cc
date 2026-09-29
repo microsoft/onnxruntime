@@ -451,7 +451,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   }
 
   // Get all GPUs and NPUs by querying WDDM/MCDM.
-  wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
+  ComPtr<IDXCoreAdapterFactory> adapterFactory;
   if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
     return device_info;
   }
@@ -470,14 +470,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   // These attributes are not OR'd.  Have to query one at a time to get a full view.
   for (const auto& hwAttribute : allowedAttributes) {
-    wil::com_ptr<IDXCoreAdapterList> adapterList;
+    ComPtr<IDXCoreAdapterList> adapterList;
     if (FAILED(adapterFactory->CreateAdapterList(1, hwAttribute, IID_PPV_ARGS(&adapterList)))) {
       continue;
     }
 
     const uint32_t adapterCount{adapterList->GetAdapterCount()};
     for (uint32_t adapterIndex = 0; adapterIndex < adapterCount; adapterIndex++) {
-      wil::com_ptr<IDXCoreAdapter> adapter;
+      ComPtr<IDXCoreAdapter> adapter;
       if (FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)))) {
         continue;
       }

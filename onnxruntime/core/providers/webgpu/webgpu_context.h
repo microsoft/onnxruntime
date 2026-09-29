@@ -479,5 +479,18 @@ class WebGpuContext final {
   uint64_t max_storage_buffer_binding_size_;
 };
 
+#if !defined(__wasm__)
+namespace detail {
+
+// Returns true when the largest host visible device local heap is at least as
+// large as the largest device local heap. Without Resizable BAR a discrete GPU
+// exposes only a small PCIe window of such memory where larger initializers
+// fail to allocate so mapped initializer upload is not used there. It is kept
+// separate from adapter feature discovery for heap layout testing.
+bool CanMapDeviceLocalMemory(gsl::span<const wgpu::MemoryHeapInfo> heaps);
+
+}  // namespace detail
+#endif  // !defined(__wasm__)
+
 }  // namespace webgpu
 }  // namespace onnxruntime
