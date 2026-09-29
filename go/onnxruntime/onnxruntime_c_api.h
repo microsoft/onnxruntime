@@ -1162,7 +1162,7 @@ typedef struct OrtGraphicsInteropConfig {
    *
    * Can be used for future extensibility without changing the struct layout.
    * For example, D3D12 fence sharing flags or provider-specific options like
-   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
+   * onnxruntime::tensorrt_rtx::provider_option_names::kExternalComputeQueueDataParamNV_data
    * for Vulkan interop for the NvTensorRTRTX provider.
    */
   const OrtKeyValuePairs* additional_options;
