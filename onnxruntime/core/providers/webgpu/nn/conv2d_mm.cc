@@ -113,6 +113,8 @@ std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, 
   const std::string b_type = is_channels_last_ ? TypeSnippet(inner_element_size_w, data_type) : TypeSnippet(inner_element_size_x, data_type);
   const std::string apply_activation = GetActivationSnippet(activation, res_type, data_type);
   std::stringstream user_code;
+  // Emit activation helpers before mm_write uses them.
+  user_code << GetActivationDeclaration(activation, res_type, data_type);
   user_code << "fn mm_readA(batch : i32, row : i32, colIn : i32) -> " << a_type << " {\n"
             << (is_channels_last_ ? sample_x.str() : sample_w.str())
             << "}\n"

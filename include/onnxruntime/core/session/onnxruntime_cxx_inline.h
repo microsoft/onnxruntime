@@ -1379,9 +1379,10 @@ inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
   ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
 }
 
-inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state,
-                                         size_t& max_data_size) const {
-  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state, &max_data_size));
+inline EpContextDataReadOptions EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  OrtEpContextDataReadOptions* read_options = nullptr;
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state, &read_options));
+  return EpContextDataReadOptions{read_options};
 }
 
 inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
@@ -1395,6 +1396,12 @@ inline EpContextDataReadOptions::EpContextDataReadOptions() {
 inline EpContextDataReadOptions& EpContextDataReadOptions::SetMaxDataSize(size_t max_data_size) {
   ThrowOnError(GetApi().EpContextDataReadOptionsSetMaxDataSize(this->p_, max_data_size));
   return *this;
+}
+
+inline size_t EpContextDataReadOptions::GetMaxDataSize() const {
+  size_t max_data_size = 0;
+  ThrowOnError(GetApi().EpContextDataReadOptionsGetMaxDataSize(this->p_, &max_data_size));
+  return max_data_size;
 }
 
 namespace detail {
@@ -1561,14 +1568,8 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
-    OrtReadNamedBufferFunc read_func, void* state, size_t max_data_size) {
-  if (read_func == nullptr) {
-    return ClearEpContextDataReadFunc();
-  }
-
-  EpContextDataReadOptions options;
-  options.SetMaxDataSize(max_data_size);
-  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, options));
+    OrtReadNamedBufferFunc read_func, void* state, const EpContextDataReadOptions& read_options) {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, read_options));
   return *this;
 }
 
@@ -2924,6 +2925,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const int64_t* dim_va
 inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
   OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
+  return UnownedValue(out);
+}
+
+inline UnownedValue KernelContext::GetPreallocatedOutput(size_t index) const {
+  OrtValue* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetPreallocatedOutput(ctx_, index, &out));
   return UnownedValue(out);
 }
 

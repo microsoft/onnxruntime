@@ -45,7 +45,7 @@ void RoPE(benchmark::State& state) {
 }
 
 template <typename T>
-static void RoPEArgs(benchmark::internal::Benchmark* b) {
+static void RoPEArgs(benchmark::Benchmark* b) {
   b->ArgNames({"rotary_emb_dim", "interleaved"});
 
   b->ArgsProduct({

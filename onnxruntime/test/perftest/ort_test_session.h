@@ -4,9 +4,11 @@
 #pragma once
 #include <atomic>
 #include <core/session/onnxruntime_cxx_api.h>
+#include <optional>
 #include <random>
 #include "test_configuration.h"
 #include "test_session.h"
+#include "utils.h"
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
 #include <cuda_runtime.h>
@@ -20,16 +22,7 @@ class OnnxRuntimeTestSession : public TestSession {
   OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config,
                          const TestModelInfo& m);
 
-  void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override {
-    if (test_inputs_.size() < test_data_id + 1) {
-      test_inputs_.resize(test_data_id + 1);
-    }
-    if (test_inputs_.at(test_data_id).size() == 0) {
-      for (int i = 0; i < input_length_; i++)
-        test_inputs_[test_data_id].emplace_back(nullptr);
-    }
-    test_inputs_[test_data_id][input_id] = std::move(value);
-  }
+  void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override;
 
   bool PopulateGeneratedInputTestData(int32_t seed);
   bool PopulateGeneratedMultiShapeInputTestData(
@@ -51,6 +44,16 @@ class OnnxRuntimeTestSession : public TestSession {
                                     const std::vector<int64_t>& dims,
                                     ONNXTensorElementDataType element_type, int32_t seed);
 
+  // Copies value into allocator_'s memory if a plugin EP allocator was selected. Strings and
+  // non-tensor values can't live in device memory, so those are returned unchanged.
+  Ort::Value StageInputForPluginEpAllocator(Ort::Value&& value);
+
+  // Stores an already-staged value; used to avoid double-staging in CreateAndStoreGeneratedInput.
+  void StoreTestData(size_t test_data_id, size_t input_id, Ort::Value&& value);
+
+  // True if allocator_ is for device-only (i.e., non CPU or host-accessible) memory.
+  bool IsAllocatorDeviceOnly() const;
+
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
@@ -71,7 +74,12 @@ class OnnxRuntimeTestSession : public TestSession {
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;
+  Ort::Env& env_;
+  std::optional<perftest::utils::PluginEpAllocatorSelection> plugin_ep_allocator_selection_;
   bool has_dynamic_output_shapes_ = false;
+  // Per-output dynamic-shape flag, aligned with outputs_. Lets Run() reset only the outputs that
+  // actually have dynamic shapes instead of discarding every pre-allocated buffer.
+  std::vector<bool> is_output_dynamic_;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)

@@ -42,7 +42,7 @@ struct OrtEpContextConfig {
   void* write_state = nullptr;
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t read_max_data_size = std::numeric_limits<size_t>::max();
+  OrtEpContextDataReadOptions read_options;
 };
 
 using namespace onnxruntime;
@@ -105,7 +105,7 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
 
   ep_context_config->read_func = session_options->value.ep_context_data_read_func;
   ep_context_config->read_state = session_options->value.ep_context_data_read_state;
-  ep_context_config->read_max_data_size = session_options->value.ep_context_data_read_max_size;
+  ep_context_config->read_options.max_data_size = session_options->value.ep_context_data_read_max_size;
   *config = ep_context_config.release();
   return nullptr;
   API_IMPL_END
@@ -117,16 +117,19 @@ ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config
 
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
                     _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
-                    _Out_ size_t* max_data_size) {
+                    _Outptr_result_maybenull_ OrtEpContextDataReadOptions** read_options) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
   ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
   ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
-  ORT_API_RETURN_IF(max_data_size == nullptr, ORT_INVALID_ARGUMENT, "Output max_data_size is NULL");
+  ORT_API_RETURN_IF(read_options == nullptr, ORT_INVALID_ARGUMENT, "Output read_options is NULL");
 
+  auto options = config->read_func != nullptr
+                     ? std::make_unique<OrtEpContextDataReadOptions>(config->read_options)
+                     : nullptr;
   *read_func = config->read_func;
   *state = config->read_func != nullptr ? config->read_state : nullptr;
-  *max_data_size = config->read_max_data_size;
+  *read_options = options.release();
   return nullptr;
   API_IMPL_END
 }
@@ -1381,7 +1384,7 @@ static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) /
               "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+static_assert(std::string_view(ORT_VERSION) == "1.31.0",
               "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi

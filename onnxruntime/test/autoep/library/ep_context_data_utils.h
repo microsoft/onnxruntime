@@ -654,8 +654,14 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig*
     if (ep_api == nullptr) {
       return api.CreateStatus(ORT_NOT_IMPLEMENTED, "OrtEpApi is not available");
     }
+    OrtEpContextDataReadOptions* read_options = nullptr;
     RETURN_IF_ERROR(ep_api->EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, &read_state,
-                                                                    &max_data_size));
+                                                                    &read_options));
+    const std::unique_ptr<OrtEpContextDataReadOptions, decltype(api.ReleaseEpContextDataReadOptions)> options{
+        read_options, api.ReleaseEpContextDataReadOptions};
+    if (read_options != nullptr) {
+      RETURN_IF_ERROR(api.EpContextDataReadOptionsGetMaxDataSize(read_options, &max_data_size));
+    }
   }
   return ReadEpContextData(api, read_func, read_state, file_name, graph, out, allocator, max_data_size);
 }

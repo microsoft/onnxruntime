@@ -123,6 +123,10 @@ class IExecutionProvider {
    * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
+   *
+   * The session requests a fresh loader for each graph initialization attempt. It owns the returned loader and
+   * destroys it after initializing the main graph and its subgraphs, including on failure. The loader is not
+   * retained for inference, and must finish any outstanding work before its destruction completes.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
@@ -468,8 +472,8 @@ class IExecutionProvider {
   }
 
   /** Returns support for application-managed external EPContext data. */
-  virtual Status GetEpContextDataSupport(uint32_t& supported_flags) const {
-    supported_flags = OrtEpContextDataSupportFlags_NONE;
+  virtual Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
     return Status::OK();
   }
 

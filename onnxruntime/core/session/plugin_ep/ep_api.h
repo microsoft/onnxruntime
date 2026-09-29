@@ -22,7 +22,7 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
 ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config);
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
                     _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
-                    _Out_ size_t* max_data_size);
+                    _Outptr_result_maybenull_ OrtEpContextDataReadOptions** read_options);
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                     _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 

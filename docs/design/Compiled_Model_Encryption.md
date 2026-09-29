@@ -18,7 +18,7 @@ The model-level and initializer-level hooks that this feature builds on (the com
 callback, the per-initializer location callback, in-memory external initializers, and EPContext embed
 mode) are **pre-existing** ORT compile/session APIs and are described here only for context.
 
-> **API status:** The callback transport is part of the stable C and C++ API starting in ONNX Runtime 1.30.
+> **API status:** The callback transport is part of the stable C and C++ API starting in ONNX Runtime 1.31.
 > Applications should use the `OrtApi`, `OrtCompileApi`, `OrtEpApi`, and `Ort::EpContextConfig` members described below.
 
 ## Background
@@ -105,9 +105,12 @@ and hand the bytes to the session.
 - The sample filesystem fallback performs containment and file-type checks, but those checks are advisory under
   concurrent filesystem mutation (TOCTOU). Applications that require stronger guarantees should use callbacks backed
   by a sandboxed store and platform-native secure-open semantics.
-- Stable read registration requires a nonzero finite `max_data_size`. The application callback should reject an
+- Stable read registration requires a nonzero `max_data_size`. Zero means unconfigured; `SIZE_MAX` permits any
+  representable payload size. The application must retain the same limit in its callback state and reject an
   oversized artifact before allocation, and the EP must independently reject an oversized returned buffer before
-  deserialization. The limit is deployment-specific and may still be multiple gigabytes.
+  deserialization. ORT stores and exposes the policy but does not invoke the callback or inspect its result:
+  this is an application/EP contract, not an ORT-enforced payload-size guarantee. Tests of the sample helper
+  demonstrate that helper's enforcement, not enforcement by the runtime.
 
 ## Approaches Considered
 
@@ -222,7 +225,7 @@ can be used concurrently — for as long as an EP might invoke the callback.
 
 Registers the read callback on the session options. Reading happens at session load, so this is
 configured on `OrtSessionOptions`. Passing `NULL` for `read_func` clears any previously set callback
-(and its state). A non-NULL callback requires read options with a nonzero finite maximum.
+(and its state). A non-NULL callback requires read options with a nonzero maximum.
 
 ```c
 OrtEpContextDataReadOptions* read_options = NULL;
@@ -284,12 +287,15 @@ void ReleaseEpContextConfig(OrtEpContextConfig* config);
 
 The EP pulls the registered callback (and its state) out of the config. If none was registered,
 `*func` and `*state` are set to `NULL`, and the EP should use its own normal disk read/write path.
+The read accessor also returns an owned copy of the snapshotted read options, or `NULL` if no read callback
+was registered. Query its limit with `EpContextDataReadOptionsGetMaxDataSize` and release it with
+`ReleaseEpContextDataReadOptions`. The copy is independent of the config's lifetime and cannot mutate its policy.
 
 ```c
 OrtStatus* EpContextConfigGetEpContextDataReadFunc(const OrtEpContextConfig* config,
                                                    OrtReadNamedBufferFunc* read_func,
                                                    void** state,
-                                                   size_t* max_data_size);
+                                                   OrtEpContextDataReadOptions** read_options);
 
 OrtStatus* EpContextConfigGetEpContextDataWriteFunc(const OrtEpContextConfig* config,
                                                     OrtWriteNamedBufferFunc* write_func,
@@ -310,10 +316,19 @@ class EpContextConfig : public detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(const SessionOptions& session_options);
   explicit EpContextConfig(ConstSessionOptions session_options);   // extracts via GetEpContextConfig
 
-  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state, size_t& max_data_size) const;
+  EpContextDataReadOptions GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
   void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
 };
 }  // namespace Ort
+```
+
+The C++ session setter accepts the same extensible options type:
+
+```cpp
+Ort::EpContextDataReadOptions read_options;
+read_options.SetMaxDataSize(max_data_size);
+session_options.SetEpContextDataReadFunc(read_func, state, read_options);
+// Registration copies the options; later changes to read_options do not affect the session.
 ```
 
 ## Reference Helper: `ep_context_data_utils` (sample, not ABI)
@@ -558,13 +573,13 @@ The helper distinguishes trust based on the `OrtGraph*`:
 
 Plugin EPs implement the `OrtEp` struct and access ORT functionality through `OrtEpApi`.
 `OrtEp::Compile()` remains unchanged. The stable feature adds the optional, append-only
-`OrtEp::GetEpContextDataSupport` query and uses:
+`OrtEp::GetEpContextDataCallbackSupport` query and uses:
 
 - `OrtEpApi::SessionOptionsGetEpContextConfig` / `OrtEpApi::ReleaseEpContextConfig` — obtain and release
   the config handle.
 - `OrtEpApi::EpContextConfigGetEpContextDataReadFunc` / `...GetEpContextDataWriteFunc` — retrieve the
-  application's callback (plus state and, for reads, the finite maximum), or `NULL` if none was registered.
-- `OrtEp::GetEpContextDataSupport` — advertise READ and/or WRITE only after the corresponding external-data path
+  application's callback (plus state and, for reads, an owned options copy), or `NULL` if none was registered.
+- `OrtEp::GetEpContextDataCallbackSupport` — advertise READ and/or WRITE only after the corresponding external-data path
   honors the callback and propagates callback errors without filesystem fallback.
 - The `ep_context_data_utils` reference helper (sample code) — encapsulates the callback-or-file
   fallback and the untrusted-name hardening.
@@ -575,7 +590,7 @@ Plugin EPs implement the `OrtEp` struct and access ORT functionality through `Or
   `Ort::EpContextConfig` member). During `Compile()`, read/write EPContext binaries
   through the config (directly via the getters, or via the reference helper, which handles the
   callback-vs-disk fallback transparently). Enforce `max_data_size` before deserialization, advertise the implemented
-  flags through `GetEpContextDataSupport`, and release the config in the destructor.
+  flags through `GetEpContextDataCallbackSupport`, and release the config in the destructor.
 - **Old EPs / no callback registered:** with no callback, EPs continue reading/writing files directly. If a callback
   is required for external EPContext data, an old or non-advertising EP is rejected before `Compile()`.
 
@@ -611,8 +626,8 @@ call that handles both the custom (callback) and standard (disk) cases.
 
 ### Backward Compatibility
 
-This is a backward-compatible, append-only C API addition. `OrtEp::GetEpContextDataSupport` is appended to the
-EP-implemented struct and is called only for an EP compiled against API version 30 or later; `OrtEp::Compile()` is
+This is a backward-compatible, append-only C API addition. `OrtEp::GetEpContextDataCallbackSupport` is appended to the
+EP-implemented struct and is called only for an EP compiled against API version 31 or later; `OrtEp::Compile()` is
 unchanged. Applications that register no callbacks behave exactly as before.
 
 ### Provider Adoption
@@ -629,6 +644,12 @@ tests before it can claim support.
 An EP should claim support only after its tests prove callback write/read, callback-error propagation without disk
 fallback, no extra payload copy on read, legacy disk behavior with no callback, and embed-mode bypass.
 
+Built-in EPs that can generate external context data without `Compile()` must report that through
+`IExecutionProvider::MayProduceEpContextNodesWithoutCompilation()`. ORT checks WRITE support before capability
+discovery for these EPs. VitisAI has a direct-assignment path through `GetComputeCapabilityOps()` and compiles its
+backend model in `GetCapability()`. Merely moving context-node creation into its `Compile()` would skip
+direct-assignment-only sessions; changing that lifecycle requires coordinated VAIP changes.
+
 ## API Summary
 
 Stable callback typedefs (in `onnxruntime_c_api.h`):
@@ -637,24 +658,25 @@ Stable callback typedefs (in `onnxruntime_c_api.h`):
 | --- | --- | --- |
 | `OrtWriteNamedBufferFunc` | Callback typedef | Write named (EPContext) binary data during compilation |
 | `OrtReadNamedBufferFunc` | Callback typedef | Read/process named data, allocate via the ORT allocator, return the buffer, during load |
-| `OrtEpContextDataReadOptions` | Opaque options | Require a finite maximum read payload size |
-| `OrtEpContextDataSupportFlags` | Support flags | Advertise callback-capable external EPContext read/write paths |
+| `OrtEpContextDataReadOptions` | Opaque options | Configure the application/EP read payload size policy |
+| `OrtEpContextDataCallbackSupportFlags` | Support flags | Advertise callback-capable external EPContext read/write paths |
 
-Stable functions (since ONNX Runtime 1.30):
+Stable functions (since ONNX Runtime 1.31):
 
 | API | Group | Purpose |
 | --- | --- | --- |
 | `SessionOptionsSetEpContextDataReadFunc` | `OrtApi` | Register the read callback on session options (load) |
 | `CreateEpContextDataReadOptions` | `OrtApi` | Create opaque read callback options |
-| `EpContextDataReadOptionsSetMaxDataSize` | `OrtApi` | Set the finite maximum read payload size |
+| `EpContextDataReadOptionsSetMaxDataSize` | `OrtApi` | Set the nonzero maximum read payload size |
+| `EpContextDataReadOptionsGetMaxDataSize` | `OrtApi` | Get the configured maximum, or zero if unconfigured |
 | `ReleaseEpContextDataReadOptions` | `OrtApi` | Release read callback options |
 | `ModelCompilationOptions_SetEpContextDataWriteFunc` | `OrtCompileApi` | Register compile-time write callback |
 | `SessionOptionsGetEpContextConfig` | `OrtEpApi` | Extract config during `CreateEp()` |
 | `ReleaseEpContextConfig` | `OrtEpApi` | Release the `OrtEpContextConfig` handle |
-| `EpContextConfigGetEpContextDataReadFunc` | `OrtEpApi` | EP retrieves the read callback + state + maximum size (or `NULL`) |
+| `EpContextConfigGetEpContextDataReadFunc` | `OrtEpApi` | EP retrieves the read callback + state + owned options (or `NULL`) |
 | `EpContextConfigGetEpContextDataWriteFunc` | `OrtEpApi` | EP retrieves the write callback + state (or `NULL`) |
-| `OrtEpContextConfig` | Opaque type | Snapshots callbacks, state, and the finite read limit from session options |
-| `GetEpContextDataSupport` | `OrtEp` | Advertise strict READ/WRITE callback support |
+| `OrtEpContextConfig` | Opaque type | Snapshots callbacks, state, and read options from session options |
+| `GetEpContextDataCallbackSupport` | `OrtEp` | Advertise strict READ/WRITE callback support |
 
 C++ wrapper and reference helper:
 
@@ -684,7 +706,7 @@ above.
 
 - **Application → session options.** `SetEpContextDataReadFunc` (on `OrtSessionOptions`) and
   `SetEpContextDataWriteFunc` (on `OrtModelCompilationOptions`, which forwards into the underlying
-  session options) store the callback function pointer and opaque state. Read registration also stores a finite
+  session options) store the callback function pointer and opaque state. Read registration also stores a nonzero
   `max_data_size`.
 - **Session options → `OrtEpContextConfig`.** `OrtEpApi::SessionOptionsGetEpContextConfig` allocates a
   config handle that snapshots those callback pointers, state values, and the read maximum (it does not own the
