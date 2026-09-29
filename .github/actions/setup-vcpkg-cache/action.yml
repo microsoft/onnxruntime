@@ -1,5 +1,5 @@
 name: Setup vcpkg cache
-description: Restores the vcpkg cache and saves it only for manual or main branch runs.
+description: Restores the vcpkg cache and saves it only for main branch runs.
 
 inputs:
   key:
