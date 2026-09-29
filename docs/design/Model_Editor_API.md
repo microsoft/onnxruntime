@@ -227,7 +227,7 @@ See [Public Graph IR Types](Graph_IR_Types.md) for the implementation details an
     accepted as an alias.
   - Other domains known to ORT's schema registry, such as `com.microsoft`, are added automatically at the registry's
     latest version if they are not declared. Declare them explicitly to pin a version.
-  - Custom-op domains must be declared explicitly.
+  - Registered custom-op domains are added automatically at the registry's latest version; declare them explicitly to pin a version.
   - When augmenting, an update model may add new domains or repeat an existing domain at the same version. Changing an
     existing domain's version is rejected.
 - Graph inputs and outputs created with `CreateValueInfo` must currently be dense tensors. Sparse tensor, map,
