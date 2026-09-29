@@ -43,7 +43,8 @@ class DeviceId {
   // ~/Library/Application Support/...; other POSIX: $XDG_CACHE_HOME or ~/.cache/...).
   static std::string GetStorageDirectory();
 
-  // Same as GetStorageDirectory(), but also creates the directory tree (0700) if it does not exist.
+  // Same as GetStorageDirectory(), but also creates the directory tree if it does not exist.
+  // POSIX creates it with mode 0700; Windows uses the inherited directory ACL.
   // Returns "" if no suitable location is available. Use before writing into the directory (e.g. the
   // telemetry offline cache, which the 1DS SDK opens during initialization).
   static std::string EnsureStorageDirectory();

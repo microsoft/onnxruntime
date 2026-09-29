@@ -24,8 +24,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
-    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.h"
-    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
     "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
@@ -52,12 +52,8 @@ if(WIN32)
     if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry_1ds.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry_1ds.cc"
         )
     endif()
 
@@ -71,13 +67,8 @@ else()
     # 1DS telemetry sources for non-Windows platforms.
     if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_1ds.cc"
         )
     endif()
 
@@ -102,6 +93,17 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
             )
     endif()
+endif()
+
+if(onnxruntime_USE_1DS_TELEMETRY)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_id.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds_platform.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_context.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_no_throw.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sampling.h")
 endif()
 
 # platform-specific device discovery files

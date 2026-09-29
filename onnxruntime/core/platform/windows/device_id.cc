@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/device_id.h"
+#include "core/platform/device_id.h"
 
 #include <Windows.h>
 
@@ -9,7 +9,6 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <string_view>

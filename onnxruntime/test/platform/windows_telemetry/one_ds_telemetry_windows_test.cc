@@ -9,7 +9,7 @@
 #include <EventProperties.hpp>
 #include "gtest/gtest.h"
 
-#include "core/platform/posix/telemetry.h"
+#include "core/platform/windows/telemetry_1ds.h"
 
 namespace onnxruntime::test {
 namespace {

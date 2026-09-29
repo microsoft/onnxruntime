@@ -207,7 +207,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
   set(onnxruntime_USE_1DS_TELEMETRY OFF)
 endif()
 # Optional 1DS ingestion token. Leave empty to compile in the encoded
-# in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
+# in-repo platform default; callers can override it at configure time.
 set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)

@@ -17,7 +17,7 @@ limitations under the License.
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
 #ifdef USE_1DS_TELEMETRY
-#include "core/platform/posix/telemetry.h"
+#include "core/platform/telemetry_1ds.h"
 #endif
 #include "core/common/inlined_containers.h"
 #include <Windows.h>
@@ -149,7 +149,7 @@ class WindowsEnv : public Env {
   // Keep the TraceLogging provider registered for local ETW diagnostics even when 1DS is the
   // telemetry upload backend.
   WindowsTelemetry windows_telemetry_provider_;
-  PosixTelemetry telemetry_provider_;
+  OneDsTelemetry telemetry_provider_;
 #elif defined(USE_WINDOWS_TELEMETRY)
   WindowsTelemetry telemetry_provider_;
 #else
