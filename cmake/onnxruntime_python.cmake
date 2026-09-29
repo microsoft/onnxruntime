@@ -1253,7 +1253,6 @@ if (onnxruntime_USE_WEBGPU)
       add_custom_command(
         TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_FILE:Microsoft::DXIL>
             $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
       )
@@ -1261,7 +1260,6 @@ if (onnxruntime_USE_WEBGPU)
       add_custom_command(
         TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
             $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
             $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
       )
