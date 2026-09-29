@@ -63,7 +63,7 @@ std::optional<uint32_t> TryGetMatMulPackedDispatchGroupCount(
 using MatMulAlgorithmConfiguration =
     std::variant<MatMulSubgroupMatrixConfiguration,
                  MatMulNaiveConfiguration,
-         MatMulSubgroupConfiguration,
+                 MatMulSubgroupConfiguration,
                  MatMulPackedConfiguration>;
 
 // Complete per-invocation decision consumed by the compute dispatcher.
