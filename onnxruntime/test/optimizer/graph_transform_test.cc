@@ -854,6 +854,59 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithSizeThreshold) {
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
     ASSERT_EQ(CountOpsInGraph(graph)["NonZero"], 0);
   }
+
+  // Case 5: string payload size is variable and cannot be derived from the output shape.
+  // The slot storage estimate is smaller than the threshold, but duplicating the payload is not.
+  {
+    Model model("ConstantFoldingWithVariableWidthOutput",
+                false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    TensorProto input;
+    input.set_name("string_input");
+    input.add_dims(1);
+    input.add_string_data(std::string(1024, 'x'));
+    input.set_data_type(TensorProto_DataType_STRING);
+    graph.AddInitializedTensor(input);
+
+    TensorProto repeats;
+    repeats.set_name("string_repeats");
+    repeats.add_dims(1);
+    repeats.add_int64_data(100);
+    repeats.set_data_type(TensorProto_DataType_INT64);
+    graph.AddInitializedTensor(repeats);
+
+    TypeProto input_type;
+    input_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto repeats_type;
+    repeats_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    repeats_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto output_type;
+    output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_STRING);
+    output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(100);
+
+    auto& input_arg = graph.GetOrCreateNodeArg("string_input", &input_type);
+    auto& repeats_arg = graph.GetOrCreateNodeArg("string_repeats", &repeats_type);
+    auto& output_arg = graph.GetOrCreateNodeArg("string_output", &output_type);
+    graph.AddNode("string_tile", "Tile", "Tile a variable-width string.",
+                  {&input_arg, &repeats_arg}, {&output_arg});
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "4096"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_options),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 1);
+  }
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingCopiesAliasedTensorBuffer) {

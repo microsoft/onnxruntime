@@ -375,6 +375,22 @@ static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& grap
   return total_size;
 }
 
+static bool HasVariableWidthOutput(const Node& node) {
+  for (const auto* output_def : node.OutputDefs()) {
+    if (!output_def->Exists()) {
+      continue;
+    }
+
+    const auto* type_proto = output_def->TypeAsProto();
+    if (type_proto != nullptr && utils::HasTensorType(*type_proto) &&
+        type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static int64_t EstimateFreedInputSizeInBytes(const Graph& graph,
                                              const InitializedTensorSet& constant_inputs) {
   SafeInt<int64_t> total_size = 0;
@@ -571,6 +587,13 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // The optional threshold limits model growth rather than absolute output size.
+      if (output_size_threshold > 0 && HasVariableWidthOutput(*node)) {
+        LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                           << " node '" << node->Name()
+                           << "' because variable-width output size cannot be estimated before execution.";
+        continue;
+      }
+
       if (output_size_threshold > 0 && estimated_output_size >= 0) {
         int64_t freed_input_size = 0;
         ORT_TRY {
