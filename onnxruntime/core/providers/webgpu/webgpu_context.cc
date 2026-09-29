@@ -1498,6 +1498,12 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
   if (recording.graph_capture_state != GraphCaptureState::Replaying) {
     buffer_mgr.RefreshPendingBuffers(recording);
   }
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  for (auto& release : recording.pending_release_callbacks) {
+    release();
+  }
+  recording.pending_release_callbacks.clear();
+#endif
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
   recording.has_unsubmitted_work = false;

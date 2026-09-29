@@ -632,7 +632,10 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
   if (webgpu::IsWeightLoadAccelerationEnabled(
           config.weight_load_acceleration_mode)) {
     direct_storage_initializer_allocator_ =
-        CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
+        CreateDirectStorageWebGpuAllocator(
+            context_,
+            [this]() -> webgpu::CommandRecordingState& { return Recording(); },
+            direct_storage_initializer_state_);
   }
 #else
   if (webgpu::IsWeightLoadAccelerationRequired(

@@ -28,6 +28,7 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -699,6 +700,29 @@ TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
   ASSERT_NE(loader, nullptr);
   EXPECT_STATUS_OK(loader->BeginPreload());
   loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, DirectStorageAllocatorUsesProviderRecording) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                WeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  auto& allocator = allocators.front();
+  void* buffer = allocator->Alloc(16);
+  ASSERT_NE(buffer, nullptr);
+
+  auto& webgpu_ep = *static_cast<WebGpuExecutionProvider*>(ep.get());
+  auto& recording = webgpu_ep.Recording();
+  recording.has_unsubmitted_work = true;
+  allocator->Free(buffer);
+  EXPECT_EQ(recording.pending_buffers.size(), 1u);
+
+  recording.has_unsubmitted_work = false;
+  webgpu_ep.InitializerBufferManager().RefreshPendingBuffers(recording);
+  EXPECT_TRUE(recording.pending_buffers.empty());
 }
 
 TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterDirectStorageLoader) {

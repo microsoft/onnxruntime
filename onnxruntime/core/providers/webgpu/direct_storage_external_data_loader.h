@@ -5,6 +5,7 @@
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -18,6 +19,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 class WebGpuContext;
+struct CommandRecordingState;
 
 namespace detail {
 
@@ -54,13 +56,17 @@ class DirectStorageInitializerState {
   std::unique_ptr<Impl> impl_;
 
   friend AllocatorPtr CreateDirectStorageWebGpuAllocator(
-      WebGpuContext& context, std::shared_ptr<DirectStorageInitializerState>& out_state);
+      WebGpuContext& context,
+      std::function<CommandRecordingState&()> recording_getter,
+      std::shared_ptr<DirectStorageInitializerState>& out_state);
   friend class DirectStorageExternalDataLoader;
   friend class DirectStorageWebGpuAllocator;
 };
 
 AllocatorPtr CreateDirectStorageWebGpuAllocator(
-    WebGpuContext& context, std::shared_ptr<DirectStorageInitializerState>& out_state);
+    WebGpuContext& context,
+    std::function<CommandRecordingState&()> recording_getter,
+    std::shared_ptr<DirectStorageInitializerState>& out_state);
 
 class DirectStorageExternalDataLoader final : public IExternalDataLoader {
  public:

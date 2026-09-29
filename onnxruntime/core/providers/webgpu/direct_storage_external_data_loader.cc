@@ -602,12 +602,14 @@ DirectStorageInitializerState::~DirectStorageInitializerState() {
 class DirectStorageWebGpuAllocator final : public IAllocator {
  public:
   DirectStorageWebGpuAllocator(WebGpuContext& context,
+                               std::function<CommandRecordingState&()> recording_getter,
                                std::shared_ptr<DirectStorageInitializerState> state)
       : IAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
                                  OrtAllocatorType::OrtReadOnlyAllocator,
                                  WebGpuDevice,
                                  OrtMemTypeDefault)),
         context_{context},
+        recording_getter_{std::move(recording_getter)},
         state_{std::move(state)} {
   }
 
@@ -618,8 +620,9 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
 
     const auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                        wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-    std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
-    return context_.InitializerBufferManager().Create(recording_, size, usage);
+    auto& recording = recording_getter_();
+    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+    return context_.InitializerBufferManager().Create(recording, size, usage);
   }
 
   void Free(void* p) override {
@@ -627,6 +630,8 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
       return;
     }
 
+    auto& recording = recording_getter_();
+    std::lock_guard<std::recursive_mutex> recording_lock{recording.mutex};
     std::unique_ptr<ImportedAllocation> imported;
     {
       std::lock_guard<std::mutex> lock{state_->impl_->mutex};
@@ -639,27 +644,39 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
     }
 
     if (imported) {
-      EndAccessNoThrow(*imported);
+      if (recording.has_unsubmitted_work) {
+        std::shared_ptr<ImportedAllocation> deferred{
+            imported.release(), [](ImportedAllocation* allocation) {
+              EndAccessNoThrow(*allocation);
+              delete allocation;
+            }};
+        recording.pending_release_callbacks.emplace_back(
+            [deferred = std::move(deferred)]() {});
+      } else {
+        EndAccessNoThrow(*imported);
+      }
       return;
     }
 
-    std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
-    context_.InitializerBufferManager().Release(recording_, static_cast<WGPUBuffer>(p));
+    context_.InitializerBufferManager().Release(
+        recording, static_cast<WGPUBuffer>(p));
   }
 
  private:
   WebGpuContext& context_;
+  std::function<CommandRecordingState&()> recording_getter_;
   std::shared_ptr<DirectStorageInitializerState> state_;
-  CommandRecordingState recording_;
 };
 
 AllocatorPtr CreateDirectStorageWebGpuAllocator(
-    WebGpuContext& context, std::shared_ptr<DirectStorageInitializerState>& out_state) {
+    WebGpuContext& context,
+    std::function<CommandRecordingState&()> recording_getter,
+    std::shared_ptr<DirectStorageInitializerState>& out_state) {
   auto state = std::shared_ptr<DirectStorageInitializerState>(
       new DirectStorageInitializerState());
   state->impl_ = std::make_unique<DirectStorageInitializerState::Impl>();
-  auto allocator =
-      std::make_shared<DirectStorageWebGpuAllocator>(context, state);
+  auto allocator = std::make_shared<DirectStorageWebGpuAllocator>(
+      context, std::move(recording_getter), state);
   state->impl_->allocator = allocator.get();
   out_state = state;
   return allocator;

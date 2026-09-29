@@ -4,6 +4,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -129,6 +130,9 @@ struct CommandRecordingState {
   // across Sessions, so has_unsubmitted_work and pending_buffers can be removed from this state.
   bool has_unsubmitted_work = false;
   std::vector<wgpu::Buffer> pending_buffers;
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  std::vector<std::function<void()>> pending_release_callbacks;
+#endif
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
