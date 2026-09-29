@@ -32,15 +32,6 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
 
-// Bound-checks every block_table entry against num_blocks, replacing any out-of-range entry with -1
-// (the existing unmapped-block sentinel). Every attention backend reads block_table only through the
-// sanitized copy this produces. That is enough for the backends that already branch on
-// block_id < 0, but not for native FlashAttention (flash_fwd_kernel.h indexes block_table with an
-// unchecked negative offset) or the XQA paged path, where -1 is a legal in-range value and still
-// reaches the cache unguarded.
-Status LaunchSanitizeBlockTable(int* sanitized_block_table, const int* block_table, const int num_blocks,
-                                const int batch_size, const int max_num_blocks_per_seq, cudaStream_t stream);
-
 // Produces per-batch KV lengths seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] -
 // cumulative_seqlens_q[i]) for the cuDNN paged SDPA backend's padding-mask input. Deriving the
 // query count from cumulative_seqlens_q keeps the kernel correct if a caller ever routes a

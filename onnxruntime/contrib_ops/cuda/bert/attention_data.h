@@ -287,7 +287,7 @@ struct PagedAttentionData {
   // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
   // (quantized cache with one or a bounded speculative group of new tokens -- see use_xqa_decode).
   //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
-  //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
+  //   xqa_page_table_scratch : block_table expanded to 128-token pages, out-of-range entries clamped.
   //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
   //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
   //   xqa_k_scale_norm       : power of two divided out of that pre-scaled Q and handed to XQA as
@@ -325,6 +325,9 @@ struct PagedAttentionData {
   AllocatorPtr cudnn_allocator = nullptr;
   void* cudnn_handle = nullptr;
   int* cudnn_seqlens_kv = nullptr;
+
+  // block_table with out-of-range entries clamped to 0, for cuDNN paged and FlashAttention.
+  int* clamped_block_table = nullptr;
 };
 
 }  // namespace cuda
