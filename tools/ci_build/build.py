@@ -462,14 +462,12 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
-    
     # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
     # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
     # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
     use_full_protobuf = bool(
         args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
     )
-    
     # Repository builds select a backend explicitly. This lets raw CMake retain the historical
     # Windows USE_TELEMETRY=ON behavior for downstream forks while default build.py invocations use 1DS.
     telemetry_backend = "WINDOWS" if args.use_windows_telemetry else "1DS"
