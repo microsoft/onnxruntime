@@ -33,11 +33,12 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto* mean_output = has_mean_output_ ? &shader.AddOutput("mean_output", ShaderUsage::None) : nullptr;
   const auto* inv_std_dev_output = has_inv_std_dev_output_ ? &shader.AddOutput("inv_std_dev_output", ShaderUsage::None) : nullptr;
 
-  // Preserve same-type rounding to match fused normalization kernels. Mixed types normalize in f32.
-  const bool mixed_types = Inputs()[0].var_type != Outputs()[0].var_type;
+  // Keep LayerNormalization's mean in f32: narrowing before subtraction amplifies rounding error.
+  // Preserve same-type SimplifiedLayerNormalization rounding to match fused RMSNorm kernels.
+  const bool normalize_in_f32 = !simplified_ || Inputs()[0].var_type != Outputs()[0].var_type;
   const int components = x.NumComponents();
   shader.AdditionalImplementation()
-      << "alias norm_element_t = " << (mixed_types || fp32_normalization_ ? "f32" : "x_element_t") << ";\n"
+      << "alias norm_element_t = " << (normalize_in_f32 || fp32_normalization_ ? "f32" : "x_element_t") << ";\n"
       << "alias norm_value_t = "
       << (components == 4 ? "vec4<norm_element_t>" : (components == 2 ? "vec2<norm_element_t>" : "norm_element_t"))
       << ";\n";
