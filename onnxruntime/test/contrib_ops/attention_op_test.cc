@@ -132,6 +132,7 @@ static void RunAttentionTest(
     std::vector<int64_t> mask_index_dims_4 = {batch_size, 1};
     std::vector<int64_t> mask_index_dims_5 = {batch_size, sequence_length, total_sequence_length};
     std::vector<int64_t> mask_index_dims_6 = {batch_size, 1, max_sequence_length, max_sequence_length};
+    std::vector<int64_t> mask_index_dims_7 = {3 * batch_size + 2};
     std::vector<int64_t> mask_index_dims;
     switch (mask_type) {
       case AttentionMaskType::MASK_1D_KEY_SEQ_LEN:
@@ -151,6 +152,9 @@ static void RunAttentionTest(
         break;
       case AttentionMaskType::MASK_4D_MEGATRON:
         mask_index_dims = mask_index_dims_6;
+        break;
+      case AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START:
+        mask_index_dims = mask_index_dims_7;
         break;
       default:
         assert(0);  // shall not reach here.
@@ -946,6 +950,45 @@ TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
       << debug_output;
 #endif
 }
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+TEST(ContribOpAttentionTest, MemoryEfficientAttentionWithKeySequenceLengthStartMask) {
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 16;
+  constexpr int hidden_size = 32;
+  constexpr int number_of_heads = 1;
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
+
+  const std::vector<float> input_data(batch_size * sequence_length * hidden_size, 0.0f);
+  const std::vector<float> weight_data(hidden_size * 3 * hidden_size, 0.0f);
+  const std::vector<float> bias_data(3 * hidden_size, 0.0f);
+  const std::vector<int32_t> mask_index_data{
+      sequence_length,
+      0, sequence_length,
+      0, sequence_length};
+  const std::vector<float> output_data(batch_size * sequence_length * hidden_size, 0.0f);
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   true /*use_float16*/, false /*is_unidirectional*/,
+                   false /*use_past_state*/, 0 /*past_sequence_length*/, nullptr, nullptr,
+                   AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START,
+                   0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
+                   true /*disable_cpu*/, false /*disable_cuda*/,
+                   true /*disable_dml*/, true /*disable_webgpu*/);
+}
+#endif
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
   RawAttentionEmptyPastState(false);

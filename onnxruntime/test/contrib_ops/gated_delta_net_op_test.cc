@@ -111,7 +111,7 @@ float Sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 // float64 sequential reference. State is V-major [B, Hv, V, K] on the boundary and
 // [K][V] internally, matching the operator contract.
 void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vector<float>* out,
-               std::vector<float>* final_state) {
+               std::vector<float>* final_state, std::vector<float>* state_update = nullptr) {
   const bool gated = o.update_rule == "gated" || o.update_rule == "gated_delta";
   const bool delta = o.update_rule == "delta" || o.update_rule == "gated_delta";
   const float scale = o.scale != 0.0f ? o.scale : 1.0f / std::sqrt(static_cast<float>(g.dk));
@@ -119,6 +119,13 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
 
   out->assign(static_cast<size_t>(g.total_tokens) * out_heads * g.dv, 0.0f);
   final_state->assign(static_cast<size_t>(g.batch) * g.hv * g.dv * g.dk, 0.0f);
+  const int64_t decay_elements = static_cast<int64_t>(o.state_update_capacity) * g.hv;
+  const int64_t key_elements = static_cast<int64_t>(o.state_update_capacity) * g.hq * g.dk;
+  const int64_t row_width = decay_elements + key_elements +
+                            static_cast<int64_t>(o.state_update_capacity) * g.hv * g.dv;
+  if (state_update != nullptr) {
+    state_update->assign(static_cast<size_t>(g.batch) * row_width, 0.0f);
+  }
 
   std::vector<int32_t> cu = in.cu_seqlens;
   if (cu.empty()) {
@@ -139,6 +146,7 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
         }
       }
       for (int t = cu[b]; t < cu[b + 1]; ++t) {
+        const int local_token = t - cu[b];
         std::vector<double> qv(g.dk), kv(g.dk);
         for (int i = 0; i < g.dk; ++i) {
           const float q = in.q[(static_cast<size_t>(t) * g.hq + hq) * g.dk + i];
@@ -188,6 +196,28 @@ void Reference(const Geometry& g, const Options& o, const Inputs& in, std::vecto
           }
           const double vv = in.v[(static_cast<size_t>(t) * g.hv + hv) * g.dv + c];
           delta_v[c] = beta * (vv - acc);
+        }
+        const int capture_count = in.capture_count.empty()
+                                      ? 0
+                                      : std::clamp(in.capture_count[b], 0,
+                                                   std::min(o.state_update_capacity, cu[b + 1] - cu[b]));
+        if (state_update != nullptr && local_token < capture_count) {
+          const int64_t row_base = static_cast<int64_t>(b) * row_width;
+          (*state_update)[row_base + static_cast<int64_t>(local_token) * g.hv + hv] =
+              static_cast<float>(decay);
+          const int first_value_head_for_query = hq * g.hv / g.hq;
+          if (hv == first_value_head_for_query) {
+            for (int r = 0; r < g.dk; ++r) {
+              (*state_update)[row_base + decay_elements +
+                              (static_cast<int64_t>(local_token) * g.hq + hq) * g.dk + r] =
+                  static_cast<float>(kv[r]);
+            }
+          }
+          for (int c = 0; c < g.dv; ++c) {
+            (*state_update)[row_base + decay_elements + key_elements +
+                            (static_cast<int64_t>(local_token) * g.hv + hv) * g.dv + c] =
+                static_cast<float>(delta_v[c]);
+          }
         }
         for (int r = 0; r < g.dk; ++r) {
           for (int c = 0; c < g.dv; ++c) {
@@ -262,8 +292,8 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   in.k = RoundToTensorType<T>(in_raw.k);
   in.v = RoundToTensorType<T>(in_raw.v);
 
-  std::vector<float> ref_out, ref_state;
-  Reference(g, o, in, &ref_out, &ref_state);
+  std::vector<float> ref_out, ref_state, ref_state_update;
+  Reference(g, o, in, &ref_out, &ref_state, use_webgpu ? &ref_state_update : nullptr);
 
   OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
   AddCommonAttrs(test, o);
@@ -330,14 +360,65 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
     test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
                           state_tol);
   }
+  const bool state_update_enabled = in.state_update_active.empty() || in.state_update_active[0] != 0;
   if (o.state_update_capacity > 0) {
     const int64_t width = static_cast<int64_t>(o.state_update_capacity) *
                           (g.hv + g.hq * g.dk + g.hv * g.dv);
     test.AddOutput<float>("state_update", {g.batch, width},
-                          std::vector<float>(static_cast<size_t>(g.batch) * width, 0.0f),
-                          false, 1e9f, 1e9f);
+                          use_webgpu && state_update_enabled
+                              ? ref_state_update
+                              : std::vector<float>(static_cast<size_t>(g.batch) * width, 0.0f),
+                          false, use_webgpu ? state_tol : 1e9f, use_webgpu ? state_tol : 1e9f);
   } else {
     test.AddOutput<float>("state_update", {g.batch, 0}, {});
+  }
+
+  if (use_webgpu && o.state_update_capacity > 0 && state_update_enabled) {
+    test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& actual_outputs, const std::string&) {
+      ASSERT_EQ(actual_outputs.size(), 3u);
+      const Tensor& actual_output = actual_outputs[0].Get<Tensor>();
+      const Tensor& actual_final_state = actual_outputs[1].Get<Tensor>();
+      const Tensor& actual_state_update = actual_outputs[2].Get<Tensor>();
+      const int64_t decay_elements = static_cast<int64_t>(o.state_update_capacity) * g.hv;
+      const int64_t key_elements = static_cast<int64_t>(o.state_update_capacity) * g.hq * g.dk;
+      const int64_t width = decay_elements + key_elements +
+                            static_cast<int64_t>(o.state_update_capacity) * g.hv * g.dv;
+      ASSERT_EQ(actual_output.Shape(), TensorShape(shaped({out_heads, g.dv})));
+      ASSERT_EQ(actual_final_state.Shape(), TensorShape({g.batch, g.hv, g.dv, g.dk}));
+      ASSERT_EQ(actual_state_update.Shape(), TensorShape({g.batch, width}));
+
+      const T* actual_output_data = actual_output.Data<T>();
+      const std::vector<T> expected_output = ToTensorType<T>(ref_out);
+      for (size_t i = 0; i < expected_output.size(); ++i) {
+        if constexpr (std::is_same_v<T, float>) {
+          EXPECT_NEAR(actual_output_data[i], expected_output[i], out_tol);
+        } else {
+          EXPECT_NEAR(actual_output_data[i].ToFloat(), expected_output[i].ToFloat(), out_tol);
+        }
+      }
+      const float* actual_final_state_data = actual_final_state.Data<float>();
+      for (size_t i = 0; i < ref_state.size(); ++i) {
+        EXPECT_NEAR(actual_final_state_data[i], ref_state[i], state_tol);
+      }
+
+      const float* actual_data = actual_state_update.Data<float>();
+      for (int b = 0; b < g.batch; ++b) {
+        const int sequence_length = in.cu_seqlens.empty()
+                                        ? g.total_tokens / g.batch
+                                        : in.cu_seqlens[b + 1] - in.cu_seqlens[b];
+        const int count = std::clamp(in.capture_count[b], 0,
+                                     std::min(o.state_update_capacity, sequence_length));
+        auto check_range = [&](int64_t offset, int64_t elements) {
+          for (int64_t i = 0; i < elements; ++i) {
+            const int64_t index = static_cast<int64_t>(b) * width + offset + i;
+            EXPECT_NEAR(actual_data[index], ref_state_update[index], state_tol);
+          }
+        };
+        check_range(0, static_cast<int64_t>(count) * g.hv);
+        check_range(decay_elements, static_cast<int64_t>(count) * g.hq * g.dk);
+        check_range(decay_elements + key_elements, static_cast<int64_t>(count) * g.hv * g.dv);
+      }
+    });
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -351,10 +432,7 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   } else {
     eps.push_back(DefaultCudaExecutionProvider());
   }
-  const bool webgpu_compact_update = use_webgpu && o.state_update_capacity > 0;
-  test.Run(webgpu_compact_update ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
-           webgpu_compact_update ? "WebGPU GatedDeltaNet does not support state_update_capacity > 0" : "",
-           {}, nullptr, &eps);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   if (fetches != nullptr) *fetches = test.GetFetches();
 }
 
@@ -531,15 +609,50 @@ TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
-TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
+TEST(GatedDeltaNetWebGpuTest, CompactStateUpdates) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
-  Geometry g{2, 1, 1, 1, 4, 3};
+  Geometry g{12, 3, 1, 2, 4, 5};
   Inputs inputs = MakeInputs(g, 227);
-  inputs.capture_count = {1};
+  inputs.cu_seqlens = {0, 1, 5, 12};
+  inputs.capture_count = {-1, 2, 8};
   Options options;
-  options.state_update_capacity = 1;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = 7;
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, CompactStateUpdatesFp16QwenGeometry) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{12, 3, 2, 6, 128, 128};
+  Inputs inputs = MakeInputs(g, 229);
+  inputs.cu_seqlens = {0, 1, 5, 12};
+  inputs.capture_count = {-1, 2, 8};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = 7;
+  RunCase(g, options, inputs, 3e-2f, 3e-2f,
+          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, InactiveCompactStateUpdatesAreZero) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{4, 1, 1, 2, 4, 3};
+  Inputs inputs = MakeInputs(g, 228);
+  inputs.capture_count = {4};
+  inputs.state_update_active = {0};
+  Options options;
+  options.state_update_capacity = 7;
   RunTypedCase<float>(g, options, inputs, 1e-4f, 1e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }

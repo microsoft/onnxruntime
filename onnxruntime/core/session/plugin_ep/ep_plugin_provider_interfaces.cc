@@ -897,6 +897,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
     }
 
+    // A successful callback may return nullptr to request ORT's default CPU allocator.
+    if (ort_allocator_ptr == nullptr) {
+      continue;
+    }
+
     if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
       ORT_THROW(
           "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "

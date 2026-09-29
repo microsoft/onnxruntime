@@ -64,11 +64,11 @@ Status SplitKernel::PrepareForComputeLocal(const TensorShape& input_shape,
   axis = HandleNegativeAxis(axis_, num_dimensions);
   const int64_t split_dim_size = input_dims[onnxruntime::narrow<size_t>(axis)];
 
-  before_dims = gsl::narrow_cast<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
-  after_dims_including_split_axis = gsl::narrow_cast<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
+  before_dims = onnxruntime::narrow<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  after_dims_including_split_axis = onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1
-                                   : gsl::narrow_cast<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis + 1)));
+                                   : onnxruntime::narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis + 1)));
 
   if (num_outputs_ != -1) {
     if (num_outputs_ > split_dim_size) {
