@@ -16,6 +16,20 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace detail {
+
+std::function<void(std::string_view)> CreateShaderDumpFunction(std::string dump_file_path) {
+  auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
+  auto dump_mutex = std::make_shared<std::mutex>();
+  return [dump_file = std::move(dump_file),
+          dump_mutex = std::move(dump_mutex)](std::string_view shader_content) {
+    std::lock_guard<std::mutex> lock{*dump_mutex};
+    *dump_file << shader_content << "\n";
+  };
+}
+
+}  // namespace detail
+
 ProgramArtifact::ProgramArtifact(std::string program_name,
                                  wgpu::ComputePipeline&& compute_pipeline,
                                  wgpu::BindGroupLayout&& bind_group_layout,
@@ -29,10 +43,7 @@ ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context} {
   if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
       !dump_file_path.empty()) {
-    auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
-    shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
-      *dump_file << shader_content << "\n";
-    };
+    shader_dump_fn_ = detail::CreateShaderDumpFunction(std::move(dump_file_path));
   }
 }
 
@@ -56,14 +67,18 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 }
 
 Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
-  inputs_segments.resize(program.Inputs().size(), 1);
-  outputs_segments.resize(program.Outputs().size(), 1);
+  inputs_segments.resize(program.Inputs().size(), 0);
+  outputs_segments.resize(program.Outputs().size(), 0);
 
   const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
   // Inputs
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
+    if (program.InputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& input = program.Inputs()[i];
+    inputs_segments[i] = 1;
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       inputs_segments[i] = segments;
@@ -71,7 +86,11 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& p
   }
   // Outputs
   for (size_t i = 0; i < program.Outputs().size(); ++i) {
+    if (program.OutputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& output = program.Outputs()[i];
+    outputs_segments[i] = 1;
     if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       outputs_segments[i] = segments;
@@ -302,6 +321,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   auto result = programs_.find(key);
   if (result != programs_.end()) {
     return &result->second;
@@ -311,6 +331,7 @@ const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
 }
 
 const ProgramArtifact* ProgramManager::Set(const std::string& key, ProgramArtifact&& program) {
+  std::lock_guard<std::mutex> lock(programs_mutex_);
   return &(programs_.emplace(key, std::move(program)).first->second);
 }
 

@@ -49,6 +49,14 @@ inline T WrappedMultiply(T a, T b) {
   return static_cast<T>(static_cast<UnsignedT>(a) * static_cast<UnsignedT>(b));
 }
 
+// Adds through the unsigned counterpart of T so that overflow wraps around instead of being
+// undefined behavior.
+template <typename T>
+inline T WrappedAdd(T a, T b) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  return static_cast<T>(static_cast<UnsignedT>(a) + static_cast<UnsignedT>(b));
+}
+
 }  // namespace engram_helper
 }  // namespace contrib
 }  // namespace onnxruntime

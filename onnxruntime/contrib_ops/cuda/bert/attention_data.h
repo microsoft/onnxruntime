@@ -290,11 +290,14 @@ struct PagedAttentionData {
   //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
   //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
   //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
+  //   xqa_k_scale_norm       : power of two divided out of that pre-scaled Q and handed to XQA as
+  //                            its scalar K scale, so the FP16 copy of Q cannot overflow.
   void* xqa_workspace = nullptr;
   size_t xqa_workspace_size = 0;
   int* xqa_page_table_scratch = nullptr;
   T* xqa_query = nullptr;
   float* xqa_head_sink = nullptr;
+  float* xqa_k_scale_norm = nullptr;
   uint32_t* xqa_spec_dec_mask = nullptr;
 
   // Output Tensors
@@ -311,6 +314,17 @@ struct PagedAttentionData {
   // use_paged_decode when set.
   bool use_xqa_decode = false;
   bool use_xqa_spec_dec = false;
+  // cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the
+  // cache is unquantized and none of the fused options (softcap / head sink / sliding window /
+  // bias) are requested. Takes precedence over use_flash_attention when set.
+  bool use_cudnn_paged = false;
+
+  // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner) and per-batch KV length
+  // scratch (int32, [batch_size]) filled from past_seqlens on device before dispatch.
+  AllocatorPtr cudnn_allocator = nullptr;
+  void* cudnn_handle = nullptr;
+  int* cudnn_seqlens_kv = nullptr;
 };
 
 }  // namespace cuda

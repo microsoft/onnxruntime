@@ -106,6 +106,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
                                                                     *external_data_loader, tensor));
+      ORT_RETURN_IF_ERROR(utils::LoadPrepackedWeightsFromExternalData(env, proto_path, tensor_proto,
+                                                                      prepacked_for_graph));
 
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
