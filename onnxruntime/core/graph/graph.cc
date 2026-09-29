@@ -6154,6 +6154,11 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 
 Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
                                             std::optional<std::string_view> new_name) {
+  // The node proto originates from a model-local function body or a subgraph, so its output list is
+  // model controlled and may not match the single output the Constant schema declares.
+  ORT_RETURN_IF_NOT(node_proto.output_size() == 1, "Constant node: '", node_proto.name(),
+                    "' is expected to have exactly 1 output. Got: ", node_proto.output_size());
+
   ONNX_NAMESPACE::TensorProto tensor_proto;
   ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), tensor_proto, node_proto.output(0)));
   if (new_name.has_value()) {

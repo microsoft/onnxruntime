@@ -1471,5 +1471,100 @@ TEST(FunctionTest, OverloadedFunctionBackwardCompat) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
 }
 
+namespace {
+// Builds a model whose model-local function body contains a Constant node with the supplied
+// number of outputs. Ahead-of-time function inlining converts such Constant nodes into
+// initializers, and derives the initializer name from the node's single output.
+ONNX_NAMESPACE::ModelProto MakeModelWithFunctionConstant(int constant_output_count) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(10);
+  auto* default_opset = model_proto.add_opset_import();
+  default_opset->set_domain("");
+  default_opset->set_version(17);
+  auto* local_opset = model_proto.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("function_constant");
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+
+  auto* graph_input = graph_proto->add_input();
+  graph_input->set_name("x");
+  *graph_input->mutable_type() = float_tensor;
+
+  auto* graph_output = graph_proto->add_output();
+  graph_output->set_name("y");
+  *graph_output->mutable_type() = float_tensor;
+
+  auto* call_node = graph_proto->add_node();
+  call_node->set_name("call_myfun");
+  call_node->set_op_type("myfun");
+  call_node->set_domain("local");
+  call_node->add_input("x");
+  call_node->add_output("y");
+
+  auto* function = model_proto.add_functions();
+  function->set_domain("local");
+  function->set_name("myfun");
+  function->add_input("lx");
+  function->add_output("ly");
+  auto* function_opset = function->add_opset_import();
+  function_opset->set_domain("");
+  function_opset->set_version(17);
+
+  auto* constant_node = function->add_node();
+  constant_node->set_name("local_constant");
+  constant_node->set_op_type("Constant");
+  for (int i = 0; i < constant_output_count; ++i) {
+    constant_node->add_output("c" + std::to_string(i));
+  }
+  auto* attr = constant_node->add_attribute();
+  attr->set_name("value_float");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  attr->set_f(2.0f);
+
+  auto* identity_node = function->add_node();
+  identity_node->set_name("local_identity");
+  identity_node->set_op_type("Identity");
+  identity_node->add_input("lx");
+  identity_node->add_output("ly");
+
+  return model_proto;
+}
+
+// Loads and initializes a session, returning the first failing status.
+Status LoadAndInitialize(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  std::string serialized_model;
+  if (!model_proto.SerializeToString(&serialized_model)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize test model.");
+  }
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  ORT_RETURN_IF_ERROR(session.Load(serialized_model.data(), static_cast<int>(serialized_model.size())));
+  return session.Initialize();
+}
+}  // namespace
+
+// A model-local function body is not checked against the op schema before its node outputs are
+// walked, so a Constant node in it may declare an output count other than the single output the
+// schema requires. Both a missing and a surplus output must be reported as a model error instead of
+// running off the end of the schema's output list.
+TEST(FunctionTest, RejectFunctionConstantWithUnexpectedOutputCount) {
+  const auto no_output_status = LoadAndInitialize(MakeModelWithFunctionConstant(0));
+  ASSERT_FALSE(no_output_status.IsOK());
+  EXPECT_THAT(no_output_status.ErrorMessage(), testing::HasSubstr("Output 0 is out of bounds"));
+
+  const auto surplus_output_status = LoadAndInitialize(MakeModelWithFunctionConstant(2));
+  ASSERT_FALSE(surplus_output_status.IsOK());
+  EXPECT_THAT(surplus_output_status.ErrorMessage(), testing::HasSubstr("Too many outputs for op Constant"));
+
+  // The well-formed counterpart still loads, so the checks above are not rejecting every such model.
+  ASSERT_STATUS_OK(LoadAndInitialize(MakeModelWithFunctionConstant(1)));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
