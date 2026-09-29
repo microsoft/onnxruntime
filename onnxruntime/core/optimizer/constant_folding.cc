@@ -379,6 +379,12 @@ static int64_t EstimateFreedInputSizeInBytes(const Graph& graph,
                                              const InitializedTensorSet& constant_inputs) {
   SafeInt<int64_t> total_size = 0;
   for (const auto& [input_name, tensor_proto] : constant_inputs) {
+    const ONNX_NAMESPACE::TensorProto* local_initializer = nullptr;
+    if (!graph.GetInitializedTensor(input_name, local_initializer) ||
+        local_initializer != tensor_proto) {
+      continue;
+    }
+
     const NodeArg* input_arg = graph.GetNodeArg(input_name);
     if (graph.GetConsumerNodes(input_name).size() != 1 ||
         (input_arg != nullptr && graph.IsOutput(input_arg))) {
@@ -565,14 +571,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       // The optional threshold limits model growth rather than absolute output size.
-      if (output_size_threshold > 0) {
-        if (estimated_output_size < 0) {
-          LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
-                             << " node '" << node->Name()
-                             << "' because output size could not be estimated before execution.";
-          continue;
-        }
-
+      if (output_size_threshold > 0 && estimated_output_size >= 0) {
         int64_t freed_input_size = 0;
         ORT_TRY {
           freed_input_size = EstimateFreedInputSizeInBytes(graph, constant_inputs);
