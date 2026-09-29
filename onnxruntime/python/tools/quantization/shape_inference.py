@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 
 
+import copy
 import logging
 import tempfile
 import traceback
@@ -134,9 +135,13 @@ def quant_pre_process(
                             "Please load external data before calling this function. "
                             "See https://onnx.ai/onnx/repo-docs/ExternalData.html for more information."
                         )
-                    external_names, external_values = extract_raw_data_from_model(input_model)
+                    # extract_raw_data_from_model clears the initializers' raw data in place and
+                    # points them at a placeholder external file. Work on a copy so that `model`
+                    # still holds the intact ModelProto if session creation fails below.
+                    session_model = copy.deepcopy(input_model)
+                    external_names, external_values = extract_raw_data_from_model(session_model)
                     sess_option.add_external_initializers(list(external_names), list(external_values))
-                    input_model = input_model.SerializeToString()
+                    input_model = session_model.SerializeToString()
                 # the saved optimized model otherwise points to the original external data file name
                 # which is not available relative to the optimized model file
                 elif skip_symbolic_shape and save_as_external_data:
@@ -148,13 +153,17 @@ def quant_pre_process(
                 # Close the session to avoid the cleanup error on Windows for temp folders
                 # https://github.com/microsoft/onnxruntime/issues/17627
                 del sess
+
+                # The optimized model is now the one to carry forward. Drop the in-memory
+                # copy so that later stages (and the final save) pick up the optimized file
+                # instead of the unoptimized model.
+                input_model = opt_model_path
+                model = None
             except Exception:
                 logger.error(
                     "ONNX Runtime Model Optimization Failed! Consider rerun with option `--skip_optimization'."
                 )
                 logger.error(traceback.format_exc())
-
-            input_model = opt_model_path
 
         if not skip_onnx_shape:
             # ONNX shape inference.
@@ -191,8 +200,10 @@ def quant_pre_process(
             onnx.shape_inference.infer_shapes_path(input_model, inferred_model_path)
             model = onnx.load(inferred_model_path)
 
-    if model is None:
-        model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
+        if model is None:
+            # The model may live in the temporary directory (e.g. the optimizer output),
+            # so it must be loaded before the directory is cleaned up.
+            model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
 
     add_pre_process_metadata(model)
 

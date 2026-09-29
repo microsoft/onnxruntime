@@ -5,14 +5,17 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import itertools
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import onnx
 
+import onnxruntime
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
 
@@ -235,6 +238,127 @@ class TestSkipSymbolicShape(unittest.TestCase):
             sys.modules.update(saved)
 
         self.assertTrue(output_path.exists(), "Output model should be created even without sympy")
+
+
+class TestSkipShapeInferenceKeepsOptimization(unittest.TestCase):
+    """Regression test for https://github.com/microsoft/onnxruntime/issues/32802.
+
+    The ORT optimizer output must be carried through to the saved model regardless of
+    which of the (optional) shape inference stages are skipped.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="ort.quant_preprocess_skip_shape_")
+        self.temp_path = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def build_identity_add_model(self):
+        """Build Identity -> Add. The basic ORT optimizer removes the Identity node."""
+        input_tensor = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 4])
+        output_tensor = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 4])
+        bias = onnx.numpy_helper.from_array(np.ones((1, 4), dtype=np.float32), "bias")
+        nodes = [
+            onnx.helper.make_node("Identity", ["input"], ["identity_out"], name="identity_node"),
+            onnx.helper.make_node("Add", ["identity_out", "bias"], ["output"], name="add_node"),
+        ]
+        graph = onnx.helper.make_graph(nodes, "identity_add_graph", [input_tensor], [output_tensor], initializer=[bias])
+        opset_imports = [onnx.helper.make_opsetid("", 13)]
+        return onnx.helper.make_model(graph, opset_imports=opset_imports, ir_version=9)
+
+    def test_optimized_model_is_kept_for_all_skip_combinations(self):
+        model = self.build_identity_add_model()
+        input_path = self.temp_path / "identity_add.onnx"
+        onnx.save_model(model, str(input_path))
+
+        for skip_optimization, skip_onnx_shape, skip_symbolic_shape in itertools.product([False, True], repeat=3):
+            with self.subTest(
+                skip_optimization=skip_optimization,
+                skip_onnx_shape=skip_onnx_shape,
+                skip_symbolic_shape=skip_symbolic_shape,
+            ):
+                output_path = (
+                    self.temp_path
+                    / f"out_{int(skip_optimization)}{int(skip_onnx_shape)}{int(skip_symbolic_shape)}.onnx"
+                )
+
+                quant_pre_process(
+                    input_model=str(input_path),
+                    output_model_path=str(output_path),
+                    skip_optimization=skip_optimization,
+                    skip_onnx_shape=skip_onnx_shape,
+                    skip_symbolic_shape=skip_symbolic_shape,
+                )
+
+                self.assertTrue(output_path.exists())
+                preprocessed_model = onnx.load(str(output_path))
+                node_types = [node.op_type for node in preprocessed_model.graph.node]
+                self.assertIn("Add", node_types)
+                if skip_optimization:
+                    self.assertIn("Identity", node_types)
+                else:
+                    self.assertNotIn("Identity", node_types, "optimizer result was discarded")
+
+
+class TestOptimizerFailureKeepsModelProtoInput(unittest.TestCase):
+    """When the ORT optimizer fails, quant_pre_process falls back to the pre-optimization model.
+
+    For a ModelProto input the optimizer stage moves the initializers' raw data into session
+    options, which must not leave the fallback model pointing at a placeholder external data file.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="ort.quant_preprocess_opt_failure_")
+        self.temp_path = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def build_identity_add_model(self):
+        input_tensor = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 4])
+        output_tensor = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 4])
+        bias = onnx.numpy_helper.from_array(np.arange(4, dtype=np.float32).reshape(1, 4), "bias")
+        nodes = [
+            onnx.helper.make_node("Identity", ["input"], ["identity_out"], name="identity_node"),
+            onnx.helper.make_node("Add", ["identity_out", "bias"], ["output"], name="add_node"),
+        ]
+        graph = onnx.helper.make_graph(nodes, "identity_add_graph", [input_tensor], [output_tensor], initializer=[bias])
+        opset_imports = [onnx.helper.make_opsetid("", 13)]
+        return onnx.helper.make_model(graph, opset_imports=opset_imports, ir_version=9)
+
+    def test_model_proto_input_is_intact_after_optimizer_failure(self):
+        for skip_onnx_shape, skip_symbolic_shape in itertools.product([False, True], repeat=2):
+            with self.subTest(skip_onnx_shape=skip_onnx_shape, skip_symbolic_shape=skip_symbolic_shape):
+                model = self.build_identity_add_model()
+                expected_bias = onnx.numpy_helper.to_array(model.graph.initializer[0])
+                output_path = self.temp_path / f"out_{int(skip_onnx_shape)}{int(skip_symbolic_shape)}.onnx"
+
+                with mock.patch.object(
+                    onnxruntime, "InferenceSession", side_effect=RuntimeError("forced optimizer failure")
+                ):
+                    quant_pre_process(
+                        input_model=model,
+                        output_model_path=str(output_path),
+                        skip_optimization=False,
+                        skip_onnx_shape=skip_onnx_shape,
+                        skip_symbolic_shape=skip_symbolic_shape,
+                    )
+
+                # The caller's ModelProto must keep its initializer data.
+                initializer = model.graph.initializer[0]
+                self.assertTrue(initializer.HasField("raw_data"))
+                self.assertNotEqual(initializer.data_location, onnx.TensorProto.EXTERNAL)
+
+                # The saved model must be the unoptimized input, loadable on its own.
+                self.assertTrue(output_path.exists())
+                preprocessed_model = onnx.load(str(output_path))
+                onnx.checker.check_model(preprocessed_model)
+                node_types = [node.op_type for node in preprocessed_model.graph.node]
+                self.assertEqual(node_types, ["Identity", "Add"])
+                saved_initializer = preprocessed_model.graph.initializer[0]
+                self.assertNotEqual(saved_initializer.data_location, onnx.TensorProto.EXTERNAL)
+                np.testing.assert_array_equal(onnx.numpy_helper.to_array(saved_initializer), expected_bias)
 
 
 if __name__ == "__main__":
