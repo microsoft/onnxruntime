@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -25,6 +28,7 @@ using json = nlohmann::json;
 
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_CUDA
@@ -1920,6 +1924,43 @@ TEST_F(PlannerTest, TestMultiStreamConfig) {
   ASSERT_TRUE(graph_partitioner_cpu_gpu &&
               strncmp(graph_partitioner_cpu_gpu->Type(), type, type_len) == 0 &&
               graph_partitioner_cpu_gpu->Streams() == 2);
+}
+
+TEST_F(PlannerTest, InvalidMultiStreamConfigUsesDefaultPartition) {
+  const PathString config_path = ORT_TSTR("./test_invalid_partition_config.json");
+  ScopedFileDeleter cleanup{config_path};
+  const std::array<const char*, 10> invalid_configs = {
+      "not-json",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]]})",
+      R"({"type":"DeviceBasedPartitioner","streams":1,"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":["node1"],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[[1]],"devices":["0"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":[0]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["0","1"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"],["node2"]],"devices":["0","bad"]})",
+      R"({"type":"DeviceBasedPartitioner","streams":[["node1"]],"devices":["999999999999999999999"]})",
+  };
+
+  for (const char* config : invalid_configs) {
+    {
+      std::ofstream file{std::filesystem::path(config_path)};
+      ASSERT_TRUE(file.is_open());
+      file << config;
+    }
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+    ASSERT_NE(partitioner, nullptr);
+    EXPECT_EQ(partitioner->Streams(), 0u) << config;
+  }
+
+  {
+    std::ofstream file{std::filesystem::path(config_path)};
+    ASSERT_TRUE(file.is_open());
+    file << R"({"type":"DeviceBasedPartitioner"})";
+  }
+  auto partitioner = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), config_path);
+  ASSERT_NE(partitioner, nullptr);
+  EXPECT_EQ(partitioner->Streams(), 0u);
 }
 
 // Save partition config to a file and check its completeness
