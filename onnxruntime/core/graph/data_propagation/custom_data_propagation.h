@@ -11,6 +11,21 @@
 namespace onnxruntime {
 
 /**
+ * @brief Signature of the helper used to read a constant-initializer input's values during
+ * data propagation.
+ *
+ * @param input_name  Name of the input to read.
+ * @param input_values Receives the initializer's flattened int64 values (empty if the input is
+ *                     not a constant initializer).
+ * @param num_dims     Receives the rank (number of dimensions) of the initializer's shape, or is
+ *                     left unchanged when the input is not a constant initializer. A value of 0
+ *                     denotes a scalar (rank-0) initializer; this lets callers distinguish a 0-D
+ *                     scalar from a rank-1 single-element initializer (both have one element).
+ */
+using GetInitializedInputValuesFunc =
+    std::function<Status(const std::string& input_name, TensorShapeVector& input_values, int& num_dims)>;
+
+/**
  * @class CustomDataPropagation
  * Custom data propagation for the operator to help enhance shape inference.
  *
@@ -27,7 +42,7 @@ class CustomDataPropagationBase {
  protected:
   CustomDataPropagationBase(const Node& node,
                             NodeArg& output_def,
-                            std::function<Status(const std::string&, TensorShapeVector&)> func,
+                            GetInitializedInputValuesFunc func,
                             const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
                             const logging::Logger& logger) noexcept
       : node_(node),
@@ -38,7 +53,7 @@ class CustomDataPropagationBase {
 
   const Node& node_;
   NodeArg& output_def_;
-  std::function<Status(const std::string&, TensorShapeVector&)> get_initialized_input_values_func_;
+  GetInitializedInputValuesFunc get_initialized_input_values_func_;
   const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation_;
   const logging::Logger& logger_;
 };
@@ -68,7 +83,7 @@ class CustomDataPropagationBase {
 std::unique_ptr<CustomDataPropagationBase> CreateCustomDataPropagation(
     const Node& node,
     NodeArg& output_def,
-    std::function<Status(const std::string&, TensorShapeVector&)> func,
+    GetInitializedInputValuesFunc func,
     const ONNX_NAMESPACE::TypeProto& output_from_onnx_op_data_propagation,
     const logging::Logger& logger);
 

@@ -179,4 +179,9 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* 
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                     _Outptr_result_maybenull_ const char** out);
 
+// Weightless source model getter
+ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_result_maybenull_ const void** source_model_data,
+                    _Out_ size_t* source_model_data_length);
+
 }  // namespace OrtExecutionProviderApi

@@ -37,6 +37,7 @@ class MultiHeadAttention final : public CudaKernel {
 #endif
   bool disable_memory_efficient_attention_;
   bool enable_cudnn_flash_attention_;
+  bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
   bool disable_decoder_attention_;
 
   // These mutable members are readonly after they are initialized so that they can be shared among multiple threads.

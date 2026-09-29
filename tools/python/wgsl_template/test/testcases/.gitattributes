@@ -1,0 +1,4 @@
+# Preserve line endings for test expectation files
+**/expected/** text eol=lf
+*.gen text eol=lf
+*.pass1 text eol=lf

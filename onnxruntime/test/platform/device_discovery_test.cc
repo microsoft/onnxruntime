@@ -38,5 +38,15 @@ TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {
   }
 }
 
+#ifdef _WIN32
+TEST(DeviceDiscoveryTest, ExcludesMicrosoftBasicRenderDriver) {
+  const auto gpu_devices = GetDevicesByType(OrtHardwareDeviceType_GPU);
+
+  for (const auto& gpu_device : gpu_devices) {
+    EXPECT_FALSE(gpu_device.vendor_id == 0x1414 && gpu_device.device_id == 0x008c);
+  }
+}
+#endif
+
 }  // namespace onnxruntime::test
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(_GAMING_XBOX)

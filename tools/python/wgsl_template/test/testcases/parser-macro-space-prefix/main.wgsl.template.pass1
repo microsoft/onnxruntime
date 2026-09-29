@@ -1,0 +1,15 @@
+
+
+
+
+const pi_value = 3.14159;
+const buffer_size = 1024;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let area = 3.14159 * f32(index) * f32(index);
+    if (index < 1024) {
+
+    }
+}

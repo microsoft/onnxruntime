@@ -2548,7 +2548,52 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_PagedAttention(self, node):  # noqa: N802
-        self._propagate_shape_and_type(node)
+        # Output 0 is (token_count, num_heads * v_head_size). That equals the query shape except in
+        # two cases: packed QKV (query is wider than the output) and kv_cache_layout="LATENT" with a
+        # v_head_size narrower than head_size.
+        kv_cache_layout = get_attribute(node, "kv_cache_layout", b"SEPARATE")
+        if isinstance(kv_cache_layout, bytes):
+            kv_cache_layout = kv_cache_layout.decode()
+        is_latent_kv = kv_cache_layout == "LATENT"
+        is_packed_qkv = not is_latent_kv and (len(node.input) < 2 or not node.input[1])
+
+        if is_latent_kv or is_packed_qkv:
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            query_shape = self._get_shape(node, 0)
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            # The head width is only recoverable when the query hidden size divides evenly. Otherwise the
+            # node is malformed (or the attributes are missing) and we fall back to generic propagation
+            # instead of silently emitting a truncated output width.
+            head_size = None
+            if query_shape is not None and len(query_shape) == 2 and is_literal(query_shape[1]) and num_heads:
+                divisor = num_heads if is_latent_kv else (num_heads + 2 * (kv_num_heads or 0))
+                if divisor > 0 and query_shape[1] % divisor == 0:
+                    head_size = query_shape[1] // divisor
+            if head_size is not None:
+                v_head_size = (get_attribute(node, "v_head_size", 0) or head_size) if is_latent_kv else head_size
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(
+                        node.output[0], output_dtype, [query_shape[0], num_heads * v_head_size]
+                    )
+                )
+            else:
+                self._propagate_shape_and_type(node)
+        else:
+            self._propagate_shape_and_type(node)
+
+        # The cache outputs alias the cache inputs, so they carry the cache element type and shape.
+        # value_cache (input 4) and value_cache_out (output 2) are absent in LATENT mode, so guard the
+        # aliased input as well: a node may declare the output while omitting the corresponding input.
+        for output_index, input_index in ((1, 3), (2, 4)):
+            if (
+                len(node.output) > output_index
+                and node.output[output_index]
+                and len(node.input) > input_index
+                and node.input[input_index]
+            ):
+                self._propagate_shape_and_type(node, input_index, output_index)
 
     def _infer_GroupQueryAttention(self, node):  # noqa: N802
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type

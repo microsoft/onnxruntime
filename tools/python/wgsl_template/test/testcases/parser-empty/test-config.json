@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test parser behavior on an empty directory with no template files"
+}

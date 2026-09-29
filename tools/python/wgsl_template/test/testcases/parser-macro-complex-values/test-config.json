@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test macro definitions with complex values including expressions, strings, and special characters"
+}

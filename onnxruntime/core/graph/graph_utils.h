@@ -8,6 +8,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 /** Returns the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
+/** Checks whether a Shape node returns the full tensor shape (all dimensions).
+ * Returns false if start/end attributes restrict the output to a subset of dimensions. */
+bool IsFullShapeNode(const Node& node);
 
 /** Add a new initializer to 'graph'.
 Checks that new_initializer does not already exist in 'graph' before adding it.
@@ -345,6 +350,12 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
+/** Set a non-variadic optional node input, materializing omitted slots up to target_input_idx.
+@remarks Existing empty slots retain their argument count. Newly materialized slots must correspond to omitted
+         optional inputs with argument count zero. There is no edge between an initializer or graph input and a Node.
+*/
+void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, NodeArg& new_input);
+
 /** Finalize the fusion of second_node into first_node.
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
     e.g. Conv + Add fusion fuses the 'Add' into the Conv.
@@ -463,9 +474,12 @@ inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge,
 /**
  * Remove nodes with only one output edge using bottom-up bfs traversal.
  * @param node: The node to start with.
+ * @param removed_node_indices Optional output for the indexes of nodes that were removed. When provided, the caller
+ *                             is responsible for reporting their replacement or intentional removal.
  * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
  */
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node,
+                                      std::vector<NodeIndex>* removed_node_indices = nullptr);
 
 /** Creates a mutable NodeArg owned by the graph with mirrored base_arg's TypeProto and name
  * @param base_arg The NodeArg the newly created NodeArg is mirrored based off.

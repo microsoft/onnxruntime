@@ -378,7 +378,7 @@ def compute_scale_zp_float8(element_type, std):
             from ml_dtypes import float8_e4m3fn  # noqa: PLC0415
 
             zp_dtype = float8_e4m3fn
-            all_values = [float(i) for i in range(256)]
+            all_values = numpy.arange(256, dtype=numpy.uint8).view(float8_e4m3fn).astype(numpy.float32)
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
             )

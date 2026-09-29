@@ -86,7 +86,7 @@ Status Upsample::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array, input_dims.size());
+  ORT_RETURN_IF_ERROR(ComputeROIWithAxes(roi_array, input_dims.size()));
 
   InlinedVector<float> scales_array(input_dims.size());
   // opset < 10

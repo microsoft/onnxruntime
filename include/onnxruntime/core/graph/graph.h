@@ -774,7 +774,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
+  /** Add an initializer tensor with embedded/owned data to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   /// <summary>
@@ -784,8 +784,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
   /// </summary>
   /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
-  /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
-  /// be unallocated for small tensors.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This must
+  /// be allocated iff tensor_proto uses in-memory external data, and may be unallocated for
+  /// small tensors with embedded data.</param>
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                 const OrtValue& ort_value_initializer);
 #endif
@@ -1200,6 +1201,26 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   bool RemoveNode(NodeIndex node_index);
 
+  using NodeReplacementCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
+  using NodeRemovalCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
+#ifdef ENABLE_TRAINING
+  using NodeCloneCallback =
+      std::function<void(const Graph&, NodeIndex, NodeIndex)>;
+#endif
+
+  void SetNodeReplacementCallback(NodeReplacementCallback callback);
+  void NotifyNodeReplacement(
+      gsl::span<const NodeIndex> source_node_indices,
+      NodeIndex destination_node_index) const;
+  void SetNodeRemovalCallback(NodeRemovalCallback callback);
+  void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
+#ifdef ENABLE_TRAINING
+  void SetNodeCloneCallback(NodeCloneCallback callback);
+  void NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const;
+#endif
+
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
@@ -1454,10 +1475,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     SetInputs(AsSpan(inputs));
   }
 
-  const Model& GetModel() const {
-    return owning_model_;
-  }
-
   const logging::Logger& GetLogger() const {
     return logger_;
   }
@@ -1475,6 +1492,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const Model& GetModel() const {
+    return owning_model_;
+  }
+
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
@@ -1575,6 +1596,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns></returns>
   Status ConvertInitializersIntoOrtValues();
 
+  /// <summary>
+  /// Validates that all in-memory external data references are backed by matching OrtValues.
+  /// </summary>
+  Status ValidateInMemoryInitializers();
+
   /**
    * @brief This function examines the specified initializers in the graph and converts them inline
    *        if any has external data in memory.
@@ -1605,6 +1631,34 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   PrepackedWeightsForGraph& GetPrepacked() noexcept {
     return *prepacked_weights_for_graph_;
+  }
+
+  // Tags a fusion-generated initializer (whose name is not stable across sessions) with a stable,
+  // content-derived identity that SessionState uses to key cross-session pre-pack sharing.
+  //
+  // Single-consumer invariant: a MatMulNBits packed buffer folds in the *consuming* node's
+  // scales/zero_points/attributes, not B alone, so this id is meaningful only for a B initializer that
+  // has exactly one consumer. The DQ->MatMulNBits producers guarantee that -- each generated B has a
+  // unique name with a single consumer, and the fusion bails when the source weight/scale is shared (the
+  // DQMatMulNotConvertedToMatMulNBits_SharedWeight case). If a future change ever tags a multi-consumer
+  // initializer whose consumers differ in scales/zp/attrs, they would compute different ids for the same
+  // name and the last writer would silently mis-share. Enforce that a name is never re-tagged with a
+  // conflicting id so the invariant survives later refactors.
+  void SetSharedPrepackInitializerId(const std::string& initializer_name, std::string share_id) {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    if (it != generated_shared_prepack_ids_.end()) {
+      ORT_ENFORCE(it->second == share_id, "MatMulNBits pre-pack sharing id for initializer '",
+                  initializer_name, "' was re-tagged with a different id; the single-consumer invariant ",
+                  "is violated (a multi-consumer weight whose consumers differ in scales/zp/attrs).");
+      return;
+    }
+    generated_shared_prepack_ids_.emplace(initializer_name, std::move(share_id));
+  }
+
+  // Returns the sharing identity for a generated initializer, or nullptr if it was not tagged.
+  const std::string* GetSharedPrepackInitializerId(const std::string& initializer_name) const {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    return it == generated_shared_prepack_ids_.end() ? nullptr : &it->second;
   }
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
@@ -1814,6 +1868,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     std::unordered_map<std::string_view, NodeIndex> node_name_to_index;
     std::unordered_set<Node*> nodes_with_subgraphs;
 
+    // Subgraphs that already had type/shape inferencing performed during this Resolve pass via the
+    // containing op's inference function (e.g. Scan/If/Loop). The "verify subgraphs" loop in
+    // VerifyNodeAndOpMatch uses this to avoid redundantly re-verifying the same subgraph, which
+    // would otherwise cause exponential re-traversal of deeply nested subgraphs.
+    std::unordered_set<const Graph*> inferred_subgraphs;
+
     // check if the provided name is an input/initialize/node output of this Graph instance during Graph::Resolve.
     // Graph::node_args_ can have stale entries so we can't rely on that.
     bool IsLocalValue(const std::string& name) const;
@@ -1827,6 +1887,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       inputs_and_initializers.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
+      inferred_subgraphs.clear();
     }
 
    private:
@@ -2010,6 +2071,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // This is optional due to delayed construction.
   std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
+  // Maps a fusion-generated initializer name to its cross-session sharing identity.
+  // See SetSharedPrepackInitializerId.
+  InlinedHashMap<std::string, std::string> generated_shared_prepack_ids_;
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
@@ -2101,6 +2166,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Graph* parent_graph_;
   // the node containing the graph if parent_graph_ is not nullptr
   const Node* parent_node_;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  NodeReplacementCallback node_replacement_callback_;
+  NodeRemovalCallback node_removal_callback_;
+#ifdef ENABLE_TRAINING
+  NodeCloneCallback node_clone_callback_;
+#endif
+#endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.

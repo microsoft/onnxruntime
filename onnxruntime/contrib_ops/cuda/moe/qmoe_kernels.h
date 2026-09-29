@@ -227,6 +227,38 @@ void LaunchQMoEDequantizeFp4Weights(
     int k,
     cudaStream_t stream);
 
+// Converts MXFP4 expert weights ([E, K, N/2] n-packed E2M1 nibbles, Float8E8M0 block scales of
+// group size 32, per-expert fp32 global scale) into the e4m3 weights + fp32 per-[128 N, 128 K]
+// block scales the QMoE DeepGEMM FP8 kernel consumes. ``output`` is [E, N, K] e4m3 bytes and
+// ``output_scales`` is [E, N/128, K/128] fp32.
+//
+// The block scale retains the per-expert global scale and rounds the remaining factor up to a
+// power of two, which makes the conversion bit-exact for E2M1 inputs. ``inexact_flag`` (one
+// device int, zeroed by the caller) is set to 1 if any weight fails to round-trip, which can only
+// happen if a block's MXFP4 group exponents span more than e4m3's range.
+void LaunchQMoEQuantizeFp4WeightsToFp8(
+    const uint8_t* packed_weights,
+    const uint8_t* block_scales,
+    const float* global_scales,
+    uint8_t* output,
+    float* output_scales,
+    int* inexact_flag,
+    int num_experts,
+    int n,
+    int k,
+    cudaStream_t stream);
+
+// Packs MXFP4 e8m0 block scales from [experts, n, k_blocks] into the SM90 TMA WS
+// WFP4A16 layout. The currently dispatched native WFP4A16 K tile is 256, so one
+// TMA scale element contains 8 adjacent k_blocks for one output row.
+void LaunchQMoEPackFp4ScalesForTmaWs(
+    const uint8_t* input,
+    uint8_t* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
     const float* global_scales,
@@ -245,6 +277,29 @@ void LaunchQMoEDequantizeFp8Weights(
     int k,
     cudaStream_t stream);
 
+// NVFP4 weight dequantization: E2M1 4-bit weights with Float8E4M3FN block scales
+// (block size 16) and per-expert float32 global scales. Weight layout [E, K, N/2],
+// block-scale layout [E, N, K/16]. Mirrors LaunchQMoEDequantizeFp4Weights (MXFP4).
+void LaunchQMoEDequantizeNvfp4Weights(
+    const uint8_t* packed_weights,
+    const uint8_t* block_scales,
+    const float* global_scales,
+    half* output,
+    int num_experts,
+    int n,
+    int k,
+    cudaStream_t stream);
+
+void LaunchQMoEDequantizeNvfp4Weights(
+    const uint8_t* packed_weights,
+    const uint8_t* block_scales,
+    const float* global_scales,
+    __nv_bfloat16* output,
+    int num_experts,
+    int n,
+    int k,
+    cudaStream_t stream);
+
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),
 // output: [experts, n, k/2] (row-major packed).
@@ -255,6 +310,42 @@ void LaunchQMoERepackFP4ColToRow(
     int experts,
     int64_t k,
     int64_t n,
+    cudaStream_t stream);
+
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    half* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    __nv_bfloat16* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
+void LaunchQMoECombineNvfp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    half* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
+void LaunchQMoECombineNvfp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    __nv_bfloat16* output,
+    int experts,
+    int n,
+    int k_blocks,
     cudaStream_t stream);
 
 }  // namespace cuda

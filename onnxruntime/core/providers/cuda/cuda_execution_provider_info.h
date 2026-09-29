@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <limits>
+#include <string>
 
 #include "core/common/hash_combine.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -69,9 +70,10 @@ struct CUDAExecutionProviderInfo {
   // By default, for Conv1D, will pad [N,C,D] to [N,C,D,1], if turn on, will pad to [N,C,1,D].
   bool cudnn_conv1d_pad_to_nc1d{false};
 
+  bool enable_cudnn{true};
+
   cuda::TunableOpInfo tunable_op{};
 
-  bool enable_skip_layer_norm_strict_mode{false};
   bool prefer_nhwc{false};
 
   bool use_ep_level_unified_stream{false};
@@ -81,6 +83,10 @@ struct CUDAExecutionProviderInfo {
   bool fuse_conv_bias{false};
 
   int sdpa_kernel{0};
+
+  // 0 disables the custom external-data loader and retains the framework's existing path.
+  // 1 uses the pinned-buffer loader with synchronous reads. 2..64 use that many parallel read tasks per block.
+  size_t external_data_loader_reading_threads{4};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
@@ -105,7 +111,6 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
                   (static_cast<size_t>(info.tunable_op.enable) << 24) ^
                   (static_cast<size_t>(info.tunable_op.tuning_enable) << 25) ^
                   (static_cast<size_t>(info.cudnn_conv1d_pad_to_nc1d) << 26) ^
-                  (static_cast<size_t>(info.enable_skip_layer_norm_strict_mode) << 27) ^
                   (static_cast<size_t>(info.prefer_nhwc) << 28) ^
                   (static_cast<size_t>(info.use_ep_level_unified_stream) << 29) ^
                   (static_cast<size_t>(info.use_tf32) << 30) ^
@@ -115,6 +120,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.gpu_mem_limit, value);
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
+    onnxruntime::HashCombine(info.enable_cudnn, value);
+    onnxruntime::HashCombine(info.external_data_loader_reading_threads, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);

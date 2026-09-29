@@ -1585,12 +1585,12 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
             IntPtr /*(OrtSession*)*/ session,
             IntPtr /*(OrtSessionRunOptions*)*/ runOptions, // can be null to use the default options
-            IntPtr[] /*(char**)*/ inputNames,
-            IntPtr[] /*(OrtValue*[])*/ inputValues,
+            IntPtr /*(char**)*/ inputNames,
+            IntPtr /*(OrtValue*[])*/ inputValues,
             UIntPtr /*(size_t)*/ inputCount,
-            IntPtr[] /*(char**)*/ outputNames,
+            IntPtr /*(char**)*/ outputNames,
             UIntPtr /*(size_t)*/ outputCount,
-            IntPtr[] /*(OrtValue*[])*/ outputValues,
+            IntPtr /*(OrtValue*[])*/ outputValues,
             IntPtr /*(void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status))*/ callback, // callback function
             IntPtr /*(void*)*/ user_data);
         public static DOrtRunAsync OrtRunAsync;

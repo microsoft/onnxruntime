@@ -33,6 +33,7 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count) {
   _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output, value, N);
 }
+
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
  public:

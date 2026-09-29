@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser behavior with include directive missing quotes",
+  "expectsError": "file path must be enclosed in double quotes"
+}

@@ -138,6 +138,32 @@ const setExecutionProviders = async (
             if (webgpuOptions.validationMode) {
               appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
             }
+
+            // set f32 accumulation for the MatMulNBits kernels
+            if (typeof webgpuOptions.enableMatmulFp32Accumulation === 'boolean') {
+              appendEpOption(
+                epOptions,
+                'enableMatmulFp32Accumulation',
+                webgpuOptions.enableMatmulFp32Accumulation ? '1' : '0',
+                allocs,
+              );
+            }
+
+            // set buffer cache modes
+            for (const key of [
+              'storageBufferCacheMode',
+              'uniformBufferCacheMode',
+              'queryResolveBufferCacheMode',
+              'defaultBufferCacheMode',
+            ] as const) {
+              const mode = webgpuOptions[key];
+              if (mode) {
+                if (mode !== 'disabled' && mode !== 'lazyRelease' && mode !== 'simple' && mode !== 'bucket') {
+                  throw new Error(`${key} must be one of 'disabled', 'lazyRelease', 'simple' or 'bucket': ${mode}`);
+                }
+                appendEpOption(epOptions, key, mode, allocs);
+              }
+            }
           }
 
           const info = getInstance().webgpuRegisterDevice!(customDevice);

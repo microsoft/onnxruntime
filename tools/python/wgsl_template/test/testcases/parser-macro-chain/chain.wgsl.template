@@ -1,0 +1,14 @@
+#define A 10
+#define B (A * 2)
+#define C (B + 5)
+#define PI 3.14159
+#define DOUBLE_PI (PI * 2)
+
+const value_a = A;
+const value_b = B;
+const value_c = C;
+const circle_circumference = DOUBLE_PI * radius;
+
+fn calculate() -> f32 {
+    return A + B + C;
+}

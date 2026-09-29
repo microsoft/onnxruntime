@@ -105,7 +105,8 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
                              const std::vector<float> initial_c_data,
                              const std::string& direction,
                              const std::vector<std::string>& activations,
-                             bool per_channel) {
+                             bool w_per_channel,
+                             bool r_per_channel) {
   OpTester test("LSTM", 7 /*opset_version*/, onnxruntime::kOnnxDomain /*domain*/, false /*verify_output*/);
 
   test.AddAttribute<std::vector<std::string>>("activations", activations);
@@ -120,8 +121,8 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, ApplyQDQ<uint8_t>(X_data, 1));
-  test.AddInput<float>("W", W_dims, ApplyQDQ<QType>(W_data, per_channel ? num_directions * 4 * hidden_size : num_directions, per_channel));
-  test.AddInput<float>("R", R_dims, ApplyQDQ<QType>(R_data, per_channel ? num_directions * 4 * hidden_size : num_directions, per_channel));
+  test.AddInput<float>("W", W_dims, ApplyQDQ<QType>(W_data, w_per_channel ? num_directions * 4 * hidden_size : num_directions, w_per_channel));
+  test.AddInput<float>("R", R_dims, ApplyQDQ<QType>(R_data, r_per_channel ? num_directions * 4 * hidden_size : num_directions, r_per_channel));
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
@@ -186,7 +187,8 @@ static void RunQuantLSTM(int64_t input_size,
                          bool has_P,
                          bool is_initializer_W,
                          bool is_initializer_R,
-                         bool per_channel,
+                         bool w_per_channel,
+                         bool r_per_channel,
                          const std::string& direction) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
 
@@ -219,7 +221,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> w_scale;
   std::vector<QType> w_zp;
   std::vector<QType> w_quant;
-  QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size, per_channel);
+  QuantizeWeight(w_quant, w_scale, w_zp, W_data, num_directions, 4 * hidden_size, input_size, w_per_channel);
   test.AddInput<QType>("W", W_dims, w_quant, is_initializer_W);
 
   // R
@@ -229,7 +231,7 @@ static void RunQuantLSTM(int64_t input_size,
   std::vector<float> r_scale;
   std::vector<QType> r_zp;
   std::vector<QType> r_quant;
-  QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size, per_channel);
+  QuantizeWeight(r_quant, r_scale, r_zp, R_data, num_directions, 4 * hidden_size, hidden_size, r_per_channel);
   test.AddInput<QType>("R", R_dims, r_quant, is_initializer_R);
 
   std::vector<float> B_data;
@@ -266,11 +268,11 @@ static void RunQuantLSTM(int64_t input_size,
 
   std::vector<int64_t> per_tensor_dims = {num_directions};
   std::vector<int64_t> per_channel_dims = {num_directions, 4 * hidden_size};
-  test.AddInput<float>("W_scale", per_channel ? per_channel_dims : per_tensor_dims, w_scale);
-  test.AddInput<QType>("W_zero_point", per_channel ? per_channel_dims : per_tensor_dims, w_zp);
+  test.AddInput<float>("W_scale", w_per_channel ? per_channel_dims : per_tensor_dims, w_scale);
+  test.AddInput<QType>("W_zero_point", w_per_channel ? per_channel_dims : per_tensor_dims, w_zp);
 
-  test.AddInput<float>("R_scale", per_channel ? per_channel_dims : per_tensor_dims, r_scale);
-  test.AddInput<QType>("R_zero_point", per_channel ? per_channel_dims : per_tensor_dims, r_zp);
+  test.AddInput<float>("R_scale", r_per_channel ? per_channel_dims : per_tensor_dims, r_scale);
+  test.AddInput<QType>("R_zero_point", r_per_channel ? per_channel_dims : per_tensor_dims, r_zp);
 
   std::vector<float> Y_data;
   std::vector<float> Y_h_data;
@@ -281,7 +283,7 @@ static void RunQuantLSTM(int64_t input_size,
                           has_bias ? &B_data : nullptr,
                           has_P ? &P_data : nullptr,
                           initial_h_data, initial_c_data,
-                          direction, activations, per_channel);
+                          direction, activations, w_per_channel, r_per_channel);
 
   std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
@@ -305,49 +307,49 @@ static void RunQuantLSTM(int64_t input_size,
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "forward");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "forward");
 
   // bias + P: 0, prepacking: 0, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "bidirectional");
 
   // bias + P: 0, prepacking: 1, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "forward");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "forward");
 
   // bias + P: 0, prepacking: 1, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       false /*has_bias*/, false /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "bidirectional");
 
   // bias + P: 1, prepacking: 0, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "forward");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "forward");
 
   // bias + P: 1, prepacking: 0, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       false /*is_initializer_W*/, false /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "bidirectional");
 
   // bias + P: 1, prepacking: 1, bidirectional: 0
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "forward");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "forward");
 
   // bias + P: 1, prepacking: 1, bidirectional: 1
   RunQuantLSTM<QType>(input_size, batch_size, hidden_size,
                       true /*has_bias*/, true /*has_P*/,
                       true /*is_initializer_W*/, true /*is_initializer_R*/,
-                      per_channel, "bidirectional");
+                      per_channel /*w_per_channel*/, per_channel /*r_per_channel*/, "bidirectional");
 }
 
 TEST(DynamicQuantLSTMTest, SmallSize) {
@@ -360,6 +362,71 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<int8_t>(12, 3, 278);
   RunQuantLSTM<int8_t>(12, 3, 278, true /*per_channel*/);
   RunQuantLSTM<uint8_t>(12, 3, 278);
+}
+
+// Regression test: a DynamicQuantizeLSTM whose hidden_size attribute is inconsistent with the actual
+// W/R weight tensor shapes must be rejected cleanly. With per-tensor quantization the scale/zero-point
+// shape checks do not involve hidden_size, and ONNX shape inference does not verify the weight shapes,
+// so such a model would otherwise reach the compute path and cause an out-of-bounds access.
+TEST(DynamicQuantLSTMTest, MismatchedWeightShapeIsRejected) {
+  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+
+  constexpr int num_directions = 1;
+  constexpr int64_t seq_len = 1;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 2;
+  constexpr int64_t actual_hidden = 2;  // the weights are sized for this hidden size
+  constexpr int64_t hidden_size = 3;    // bogus attribute value, inconsistent with the weights
+
+  test.AddAttribute<std::vector<std::string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("input_forget", 0);
+
+  // X
+  std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
+  std::vector<float> X_data(seq_len * batch_size * input_size, 0.1f);
+  test.AddInput<float>("X", X_dims, X_data);
+
+  // W: [num_directions, input_size, 4*actual_hidden] - inconsistent with the hidden_size attribute.
+  std::vector<int64_t> W_dims = {num_directions, input_size, 4 * actual_hidden};
+  std::vector<uint8_t> w_quant(num_directions * input_size * 4 * actual_hidden, 1);
+  test.AddInput<uint8_t>("W", W_dims, w_quant);
+
+  // R: [num_directions, actual_hidden, 4*actual_hidden]
+  std::vector<int64_t> R_dims = {num_directions, actual_hidden, 4 * actual_hidden};
+  std::vector<uint8_t> r_quant(num_directions * actual_hidden * 4 * actual_hidden, 1);
+  test.AddInput<uint8_t>("R", R_dims, r_quant);
+
+  // B, sequence_lens
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<int>();
+
+  // initial_h / initial_c (sized using the hidden_size attribute)
+  std::vector<int64_t> initial_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_data(num_directions * batch_size * hidden_size, 0.0f);
+  test.AddInput<float>("initial_h", initial_dims, initial_data);
+  test.AddInput<float>("initial_c", initial_dims, initial_data);
+
+  // P
+  test.AddOptionalInputEdge<float>();
+
+  // Per-tensor quantization parameters (their shapes do not involve hidden_size).
+  std::vector<int64_t> per_tensor_dims = {num_directions};
+  test.AddInput<float>("W_scale", per_tensor_dims, std::vector<float>(num_directions, 1.0f));
+  test.AddInput<uint8_t>("W_zero_point", per_tensor_dims, std::vector<uint8_t>(num_directions, 0));
+  test.AddInput<float>("R_scale", per_tensor_dims, std::vector<float>(num_directions, 1.0f));
+  test.AddInput<uint8_t>("R_zero_point", per_tensor_dims, std::vector<uint8_t>(num_directions, 0));
+
+  // Outputs (sized using the hidden_size attribute); values are not checked because we expect failure.
+  std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, std::vector<float>(seq_len * num_directions * batch_size * hidden_size, 0.0f));
+  std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_h", Y_h_dims, std::vector<float>(num_directions * batch_size * hidden_size, 0.0f));
+  std::vector<int64_t> Y_c_dims = {num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_c", Y_c_dims, std::vector<float>(num_directions * batch_size * hidden_size, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape");
 }
 
 #ifndef ENABLE_TRAINING
@@ -442,7 +509,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
                            nullptr,
                            nullptr,
                            initial_h_data, initial_c_data,
-                           "forward", activations, false);
+                           "forward", activations, false, false);
 
   std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
@@ -524,6 +591,142 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   }
 }
 #endif
+
+// Builds a minimal DynamicQuantizeLSTM and runs it expecting the kernel's input validation to reject
+// the recurrence quantization parameters. The caller supplies the R_scale and R_zero_point shapes
+// (and optionally the R_zero_point values) so a shape that is inconsistent with R (e.g. first dim
+// != num_directions, or a per-channel second dim != 4*hidden_size), or a per-channel zero point that
+// violates the constant/zero requirement, can be exercised. The recurrence parameters must be
+// validated symmetrically with the input (W) ones. num_directions selects forward (1) or
+// bidirectional (2).
+static void RunQuantLSTMExpectInvalidRecurrenceQuantParam(const std::vector<int64_t>& r_scale_dims,
+                                                          const std::vector<int64_t>& r_zp_dims,
+                                                          const std::string& expected_error,
+                                                          int64_t num_directions = 1,
+                                                          const std::vector<uint8_t>& r_zp_values = {}) {
+  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+
+  constexpr int64_t input_size = 2;
+  constexpr int64_t hidden_size = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t seq_len = 1;
+
+  auto num_elements = [](const std::vector<int64_t>& dims) {
+    int64_t count = 1;
+    for (int64_t dim : dims) {
+      count *= dim;
+    }
+    return static_cast<size_t>(count);
+  };
+
+  const std::string direction = (num_directions == 2) ? "bidirectional" : "forward";
+  std::vector<std::string> activations = {"sigmoid", "tanh", "tanh"};
+  if (num_directions == 2) {
+    activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
+  }
+
+  test.AddAttribute<std::vector<std::string>>("activations", activations);
+  test.AddAttribute("direction", direction);
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("input_forget", static_cast<int64_t>(0));
+
+  // X: [seq_length, batch_size, input_size]
+  test.AddInput<float>("X", {seq_len, batch_size, input_size},
+                       std::vector<float>(num_elements({seq_len, batch_size, input_size}), 0.0f));
+
+  // W / R quantized weight values are irrelevant: validation fails before any dequantization.
+  test.AddInput<uint8_t>("W", {num_directions, input_size, 4 * hidden_size},
+                         std::vector<uint8_t>(num_elements({num_directions, input_size, 4 * hidden_size}), 0));
+  test.AddInput<uint8_t>("R", {num_directions, hidden_size, 4 * hidden_size},
+                         std::vector<uint8_t>(num_elements({num_directions, hidden_size, 4 * hidden_size}), 0));
+
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddInput<float>("initial_h", {num_directions, batch_size, hidden_size},
+                       std::vector<float>(num_elements({num_directions, batch_size, hidden_size}), 0.0f));
+  test.AddInput<float>("initial_c", {num_directions, batch_size, hidden_size},
+                       std::vector<float>(num_elements({num_directions, batch_size, hidden_size}), 0.0f));
+  test.AddOptionalInputEdge<float>();  // P
+
+  // Valid per-tensor quantization parameters for the input weights.
+  test.AddInput<float>("W_scale", {num_directions}, std::vector<float>(num_elements({num_directions}), 1.0f));
+  test.AddInput<uint8_t>("W_zero_point", {num_directions}, std::vector<uint8_t>(num_elements({num_directions}), 0));
+
+  // Recurrence parameters with caller-supplied (possibly inconsistent) shapes and zero-point values.
+  const std::vector<uint8_t> r_zp = r_zp_values.empty()
+                                        ? std::vector<uint8_t>(num_elements(r_zp_dims), 0)
+                                        : r_zp_values;
+  test.AddInput<float>("R_scale", r_scale_dims, std::vector<float>(num_elements(r_scale_dims), 1.0f));
+  test.AddInput<uint8_t>("R_zero_point", r_zp_dims, r_zp);
+
+  // Placeholder outputs (not validated: the run fails during input validation).
+  test.AddOutput<float>("Y", {seq_len, num_directions, batch_size, hidden_size},
+                        std::vector<float>(num_elements({seq_len, num_directions, batch_size, hidden_size}), 0.0f));
+  test.AddOutput<float>("Y_h", {num_directions, batch_size, hidden_size},
+                        std::vector<float>(num_elements({num_directions, batch_size, hidden_size}), 0.0f));
+  test.AddOutput<float>("Y_c", {num_directions, batch_size, hidden_size},
+                        std::vector<float>(num_elements({num_directions, batch_size, hidden_size}), 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
+}
+
+TEST(DynamicQuantLSTMTest, RejectsInconsistentRecurrenceZeroPointShape) {
+  // R_zero_point's first dim must equal num_directions (1); {2} is inconsistent and must be rejected
+  // rather than silently validated against the input zero point's shape.
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(/*r_scale_dims=*/{1}, /*r_zp_dims=*/{2},
+                                                "Input R_zero_point must have shape");
+}
+
+TEST(DynamicQuantLSTMTest, RejectsInconsistentRecurrenceScaleShape) {
+  // R_scale's first dim must equal num_directions (1); {2} is inconsistent and must be rejected
+  // rather than silently validated against the input scale's shape.
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(/*r_scale_dims=*/{2}, /*r_zp_dims=*/{1},
+                                                "Input R_scale must have shape");
+}
+
+TEST(DynamicQuantLSTMTest, RejectsInconsistentPerChannelRecurrenceShape) {
+  // Per-channel (2D) recurrence quantization parameters must have second dim 4*hidden_size (== 8 here).
+  // {1, 3} has the correct first dim (num_directions) but a wrong per-channel dim, exercising the
+  // per-channel branch of the shape check (distinct from the wrong-first-dim {2} cases above).
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(/*r_scale_dims=*/{1, 8}, /*r_zp_dims=*/{1, 3},
+                                                "Input R_zero_point must have shape");
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(/*r_scale_dims=*/{1, 3}, /*r_zp_dims=*/{1, 8},
+                                                "Input R_scale must have shape");
+}
+
+TEST(DynamicQuantLSTMTest, RejectsInconsistentRecurrenceQuantParamBidirectional) {
+  // With two directions the recurrence quantization parameters' first dim must equal num_directions
+  // (2); a {1} shape is inconsistent and must be rejected in the bidirectional case as well.
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(/*r_scale_dims=*/{2}, /*r_zp_dims=*/{1},
+                                                "Input R_zero_point must have shape",
+                                                /*num_directions=*/2);
+}
+
+TEST(DynamicQuantLSTMTest, RejectsNonConstantPerChannelRecurrenceZeroPoint) {
+  // A per-channel R_zero_point with the correct shape {num_directions, 4*hidden_size} (== {1, 8} here)
+  // passes the shape check and reaches the per-element zero-point validation. Unsigned recurrence
+  // weights require a constant zero point, so non-constant values must be rejected. This exercises the
+  // zero-point iteration against R's own shape and values.
+  RunQuantLSTMExpectInvalidRecurrenceQuantParam(
+      /*r_scale_dims=*/{1, 8}, /*r_zp_dims=*/{1, 8},
+      "RecurrentWeight point must be constant",
+      /*num_directions=*/1,
+      /*r_zp_values=*/{0, 1, 0, 0, 0, 0, 0, 0});
+}
+
+TEST(DynamicQuantLSTMTest, AcceptsMixedGranularityRecurrenceQuantParam) {
+  // Mixed quantization granularity between the input (W) and recurrence (R) weights is valid and must
+  // run to completion producing correct output. Exercise both orderings: per-tensor W with per-channel
+  // R, and per-channel W with per-tensor R.
+  RunQuantLSTM<int8_t>(2, 1, 16,
+                       false /*has_bias*/, false /*has_P*/,
+                       false /*is_initializer_W*/, false /*is_initializer_R*/,
+                       false /*w_per_channel*/, true /*r_per_channel*/, "forward");
+  RunQuantLSTM<int8_t>(2, 1, 16,
+                       false /*has_bias*/, false /*has_P*/,
+                       false /*is_initializer_W*/, false /*is_initializer_R*/,
+                       true /*w_per_channel*/, false /*r_per_channel*/, "forward");
+}
 
 }  // namespace test
 }  // namespace onnxruntime

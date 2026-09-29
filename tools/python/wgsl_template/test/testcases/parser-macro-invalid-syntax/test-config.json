@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser error handling for invalid macro name syntax (starts with number)",
+  "expectsError": "Invalid macro definition in file invalid.wgsl.template at line 1: invalid macro name \"123INVALID\" (must start with letter or underscore, contain only letters, numbers, and underscores)"
+}

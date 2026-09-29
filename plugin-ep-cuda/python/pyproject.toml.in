@@ -9,9 +9,6 @@ description = "ONNX Runtime CUDA Plugin Execution Provider"
 readme = "onnxruntime_ep_cuda/README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
-dependencies = [
-  "onnxruntime>=@min_onnxruntime_version@",
-]
 
 [tool.setuptools.packages.find]
 include = ["onnxruntime_ep_cuda*"]

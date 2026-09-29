@@ -6,11 +6,13 @@
 #include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
 #include "file_util.h"
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <fstream>
@@ -29,6 +31,49 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+constexpr bool TensorProtoElementSizesAreConstexpr() {
+  constexpr std::array<size_t, TensorProto_DataType_DataType_ARRAYSIZE> expected_sizes{
+      0,                 // UNDEFINED
+      sizeof(float),     // FLOAT
+      sizeof(uint8_t),   // UINT8
+      sizeof(int8_t),    // INT8
+      sizeof(uint16_t),  // UINT16
+      sizeof(int16_t),   // INT16
+      sizeof(int32_t),   // INT32
+      sizeof(int64_t),   // INT64
+      0,                 // STRING
+      sizeof(uint8_t),   // BOOL
+      sizeof(uint16_t),  // FLOAT16
+      sizeof(double),    // DOUBLE
+      sizeof(uint32_t),  // UINT32
+      sizeof(uint64_t),  // UINT64
+      sizeof(float),     // COMPLEX64
+      sizeof(double),    // COMPLEX128
+      sizeof(uint16_t),  // BFLOAT16
+      sizeof(uint8_t),   // FLOAT8E4M3FN
+      sizeof(uint8_t),   // FLOAT8E4M3FNUZ
+      sizeof(uint8_t),   // FLOAT8E5M2
+      sizeof(uint8_t),   // FLOAT8E5M2FNUZ
+      sizeof(uint8_t),   // UINT4
+      sizeof(uint8_t),   // INT4
+      sizeof(uint8_t),   // FLOAT4E2M1
+      sizeof(uint8_t),   // FLOAT8E8M0
+      sizeof(uint8_t),   // UINT2
+      sizeof(uint8_t),   // INT2
+  };
+
+  for (size_t index = 0; index < expected_sizes.size(); ++index) {
+    if (GetElementSizeOfTensor(static_cast<TensorProto_DataType>(index)) != expected_sizes[index]) {
+      return false;
+    }
+  }
+
+  return GetElementSizeOfTensor(static_cast<TensorProto_DataType>(-1)) == 0 &&
+         GetElementSizeOfTensor(static_cast<TensorProto_DataType>(expected_sizes.size())) == 0;
+}
+
+static_assert(TensorProtoElementSizesAreConstexpr());
 
 // if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
@@ -96,6 +141,50 @@ TEST(TensorProtoUtilsTest, ParseExternalDataInfoOffsetAndLength) {
   }
 
   // TODO should ExternalDataInfo::Create() also reject negative offset values?
+}
+
+TEST(TensorProtoUtilsTest, ExternalDataInfoRejectsDuplicateLocations) {
+  const std::string memory_tag = ToUTF8String(utils::kTensorProtoNativeEndianMemoryAddressTag);
+  const std::array<std::pair<std::string, std::string>, 3> locations{{
+      {"data.bin", "data.bin"},
+      {"data.bin", memory_tag},
+      {memory_tag, "data.bin"},
+  }};
+
+  for (const auto& [first_location, second_location] : locations) {
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    auto* first = tensor_proto.add_external_data();
+    first->set_key("location");
+    first->set_value(first_location);
+    auto* second = tensor_proto.add_external_data();
+    second->set_key("location");
+    second->set_value(second_location);
+
+    std::unique_ptr<ExternalDataInfo> external_data_info;
+    const Status status = ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "duplicate 'location'");
+  }
+}
+
+TEST(TensorProtoUtilsTest, HasExternalDataInMemoryChecksAllLocations) {
+  auto make_tensor = [](const std::string& first_location, const std::string& second_location) {
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    auto* first = tensor_proto.add_external_data();
+    first->set_key("location");
+    first->set_value(first_location);
+    auto* second = tensor_proto.add_external_data();
+    second->set_key("location");
+    second->set_value(second_location);
+    return tensor_proto;
+  };
+
+  const std::string memory_tag = ToUTF8String(utils::kTensorProtoNativeEndianMemoryAddressTag);
+  EXPECT_TRUE(utils::HasExternalDataInMemory(make_tensor("data.bin", memory_tag)));
+  EXPECT_TRUE(utils::HasExternalDataInMemory(make_tensor(memory_tag, "data.bin")));
+  EXPECT_TRUE(utils::HasExternalDataInMemory(make_tensor(memory_tag, "")));
 }
 
 // Test ExternalData functionality
@@ -168,6 +257,55 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_EQ(final_offset, external_offset);
 }
 
+TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
+  constexpr const char* weight_name = "weight";
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+  discarded_weights.buffer_sizes_.push_back(discarded_data.size());
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+  shared_weights.buffer_sizes_.push_back(shared_data.size());
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, true);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving(weight_name, key, shared_weights);
+
+  const auto* retained_weights = prepacked_for_graph.GetPrepackedWeights(key);
+  ASSERT_NE(retained_weights, nullptr);
+  ASSERT_EQ(retained_weights->buffers_.size(), 1U);
+  EXPECT_EQ(retained_weights->buffers_[0].get(), shared_data.data());
+  const auto* keys_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(weight_name);
+  ASSERT_NE(keys_for_weight, nullptr);
+  EXPECT_EQ(keys_for_weight->count(key), 1U);
+}
+
+TEST(PrepackedWeightsForGraphTest, DiscardRemovesWeightWhenNotSaving) {
+  constexpr const char* key = "key";
+  std::array<uint8_t, 1> discarded_data{1};
+  std::array<uint8_t, 1> shared_data{2};
+
+  PrePackedWeights discarded_weights;
+  discarded_weights.buffers_.emplace_back(discarded_data.data(), BufferDeleter(nullptr));
+
+  PrePackedWeights shared_weights;
+  shared_weights.buffers_.emplace_back(shared_data.data(), BufferDeleter(nullptr));
+
+  PrepackedKeyToBlobMap key_to_blob;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, false);
+  prepacked_for_graph.InsertPrepackedWeights(key, std::move(discarded_weights));
+
+  prepacked_for_graph.DiscardAndReplaceWithReferenceIfSaving("weight", key, shared_weights);
+
+  EXPECT_EQ(prepacked_for_graph.GetPrepackedWeights(key), nullptr);
+}
+
 // T must be float for double, and it must match with the 'type' argument
 template <typename T>
 void TestUnpackFloatTensor(TensorProto_DataType type, const std::filesystem::path& model_path) {
@@ -223,6 +361,65 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
 
   status = UnpackTensor(bool_tensor_proto, model_path, string_data, 2);
   EXPECT_FALSE(status.IsOK());
+}
+
+// A bool initializer supplied through raw_data is copied verbatim, so its bytes are not
+// restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
+// canonical bool values) all observe the same result regardless of how they read the byte.
+TEST(TensorProtoUtilsTest, UnpackBoolTensorWithRawDataNormalizesToZeroOne) {
+  std::filesystem::path model_path;
+  TensorProto bool_tensor_proto;
+  bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
+  bool_tensor_proto.add_dims(4);
+
+  // Bytes outside {0, 1}: 0x00 -> 0, 0x01 -> 1, 0x02 -> 1, 0xFF -> 1.
+  const unsigned char raw_bytes[] = {0x00, 0x01, 0x02, 0xFF};
+  bool_tensor_proto.set_raw_data(std::string(reinterpret_cast<const char*>(raw_bytes), sizeof(raw_bytes)));
+
+  bool bool_data[4];
+  auto status = UnpackTensor(bool_tensor_proto, model_path, bool_data, 4);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto* bytes = reinterpret_cast<const unsigned char*>(bool_data);
+  EXPECT_EQ(bytes[0], 0);
+  EXPECT_EQ(bytes[1], 1);
+  EXPECT_EQ(bytes[2], 1);
+  EXPECT_EQ(bytes[3], 1);
+}
+
+// NormalizeBoolTensorIfNeeded normalizes a CPU bool tensor's bytes to {0, 1} in place. It backs the
+// external-initializer device-copy path (session_state_utils.cc), where bool bytes that may be
+// non-canonical are normalized in a writable CPU staging copy before being copied to the device.
+TEST(TensorProtoUtilsTest, NormalizeBoolTensorIfNeededNormalizesToZeroOne) {
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
+
+  // Bool tensor: write non-canonical bytes, then normalize.
+  Tensor bool_tensor(DataTypeImpl::GetType<bool>(), TensorShape({4}), cpu_allocator);
+  unsigned char* bool_bytes = reinterpret_cast<unsigned char*>(bool_tensor.MutableDataRaw());
+  bool_bytes[0] = 0x00;
+  bool_bytes[1] = 0x01;
+  bool_bytes[2] = 0x02;
+  bool_bytes[3] = 0xFF;
+
+  NormalizeBoolTensorIfNeeded(bool_tensor);
+
+  EXPECT_EQ(bool_bytes[0], 0);
+  EXPECT_EQ(bool_bytes[1], 1);
+  EXPECT_EQ(bool_bytes[2], 1);
+  EXPECT_EQ(bool_bytes[3], 1);
+
+  // Non-bool tensor: bytes must be left untouched.
+  Tensor int32_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({3}), cpu_allocator);
+  int32_t* int32_data = int32_tensor.MutableData<int32_t>();
+  int32_data[0] = 0;
+  int32_data[1] = 2;
+  int32_data[2] = 255;
+
+  NormalizeBoolTensorIfNeeded(int32_tensor);
+
+  EXPECT_EQ(int32_data[0], 0);
+  EXPECT_EQ(int32_data[1], 2);
+  EXPECT_EQ(int32_data[2], 255);
 }
 
 namespace {
@@ -346,6 +543,42 @@ TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
   TestUnpackExternalTensor<MLFloat16>(TensorProto_DataType_FLOAT16, model_path);
   TestUnpackExternalTensor<BFloat16>(TensorProto_DataType_BFLOAT16, model_path);
   TestUnpackExternalTensor<bool>(TensorProto_DataType_BOOL, model_path);
+}
+
+// A bool initializer supplied through external data is copied verbatim, so its bytes are not
+// restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
+// canonical bool values) all observe the same result regardless of how they read the byte.
+TEST(TensorProtoUtilsTest, UnpackBoolTensorWithExternalDataNormalizesToZeroOne) {
+  std::filesystem::path model_path;
+
+  // Bytes outside {0, 1}: 0x00 -> 0, 0x01 -> 1, 0x02 -> 1, 0xFF -> 1.
+  const unsigned char raw_bytes[] = {0x00, 0x01, 0x02, 0xFF};
+
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("bool_tensor_XXXXXX"));
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  ASSERT_EQ(sizeof(raw_bytes), fwrite(raw_bytes, 1, sizeof(raw_bytes), fp));
+  ASSERT_EQ(0, fclose(fp));
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
+
+  TensorProto bool_tensor_proto;
+  onnx::StringStringEntryProto* location = bool_tensor_proto.mutable_external_data()->Add();
+  location->set_key("location");
+  location->set_value(ToUTF8String(filename));
+  bool_tensor_proto.add_dims(4);
+  bool_tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
+
+  auto arr = std::make_unique<bool[]>(4);
+  auto status = utils::UnpackTensor(bool_tensor_proto, model_path, arr.get(), 4);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto* bytes = reinterpret_cast<const unsigned char*>(arr.get());
+  EXPECT_EQ(bytes[0], 0);
+  EXPECT_EQ(bytes[1], 1);
+  EXPECT_EQ(bytes[2], 1);
+  EXPECT_EQ(bytes[3], 1);
 }
 
 template <typename T>
@@ -535,6 +768,18 @@ class PathValidationTest : public ::testing::Test {
   std::vector<std::filesystem::path> other_dirs_;
   std::vector<std::filesystem::path> other_files_;
 };
+
+TEST_F(PathValidationTest, ValidateExternalDataPathRejectsMemoryTags) {
+  for (const auto* memory_tag : {utils::kTensorProtoLittleEndianMemoryAddressTag,
+                                 utils::kTensorProtoNativeEndianMemoryAddressTag}) {
+    const Status status = utils::ValidateExternalDataPathFromDir(base_dir_, std::filesystem::path{memory_tag});
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "In-memory external data reference tag");
+
+    const Status wrapper_status =
+        utils::ValidateExternalDataPath(base_dir_ / "model.onnx", std::filesystem::path{memory_tag});
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(wrapper_status, "In-memory external data reference tag");
+  }
+}
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
@@ -1377,6 +1622,46 @@ TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndic
 }
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Defense-in-depth: ConstantNodeProtoToTensorProto must reject ORT's in-memory address marker
+// on a Constant node's dense tensor attribute. This isolates the guard added in
+// ConstantNodeProtoToTensorProto from the pre-existing dense-initializer guard in the Graph
+// constructor: callers such as Graph::AddConstantProtoAsInitializer and the ORT-format build
+// path emplace directly into name_to_initial_tensor_ and bypass that constructor-side check,
+// so this test exercises the new chokepoint directly.
+TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTensorAttribute) {
+  ONNX_NAMESPACE::NodeProto node;
+  node.set_op_type("Constant");
+  node.set_name("malicious_constant");
+  node.add_output("c");
+
+  auto* attr = node.add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* t = attr->mutable_t();
+  t->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  t->add_dims(4);
+  t->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Backing buffer is irrelevant — the guard must reject before any dereference.
+  static std::vector<uint8_t> backing(16, 0);
+
+  auto* loc = t->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = t->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = t->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  ONNX_NAMESPACE::TensorProto tensor_out;
+  Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+  ASSERT_FALSE(status.IsOK())
+      << "Constant node tensor attribute with an in-memory address marker must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
 
 // Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
 // called with an empty model_path (e.g. from training checkpoint or custom-op init paths).

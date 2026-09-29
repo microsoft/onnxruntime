@@ -1,0 +1,1 @@
+ss << "let size = BUFFER_SIZE;\n";

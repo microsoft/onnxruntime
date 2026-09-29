@@ -393,6 +393,73 @@ pub enum TensorElementDataType {
     // Bfloat16 = sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 as OnnxEnumInt,
 }
 
+impl std::convert::TryFrom<sys::ONNXTensorElementDataType> for TensorElementDataType {
+    type Error = error::OrtError;
+
+    fn try_from(value: sys::ONNXTensorElementDataType) -> std::result::Result<Self, Self::Error> {
+        use sys::ONNXTensorElementDataType as SysType;
+
+        match value {
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED => {
+                Err(error::OrtError::UndefinedTensorElementType)
+            }
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT => Ok(Self::Float),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 => Ok(Self::Uint8),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 => Ok(Self::Int8),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16 => Ok(Self::Uint16),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16 => Ok(Self::Int16),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 => Ok(Self::Int32),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 => Ok(Self::Int64),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING => Ok(Self::String),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE => Ok(Self::Double),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32 => Ok(Self::Uint32),
+            SysType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 => Ok(Self::Uint64),
+            unsupported => Err(error::OrtError::UnsupportedTensorElementType(
+                unsupported as OnnxEnumInt as i64,
+            )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tensor_element_data_type_tests {
+    use super::{error::OrtError, sys, TensorElementDataType};
+    use std::convert::TryFrom;
+
+    #[test]
+    fn converts_supported_type() {
+        assert!(matches!(
+            TensorElementDataType::try_from(
+                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+            ),
+            Ok(TensorElementDataType::Float)
+        ));
+    }
+
+    #[test]
+    fn rejects_undefined_type() {
+        assert!(matches!(
+            TensorElementDataType::try_from(
+                sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED
+            ),
+            Err(OrtError::UndefinedTensorElementType)
+        ));
+    }
+
+    #[test]
+    fn rejects_unsupported_types() {
+        for value in [
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
+            sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+        ] {
+            assert!(matches!(
+                TensorElementDataType::try_from(value),
+                Err(OrtError::UnsupportedTensorElementType(_))
+            ));
+        }
+    }
+}
+
 impl From<TensorElementDataType> for sys::ONNXTensorElementDataType {
     fn from(val: TensorElementDataType) -> Self {
         use TensorElementDataType::{

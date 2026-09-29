@@ -14,13 +14,9 @@ Abstract:
 
 --*/
 
+#include <numbers>
+
 #include "mlasi.h"
-
-namespace {
-
-constexpr float kInvSqrt2 = 0.70710678118654752440f;
-
-}  // namespace
 
 void
 MLASCALL
@@ -35,7 +31,7 @@ MlasGeluErfKernel(
     // and finally combine that intermediate with the original Input values.
     // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
     for (size_t i = 0; i < N; ++i) {
-        Output[i] = Input[i] * kInvSqrt2;
+        Output[i] = Input[i] * (1.0f / std::numbers::sqrt2_v<float>);
     }
 
     MlasComputeErf(Output, Output, N);
@@ -53,7 +49,7 @@ MlasComputeGeluErf(
     size_t N
     )
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // TODO: Add an intermediate fused AVX2/FMA3 GELU(erf) path on AMD64.
     // Today the dispatch jumps from the generic multi-pass implementation to
     // AVX512F, so non-AVX512 x64 machines fall back to the generic kernel.
@@ -90,7 +86,7 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
         } else {
             // GELU exact (erf)
             gelu_val = 0.5f * x *
-                (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2)));
+                (1.0f + std::erf(x * (1.0f / std::numbers::sqrt2_v<float>)));
         }
 
         output[i] = MLAS_FP16(gelu_val);

@@ -1,0 +1,20 @@
+{
+  "type": "generator",
+  "description": "Test complex padding operation template with multiple conditional parameters and pad modes",
+  "entries": {
+    "pad.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {
+          "expectedParams": [
+            "dim_value_zero",
+            "is_float16",
+            "pad_mode"
+          ],
+          "expectedVariables": [
+            "output"
+          ]
+        }
+      }
+    }
+  }
+}
