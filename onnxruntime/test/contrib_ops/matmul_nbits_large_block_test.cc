@@ -498,7 +498,8 @@ TEST(MatMulNBitsLargeBlock, Int4_MatchesBlock256Twin) {
         for (int64_t accuracy_level : {1, 4}) {
           RunConfig cfg;
           cfg.accuracy_level = accuracy_level;
-          CheckAgainstTwin(MakeWeights(13, k, 4, block, zp, seed++), cfg, seed);
+          const uint32_t weight_seed = seed++;
+          CheckAgainstTwin(MakeWeights(13, k, 4, block, zp, weight_seed), cfg, seed);
         }
       }
     }
@@ -513,7 +514,8 @@ TEST(MatMulNBitsLargeBlock, Int8_MatchesBlock256Twin) {
         for (int64_t accuracy_level : {1, 4}) {
           RunConfig cfg;
           cfg.accuracy_level = accuracy_level;
-          CheckAgainstTwin(MakeWeights(7, k, 8, block, zp, seed++), cfg, seed);
+          const uint32_t weight_seed = seed++;
+          CheckAgainstTwin(MakeWeights(7, k, 8, block, zp, weight_seed), cfg, seed);
         }
       }
     }
@@ -527,7 +529,8 @@ TEST(MatMulNBitsLargeBlock, OddLogicalGroupCounts) {
     for (int64_t tail : {0, 100}) {
       const int64_t k = (groups - 1) * 1024 + (tail == 0 ? 1024 : tail);
       RunConfig cfg;
-      CheckAgainstTwin(MakeWeights(9, k, 4, 1024, ZeroPoint::kRandom, seed++), cfg, seed);
+      const uint32_t weight_seed = seed++;
+      CheckAgainstTwin(MakeWeights(9, k, 4, 1024, ZeroPoint::kRandom, weight_seed), cfg, seed);
     }
   }
 }
@@ -536,7 +539,8 @@ TEST(MatMulNBitsLargeBlock, FloatZeroPoints) {
   uint32_t seed = 300;
   for (int64_t k : {1024, 1500}) {
     RunConfig cfg;
-    CheckAgainstTwin(MakeWeights(6, k, 4, 1024, ZeroPoint::kFloat, seed++), cfg, seed);
+    const uint32_t weight_seed = seed++;
+    CheckAgainstTwin(MakeWeights(6, k, 4, 1024, ZeroPoint::kFloat, weight_seed), cfg, seed);
   }
 }
 
