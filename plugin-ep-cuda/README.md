@@ -18,7 +18,7 @@ For more information about plugin EPs, see the documentation
 - [`csharp/`](csharp/) - Sources and packaging script for the per-RID
   `Microsoft.ML.OnnxRuntime.EP.Cuda{12,13}.<rid>` NuGet packages.
 
-### Contrib operator compatibility
+## Contrib operator compatibility
 
 `MIN_ONNXRUNTIME_VERSION` defines the minimum supported ONNX Runtime core version, but it does not by itself guarantee
 compatibility when contributed operators are involved. ONNX Runtime core and a plugin EP can be built from different
