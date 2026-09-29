@@ -697,6 +697,22 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
       }
     }
+
+    // Defense in depth: equal logical element counts do not guarantee equal physical storage. Packed sub-byte
+    // types (e.g. uint4[N] needs ceil(N/2) bytes) share the same carrier size as full-byte types (uint8[N] needs
+    // N bytes), so a reused buffer sized for the packed type is too small for the full-byte tensor and a later
+    // write would overflow it. Reject the reuse whenever the buffer cannot physically hold the requested tensor.
+    size_t required_storage_bytes = 0;
+    ORT_RETURN_IF_ERROR(
+        Tensor::CalculateTensorStorageSize(element_type, shape, /*alignment*/ 0, required_storage_bytes));
+    const size_t buffer_storage_bytes = reuse_tensor->SizeInBytes();
+    if (required_storage_bytes > buffer_storage_bytes) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL, "Cannot re-use buffer: requested tensor needs ", required_storage_bytes,
+          " bytes of storage but the buffer being reused only has ", buffer_storage_bytes,
+          " bytes (buffer shape ", reuse_tensor->Shape(), ", requested shape ", shape,
+          "). This can happen when a packed sub-byte tensor is reused for a full-byte tensor of the same shape.");
+    }
   }
 
   void* reuse_buffer = reuse_tensor->MutableDataRaw();

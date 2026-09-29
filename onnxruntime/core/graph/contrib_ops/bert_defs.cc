@@ -234,7 +234,8 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
 void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                   int past_key_index = -1,
                                                   int use_max_past_present_buffer = -1,
-                                                  int output_qk_index = -1) {
+                                                  int output_qk_index = -1,
+                                                  int total_sequence_length_index = -1) {
   // Type inference for outputs
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);  // output
 
@@ -296,9 +297,13 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     int64_t total_sequence_length_value = 0;
-    const auto* total_sequence_length_data = ctx.getInputData(6);
+    const auto* total_sequence_length_data =
+        total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
       const auto& data = ParseData<int32_t>(total_sequence_length_data);
+      if (data.size() != 1) {
+        fail_shape_inference("total_sequence_length input must contain a single element");
+      }
       total_sequence_length_value = static_cast<int64_t>(data[0]);
     }
 
@@ -447,13 +452,17 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index, int qk_output_index) {
   // TODO(aciddelgado): propagate output shapes depending if kv-share buffer is on or not
   constexpr int use_max_past_present_buffer = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
+  constexpr int total_sequence_length_index = 6;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
+                                               total_sequence_length_index);
 }
 
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
-  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
+  constexpr int total_sequence_length_index = 7;
+  BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
+                                               total_sequence_length_index);
 }
 
 constexpr const char* Attention_ver1_doc = R"DOC(
@@ -2316,6 +2325,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
+          const int64_t ndim = getAttribute(ctx, "ndim", 1);
+          if (ndim < 1 || ndim > 3) {
+            fail_shape_inference("CausalConvWithState: ndim must be 1, 2, or 3, got ", ndim);
+          }
+
           // Output 0: same shape as input (batch_size, channels, ...)
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
@@ -2326,13 +2340,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
-            if (input_shape.dim_size() < 2) {
-              fail_shape_inference("CausalConvWithState: input must have rank >= 2");
+            // Both are channels-first with rank ndim + 2: weight is (channels, 1, k_1, ..., k_ndim) and
+            // input is (batch_size, channels, d_1, ..., d_ndim).
+            if (weight_shape.dim_size() != ndim + 2) {
+              fail_shape_inference("CausalConvWithState: weight must have rank ndim + 2 (",
+                                   ndim + 2, "), got rank ", weight_shape.dim_size());
             }
-            if (weight_shape.dim_size() < 2) {
-              fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
+            if (input_shape.dim_size() != ndim + 2) {
+              fail_shape_inference("CausalConvWithState: input must have rank ndim + 2 (",
+                                   ndim + 2, "), got rank ", input_shape.dim_size());
             }
-            int64_t ndim = getAttribute(ctx, "ndim", 1);
             TensorShapeProto state_shape;
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
             *state_shape.add_dim() = input_shape.dim(1);  // channels

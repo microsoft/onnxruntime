@@ -53,6 +53,13 @@ class OpKernel {
     return false;
   }
 
+  // Only control flow kernels (If/Loop/Scan) legitimately carry subgraphs. SessionState
+  // finalization uses this to gate the downcast to controlflow::IControlFlowKernel without
+  // RTTI (onnxruntime_DISABLE_RTTI is ON by default, so dynamic_cast is unavailable).
+  [[nodiscard]] virtual bool IsControlFlowKernel() const {
+    return false;
+  }
+
   [[nodiscard]] virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }

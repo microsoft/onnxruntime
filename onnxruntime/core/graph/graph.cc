@@ -1113,6 +1113,16 @@ Status Node::UpdateInputArgCount() {
   // Verify size of node arg count is same as input number in
   // operator definition.
   if (op.inputs().size() != definitions_.input_arg_count.size()) {
+    // A node cannot feed actual inputs to an operator/function whose schema
+    // declares no formal input parameters.
+    if (op.inputs().empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This is an invalid model. Node (", name_,
+                             ") has ", total_arg_count,
+                             " input(s) but its operator schema (", op.Name(),
+                             ") declares no inputs.");
+    }
+
     // Adjust input arg count array with op definition
     // The adjustment will work as below,
     // In total, there're <total_arg_count> inputs, which
@@ -1126,21 +1136,16 @@ Status Node::UpdateInputArgCount() {
     size_t m = 0;
     auto arg_count_left = total_arg_count;
 
-    if (!op.inputs().empty()) {
-      for (; m < op.inputs().size() - 1; ++m) {
-        if (arg_count_left > 0) {
-          input_arg_count.push_back(1);
-          arg_count_left--;
-        } else {
-          input_arg_count.push_back(0);
-        }
+    for (; m < op.inputs().size() - 1; ++m) {
+      if (arg_count_left > 0) {
+        input_arg_count.push_back(1);
+        arg_count_left--;
+      } else {
+        input_arg_count.push_back(0);
       }
     }
 
     // Set the arg count for the last input formal parameter.
-    // NOTE: in the case that there's no .input(...) defined
-    // in op schema, all input args will be fed as one input
-    // of the operator.
     input_arg_count.push_back(arg_count_left);
 
     graph_->SetGraphResolveNeeded();
@@ -2747,6 +2752,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   const TensorProto* getInputData(size_t index) const override {
+    // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
+    // so callers can pass an index the node doesn't actually have.
+    if (index >= getNumInputs()) {
+      return nullptr;
+    }
+
     auto def = node_.InputDefs()[index];
     if (!def)
       return nullptr;
