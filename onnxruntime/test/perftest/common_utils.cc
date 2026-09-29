@@ -200,7 +200,9 @@ std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
     auto& devices = ep_and_devices.second;
     // A user compute stream belongs to a single device, so only attach one when this EP was given exactly one
     // device. Stream creation fails for CPU devices and EPs without stream support; those EPs are left unchanged.
-    if (compute_stream != nullptr && *compute_stream == nullptr && devices.size() == 1) {
+    if (compute_stream != nullptr && *compute_stream == nullptr && devices.size() == 1 &&
+        devices[0].Device().Type() == OrtDevice::GPU &&
+        devices[0].Device().VendorId() == OrtDevice::VendorIds::NVIDIA) {
       OrtSyncStream* stream = nullptr;
       Ort::Status status{Ort::GetApi().CreateSyncStreamForEpDevice(devices[0], nullptr, &stream)};
       if (status.IsOK()) {
