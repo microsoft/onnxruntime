@@ -353,7 +353,7 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   }
 
   // no-op - no output buffers to fill - return silently
-  if (k == 0) {
+  if (k == 0 || output_shape.Size() == 0) {
     return Status::OK();
   }
 
@@ -398,7 +398,7 @@ Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool large
   output_indices = Tensor(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
 
   // no-op - no output buffers to fill - return silently
-  if (k == 0) {
+  if (k == 0 || output_shape.Size() == 0) {
     return Status::OK();
   }
 

@@ -35,21 +35,16 @@ class CudaEpFactory : public OrtEpFactory {
   const OrtEpApi& GetEpApi() const { return ep_api_; }
   const std::string& GetEpName() const { return ep_name_; }
 
-  /// Get the device arena allocator for the given CUDA ordinal, or nullptr if none.
-  CudaArenaAllocator* GetDeviceArenaForDevice(int device_id);
-
-  /// Reset arena chunk-to-stream assignments for a device while holding the arena lock.
-  /// This avoids the use-after-free risk of calling GetDeviceArenaForDevice() and then
-  /// using the raw pointer after the arena_mutex is released.
+  /// Reset chunk-to-stream assignments in every device arena of a device while holding the arena lock.
   OrtStatus* ResetDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
 
   /// Permanently quarantine chunks when stream completion cannot be established.
   OrtStatus* QuarantineDeviceArenaChunksUsingStream(int device_id, const OrtSyncStreamImpl* stream_impl);
 
-  /// Atomically detach stream pointers and abandon all arena backing memory.
+  /// Abandon every device arena, then detach stream pointers from tagged chunks.
   OrtStatus* QuarantineAndAbandonDeviceArena(int device_id, const OrtSyncStreamImpl* stream_impl) noexcept;
 
-  /// Abandon the full device arena when chunk-level detachment cannot be guaranteed.
+  /// Abandon every device arena of a device when chunk-level detachment cannot be guaranteed.
   void AbandonDeviceArena(int device_id) noexcept;
 
   /// Get or create the shared kernel registry for this factory.
@@ -112,6 +107,12 @@ class CudaEpFactory : public OrtEpFactory {
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
   const std::string ep_version_{ORT_PLUGIN_EP_VERSION};
 
+  struct DeviceArena {
+    std::unique_ptr<CudaArenaAllocator> allocator;
+    bool has_quarantine = false;
+    bool abandoned = false;
+  };
+
   struct DeviceCacheEntry {
     int cuda_device_id{-1};
     Ort::MemoryInfo device_memory_info{nullptr};
@@ -119,12 +120,10 @@ class CudaEpFactory : public OrtEpFactory {
 
     // Arena members
     std::mutex arena_mutex;
-    std::unique_ptr<CudaArenaAllocator> device_arena;
+    // One arena per CreateAllocator call: captured CUDA graphs keep using chunks their session freed.
+    std::vector<DeviceArena> device_arenas;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
-    bool device_arena_has_quarantine = false;
-    bool device_arena_abandoned = false;
-    int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
     int num_mempool_users = 0;
   };

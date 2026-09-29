@@ -6728,6 +6728,63 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_HandleNegativeDqAxis) {
   test_case(true);
 }
 
+TEST(QDQTransformerTests, WeightBiasQuantization_NonNegativeAxisWithUnknownWeightShape) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr int64_t channels = 24;
+    NodeArg* input_arg = builder.MakeInput<uint8_t>({1, channels, 8, 8}, 0, 255);
+    NodeArg* weight_arg = builder.MakeInput<uint8_t>(std::nullopt);
+    NodeArg* bias_arg = builder.MakeInitializer<float>({channels}, -0.1f, 0.1f);
+    NodeArg* input_dq_arg = builder.MakeIntermediate();
+    NodeArg* weight_dq_arg = builder.MakeIntermediate();
+    NodeArg* conv_arg = builder.MakeIntermediate();
+    NodeArg* output_arg = builder.MakeOutput();
+
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.07f, static_cast<uint8_t>(0), input_dq_arg);
+    auto& weight_dq_node = builder.AddDequantizeLinearNode<uint8_t>(
+        weight_arg, std::vector<float>(channels, 0.05f),
+        std::vector<uint8_t>(channels, static_cast<uint8_t>(0)), weight_dq_arg);
+    weight_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+
+    auto& conv_node = builder.AddNode("Conv", {input_dq_arg, weight_dq_arg, bias_arg}, {conv_arg});
+    conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    conv_node.AddAttribute("group", channels);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddQuantizeLinearNode<uint8_t>(conv_arg, 0.14f, static_cast<uint8_t>(127), output_arg);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const Node* conv_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv") {
+        conv_node = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(conv_node != nullptr);
+    TEST_RETURN_IF_NOT(conv_node->InputDefs()[1]->Shape() == nullptr);
+    const Node* weight_dq_node = graph.GetProducerNode(conv_node->InputDefs()[1]->Name());
+    TEST_RETURN_IF_NOT(weight_dq_node != nullptr && weight_dq_node->OpType() == "DequantizeLinear");
+    TEST_RETURN_IF_NOT(weight_dq_node->InputDefs()[0]->Shape() == nullptr);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("DequantizeLinear") != 0 &&
+                       op_to_count.at("DequantizeLinear") == 3);
+    TEST_RETURN_IF_NOT(op_to_count.count("QuantizeLinear") != 0 &&
+                       op_to_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("Conv") != 0 && op_to_count.at("Conv") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("QLinearConv") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<WeightBiasQuantization>(), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
   auto test_case = [](bool use_contrib_qdq) {
     auto build_test_case = [&](ModelTestBuilder& builder) {

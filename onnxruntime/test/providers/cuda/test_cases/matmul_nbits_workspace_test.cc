@@ -45,12 +45,14 @@ namespace test {
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
+using onnxruntime::contrib::cuda::FpAIntBProfileSafeMCap;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
 using onnxruntime::contrib::cuda::MatMulNBits;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
 using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
+using onnxruntime::llm::kernels::weight_only::GetProfileTimedRuns;
 using onnxruntime::llm::kernels::weight_only::RoundUpProfileM;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 
@@ -64,7 +66,7 @@ constexpr int64_t kDefaultBits = 8;
 constexpr int64_t kDefaultBits = 4;
 #endif
 
-// A representative eligible configuration: fp16, block_size 32, aligned N/K, unprepacked,
+// A representative eligible configuration: fp16/bf16, block_size 32, aligned N/K, unprepacked,
 // fpA_intB option ON, SM80. Returns true iff the node is fpA_intB-eligible.
 bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
                   int64_t nbits = kDefaultBits, int64_t block_size = 32,
@@ -196,6 +198,19 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
+TEST(MatMulNBitsWorkspace, TacticProfilerMCapStaysWithinScratchLimit) {
+  EXPECT_EQ(FpAIntBProfileSafeMCap(529), 512);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(5957), 4096);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(8191), 4096);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(8192), 8192);
+  EXPECT_EQ(FpAIntBProfileSafeMCap(9000), 9000);
+
+  for (const int64_t limit : {529, 5957, 8191, 8192, 9000}) {
+    const int64_t cap = FpAIntBProfileSafeMCap(limit);
+    EXPECT_LE(RoundUpProfileM(static_cast<int>(cap), 8192), limit) << "limit=" << limit;
+  }
+}
+
 TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {
   EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
                 /*min_m=*/1, /*max_m=*/256, {}),
@@ -203,6 +218,20 @@ TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {
   EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
                 /*min_m=*/1, /*max_m=*/256, {8, 64}),
             (std::vector<int>{1, 8, 64, 256}));
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerTimedRunsPruneOnlyExpensiveSlowTactics) {
+  constexpr float kNoBest = std::numeric_limits<float>::max();
+  // Cheap launches keep the full average even when slower than the best.
+  EXPECT_EQ(GetProfileTimedRuns(0.01f, kNoBest), 10);
+  EXPECT_EQ(GetProfileTimedRuns(2.0f, 0.1f), 10);
+  // Expensive launches are averaged within a fixed budget while they can still win.
+  EXPECT_EQ(GetProfileTimedRuns(4.0f, kNoBest), 5);
+  EXPECT_EQ(GetProfileTimedRuns(30.0f, 26.0f), 1);
+  EXPECT_EQ(GetProfileTimedRuns(39.0f, 26.0f), 1);
+  // Expensive launches clearly slower than the best cannot win and are not averaged.
+  EXPECT_EQ(GetProfileTimedRuns(40.0f, 26.0f), 0);
+  EXPECT_EQ(GetProfileTimedRuns(4.0f, 2.0f), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +257,7 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
 TEST(MatMulNBitsWorkspace, EligibilityBasic) {
   EXPECT_TRUE(CheckDefault());
 #if USE_COMPACT_FPA_INTB_GEMM
-  EXPECT_FALSE(CheckDefault(kBf16));
+  EXPECT_TRUE(CheckDefault(kBf16));
 #else
   EXPECT_TRUE(CheckDefault(kBf16));
 #endif
@@ -237,6 +266,21 @@ TEST(MatMulNBitsWorkspace, EligibilityBasic) {
 TEST(MatMulNBitsWorkspace, EligibilityRejectsFp32) {
   // CUDA registers an FP32 MatMulNBits variant that must never be reported as fpA_intB-eligible.
   EXPECT_FALSE(CheckDefault(kFp32));
+}
+
+TEST(MatMulNBitsWorkspace, EligibilityBf16RequiresSm80) {
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, 64,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, 64,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4, 32,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8, 32,
+                            kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8, 32,
+                           kMatMulNBitsWeightNotPrepacked, false, /*sm*/ 80));
 }
 
 TEST(MatMulNBitsWorkspace, EligibilityOptionGate) {
@@ -270,7 +314,10 @@ TEST(MatMulNBitsWorkspace, EligibilityInt8Alignment) {
 TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 4));
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8));
-  EXPECT_FALSE(CheckDefault(kBf16));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 4));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 8));
+  EXPECT_TRUE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, /*block_size*/ 64));
+  EXPECT_FALSE(CheckDefault(kBf16, 256, 1024, /*nbits*/ 2, /*block_size*/ 128));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8, /*block_size*/ 64));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightPrepackedSm90));
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
