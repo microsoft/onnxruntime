@@ -585,7 +585,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
         ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, loaded_factories));
       }
 
-      if (ep_libraries_.count(registration_name) > 0) {
+      if (ep_libraries_.contains(registration_name)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
       }
 
