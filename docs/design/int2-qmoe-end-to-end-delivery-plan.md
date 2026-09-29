@@ -174,38 +174,7 @@ Deliverables:
 
 Exit gate: packed QMoE improves decode latency or throughput over the agreed INT4 baseline while preserving the accepted model quality.
 
-### Workstream 4: CPU Reference and Cross-Provider Parity
-
-CPU provides the portable regression oracle after the CUDA execution contract is proven.
-
-Deliverables:
-
-- Extend CPU QMoE from one shared width to independent FC widths.
-- Reuse the existing INT2 MLAS LUT path for FC1 where eligible.
-- Preserve the existing INT4 path for FC2.
-- Cover routing, fused SwiGLU, bias, empty experts, multiple tokens, and top-k greater than one.
-- Compare CPU and CUDA against the same scalar explicit-dequantization reference.
-
-Exit gate: deterministic mixed-width CPU QMoE tests pass, CPU and CUDA agree within frozen tolerances, and both match the quantized PyTorch reference.
-
-### Workstream 5: Olive and Mobius
-
-Downstream ownership is tracked in [Olive#2638](https://github.com/microsoft/Olive/issues/2638) for the fused-expert recipe and checkpoint qualification, and [Mobius#735](https://github.com/onnxruntime/mobius/issues/735) for checkpoint ingestion, projection-specific packing, graph emission, initializer binding, and ORT parity. The dense `MatMulNBits` work in [Olive#2671](https://github.com/microsoft/Olive/pull/2671) and [Mobius#740](https://github.com/onnxruntime/mobius/pull/740) does not imply fused mixed-width QMoE support.
-
-Native Mobius QMoE construction is sufficient for the first exporter milestone. Dense-graph-to-QMoE fusion is a separate follow-up; it must not block the first deterministic fused-QMoE fixture and export path.
-
-Deliverables:
-
-- Add or qualify selective mixed-precision QMoE quantization.
-- Export the approved FC-specific bit-width contract.
-- Emit portable raw `[E, N, K / pack_size]` weights.
-- Validate FC1 gate/up interleaving and FC2 orientation.
-- Add graph, initializer-binding, external-data, and numerical-parity tests.
-- Produce a small checked-in synthetic model and a reproducible Qwen conversion command.
-
-Exit gate: a clean environment can convert the selected checkpoint and run the exported model on CUDA, then reproduce the result on the CPU reference path without manual graph edits.
-
-### Workstream 6: CUDA Prefill
+### Workstream 4: CUDA Prefill
 
 Long-context prefill must not dequantize every expert into persistent FP16 storage.
 
@@ -236,7 +205,7 @@ Use routing results to dequantize only active experts, or process expert/row til
 
 #### Option C: Native Packed W2A16 Grouped GEMM
 
-Consume packed INT2/INT4 expert weights directly in a grouped GEMM without materializing A16 weights. This is the preferred production path.
+Consume packed INT2/INT4 expert weights directly in a grouped GEMM without materializing complete A16 expert weights in global memory. Tile-local unpacking and conversion to FP16 for floating-point Tensor Core computation are allowed; this does not require a hardware INT2-by-FP16 instruction. This is the preferred production path.
 
 - **Kernel foundation: 2-3 engineering weeks** for packed INT2 iterators, conversion, block-scale loading, mixed FC widths, and explicit instantiations.
 - **QMoE integration: 2-3 engineering weeks** for grouped expert descriptors, routing, SwiGLU/finalization epilogues, workspace planning, and dispatch.
@@ -246,9 +215,71 @@ Consume packed INT2/INT4 expert weights directly in a grouped GEMM without mater
 - **Use:** production TTFT and memory target.
 - **Risk:** largest implementation and review surface; architecture-specific profiling may require separate dispatch thresholds or kernels.
 
-Recommended sequencing is Option B first, while Option C proceeds as the production optimization when staffing permits. Option A remains a correctness oracle and must not be represented as product prefill support.
+##### Option C Delivery Plan: Two Core PRs
+
+The preferred review boundary is a separately testable grouped-GEMM kernel followed by QMoE integration. These are PR 4a and PR 4b in the overall delivery sequence, not two separate implementations of prefill.
+
+The first release targets SM80/A100, FP16 activations, symmetric FC1 gate/up INT2 and FC2 down INT4, block size 64, and the existing interleaved SwiGLU semantics. Keep the portable model contract (`weights_prepacked=0`) and runtime prepacking unchanged. BF16, additional block sizes and bit-width combinations, asymmetric zero points, and architecture-specific tuning are follow-ups. Do not expand the existing packed-GEMV gate of eight total routing-expanded rows merely to serve prefill.
+
+**PR 4a: SM80 packed W2A16 grouped GEMM foundation**
+
+- Reuse the existing INT2 numeric converters and layout traits where compatible. Prove compatibility with grouped-GEMM iterators, fragments, and block-scale indexing rather than assuming a new `uint2b_t` instantiation is sufficient.
+- Start with a fixed-tactic prototype for one expert, then multiple experts. Complete packed INT2 loads, tile-local conversion, block-64 scale handling, FP32 accumulation, shape/alignment eligibility, and explicit instantiations. Verify that the FC2 W4A16 path supports the required block-64 configuration.
+- Add independently callable kernel tests covering uneven expert row counts, empty experts, distinct scales across experts/output columns/K blocks, and supported alignment boundaries. Include kernel benchmarks and evidence that complete A16 expert weights are not materialized.
+- Leave QMoE's default execution path unchanged. Merge only when the kernel is directly exercised by tests and has basic performance evidence, not as an untested collection of unused type definitions.
+
+**PR 4b: Mixed INT2/INT4 QMoE prefill integration**
+
+- Depend on PR 4a. Evaluate separate W2 FC1 and W4 FC2 runner instances sharing routing/workspace management before broadening the existing runner abstraction. Reuse routing, token permutation, bias/SwiGLU, and routing-weighted finalization; independent activation/finalization kernels are acceptable initially.
+- Integrate prepacking, grouped expert descriptors, workspace sizing, dispatch, and necessary tactic selection using the current profiling/KernelPilot mechanisms. Select FC1 and FC2 tactics independently where needed. Validate whether GEMV and GEMM can share packed buffers; account for every persistent copy if they cannot.
+- Preserve packed decode and the bounded fallback for configurations outside the new path. Retain raw weights when a later invocation can require fallback. Validate buffer lifetimes, stream ordering, and prefill-to-decode transitions within one session.
+- Deliver end-to-end correctness, TTFT, and peak-memory evidence before enabling the new path by default for qualified configurations. Necessary performance qualification belongs in this PR, not entirely in a later tuning PR.
+
+**Shared acceptance and measurement plan**
+
+- Compare against a reference built from the same quantized weights and scales, with frozen numerical tolerances. Test bias, SwiGLU, different top-k values, inactive/hot experts, skewed routing, and prefill -> decode -> prefill in one session.
+- Use input token counts `T=128,512,2048`, plus `T=1,2,3` for the GPT-OSS `top_k=4` dispatch boundary. Record `T * top_k` and the distribution of per-expert row counts; total input rows are not the same as the GEMM row count for each expert.
+- Set `ep.cuda.qmoe_int_dequant_max_scratch_bytes` to one byte in supported-path tests and confirm successful execution with kernel traces. This proves the dense expert-dequantization fallback is bypassed, not that total workspace is one byte.
+- Report QMoE latency, full-model prefill latency, TTFT, prepack time, persistent packed/raw weight bytes, activation/routing workspace, and peak device memory. Check packed-decode and existing INT4/INT8 regressions.
+- Use the dense fallback as a controlled reduced-model correctness/performance baseline and uniform INT4 as a model-level product baseline. Different bit widths prevent the latter from being interpreted as a pure kernel comparison. Freeze the TTFT/memory acceptance targets before collecting candidate results.
+- Qualify GPT-OSS-20B mixed-width multi-token prefill followed by generation without raising the default dense-dequantization scratch cap. No full-expert A16 allocation is allowed on the new path.
+
+The first approximately one-week kernel prototype is included in the 2-3-week foundation estimate; splitting review does not reduce the total 6-9 engineering weeks or add a second foundation budget. Follow-up PRs expand dtype, quantization, architecture coverage, and optional fusion/tuning. If the prototype shows that splitting requires substantial temporary interfaces or duplicated infrastructure, use one PR with clearly layered commits instead of forcing an artificial boundary.
+
+Option B remains the preferred bounded intermediate path when an earlier functional milestone is required, but it is not a prerequisite for PR 4a/4b. A dedicated Option C effort can proceed directly with Option A as the correctness oracle. Option A must not be represented as product prefill support.
 
 Exit gate: representative prefill values such as M=128, 512, and 2048 complete within the memory budget and improve TTFT or provide an explicitly accepted intermediate baseline.
+
+### Workstream 5: Olive and Mobius
+
+Downstream ownership is tracked in [Olive#2638](https://github.com/microsoft/Olive/issues/2638) for the fused-expert recipe and checkpoint qualification, and [Mobius#735](https://github.com/onnxruntime/mobius/issues/735) for checkpoint ingestion, projection-specific packing, graph emission, initializer binding, and ORT parity. The dense `MatMulNBits` work in [Olive#2671](https://github.com/microsoft/Olive/pull/2671) and [Mobius#740](https://github.com/onnxruntime/mobius/pull/740) does not imply fused mixed-width QMoE support.
+
+Native Mobius QMoE construction is sufficient for the first exporter milestone. Dense-graph-to-QMoE fusion is a separate follow-up; it must not block the first deterministic fused-QMoE fixture and export path.
+
+Deliverables:
+
+- Add or qualify selective mixed-precision QMoE quantization.
+- Export the approved FC-specific bit-width contract.
+- Emit portable raw `[E, N, K / pack_size]` weights.
+- Validate FC1 gate/up interleaving and FC2 orientation.
+- Add graph, initializer-binding, external-data, and numerical-parity tests.
+- Produce a small checked-in synthetic model and a reproducible Qwen conversion command.
+
+Exit gate: a clean environment can convert the selected checkpoint and run the exported model on CUDA, then reproduce the result on the CPU reference path without manual graph edits.
+
+### Workstream 6: CPU Reference and Cross-Provider Parity
+
+CPU provides the portable regression oracle after the CUDA execution contract is proven.
+
+Deliverables:
+
+- Extend CPU QMoE from one shared width to independent FC widths.
+- Reuse the existing INT2 MLAS LUT path for FC1 where eligible.
+- Preserve the existing INT4 path for FC2.
+- Cover routing, fused SwiGLU, bias, empty experts, multiple tokens, and top-k greater than one.
+- Compare CPU and CUDA against the same scalar explicit-dequantization reference.
+
+Exit gate: deterministic mixed-width CPU QMoE tests pass, CPU and CUDA agree within frozen tolerances, and both match the quantized PyTorch reference.
 
 ### Workstream 7: Model Quality and Performance
 
@@ -289,12 +320,20 @@ Merged as [#32761](https://github.com/microsoft/onnxruntime/pull/32761) in `a11b
 - FC2 INT4 integration.
 - Correctness and decode benchmarks.
 
-### PR 4: CPU Mixed QMoE and Parity
+### PR 4a: CUDA Packed Prefill Kernel Foundation
 
-- FC1 INT2 and FC2 INT4 execution.
-- Scalar and MLAS parity tests.
-- Routing and SwiGLU coverage.
-- CPU/CUDA cross-provider parity tests.
+- Option C SM80 FP16 W2A16 grouped GEMM with block size 64, independent tests, and kernel benchmarks.
+- Verify W4A16 block-64 support for FC2; keep QMoE default dispatch unchanged.
+- Approximately 2-3 engineering weeks, including the initial prototype.
+
+### PR 4b: CUDA Mixed-Width Prefill Integration
+
+- Depends on PR 4a: FC1 INT2 / FC2 INT4 routing, activation/finalization, workspace, prepack lifetime, and dispatch.
+- Approximately 2-3 engineering weeks for integration plus 2-3 for correctness and tuning, totaling 6-9 weeks with PR 4a.
+- GPT-OSS-20B qualification, TTFT, peak-memory, and T=128/512/2048 benchmarks; preserve packed decode and bounded fallback.
+- Option B is an optional separate intermediate PR (approximately 4-5 engineering weeks), not a dependency. Option A remains the correctness oracle only.
+
+See Workstream 4 for the support boundary, merge gates, and the condition under which PR 4a/4b should remain one layered PR. Additional dtypes, block sizes, bit-width combinations, architectures, and optional fusion are follow-ups.
 
 ### PR 5: Olive/Mobius Export
 
@@ -302,14 +341,14 @@ Merged as [#32761](https://github.com/microsoft/onnxruntime/pull/32761) in `a11b
 - Fused QMoE graph export.
 - Weight-binding and numerical-parity tests.
 
-PR 4 and PR 5 can proceed in parallel after the CUDA execution contract is established.
+### PR 6: CPU Mixed QMoE and Parity
 
-### PR 6: CUDA Prefill
+- FC1 INT2 and FC2 INT4 execution.
+- Scalar and MLAS parity tests.
+- Routing and SwiGLU coverage.
+- CPU/CUDA cross-provider parity tests.
 
-- Option B bounded selected-expert or chunked integration path (approximately 4-5 engineering weeks).
-- Option C native packed grouped GEMM as the production path (approximately 6-9 engineering weeks for the primary SM80 configuration).
-- Option A full temporary dequantization remains a correctness oracle only (approximately 1-1.5 engineering weeks to harden and qualify, largely complete).
-- TTFT, peak-memory, and M=128/512/2048 benchmarks.
+PR 5 and PR 6 can proceed in parallel with the PR 4a/4b prefill effort after the CUDA execution contract is established; their numbering does not make them dependent on native prefill.
 
 ### PR 7: End-to-End Qualification
 
@@ -320,6 +359,8 @@ PR 4 and PR 5 can proceed in parallel after the CUDA execution contract is estab
 ## Schedule and Staffing
 
 With one engineer, a production-quality mixed-width QMoE path spanning schema, tooling, CPU, CUDA decode, CUDA prefill, and model qualification is not a credible single eight-week task. A practical schedule uses parallel owners:
+
+The schedule below retains the Option B-first intermediate milestone. If Option C is selected directly, replace the CUDA prefill sequence with PR 4a/4b's 6-9 engineering-week budget; do not treat Option B as mandatory or collapse native-prefill qualification into the kernel-foundation milestone.
 
 | Weeks | Contract/CPU owner | Olive/Mobius owner | CUDA owner | Model-validation owner |
 | --- | --- | --- | --- | --- |
