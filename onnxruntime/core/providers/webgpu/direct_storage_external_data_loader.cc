@@ -63,6 +63,46 @@ common::Status HResultStatus(const char* operation, HRESULT result) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message.str());
 }
 
+using DStorageGetFactoryFn = HRESULT(WINAPI*)(REFIID, void**);
+
+struct DirectStorageApi {
+  DirectStorageApi() {
+    module = LoadLibraryExW(
+        L"dstorage.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (module == nullptr) {
+      status = HResultStatus(
+          "LoadLibraryExW(dstorage.dll)",
+          HRESULT_FROM_WIN32(GetLastError()));
+      return;
+    }
+
+    get_factory = reinterpret_cast<DStorageGetFactoryFn>(
+        GetProcAddress(module, "DStorageGetFactory"));
+    if (get_factory == nullptr) {
+      status = HResultStatus(
+          "GetProcAddress(DStorageGetFactory)",
+          HRESULT_FROM_WIN32(GetLastError()));
+    }
+  }
+
+  HMODULE module{};
+  DStorageGetFactoryFn get_factory{};
+  common::Status status{common::Status::OK()};
+};
+
+common::Status CreateDirectStorageFactory(
+    ComPtr<IDStorageFactory>& factory) {
+  // Keep the inbox DirectStorage module loaded for the lifetime of the process
+  // because its COM objects may outlive an individual session.
+  static const DirectStorageApi api;
+  ORT_RETURN_IF_ERROR(api.status);
+
+  const HRESULT result = api.get_factory(IID_PPV_ARGS(&factory));
+  return FAILED(result)
+             ? HResultStatus("DStorageGetFactory", result)
+             : common::Status::OK();
+}
+
 struct TensorKey {
   std::filesystem::path path;
   std::string name;
@@ -223,12 +263,10 @@ common::Status LoadBatchToD3D12(
   ComPtr<ID3D12Fence> completion_fence;
   ScopedHandle completion_event;
   std::map<std::filesystem::path, ComPtr<IDStorageFile>> files;
-  common::Status initialization_status = common::Status::OK();
+  common::Status initialization_status =
+      CreateDirectStorageFactory(factory);
 
-  HRESULT result = DStorageGetFactory(IID_PPV_ARGS(&factory));
-  if (FAILED(result)) {
-    initialization_status = HResultStatus("DStorageGetFactory", result);
-  }
+  HRESULT result = S_OK;
   if (initialization_status.IsOK()) {
     result = factory->SetStagingBufferSize(static_cast<UINT32>(kMaxRequestSize));
     if (FAILED(result)) {
@@ -548,10 +586,7 @@ common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context) 
                     "Failed to create a D3D12 device for DirectStorage.");
 
   ComPtr<IDStorageFactory> factory;
-  HRESULT result = DStorageGetFactory(IID_PPV_ARGS(&factory));
-  return FAILED(result)
-             ? HResultStatus("DStorageGetFactory", result)
-             : common::Status::OK();
+  return CreateDirectStorageFactory(factory);
 }
 
 common::Status ResolveWeightLoadAccelerationMode(

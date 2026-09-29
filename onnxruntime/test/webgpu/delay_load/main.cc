@@ -103,7 +103,8 @@ int run() {
 
     Ort::SessionOptions session_options;
     session_options.DisableMemPattern();
-    std::unordered_map<std::string, std::string> provider_options;
+    std::unordered_map<std::string, std::string> provider_options{
+        {"weightLoadAcceleration", "preferred"}};
     session_options.AppendExecutionProvider("WebGPU", provider_options);
     Ort::Session session{env, MODEL_DATA, sizeof(MODEL_DATA), session_options};
 

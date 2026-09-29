@@ -2973,7 +2973,9 @@ common::Status InferenceSession::Initialize() {
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
+#endif
     for (const auto& provider : execution_providers_) {
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       if (provider->Type() == onnxruntime::kWebGpuExecutionProvider &&

@@ -23,37 +23,10 @@
       set(_directstorage_native_root "${directstorage_SOURCE_DIR}/native")
     endif()
 
-    set(_directstorage_target_arch "${CMAKE_GENERATOR_PLATFORM}")
-    if(NOT _directstorage_target_arch)
-      set(_directstorage_target_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
-    endif()
-    if(NOT _directstorage_target_arch)
-      set(_directstorage_target_arch "${CMAKE_SYSTEM_PROCESSOR}")
-    endif()
-    string(TOUPPER "${_directstorage_target_arch}" _directstorage_target_arch)
-    if(_directstorage_target_arch MATCHES "^(ARM64|AARCH64)$")
-      set(_directstorage_arch "ARM64")
-    elseif(_directstorage_target_arch MATCHES "^(WIN32|X86|I[3-6]86)$")
-      set(_directstorage_arch "x86")
-    elseif(_directstorage_target_arch MATCHES "^(X64|AMD64|X86_64|ARM64EC)$")
-      set(_directstorage_arch "x64")
-    else()
-      message(FATAL_ERROR "Unsupported DirectStorage target architecture: ${_directstorage_target_arch}")
-    endif()
-
     set(_directstorage_include_dir "${_directstorage_native_root}/include")
-    set(_directstorage_library "${_directstorage_native_root}/lib/${_directstorage_arch}/dstorage.lib")
-    set(_directstorage_runtime "${_directstorage_native_root}/bin/${_directstorage_arch}/dstorage.dll")
-    set(_directstorage_core_runtime "${_directstorage_native_root}/bin/${_directstorage_arch}/dstoragecore.dll")
-    foreach(_directstorage_file IN ITEMS
-        "${_directstorage_include_dir}/dstorage.h"
-        "${_directstorage_library}"
-        "${_directstorage_runtime}"
-        "${_directstorage_core_runtime}")
-      if(NOT EXISTS "${_directstorage_file}")
-        message(FATAL_ERROR "DirectStorage dependency not found: ${_directstorage_file}")
-      endif()
-    endforeach()
+    if(NOT EXISTS "${_directstorage_include_dir}/dstorage.h")
+      message(FATAL_ERROR "DirectStorage dependency not found: ${_directstorage_include_dir}/dstorage.h")
+    endif()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -195,14 +168,6 @@
 
   if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
     target_include_directories(onnxruntime_providers_webgpu PRIVATE "${_directstorage_include_dir}")
-    target_link_libraries(onnxruntime_providers_webgpu PRIVATE "${_directstorage_library}")
-    add_custom_command(TARGET onnxruntime_providers_webgpu POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              "${_directstorage_runtime}" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>/dstorage.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              "${_directstorage_core_runtime}" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>/dstoragecore.dll")
-    install(FILES "${_directstorage_runtime}" "${_directstorage_core_runtime}"
-      DESTINATION "${CMAKE_INSTALL_BINDIR}")
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
