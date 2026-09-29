@@ -130,6 +130,8 @@ stages:
       clean: all
     pool:
       name: 'Onnxruntime-Linux-GPU-A10'
+      demands:
+        - 1ES.ImageOverride -equals onnxruntime-ubuntu2404-CUDA
       os: linux
     variables:
     - template: ../templates/common-variables.yml

@@ -12,6 +12,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -23,6 +24,8 @@ namespace onnxruntime::test {
 namespace {
 using namespace ONNX_NAMESPACE;
 constexpr int64_t kWidth = 128;
+constexpr int64_t kPackedInt2GemvWidth = 512;
+constexpr int64_t kPackedInt2GemvBlockSize = 64;
 constexpr int64_t kExperts = 4;
 
 void SetValue(ValueInfoProto& value, const std::string& name, int type,
@@ -49,22 +52,31 @@ void AddZeroInitializer(GraphProto& graph, const char* name, int type,
   tensor->set_raw_data(std::string(size, '\0'));
 }
 
-void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph, int64_t rows) {
+void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph, int64_t rows,
+                      bool use_packed_int2_gemv = false) {
+  const int64_t width = use_packed_int2_gemv ? kPackedInt2GemvWidth : kWidth;
+  const int64_t fc1_rows = use_packed_int2_gemv ? 2 * width : width;
+  const int64_t packed_width = quantized ? width / (use_packed_int2_gemv ? 4 : 2) : width;
   graph.set_name("expert_counting");
   SetValue(subgraph ? *graph.add_value_info() : *graph.add_input(), "input",
-           TensorProto_DataType_FLOAT16, {rows, kWidth});
+           TensorProto_DataType_FLOAT16, {rows, width});
   SetValue(subgraph ? *graph.add_value_info() : *graph.add_input(), "router",
            TensorProto_DataType_FLOAT16, {rows, kExperts});
-  SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, kWidth});
+  SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, width});
   const int weight_type = quantized ? TensorProto_DataType_UINT8 : TensorProto_DataType_FLOAT16;
-  AddZeroInitializer(graph, "w1", weight_type, {kExperts, kWidth, quantized ? kWidth / 2 : kWidth},
-                     quantized ? 1 : 2);
-  AddZeroInitializer(graph, "w2", weight_type, {kExperts, kWidth, quantized ? kWidth / 2 : kWidth},
-                     quantized ? 1 : 2);
+  AddZeroInitializer(graph, "w1", weight_type, {kExperts, fc1_rows, packed_width}, quantized ? 1 : 2);
+  AddZeroInitializer(graph, "w2", weight_type, {kExperts, width, packed_width}, quantized ? 1 : 2);
   if (quantized) {
     const int scale_type = cuda ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
-    AddZeroInitializer(graph, "s1", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
-    AddZeroInitializer(graph, "s2", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
+    if (use_packed_int2_gemv) {
+      AddZeroInitializer(graph, "s1", scale_type, {kExperts, fc1_rows, width / kPackedInt2GemvBlockSize},
+                         cuda ? 2 : 4);
+      AddZeroInitializer(graph, "s2", scale_type, {kExperts, width, width / kPackedInt2GemvBlockSize},
+                         cuda ? 2 : 4);
+    } else {
+      AddZeroInitializer(graph, "s1", scale_type, {kExperts, width}, cuda ? 2 : 4);
+      AddZeroInitializer(graph, "s2", scale_type, {kExperts, width}, cuda ? 2 : 4);
+    }
   }
   for (int i = 0; i < 2; ++i) {
     auto* node = graph.add_node();
@@ -86,11 +98,25 @@ void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgrap
     auto* activation = node->add_attribute();
     activation->set_name("activation_type");
     activation->set_type(AttributeProto_AttributeType_STRING);
-    activation->set_s("relu");
+    activation->set_s(use_packed_int2_gemv ? "swiglu" : "relu");
+    if (use_packed_int2_gemv) {
+      for (const auto& [name, value] : {
+               std::pair{"swiglu_fusion", int64_t{1}},
+               std::pair{"expert_weight_bits", int64_t{2}},
+               std::pair{"weights_prepacked", int64_t{0}},
+               std::pair{"block_size", kPackedInt2GemvBlockSize}}) {
+        auto* attribute = node->add_attribute();
+        attribute->set_name(name);
+        attribute->set_type(AttributeProto_AttributeType_INT);
+        attribute->set_i(value);
+      }
+    }
   }
 }
 
-std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false, int64_t rows = 3) {
+std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false, int64_t rows = 3,
+                              bool use_packed_int2_gemv = false) {
+  ORT_ENFORCE(!use_packed_int2_gemv || (quantized && cuda && !subgraphs));
   ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
@@ -101,7 +127,7 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   opset->set_version(1);
   auto& graph = *model.mutable_graph();
   if (!subgraphs) {
-    PopulateMoeGraph(graph, quantized, cuda, false, rows);
+    PopulateMoeGraph(graph, quantized, cuda, false, rows, use_packed_int2_gemv);
   } else {
     graph.set_name("conditional_counting");
     SetValue(*graph.add_input(), "input", TensorProto_DataType_FLOAT16, {rows, kWidth});
@@ -122,12 +148,13 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   return model.SerializeAsString();
 }
 
-NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_t rows = 3) {
+NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                           int64_t width = kWidth) {
   ORT_ENFORCE(rows == 1 || rows == 3);
   auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   OrtValue input, router, cond;
-  const std::vector<MLFloat16> values(rows * kWidth, MLFloat16(1.0f));
-  CreateMLValue<MLFloat16>(allocator, {rows, kWidth}, values, &input);
+  const std::vector<MLFloat16> values(rows * width, MLFloat16(1.0f));
+  CreateMLValue<MLFloat16>(allocator, {rows, width}, values, &input);
   const std::vector<MLFloat16> routing{
       MLFloat16(9.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
       MLFloat16(8.f), MLFloat16(1.f), MLFloat16(0.f), MLFloat16(0.f),
@@ -143,14 +170,16 @@ NameMLValMap CountingFeeds(bool subgraphs = false, bool condition = true, int64_
 }
 
 Status ExecuteCountingModel(InferenceSession& session, std::vector<OrtValue>& outputs,
-                            bool subgraphs = false, bool condition = true, int64_t rows = 3) {
+                            bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                            int64_t width = kWidth) {
   const std::array<std::string, 1> output_names{"output"};
-  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition, rows), output_names, &outputs);
+  return session.Run(RunOptions{}, CountingFeeds(subgraphs, condition, rows, width), output_names, &outputs);
 }
 
-void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true, int64_t rows = 3) {
+void RunCountingModel(InferenceSession& session, bool subgraphs = false, bool condition = true, int64_t rows = 3,
+                      int64_t width = kWidth) {
   std::vector<OrtValue> outputs;
-  ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs, subgraphs, condition, rows));
+  ASSERT_STATUS_OK(ExecuteCountingModel(session, outputs, subgraphs, condition, rows, width));
   ASSERT_EQ(outputs.size(), 1U);
   for (auto value : outputs[0].Get<Tensor>().DataAsSpan<MLFloat16>()) {
     EXPECT_EQ(value.ToFloat(), 0.f);
@@ -271,13 +300,18 @@ void TestDisabledRecording(bool quantized) {
   }
 }
 
-void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 3) {
+void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 3,
+                  bool use_packed_int2_gemv = false) {
   auto options = CountingOptions();
   if (tiled) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_row_tile_size", "1"));
   }
   if (cuda) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  }
+  if (use_packed_int2_gemv) {
+    // Make the dense INT2 fallback fail so this test cannot pass without selecting packed GEMV.
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1"));
   }
   InferenceSessionWrapper session(options, GetEnvironment());
   if (cuda) {
@@ -290,7 +324,7 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     }
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
   }
-  const auto model = MakeCountingModel(quantized, cuda, false, rows);
+  const auto model = MakeCountingModel(quantized, cuda, false, rows, use_packed_int2_gemv);
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
   const auto* state = session.GetSessionState().GetMoeExpertState();
@@ -307,8 +341,9 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     }
   }
   EXPECT_EQ(expert_ids.size(), 2U * kExperts);
+  const int64_t width = use_packed_int2_gemv ? kPackedInt2GemvWidth : kWidth;
   for (int run = 1; run <= 2; ++run) {
-    RunCountingModel(session, false, true, rows);
+    RunCountingModel(session, false, true, rows, width);
     for (size_t node_index : node_indices) {
       const double expected = run == 1 ? 0.1 : 0.19;
       InlinedVector<double> counters;
@@ -406,6 +441,12 @@ TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
 TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
 TEST(MoeExpertCountingTest, CudaQMoESingleToken) { TestCounting(true, true, false, 1); }
+TEST(MoeExpertCountingTest, CudaQMoEPackedInt2Gemv) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  TestCounting(true, true, false, 3, true);
+}
 #endif
 
 TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {

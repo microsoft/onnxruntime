@@ -84,6 +84,8 @@ stages:
       pool:
         name: 'Onnxruntime-Linux-GPU-A10'
         os: linux
+        demands:
+          - 1ES.ImageOverride -equals onnxruntime-ubuntu2404-CUDA
       variables:
       - name: runCodesignValidationInjection
         value: false
