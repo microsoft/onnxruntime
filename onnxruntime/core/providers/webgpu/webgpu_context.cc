@@ -774,7 +774,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   command.bind_group = CreateBindGroup(bind_buffers, bind_buffers_segments,
                                        *bind_group_layout, program.Name());
   command.pending_build = std::move(pending_build);
-  buffer_mgr.BeginRecording(recording);
+  recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
   if (uniform_buffer) {
     // The bind group owns a reference now, so return the allocator's reference immediately.
     buffer_mgr.Release(uniform_buffer, &recording);
@@ -1121,6 +1121,11 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
   Status status = EncodeDeferredDispatches(recording);
   if (!recording.command_encoder) {
+    if (status.IsOK()) {
+      buffer_mgr.RefreshPendingBuffers(recording);
+    } else {
+      buffer_mgr.DiscardPendingBuffers(recording);
+    }
     return status;
   }
 
@@ -1271,7 +1276,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
       recording.pending_kernels.emplace_back(*command.pending_kernel_info);
     }
 
-    buffer_manager.BeginRecording(recording);
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
       ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));

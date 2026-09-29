@@ -63,8 +63,10 @@ Session runs. Keep a Session allocator and its owning Session alive until their 
 and synchronize writes before another Session consumes a shared tensor. BufferManager owns pending
 releases for reusable buffers, grouped by recording and protected by its cache lock. Submission
 returns only that recording's buffers to the pool; caches without reuse need no such tracking.
-Recording starts, submission, and abandonment update this tracking under the same cache lock.
-CommandRecordingState contains only command recording data. Context-shared program caches retain their locks.
+Pending lists are created only when buffers are released, with no buffer-manager registration per dispatch.
+CommandRecordingState exposes an atomic unsubmitted-work flag so concurrent frees after submission can
+return buffers directly to the cache. Submission and abandonment clear that flag under the cache lock,
+preventing concurrent releases from missing cleanup. Context-shared program caches retain their locks.
 
 Environment transfers with no stream use command state local to each CopyTensors call. GPU-to-GPU copies
 without a stream submit before returning, but do not wait for GPU completion. A subsequent
