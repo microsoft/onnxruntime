@@ -1536,7 +1536,7 @@ block()
   endif()
 
   if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
-    target_compile_definitions(onnxruntime_provider_test PRIVATE
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE
       ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
   endif()
 

@@ -12,6 +12,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -49,7 +50,8 @@ void AddZeroInitializer(GraphProto& graph, const char* name, int type,
   tensor->set_raw_data(std::string(size, '\0'));
 }
 
-void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph, int64_t rows) {
+void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgraph, int64_t rows,
+                      bool packed_int_gemv = false) {
   graph.set_name("expert_counting");
   SetValue(subgraph ? *graph.add_value_info() : *graph.add_input(), "input",
            TensorProto_DataType_FLOAT16, {rows, kWidth});
@@ -57,14 +59,21 @@ void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgrap
            TensorProto_DataType_FLOAT16, {rows, kExperts});
   SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, kWidth});
   const int weight_type = quantized ? TensorProto_DataType_UINT8 : TensorProto_DataType_FLOAT16;
-  AddZeroInitializer(graph, "w1", weight_type, {kExperts, kWidth, quantized ? kWidth / 2 : kWidth},
+  const int64_t fc1_rows = packed_int_gemv ? 2 * kWidth : kWidth;
+  const int64_t packed_width = packed_int_gemv ? kWidth / 4 : kWidth / 2;
+  AddZeroInitializer(graph, "w1", weight_type, {kExperts, fc1_rows, quantized ? packed_width : kWidth},
                      quantized ? 1 : 2);
-  AddZeroInitializer(graph, "w2", weight_type, {kExperts, kWidth, quantized ? kWidth / 2 : kWidth},
+  AddZeroInitializer(graph, "w2", weight_type, {kExperts, kWidth, quantized ? packed_width : kWidth},
                      quantized ? 1 : 2);
   if (quantized) {
     const int scale_type = cuda ? TensorProto_DataType_FLOAT16 : TensorProto_DataType_FLOAT;
-    AddZeroInitializer(graph, "s1", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
-    AddZeroInitializer(graph, "s2", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
+    if (packed_int_gemv) {
+      AddZeroInitializer(graph, "s1", scale_type, {kExperts, fc1_rows, kWidth / 64}, cuda ? 2 : 4);
+      AddZeroInitializer(graph, "s2", scale_type, {kExperts, kWidth, kWidth / 64}, cuda ? 2 : 4);
+    } else {
+      AddZeroInitializer(graph, "s1", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
+      AddZeroInitializer(graph, "s2", scale_type, {kExperts, kWidth}, cuda ? 2 : 4);
+    }
   }
   for (int i = 0; i < 2; ++i) {
     auto* node = graph.add_node();
@@ -86,11 +95,24 @@ void PopulateMoeGraph(GraphProto& graph, bool quantized, bool cuda, bool subgrap
     auto* activation = node->add_attribute();
     activation->set_name("activation_type");
     activation->set_type(AttributeProto_AttributeType_STRING);
-    activation->set_s("relu");
+    activation->set_s(packed_int_gemv ? "swiglu" : "relu");
+    if (packed_int_gemv) {
+      auto add_int_attribute = [node](const char* name, int64_t value) {
+        auto* attribute = node->add_attribute();
+        attribute->set_name(name);
+        attribute->set_type(AttributeProto_AttributeType_INT);
+        attribute->set_i(value);
+      };
+      add_int_attribute("swiglu_fusion", 1);
+      add_int_attribute("expert_weight_bits", 2);
+      add_int_attribute("weights_prepacked", 0);
+      add_int_attribute("block_size", 64);
+    }
   }
 }
 
-std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false, int64_t rows = 3) {
+std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool subgraphs = false, int64_t rows = 3,
+                              bool packed_int_gemv = false) {
   ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
@@ -101,7 +123,7 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
   opset->set_version(1);
   auto& graph = *model.mutable_graph();
   if (!subgraphs) {
-    PopulateMoeGraph(graph, quantized, cuda, false, rows);
+    PopulateMoeGraph(graph, quantized, cuda, false, rows, packed_int_gemv);
   } else {
     graph.set_name("conditional_counting");
     SetValue(*graph.add_input(), "input", TensorProto_DataType_FLOAT16, {rows, kWidth});
@@ -116,7 +138,7 @@ std::string MakeCountingModel(bool quantized = false, bool cuda = false, bool su
       auto* attr = node->add_attribute();
       attr->set_name(branch);
       attr->set_type(AttributeProto_AttributeType_GRAPH);
-      PopulateMoeGraph(*attr->mutable_g(), quantized, cuda, true, rows);
+      PopulateMoeGraph(*attr->mutable_g(), quantized, cuda, true, rows, packed_int_gemv);
     }
   }
   return model.SerializeAsString();
@@ -271,13 +293,18 @@ void TestDisabledRecording(bool quantized) {
   }
 }
 
-void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 3) {
+void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 3,
+                  bool packed_int_gemv = false) {
   auto options = CountingOptions();
   if (tiled) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_row_tile_size", "1"));
   }
   if (cuda) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  }
+  if (packed_int_gemv) {
+    ASSERT_STATUS_OK(
+        options.config_options.AddConfigEntry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1"));
   }
   InferenceSessionWrapper session(options, GetEnvironment());
   if (cuda) {
@@ -290,7 +317,7 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     }
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
   }
-  const auto model = MakeCountingModel(quantized, cuda, false, rows);
+  const auto model = MakeCountingModel(quantized, cuda, false, rows, packed_int_gemv);
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
   ASSERT_STATUS_OK(session.Initialize());
   const auto* state = session.GetSessionState().GetMoeExpertState();
@@ -406,6 +433,12 @@ TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
 TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
 TEST(MoeExpertCountingTest, CudaQMoESingleToken) { TestCounting(true, true, false, 1); }
+TEST(MoeExpertCountingTest, CudaQMoEPackedIntGemv) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  TestCounting(true, true, false, 3, true);
+}
 #endif
 
 TEST(MoeExpertCountingTest, DisabledAndIndependentSessions) {
