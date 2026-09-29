@@ -27,7 +27,9 @@ class ExternalDataLoaderManager {
   ExternalDataLoaderManager() = default;
 
   common::Status RegisterExternalDataLoader(std::unique_ptr<IExternalDataLoader> external_data_loader);
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   common::Status UnregisterExternalDataLoader(IExternalDataLoader* external_data_loader);
+#endif
 
   const IExternalDataLoader* GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const;
 

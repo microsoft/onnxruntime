@@ -3,9 +3,9 @@
 
 #include "core/framework/external_data_loader_manager.h"
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 #include <algorithm>
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
@@ -23,6 +23,7 @@ Status ExternalDataLoaderManager::RegisterExternalDataLoader(std::unique_ptr<IEx
   return Status::OK();
 }
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 Status ExternalDataLoaderManager::UnregisterExternalDataLoader(
     IExternalDataLoader* external_data_loader) {
   const auto iterator = std::find_if(
@@ -37,6 +38,7 @@ Status ExternalDataLoaderManager::UnregisterExternalDataLoader(
   external_data_loaders_.erase(iterator);
   return Status::OK();
 }
+#endif
 
 const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const {
   for (auto& external_data_loader : external_data_loaders_) {

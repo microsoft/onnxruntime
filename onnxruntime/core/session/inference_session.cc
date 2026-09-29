@@ -994,8 +994,13 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   const std::string& provider_type = p_exec_provider->Type();
-  ORT_RETURN_IF_ERROR_SESSIONID_(
-      execution_providers_.CanAdd(provider_type, p_exec_provider));
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  if (execution_providers_.Get(provider_type) != nullptr) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "Provider ", provider_type,
+        " has already been registered.");
+  }
+#endif
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
@@ -1063,18 +1068,16 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   IDataTransfer* registered_data_transfer = nullptr;
   IExternalDataLoader* registered_external_data_loader = nullptr;
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   const bool external_data_preload_was_started =
       external_data_preload_started_;
-#endif
   bool provider_registration_succeeded = false;
   auto rollback_registration = gsl::finally([&]() {
     if (provider_registration_succeeded) {
       return;
     }
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     if (registered_external_data_loader != nullptr) {
       ORT_IGNORE_RETURN_VALUE(
           external_data_loader_mgr_.UnregisterExternalDataLoader(
@@ -1083,18 +1086,22 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
         external_data_preload_started_ = false;
       }
     }
-#endif
     if (registered_data_transfer != nullptr) {
       ORT_IGNORE_RETURN_VALUE(
           data_transfer_mgr_.UnregisterDataTransfer(
               registered_data_transfer));
     }
   });
+#endif
   if (p_data_xfr) {
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     registered_data_transfer = p_data_xfr.get();
+#endif
     auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
     if (!st.IsOK()) {
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       registered_data_transfer = nullptr;
+#endif
       return st;
     }
   }
@@ -1113,9 +1120,13 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   auto status = execution_providers_.Add(provider_type, p_exec_provider);
   provider_registration_succeeded = status.IsOK();
   return status;
+#else
+  return execution_providers_.Add(provider_type, p_exec_provider);
+#endif
 }
 
 // Custom Op support
