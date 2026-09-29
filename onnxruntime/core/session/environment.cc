@@ -565,8 +565,7 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
-                                                     const std::vector<EpFactoryInternal*>& internal_factories,
-                                                     const ORTCHAR_T* lib_path) {
+                                                     const std::vector<EpFactoryInternal*>& internal_factories) {
   const Env& env = Env::Default();
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
@@ -580,11 +579,6 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   ORT_TRY {
     // Contain early Status returns so they reach the End event.
     status = [&]() -> Status {
-      std::vector<EpFactoryInternal*> loaded_factories;
-      if (lib_path != nullptr) {
-        ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, loaded_factories));
-      }
-
       if (ep_libraries_.contains(registration_name)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
       }
@@ -622,8 +616,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
         }
       }
 
-      const auto& factories_to_register = lib_path != nullptr ? loaded_factories : internal_factories;
-      for (const auto& internal_factory : factories_to_register) {
+      for (const auto& internal_factory : internal_factories) {
         internal_ep_factories_.insert(internal_factory);
       }
 
@@ -676,6 +669,9 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
   Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
+  std::vector<EpFactoryInternal*> internal_factories;
+  std::unique_ptr<EpLibrary> ep_library;
+
   // An application can allow EP libraries to create virtual devices by using an EP library registration name that
   // ends in the suffix ".virtual". If so, ORT automatically sets the config key "allow_virtual_devices" to "1"
   // in the environment. We track the number of libraries that use virtual devices to be able to remove
@@ -689,7 +685,10 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     num_allow_virtual_device_uses_ += 1;
   }
 
-  return RegisterExecutionProviderLibrary(registration_name, nullptr, {}, lib_path);
+  // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
+  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, internal_factories));
+
+  return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& registration_name) {
