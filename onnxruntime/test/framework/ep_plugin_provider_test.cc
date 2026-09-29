@@ -1862,4 +1862,67 @@ TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback)
   ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
 }
 
+namespace {
+struct GraphicsInteropTestFactory : ::OrtEpFactory {
+  GraphicsInteropTestFactory() : ::OrtEpFactory{} {
+    ort_version_supported = ORT_API_VERSION;
+    InitGraphicsInterop = InitGraphicsInteropImpl;
+    DeinitGraphicsInterop = DeinitGraphicsInteropImpl;
+  }
+
+  static OrtStatus* ORT_API_CALL InitGraphicsInteropImpl(OrtEpFactory* this_ptr, const OrtEpDevice* /*ep_device*/,
+                                                         const OrtGraphicsInteropConfig* /*config*/) noexcept {
+    ++static_cast<GraphicsInteropTestFactory*>(this_ptr)->init_call_count;
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                           const OrtEpDevice* /*ep_device*/) noexcept {
+    ++static_cast<GraphicsInteropTestFactory*>(this_ptr)->deinit_call_count;
+    return nullptr;
+  }
+
+  int init_call_count = 0;
+  int deinit_call_count = 0;
+};
+}  // namespace
+
+TEST(InteropApiTest, GraphicsInteropCallsFactoryForCurrentVersion) {
+  GraphicsInteropTestFactory factory;
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(), factory, nullptr, nullptr);
+
+  OrtGraphicsInteropConfig config{};
+  config.version = ORT_API_VERSION;
+  config.graphics_api = ORT_GRAPHICS_API_D3D12;
+
+  const OrtInteropApi& interop_api = Ort::GetInteropApi();
+  ASSERT_ORTSTATUS_OK(interop_api.InitGraphicsInteropForEpDevice(ep_device.get(), &config));
+  ASSERT_ORTSTATUS_OK(interop_api.DeinitGraphicsInteropForEpDevice(ep_device.get()));
+  EXPECT_EQ(factory.init_call_count, 1);
+  EXPECT_EQ(factory.deinit_call_count, 1);
+}
+
+// A factory built against ORT < 1.25 has no InitGraphicsInterop/DeinitGraphicsInterop fields, so ORT must not read them.
+TEST(InteropApiTest, GraphicsInteropVersionGateBypassesFactory) {
+  GraphicsInteropTestFactory factory;
+  factory.ort_version_supported = 24;
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(), factory, nullptr, nullptr);
+
+  OrtGraphicsInteropConfig config{};
+  config.version = ORT_API_VERSION;
+  config.graphics_api = ORT_GRAPHICS_API_D3D12;
+
+  const OrtInteropApi& interop_api = Ort::GetInteropApi();
+  Ort::Status init_status{interop_api.InitGraphicsInteropForEpDevice(ep_device.get(), &config)};
+  EXPECT_EQ(init_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+
+  Ort::Status deinit_status{interop_api.DeinitGraphicsInteropForEpDevice(ep_device.get())};
+  EXPECT_EQ(deinit_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+
+  EXPECT_EQ(factory.init_call_count, 0);
+  EXPECT_EQ(factory.deinit_call_count, 0);
+}
+
 }  // namespace onnxruntime::test
