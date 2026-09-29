@@ -973,8 +973,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         const int rows = std::min(chunk_m, m - row_start);
         // Only a trailing partial chunk can change rows, so this looks up at most two tactics.
         if (rows != tactic_m) {
-          bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
-                                           : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_);
+          bestTactic = ctx->GetUseDeterministicCompute()
+                           ? gemmProfiler_->getDeterministicConfig(rows)
+                           : (stream_is_capturing ? gemmProfiler_->getBestConfig(rows, gemmId_)
+                                                  : gemmProfiler_->getBestConfigOrProfile(rows, gemmId_));
           if (!bestTactic.has_value()) {
             return ORT_MAKE_STATUS(
                 ONNXRUNTIME, FAIL,
