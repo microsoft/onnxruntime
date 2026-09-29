@@ -890,6 +890,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.compaction_scratch = compaction_buffer.get();
   }
 
+  // Runtime geometry shared by the memory-efficient and unfused fallback workspace recipes.
+  // Both fallbacks are only reached when the KV cache is not quantized, so the recipe's
+  // quantization granularities stay at their default None. Sizing both fallbacks through
+  // these shared recipes keeps runtime allocation and the Level-1 workspace estimator in sync.
+  GQAWorkspaceProblem workspace_problem;
+  workspace_problem.qkv_element_size = sizeof(T);
+  workspace_problem.batch_size = parameters.batch_size;
+  workspace_problem.sequence_length = parameters.sequence_length;
+  workspace_problem.num_heads = parameters.num_heads;
+  workspace_problem.kv_num_heads = parameters.kv_num_heads;
+  workspace_problem.head_size = parameters.head_size;
+
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
@@ -959,8 +971,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Enforce the UnfusedGqaAttention invariant before sizing its Q/Y buffers.
     ORT_RETURN_IF_NOT(parameters.v_head_size == 0 || parameters.v_head_size == parameters.head_size,
                       "UnfusedGqaAttention requires head_size == v_head_size");
-    // The recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the same
-    // resident/staged KV extent passed to the unfused kernel.
+    // The shared recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the
+    // same resident/staged KV extent passed to the unfused kernel.
     const auto unfused = GetGQAUnfusedWorkspaceRecipe(workspace_problem, effective_workspace_kv_length);
     ORT_RETURN_IF_NOT(unfused.status.IsOK(),
                       "GQA unfused attention workspace sizing failed: ", unfused.status.message);
