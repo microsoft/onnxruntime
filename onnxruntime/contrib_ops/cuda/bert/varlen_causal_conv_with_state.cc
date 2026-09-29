@@ -132,8 +132,9 @@ Status VarlenCausalConvWithState<T>::ComputeInternal(OpKernelContext* context) c
   if (state_update_capacity_ > 0 && state_update_tensor != nullptr) {
     const size_t count = SafeInt<size_t>(batch_size) * state_update_capacity_ * channels;
     // Cleared with a kernel: inside a CUDA graph a memset node adds several microseconds of
-    // dependency latency, while a kernel node adds well under one.
-    if ((count * sizeof(T)) % sizeof(int32_t) == 0) {
+    // dependency latency, while a kernel node adds well under one. Fill indexes with 32-bit ints.
+    constexpr size_t kMaxFillWords = size_t{1} << 30;
+    if ((count * sizeof(T)) % sizeof(int32_t) == 0 && count * sizeof(T) / sizeof(int32_t) <= kMaxFillWords) {
       onnxruntime::cuda::Fill<int32_t>(Stream(context), static_cast<int32_t*>(state_update_tensor->MutableDataRaw()),
                                        0, static_cast<int64_t>(count * sizeof(T) / sizeof(int32_t)));
       CUDA_RETURN_IF_ERROR(cudaGetLastError());
