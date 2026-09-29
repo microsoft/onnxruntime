@@ -15,11 +15,15 @@ Abstract:
 
 --*/
 
-#if defined(__aarch64__) && defined(__linux__)
-
 #pragma once
 
+#include "core/mlas/inc/mlas.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
+
 #include "test_util.h"
+
+#include <limits>
 
 template <typename T>
 void SmallFloatFill(T* start, size_t size) {
@@ -169,6 +173,7 @@ class MlasSBGemmTest : public MlasTestBase {
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
     AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    std::fill_n(A + K * M * BatchSize, 16, std::numeric_limits<AType>::quiet_NaN());
     AType Atail[16];
     std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
 
@@ -219,6 +224,7 @@ class MlasSBGemmTest : public MlasTestBase {
 
   void TestAccumulate(size_t M, size_t N, size_t K, size_t BatchSize) {
     AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    std::fill_n(A + K * M * BatchSize, 16, std::numeric_limits<AType>::quiet_NaN());
     AType Atail[16];
     std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
 
@@ -362,4 +368,4 @@ class MlasSBGemmTest : public MlasTestBase {
   }
 };
 
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

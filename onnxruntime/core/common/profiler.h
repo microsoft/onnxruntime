@@ -80,6 +80,22 @@ class Profiler {
                              InlinedHashMap<std::string, std::string> event_args = {},
                              bool sync_gpu = false);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  void EndTimeAndRecordEvent(EventCategory category,
+                             const std::string& event_name,
+                             const TimePoint& start_time,
+                             const TimePoint& end_time,
+                             InlinedHashMap<std::string, std::string> event_args = {},
+                             bool sync_gpu = false);
+
+  // Records an event without changing execution-provider correlation state.
+  void RecordEvent(EventCategory category,
+                   const std::string& event_name,
+                   const TimePoint& start_time,
+                   const TimePoint& end_time,
+                   InlinedHashMap<std::string, std::string> event_args = {});
+#endif
+
   /*
   Write profile data to the given stream in chrome format defined below.
   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#
@@ -110,14 +126,33 @@ class Profiler {
     global_max_num_events_.store(new_max_num_events);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // Testing only. Must be called before profiling starts.
+  void SetMaxNumEventsForTest(size_t max_num_events) {
+    ORT_ENFORCE(!enabled_ && events_.empty());
+    max_num_events_ = max_num_events;
+  }
+#endif
+
   void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
       ep_profilers_.push_back(std::move(ep_profiler));
       if (enabled_) {
-        ep_profilers_.back()->StartProfiling(profiling_start_time_);
+        auto status = ep_profilers_.back()->StartProfiling(profiling_start_time_);
+        if (!status.IsOK() && ep_start_profiling_status_.IsOK()) {
+          ep_start_profiling_status_ = status;
+        }
       }
     }
   }
+
+  /// Returns the aggregate status from calling StartProfiling on EP profilers.
+  /// OK if all EP profilers started successfully (or if none are registered).
+  /// Returns the first error status encountered otherwise.
+  const Status& GetEpProfilingStatus() const { return ep_start_profiling_status_; }
+
+  /// Returns true if at least one EP profiler was registered.
+  bool HasEpProfilers() const { return !ep_profilers_.empty(); }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
@@ -128,6 +163,15 @@ class Profiler {
    * It can be set, but won't affect existing profilers.
    */
   static std::atomic<size_t> global_max_num_events_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  void RecordEventImpl(EventCategory category,
+                       const std::string& event_name,
+                       const TimePoint& start_time,
+                       const TimePoint& end_time,
+                       InlinedHashMap<std::string, std::string> event_args,
+                       bool stop_ep_profilers);
+#endif
 
   // Mutex controlling access to profiler data
   std::mutex mutex_;
@@ -148,14 +192,25 @@ class Profiler {
   TimePoint profiling_start_time_;
   Events events_;
   bool max_events_reached{false};
+#if !defined(ORT_MINIMAL_BUILD)
+  size_t dropped_event_count_{0};
+#endif
   bool profile_with_logger_{false};
+#if !defined(ORT_MINIMAL_BUILD)
+  size_t max_num_events_{global_max_num_events_.load()};
+#else
   const size_t max_num_events_{global_max_num_events_.load()};
+#endif
 
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;
 #endif
 
   std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
+
+  // Aggregate status from EP profiler StartProfiling calls.
+  // Stores the first error encountered.
+  Status ep_start_profiling_status_;
 };
 
 }  // namespace profiling

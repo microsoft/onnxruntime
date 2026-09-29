@@ -101,7 +101,7 @@ MLASCALL
 ArmKleidiAI::MlasDynamicQGemmBatch(
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
-    const size_t BatchSize,
+    const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
 
@@ -112,7 +112,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     size_t m_step = qgemm_gemm.ukernel.get_m_step();
     size_t n_step = qgemm_gemm.ukernel.get_n_step();
 
-    if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
+    if (BatchN == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
         return;
     }
 
@@ -123,7 +123,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         MLAS_THROW_EX(std::runtime_error, "Dynamic QGEMM requires valid DataParams.");
     }
 
-    for (size_t batch_idx = 0; batch_idx < BatchSize; ++batch_idx) {
+    for (size_t batch_idx = 0; batch_idx < BatchN; ++batch_idx) {
         const auto& params = DataParams[batch_idx];
 
         if (params.A == nullptr) {
@@ -151,24 +151,24 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     const size_t LhsPackedStride = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr);
     std::byte* LhsPackedData = nullptr;
 
-    if (g_kai_tls_qgemm.lhs_packed.capacity() < LhsPackedStride * BatchSize) {
+    if (g_kai_tls_qgemm.lhs_packed.capacity() < LhsPackedStride * BatchN) {
 
-        g_kai_tls_qgemm.lhs_packed.reserve(LhsPackedStride * BatchSize);
+        g_kai_tls_qgemm.lhs_packed.reserve(LhsPackedStride * BatchN);
     }
-    g_kai_tls_qgemm.lhs_packed.resize(LhsPackedStride * BatchSize);
+    g_kai_tls_qgemm.lhs_packed.resize(LhsPackedStride * BatchN);
     LhsPackedData = g_kai_tls_qgemm.lhs_packed.data();
 
     // Per-batch table of LHS base pointers.
-    if (g_kai_tls_qgemm.lhs_base_table.capacity() < BatchSize) {
+    if (g_kai_tls_qgemm.lhs_base_table.capacity() < BatchN) {
 
-        g_kai_tls_qgemm.lhs_base_table.reserve(BatchSize);
+        g_kai_tls_qgemm.lhs_base_table.reserve(BatchN);
     }
-    g_kai_tls_qgemm.lhs_base_table.resize(BatchSize);
+    g_kai_tls_qgemm.lhs_base_table.resize(BatchN);
     // Capture the shared batch table pointer so worker threads use the same backing storage.
     const std::byte** tls_lhs_base = g_kai_tls_qgemm.lhs_base_table.data();
     // B batches require no packing.
     // We have already decided the matmul variant we are using before having values for M, N, and K.
-    MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
+    MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t batch_idx) {
 
         std::byte* lhs = nullptr;
         if (DataParams[batch_idx].Workspace && DataParams[batch_idx].WorkspaceSize >= LhsPackedStride) {
@@ -184,7 +184,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
 
     // Tile iteration dimensions.
     std::array<size_t, 3> dim;
-    dim[0] = BatchSize;                  // B
+    dim[0] = BatchN;                     // B
     dim[1] = MlasDivRoundup(Shape.M, m_step);  // M
     dim[2] = MlasDivRoundup(Shape.N, n_step);  // N
 

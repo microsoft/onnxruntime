@@ -10,6 +10,8 @@
 #include "core/providers/cpu/controlflow/scan_utils.h"
 #include "orttraining/training_ops/cpu/loss/cross_entropy.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
+#include <limits>
+
 #include <gsl/gsl>
 
 namespace onnxruntime {
@@ -56,11 +58,16 @@ void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorSh
 void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape,
                                     const TensorShape& label_shape,
                                     const TensorShape* weight_shape) {
-  ORT_ENFORCE(nullptr == weight_shape || 1 == weight_shape->NumDimensions(), "Weights tensor is not 1-D.");
-
   const size_t label_dims = label_shape.NumDimensions();
+  ORT_ENFORCE(label_dims >= 1, "label must be at least 1-D.");
+  ORT_ENFORCE(logit_shape.NumDimensions() >= 2, "logit must be at least 2-D.");
   ORT_ENFORCE(logit_shape.NumDimensions() == label_dims + 1,
               "logit_shape must be (1 + label_shape)");
+
+  ORT_ENFORCE(nullptr == weight_shape || 1 == weight_shape->NumDimensions(), "Weights tensor is not 1-D.");
+  ORT_ENFORCE(nullptr == weight_shape || (*weight_shape)[0] == logit_shape[1],
+              "Weight tensor size (", (weight_shape ? (*weight_shape)[0] : 0),
+              ") must equal the number of classes (", logit_shape[1], ")");
 
   ORT_ENFORCE(label_shape[0] == logit_shape[0], "The shape of logit and label does not match");
 
@@ -103,13 +110,19 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   const Tensor* p_ignore_index = context->Input<Tensor>(3);
   int64_t ignore_index = ignore_index_;
   if (p_ignore_index) {
-    ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
+    ORT_RETURN_IF_NOT(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
     ignore_index = *(p_ignore_index->template Data<int64_t>());
   }
 
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
   VerifyLogitWeightAndLabelShape(logit_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
+
+  // Pre-empt the divide-by-zero in GetNDCFromLogitAndLabelShape (which does
+  // C = logit_shape.Size() / N_D). VerifyLogitWeightAndLabelShape only checks
+  // rank, not Size > 0 — e.g. label shape [3, 0, 5] is rank 2 but empty.
+  ORT_RETURN_IF_NOT(label_shape.Size() > 0,
+                    "SoftmaxCrossEntropyLoss: label tensor must not be empty.");
 
   // N_D = N * D1 * D2...D*K
   int64_t N_D = 0;
@@ -130,9 +143,27 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
   }
 
+  // Validate N_D, C and compute N_D * C with overflow checks.
+  // Uses the no-exceptions-safe pattern from deform_conv_attributes.h: explicit
+  // pre-multiply guards via ORT_RETURN_IF_NOT, then a plain multiply, then narrow_cast.
+  constexpr int64_t kInt64Max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t kIntMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+  constexpr int64_t kEigenIndexMax = static_cast<int64_t>(std::numeric_limits<Eigen::Index>::max());
+
+  ORT_RETURN_IF_NOT(N_D > 0 && C > 0,
+                    "SoftmaxCrossEntropyLoss: N_D and C must be positive (got N_D=", N_D, ", C=", C, ").");
+  ORT_RETURN_IF_NOT(N_D <= kIntMax && C <= kIntMax,
+                    "SoftmaxCrossEntropyLoss: N_D=", N_D, ", C=", C, " exceed int max.");
+  ORT_RETURN_IF_NOT(N_D <= kInt64Max / C,
+                    "SoftmaxCrossEntropyLoss: N_D * C overflows int64 (N_D=", N_D, ", C=", C, ").");
+  const int64_t n_d_c_i64 = N_D * C;
+  ORT_RETURN_IF_NOT(n_d_c_i64 <= kEigenIndexMax,
+                    "SoftmaxCrossEntropyLoss: N_D * C (", n_d_c_i64, ") exceeds Eigen::Index max.");
+
   const int n_d = gsl::narrow_cast<int>(N_D);
   const int c = gsl::narrow_cast<int>(C);
-  const uint64_t n_d_c = N_D * C;
+  const uint64_t n_d_c = static_cast<uint64_t>(n_d_c_i64);
+
   Tensor* loss = context->Output(0, reduction_ == ReductionType::NONE ? TensorShape(label.Shape()) : TensorShape({}));
   T1* log_prob_data;
   std::vector<T1> log_prob_data_buffer(0);
@@ -147,9 +178,9 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   }
 
   const T2* label_data = label.template Data<T2>();
+
   T1* loss_data = loss->template MutableData<T1>();
   std::vector<T1> shifted_logit(narrow<size_t>(n_d_c));
-  ORT_ENFORCE(n_d_c <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
   ComputeShareSoftmaxCrossEntropyCPU(n_d, c, static_cast<Eigen::Index>(n_d_c), logit_data, shifted_logit.data(),
                                      log_prob_data);
   std::vector<T1> loss_sample_buffer(0);
@@ -175,19 +206,31 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     // Compute weighed loss for each sample while summing weights for unignored target/label values.
     if (reduction_ == ReductionType::MEAN) {
       for (ptrdiff_t i = 0; i < n_d; i++) {
-        if (ignore_index == label_data[i]) {
+        const T2 label_sample = label_data[i];
+        if (ignore_index == label_sample) {
           loss_sample[i] = 0;
         } else {
-          loss_sample[i] = -log_prob_data[i * c + label_data[i]] * weight_data[label_data[i]];
-          sum_weight += weight_data[label_data[i]];
+          if (label_sample < 0 || label_sample >= C) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "SoftmaxCrossEntropyLoss: label value ", label_sample,
+                                   " at index ", i, " is out of range [0, ", C, ")");
+          }
+          loss_sample[i] = -log_prob_data[i * c + label_sample] * weight_data[label_sample];
+          sum_weight += weight_data[label_sample];
         }
       }
     } else {
       for (ptrdiff_t i = 0; i < n_d; i++) {
-        if (ignore_index == label_data[i]) {
+        const T2 label_sample = label_data[i];
+        if (ignore_index == label_sample) {
           loss_sample[i] = 0;
         } else {
-          loss_sample[i] = -log_prob_data[i * c + label_data[i]] * weight_data[label_data[i]];
+          if (label_sample < 0 || label_sample >= C) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "SoftmaxCrossEntropyLoss: label value ", label_sample,
+                                   " at index ", i, " is out of range [0, ", C, ")");
+          }
+          loss_sample[i] = -log_prob_data[i * c + label_sample] * weight_data[label_sample];
         }
       }
     }
@@ -205,10 +248,16 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     // Compute loss for each sample while counting unignored target/label values.
     int unignored_samples = 0;
     for (ptrdiff_t i = 0; i < n_d; i++) {
-      if (ignore_index == label_data[i]) {
+      const T2 label_sample = label_data[i];
+      if (ignore_index == label_sample) {
         loss_sample[i] = 0;
       } else {
-        loss_sample[i] = -log_prob_data[i * c + label_data[i]];
+        if (label_sample < 0 || label_sample >= C) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "SoftmaxCrossEntropyLoss: label value ", label_sample,
+                                 " at index ", i, " is out of range [0, ", C, ")");
+        }
+        loss_sample[i] = -log_prob_data[i * c + label_sample];
         unignored_samples += 1;
       }
     }
@@ -252,7 +301,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const Tensor* p_ignore_index = context->Input<Tensor>(4);
   int64_t ignore_index = ignore_index_;
   if (p_ignore_index) {
-    ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
+    ORT_RETURN_IF_NOT(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
     ignore_index = *(p_ignore_index->template Data<int64_t>());
   }
 
@@ -260,16 +309,51 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const TensorShape label_shape{label.Shape()};
   VerifyLogitWeightAndLabelShape(probability_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
 
+  // Pre-empt the divide-by-zero in GetNDCFromLogitAndLabelShape (see forward Compute).
+  ORT_RETURN_IF_NOT(label_shape.Size() > 0,
+                    "SoftmaxCrossEntropyLossGrad: label tensor must not be empty.");
+
   // N_D = N * D1 * D2...D*K
   int64_t N_D = 0;
   int64_t C = 0;
   GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
+
+  // Compute N_D * C once with overflow checks; reused by every parallel-for below.
+  // Backward keeps N_D and C as int64_t in lambdas, so only the product needs to fit.
+  // TryParallelFor takes std::ptrdiff_t, which is 32-bit on 32-bit minimal builds —
+  // use ptrdiff_t max as the ceiling, not int64_t max.
+  constexpr int64_t kInt64Max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t kPtrdiffMax = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
+
+  ORT_RETURN_IF_NOT(N_D > 0 && C > 0,
+                    "SoftmaxCrossEntropyLossGrad: N_D and C must be positive (got N_D=", N_D, ", C=", C, ").");
+  ORT_RETURN_IF_NOT(N_D <= kInt64Max / C,
+                    "SoftmaxCrossEntropyLossGrad: N_D * C overflows int64 (N_D=", N_D, ", C=", C, ").");
+  const int64_t n_d_c_i64 = N_D * C;
+  ORT_RETURN_IF_NOT(n_d_c_i64 <= kPtrdiffMax,
+                    "SoftmaxCrossEntropyLossGrad: N_D * C (", n_d_c_i64, ") exceeds ptrdiff_t max.");
+  const std::ptrdiff_t n_d_c = static_cast<std::ptrdiff_t>(n_d_c_i64);
+
   const T1* dY_data = dY.template Data<T1>();
   const T1* log_prob_data = log_prob.template Data<T1>();
   const T2* label_data = label.template Data<T2>();
+
+  // Validate label values are within [0, C) to prevent out-of-bounds reads.
+  // Done as a single up-front O(N_D) pass: returning Status from inside a
+  // ThreadPool::TryParallelFor lambda would only return from the lambda, not from
+  // Compute. Cost is negligible vs the O(N_D * C) parallel gradient that follows.
+  for (int64_t i = 0; i < N_D; i++) {
+    const T2 label_sample = label_data[i];
+    if (ignore_index != label_sample && (label_sample < 0 || label_sample >= C)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "SoftmaxCrossEntropyLossGrad: label value ", label_sample,
+                             " at index ", i, " is out of range [0, ", C, ")");
+    }
+  }
+
   Tensor* d_logit = context->Output(0, probability_shape);
   T1* d_logit_data = d_logit->template MutableData<T1>();
-  std::memset(d_logit_data, 0, narrow<size_t>(sizeof(T1) * N_D));
+  std::memset(d_logit_data, 0, narrow<size_t>(sizeof(T1) * probability_shape.Size()));
   OrtValue transpose_output;
   TensorShapeVector new_shape;
   std::vector<size_t> permutations;
@@ -292,18 +376,18 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
 
     if (reduction_ == ReductionType::NONE) {
       concurrency::ThreadPool::TryParallelFor(
-          tp, narrow<ptrdiff_t>(N_D * C), cost,
+          tp, n_d_c, cost,
           [&label_data, &weight_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
               int64_t row = index / C;
               int64_t col = index % C;
               T2 label_sample = label_data[row];
-              T1 weight_smaple = weight_data[label_sample] * dY_data[row];
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+                T1 weight_sample = weight_data[label_sample] * dY_data[row];
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
@@ -323,18 +407,18 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       }
 
       concurrency::ThreadPool::TryParallelFor(
-          tp, narrow<ptrdiff_t>(N_D * C), cost,
+          tp, n_d_c, cost,
           [&label_data, &weight_data, dY_scaled, &d_logit_data, &log_prob_data, ignore_index, C](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
               int64_t row = index / C;
               int64_t col = index % C;
               T2 label_sample = label_data[row];
-              T1 weight_smaple = weight_data[label_sample] * dY_scaled;
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+                T1 weight_sample = weight_data[label_sample] * dY_scaled;
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
@@ -342,7 +426,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   } else {
     if (reduction_ == ReductionType::NONE) {
       concurrency::ThreadPool::TryParallelFor(
-          tp, narrow<ptrdiff_t>(N_D * C), cost,
+          tp, n_d_c, cost,
           [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {
@@ -371,7 +455,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       }
 
       concurrency::ThreadPool::TryParallelFor(
-          tp, narrow<ptrdiff_t>(N_D * C), cost,
+          tp, n_d_c, cost,
           [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_scaled](
               std::ptrdiff_t begin, std::ptrdiff_t end) {
             for (std::ptrdiff_t index = begin; index != end; ++index) {

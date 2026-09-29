@@ -106,7 +106,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   getInstance().asyncInit?.();
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
-  let webgpuAdapter = env.webgpu.adapter as GPUAdapter | null;
+  let webgpuAdapter: GPUAdapter | null = env.webgpu.adapter;
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
@@ -358,9 +358,14 @@ export const createSession = async (
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
+        const data = typeof file === 'string' ? file : file.data;
+        if (BUILD_DEFS.ENABLE_JSPI && data instanceof Blob) {
+          wasm.mountExternalData(path, data);
+          continue;
+        }
         loadingPromises.push(
-          loadFile(typeof file === 'string' ? file : file.data).then((data) => {
-            wasm.mountExternalData(path, data);
+          loadFile(data).then((fileData) => {
+            wasm.mountExternalData(path, fileData);
           }),
         );
       }
@@ -616,7 +621,7 @@ export const prepareInputOutputTensor = async (
       rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
     }
   } else if (location === 'ml-tensor') {
-    const mlTensor = tensor[2].mlTensor as MLTensor;
+    const mlTensor = tensor[2].mlTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerMLTensor = wasm.webnnRegisterMLTensor;
@@ -653,7 +658,7 @@ export const prepareInputOutputTensor = async (
           if (!createTemporaryTensor || !uploadTensor) {
             throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
           }
-          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims as number[]);
+          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims);
           uploadTensor(tensorId, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
           rawData = tensorId;
         } else {

@@ -1,0 +1,12 @@
+{
+  "type": "generator",
+  "description": "Basic generator test with preserveCodeReference enabled",
+  "preserveCodeReference": true,
+  "entries": {
+    "test.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {}
+      }
+    }
+  }
+}

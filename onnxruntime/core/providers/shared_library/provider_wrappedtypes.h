@@ -1297,6 +1297,39 @@ class Initializer {
   Initializer* this_ptr_;
 };
 
+// Retained for source and provider vtable ABI compatibility. New code should use KernelPilot.
+class RunInstrumentationContext final {
+ public:
+  const std::string& RequestId() const { return g_host->RunInstrumentationContext__RequestId(this); }
+  TimePoint StartProfiling() const { return g_host->RunInstrumentationContext__StartProfiling(this); }
+  uint64_t ProfilerStartTimeNs() const { return g_host->RunInstrumentationContext__ProfilerStartTimeNs(this); }
+  void AddDeferredRecord(std::unique_ptr<DeferredRunInstrumentationRecord> record) const {
+    g_host->RunInstrumentationContext__AddDeferredRecord(this, std::move(record));
+  }
+  bool TryReserveMoeRoutingRecord(size_t element_count) const {
+    return g_host->RunInstrumentationContext__TryReserveMoeRoutingRecord(this, element_count);
+  }
+  void RecordMoeRoutingEvent(const TimePoint& start_time,
+                             const TimePoint& end_time,
+                             const std::string& node_name,
+                             NodeIndex node_index,
+                             const std::string& node_type,
+                             std::string expert_ids_json,
+                             std::string router_weights_json,
+                             int64_t num_rows,
+                             int64_t top_k,
+                             int execution_device_id,
+                             int64_t completion_ns,
+                             const std::string& completion_timestamp_source) const {
+    g_host->RunInstrumentationContext__RecordMoeRoutingEvent(
+        this, start_time, end_time, node_name, node_index, node_type,
+        std::move(expert_ids_json), std::move(router_weights_json),
+        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+  }
+
+  PROVIDER_DISALLOW_ALL(RunInstrumentationContext)
+};
+
 struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;
@@ -1326,6 +1359,12 @@ struct OpKernelContext final {
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
+  const RunInstrumentationContext* GetRunInstrumentationContext() const {
+    return g_host->OpKernelContext__GetRunInstrumentationContext(this);
+  }
+  KernelPilot* GetKernelPilot() const {
+    return g_host->OpKernelContext__GetKernelPilot(this);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
@@ -1561,6 +1600,8 @@ template <>
 inline bool Tensor::IsDataType<Float8E5M2>() const { return g_host->Tensor__IsDataType_Float8E5M2(this); }
 template <>
 inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__IsDataType_Float8E5M2FNUZ(this); }
+template <>
+inline bool Tensor::IsDataType<Float8E8M0>() const { return g_host->Tensor__IsDataType_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -1612,6 +1653,8 @@ template <>
 inline Float8E5M2* Tensor::MutableData<Float8E5M2>() { return g_host->Tensor__MutableData_Float8E5M2(this); }
 template <>
 inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Tensor__MutableData_Float8E5M2FNUZ(this); }
+template <>
+inline Float8E8M0* Tensor::MutableData<Float8E8M0>() { return g_host->Tensor__MutableData_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -1663,6 +1706,8 @@ template <>
 inline const Float8E5M2* Tensor::Data<Float8E5M2>() const { return g_host->Tensor__Data_Float8E5M2(this); }
 template <>
 inline const Float8E5M2FNUZ* Tensor::Data<Float8E5M2FNUZ>() const { return g_host->Tensor__Data_Float8E5M2FNUZ(this); }
+template <>
+inline const Float8E8M0* Tensor::Data<Float8E8M0>() const { return g_host->Tensor__Data_Float8E8M0(this); }
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)

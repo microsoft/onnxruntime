@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -61,7 +68,7 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
     }
 
     for (auto it = local_functions->begin(); it != local_functions->end();) {
-      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name(), it->overload());
       if (retained.find(function_id) == retained_end) {
         it = local_functions->erase(it);
       } else {
@@ -72,6 +79,11 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
 }
 
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
+
+static ModelProto ValidateAndCopyModelProto(const ModelProto& model_proto) {
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto));
+  return model_proto;
+}
 
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
@@ -121,18 +133,29 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(version);
   }
 
+  for (const auto& func : model_local_functions) {
+    ORT_THROW_IF_ERROR(ValidateFunctionSubgraphDepth(func));
+  }
+
   model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    ORT_ENFORCE(model_local_functions_.find(function_id) == model_local_functions_.end(),
+                "Duplicate model-local function identifier: ", function_id);
+
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
-                                            func_ptr);
+    model_local_functions_.emplace(std::move(function_id), func_ptr);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         *p_domain_to_version,
                                                         *schema_registry,
@@ -142,7 +165,8 @@ Model::Model(const std::string& graph_name,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -155,7 +179,7 @@ Model::Model(const std::string& graph_name,
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
              const ModelOptions& options)
-    : Model(ModelProto(model_proto), model_path, local_registries, logger, options) {
+    : Model(ValidateAndCopyModelProto(model_proto), model_path, local_registries, logger, options) {
 }
 
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
@@ -256,13 +280,19 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    const bool inserted = model_local_functions_.emplace(function_id, &func).second;
+    ORT_ENFORCE(inserted, "Duplicate model-local function identifier: ", function_id);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         domain_to_version,
                                                         *schema_registry,
@@ -272,7 +302,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -696,6 +727,19 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
+GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r .35)
+Status Model::Load(const PathString& file_path, const PathString& graph_model_path,
+                   std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger, const ModelOptions& options) {
+  const auto loader = [&graph_model_path, &p_model, local_registries, &logger, &options](int fd) {
+    return Model::Load(fd, graph_model_path, p_model, local_registries, logger, options);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            const ModelSavingOptions& save_options) {
@@ -849,12 +893,17 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
   auto domain_map = allow_official_onnx_release_only_final ? schema_registry->GetLastReleasedOpsetVersions(false)
                                                            : schema_registry->GetLatestOpsetVersions(false);
 
+  // Merge in the other domains ORT may use internally, without overriding opsets the caller supplied
+  // explicitly (e.g. the ONNX domain). Only missing domains get the registry version from domain_map.
   for (const auto& [domain, version] : domain_map) {
     if (domain_to_version.find(domain) == domain_to_version.end()) {
       domain_to_version[domain] = version;
     }
+  }
 
-    // add to the model proto so that if we save the optimized model it has the required opset imports
+  // Populate the model proto's opset imports from the merged map (not domain_map) so they stay consistent
+  // with the graph's domain-to-version map and preserve the caller's explicit opsets.
+  for (const auto& [domain, version] : domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain);
     opset_id_proto->set_version(version);

@@ -1,0 +1,9 @@
+// Main shader file that includes higher-level utilities
+#include "graphics.wgsl.template"
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let color = create_color(f32(index));
+    let transformed = transform_vertex(vec3<f32>(color.rgb));
+}

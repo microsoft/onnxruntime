@@ -123,6 +123,10 @@ class IExecutionProvider {
    * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
+   *
+   * The session requests a fresh loader for each graph initialization attempt. It owns the returned loader and
+   * destroys it after initializing the main graph and its subgraphs, including on failure. The loader is not
+   * retained for inference, and must finish any outstanding work before its destruction completes.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
@@ -287,8 +291,23 @@ class IExecutionProvider {
 
   /**
      Run the instantiated graph.
+     @param sync If true, synchronize the device/stream after replay to ensure completion before returning.
+                 If false, the caller is responsible for synchronization.
+                 EPs that always replay synchronously may ignore this parameter.
    */
-  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/ = true) {
+    return Status::OK();
+  }
+
+  /**
+     Release a previously captured graph and its associated resources.
+     Called when the caller no longer needs the captured graph for the given annotation ID.
+
+     Thread safety: For EPs where ConcurrentRunSupported() returns true, this method may be
+     called concurrently with Run(). The EP is responsible for its own synchronization in
+     that case. For non-concurrent EPs, the session serializes calls via session_mutex_.
+   */
+  virtual common::Status ReleaseCapturedGraph(int /*graph_annotation_id*/) {
     return Status::OK();
   }
 

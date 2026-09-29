@@ -34,11 +34,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "onnxruntime_error_code.h"
+
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 26
+#define ORT_API_VERSION 31
 
 #ifdef __cplusplus
 extern "C" {
@@ -91,8 +93,15 @@ extern "C" {
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
-// To make symbols visible on macOS/iOS
-#ifdef __APPLE__
+// Make symbols visible on non-Windows platforms. The visibility attribute is
+// needed when ORT is built as a shared library without a version script
+// (e.g. when compiled within another project's build system). On non-Apple
+// platforms, the default ORT build uses a generated version script
+// (tools/ci_build/gen_def.py) that exports the needed symbols, so this was
+// previously only enabled for __APPLE__. Expanding to __GNUC__ (GCC/Clang)
+// covers additional embedding scenarios while remaining harmless when a
+// version script is also in use.
+#if defined(__GNUC__)
 #define ORT_EXPORT __attribute__((visibility("default")))
 #else
 #define ORT_EXPORT
@@ -212,6 +221,8 @@ typedef enum ONNXTensorElementDataType {
   // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,  // maps to 4 packed uint2 values (size == 1 byte)
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
+  // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -253,24 +264,6 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
-
-typedef enum OrtErrorCode {
-  ORT_OK,
-  ORT_FAIL,
-  ORT_INVALID_ARGUMENT,
-  ORT_NO_SUCHFILE,
-  ORT_NO_MODEL,
-  ORT_ENGINE_ERROR,
-  ORT_RUNTIME_EXCEPTION,
-  ORT_INVALID_PROTOBUF,
-  ORT_MODEL_LOADED,
-  ORT_NOT_IMPLEMENTED,
-  ORT_INVALID_GRAPH,
-  ORT_EP_FAIL,
-  ORT_MODEL_LOAD_CANCELED,
-  ORT_MODEL_REQUIRES_COMPILATION,
-  ORT_NOT_FOUND,
-} OrtErrorCode;
 
 typedef enum OrtOpAttrType {
   ORT_OP_ATTR_UNDEFINED = 0,
@@ -345,6 +338,16 @@ typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
 typedef OrtStatus* OrtStatusPtr;
 #endif
+
+/** \brief Generic function pointer type for experimental API lookup.
+ *
+ * Returned by OrtApi::GetExperimentalFunction. Cast to the correct function pointer type before calling.
+ * The experimental API function pointer types are defined in onnxruntime_experimental_c_api.h.
+ *
+ * This is a function pointer rather than \c void* because casting between function pointers and object
+ * pointers is undefined behavior in C and C++. Using a function pointer type keeps all casts well-defined.
+ */
+typedef void(ORT_API_CALL* OrtExperimentalFnPtr)(void);
 
 /** \brief Memory allocation interface
  *
@@ -1049,18 +1052,31 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief External memory handle type for importing GPU resources.
+/** \brief External memory handle type for importing GPU/NPU resources.
  *
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,   /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,       /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_WIN32_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR or
+                                                             clGetMemObjectInfo with CL_EXTERNAL_MEMORY_HANDLE_OPAQUE_FD_KHR */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION = 4,  /**< Host-allocated CPU virtual address (pointer). Must be page-aligned.
+                                                             Equivalent to VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT
+                                                             or CL_MEM_USE_HOST_PTR, @since 1.30 */
 } OrtExternalMemoryHandleType;
+
+// Previous enum values added for backwards compatibility
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_WIN32
+#endif
+#ifndef ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD
+#define ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD ORT_EXTERNAL_MEMORY_HANDLE_TYPE_MEMORY_OPAQUE_FD
+#endif
 
 /** \brief Descriptor for importing external memory.
  *
@@ -2998,6 +3014,7 @@ struct OrtApi {
    * For example, given a tensor with shape of [3,224,224], a pointer to the element at location [2,150,128] can be retrieved
    *
    * This function only works for numeric type tensors (No strings, etc).
+   * This function does not support sub-byte packed types (e.g., int4).
    * This is a no-copy method whose returned pointer is valid until the passed in ::OrtValue is free'd.
    *
    * \param[in] value
@@ -5311,9 +5328,9 @@ struct OrtApi {
    * the platform does not support memory mapping, in which case the file will be read into memory.
    *
    * \param[in] adapter_file_path adapter file path.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5331,9 +5348,9 @@ struct OrtApi {
    *
    * \param[in] bytes pointer to a valid Lora Adapter format buffer.
    * \param[in] num_bytes length of bytes buffer.
-   * \param[in] allocator optional pointer to a device allocator. If specified
-   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
-   *            The data would still be copied to device if required by the model at inference time.
+   * \param[in] allocator optional pointer to a non-CPU device allocator. If specified and a data transfer implementation
+   *            is available during adapter creation, the data is copied to the device before Run() is invoked.
+   *            Otherwise, the data stays on CPU and is copied to the device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
    *
@@ -5400,13 +5417,11 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Node);
 
   /** \brief Release an OrtGraph.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Graph);
 
   /** \brief Release an OrtModel.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Model);
@@ -5765,9 +5780,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
@@ -7436,6 +7455,143 @@ struct OrtApi {
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
   /// @}
+
+  /** \brief Check if the memory pattern optimization is enabled in the session options.
+   *
+   * \param[in] options
+   * \param[out] out Set to 1 if the memory pattern optimization is enabled, 0 otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   *
+   * \see OrtApi::EnableMemPattern, OrtApi::DisableMemPattern
+   */
+  ORT_API2_STATUS(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
+
+  /** \brief Get the current execution mode setting.
+   *
+   * \param[in] options
+   * \param[out] out Set to the current execution mode (ORT_SEQUENTIAL or ORT_PARALLEL).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   *
+   * \see OrtApi::SetSessionExecutionMode
+   */
+  ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
+
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * When graph capture is enabled, the EP records information during initial runs (e.g., GPU commands)
+   * and replays them on subsequent runs. This function releases the captured resources for a specific
+   * graph annotation ID, freeing memory.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+
+  /** \brief Retrieve an experimental function pointer by name.
+   *
+   * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
+   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
+   * accessors.
+   *
+   * \param[in] name The null-terminated name of the experimental function to look up.
+   *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
+   *                 Name constants are defined in onnxruntime_experimental_c_api.h.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
+   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
+   *
+   * \since Version 1.28.
+   */
+  ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
+
+  /** \brief Get the framework synchronization stream associated with a kernel context.
+   *
+   * This returns the framework stream wrapper for the execution provider stream used by this kernel invocation.
+   * It is intended for APIs that need a stable framework stream object for stream-aware allocation and
+   * synchronization bookkeeping. Use KernelContext_GetGPUComputeStream when launching native GPU work.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                  _Outptr_result_maybenull_ OrtSyncStream** out);
+
+  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+   *
+   * When creating a session from a weightless EPContext model, the EP may need access to the source model's
+   * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
+   * where the source model is not available as a file on disk (e.g., loaded from a package or downloaded).
+   *
+   * The caller retains ownership of the buffer and must ensure it remains valid for the lifetime of the session.
+   *
+   * \note If the source model is available as a file on disk, use the session config entry
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) instead.
+   *
+   * \note If both a buffer (via this function) and a file path (via "ep.context_source_model_path") are
+   *       provided, the EP should prefer the buffer. The recommended EP precedence is:
+   *       buffer > file path > "onnx_model_filename" EPContext node attribute.
+   *
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[in] source_model_data Pointer to the source model byte buffer.
+   * \param[in] source_model_data_length Size of the byte buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
+                  _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
+  /** \brief Get a preallocated output tensor without allocating an output.
+   *
+   * Returns a borrowed OrtValue that is already allocated for this output. The
+   * value may have been supplied by the caller of Run or IoBinding, or
+   * preallocated by ORT for an internal execution such as a control-flow
+   * subgraph. The returned value is valid only while the current kernel Compute
+   * call is executing and must not be released. If the output is unallocated or
+   * optional, `*output` is set to nullptr. This function never allocates,
+   * resizes, or replaces an output value.
+   *
+   * The caller must validate the returned tensor's shape and element type before
+   * writing to it, and must not write to an incompatible tensor. ORT generally
+   * rejects element type, rank, and static-dimension mismatches for top-level
+   * outputs during pre-run validation. For dynamic output dimensions, however,
+   * the shape check that KernelContext_GetOutput performs is skipped on this
+   * path, so a model with dynamic output shapes can yield a buffer smaller than
+   * the computed output. Calling KernelContext_GetOutput with the computed shape
+   * does not resize or replace an incompatible preallocated tensor; because the
+   * output slot is already allocated, ORT returns an error for the mismatch.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[in] output_index Output index in the current kernel.
+   * \param[out] output Borrowed preallocated output, or nullptr when the
+   *              current output is unallocated or optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
+                  _Outptr_result_maybenull_ OrtValue** output);
 };
 
 /*
@@ -7464,7 +7620,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
  */
 struct OrtCustomOp {
-  uint32_t version;  // Must be initialized to ORT_API_VERSION
+  uint32_t version;  // Initialize to ORT_API_VERSION. ORT will cap the API version used to select the OrtApi passed
+                     // to CreateKernel/CreateKernelV2 callbacks, so custom ops compiled against a newer ORT can load
+                     // on an older runtime if they only use APIs available at the runtime version. Newer OrtCustomOp
+                     // function pointers are gated by per-function version checks within ORT.
 
   // This callback creates the kernel, which is a user defined
   // parameter that is passed to the Kernel* callbacks below. It is
@@ -7696,7 +7855,12 @@ struct OrtModelEditorApi {
   /** \brief Set the inputs for the OrtGraph.
    *
    * Set the graph inputs. This will replace any existing inputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances and you should NOT call ReleaseOrtValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `inputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous inputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] inputs The input OrtValueInfo instances.
@@ -7707,12 +7871,17 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+                  _In_reads_(inputs_len) _Inout_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 
   /** \brief Set the outputs for the OrtGraph.
    *
    * Set the graph outputs. This will replace any existing outputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances provided and you should NOT call ReleaseOrtValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `outputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous outputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] outputs The output OrtValueInfo instances.
@@ -7723,31 +7892,37 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+                  _In_reads_(outputs_len) _Inout_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will take ownership of the OrtValue and you should NOT call ReleaseOrtValue.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `tensor` and the caller
+   * must NOT call OrtApi::ReleaseValue on it. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtValue. Calling OrtApi::ReleaseValue after a successful
+   * transfer would cause a double-free.
+   * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
+   * Adding a duplicate initializer name is also rejected. The Model Editor API does not currently
+   * support removing or replacing an initializer once it has been added.
    *
    * Two options:
    *
    * Allocated memory:
-   *    Use CreateTensorAsOrtValue (allocates memory) and populate the tensor with the data.
+   *    Use OrtApi::CreateTensorAsOrtValue (allocates memory) and populate the tensor with the data.
    *    Set `data_is_external` to false.
    *
    * Pre-existing memory:
-   *    Use CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
+   *    Use OrtApi::CreateTensorWithDataAsOrtValue or OrtApi::CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
    *    with a tensor that contains a pointer to the existing data.
    *    Set `data_is_external` to true.
    *
    *    The pointer must remain valid for the duration of the inference session.
-   *    If using CreateTensorWithDataAsOrtValue you are responsible for freeing the memory after the inference session
+   *    If using OrtApi::CreateTensorWithDataAsOrtValue you are responsible for freeing the memory after the inference session
    *    is released.
-   *    If using CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
+   *    If using OrtApi::CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
    *    soon as the OrtValue is no longer in use.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
-   *          For smaller tensors use CreateTensorAsOrtValue.
+   *          For smaller tensors use OrtApi::CreateTensorAsOrtValue.
    *
    *          ONNX shape inferencing does not support external data. An initializer involved in shape inferencing is
    *          typically small (a single value or limited by the rank of a tensor) and uses less than 128 bytes of
@@ -7763,12 +7938,16 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
                   bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *
-   * Add the node to the graph. The OrtGraph will take ownership of OrtNode and you should NOT call ReleaseOrtNode.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `node` and the caller
+   * must NOT call OrtApi::ReleaseNode. On any failure, ownership is NOT transferred and the caller remains
+   * responsible for releasing the OrtNode. Calling OrtApi::ReleaseNode after a successful transfer would
+   * cause a double-free.
+   * Adding the same OrtNode pointer twice is rejected with ORT_INVALID_ARGUMENT.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] node The OrtNode instance to add to the graph.
@@ -7777,7 +7956,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _Inout_ OrtNode* node);
 
   /** \brief Create an OrtModel.
    *
@@ -7805,9 +7984,13 @@ struct OrtModelEditorApi {
 
   /** \brief Add an OrtGraph to an OrtModel.
    *
-   * Add the graph to a model. This should be called once when creating a new model.
+   * Add the graph to a model. Each OrtModel may hold at most one OrtGraph; a second call is rejected
+   * with ORT_INVALID_ARGUMENT.
    *
-   * The OrtModel takes ownership of the OrtGraph and you should NOT call ReleaseOrtGraph.
+   * Atomicity / all-or-nothing: on success, the OrtModel takes ownership of `graph` and the caller
+   * must NOT call OrtApi::ReleaseGraph. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtGraph. Calling OrtApi::ReleaseGraph after a successful
+   * transfer would cause a double-free.
    *
    * \param[in] model The OrtModel instance to update.
    * \param[in] graph The OrtGraph instance to add to the model.
@@ -7816,7 +7999,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _Inout_ OrtGraph* graph);
 
   /** \brief Create an OrtSession using the OrtModel.
    *
@@ -7825,7 +8008,7 @@ struct OrtModelEditorApi {
    * and SetGraphOutputs must have been called.
    * This will validate the model, run optimizers, and prepare the session for inferencing.
    *
-   * ReleaseOrtModel must be called to free the OrtModel after session creation.
+   * OrtApi::ReleaseModel must be called to free the OrtModel after session creation.
    *
    * \param[in] env The OrtEnv instance.
    * \param[in] model The OrtModel instance.
@@ -7845,13 +8028,13 @@ struct OrtModelEditorApi {
    * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
    * model is finalized.
    *
-   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
-   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
-   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel().
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph() and AddInitializerToGraph().
+   * Graph inputs/outputs should be updated with SetGraphInputs() and SetGraphOutputs() as needed to reflect changes made
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
-   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
-   * session for inferencing by calling FinalizeModelEditorSession.
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession(), and prepare the
+   * session for inferencing by calling FinalizeModelEditorSession().
    *
    * \param{in} env The OrtEnv instance.
    * \param{in} model_path The path to the existing ONNX model to augment.
@@ -7871,13 +8054,13 @@ struct OrtModelEditorApi {
    * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
    * model is finalized.
    *
-   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
-   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
-   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel().
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph() and AddInitializerToGraph().
+   * Graph inputs/outputs should be updated with SetGraphInputs() and SetGraphOutputs() as needed to reflect changes made
    * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
    *
-   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
-   * session for inferencing by calling FinalizeModelEditorSession.
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession(), and prepare the
+   * session for inferencing by calling FinalizeModelEditorSession().
    *
    * \param{in} env The OrtEnv instance.
    * \param{in} model_data The model data for the existing model to augment.
@@ -8254,6 +8437,31 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable or disable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode during CompileModel() by calling
+   * OrtEp::GetWeightlessSupport(). If the EP does not support weightless mode, CompileModel()
+   * returns an error.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode. If false, disable (default behavior).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
 };
 
 /**

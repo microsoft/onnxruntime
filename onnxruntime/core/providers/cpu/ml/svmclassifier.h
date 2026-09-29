@@ -121,12 +121,12 @@ class SVMClassifier final : public OpKernel, private SVMCommon {
   Status ComputeImpl(OpKernelContext& ctx, gsl::span<const float> x_data, const TensorShape& x_shape) const;
 
   bool weights_are_all_positive_;
-  ptrdiff_t feature_count_;
-  ptrdiff_t class_count_;
-  ptrdiff_t vector_count_;
+  size_t feature_count_;
+  size_t class_count_;
+  size_t vector_count_;
   bool using_strings_;
   std::vector<int64_t> vectors_per_class_;
-  std::vector<int64_t> starting_vector_;
+  std::vector<size_t> starting_vector_;
   std::vector<float> rho_;
   std::vector<float> proba_;
   std::vector<float> probb_;

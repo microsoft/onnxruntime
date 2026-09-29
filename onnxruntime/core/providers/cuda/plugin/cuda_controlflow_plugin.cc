@@ -6,6 +6,7 @@
 // instead of inheriting from CPU base classes.
 
 #include "core/providers/cuda/plugin/cuda_controlflow_plugin.h"
+#include "cuda_plugin_utils.h"
 #include <cuda_runtime.h>
 
 namespace onnxruntime {

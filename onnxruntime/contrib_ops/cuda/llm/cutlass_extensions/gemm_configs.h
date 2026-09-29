@@ -111,8 +111,9 @@ enum class CutlassTileConfigSM90 {
   CtaShape128x128x128B,
   CtaShape128x256x128B,
 
-  // CTA configs for M=128
+  // CTA configs for M=256
   CtaShape256x128x128B,
+  CtaShape256x256x128B,
 };
 
 enum class CutlassTileConfigSM100 {
@@ -145,6 +146,22 @@ enum class CutlassTileConfigSM100 {
   CtaShape256x64x128B,
   CtaShape256x128x128B,
   CtaShape256x256x128B,
+};
+
+enum class CutlassTileConfigSM120 {
+  // Signals that we should run heuristics do choose a config
+  Undefined,
+
+  // Signals that we should run heuristics do choose a config
+  ChooseWithHeuristic,
+
+  CtaShape128x128x128B,
+  CtaShape128x128x64B,
+  CtaShape128x256x64B,
+  CtaShape128x256x128B,
+  CtaShape256x128x64B,
+  CtaShape128x128x256B,
+  CtaShape256x128x128B,
 };
 
 enum class MainloopScheduleType {
@@ -187,7 +204,9 @@ enum class TileShape {
   TileShape_128x32x128,
   TileShape_128x64x128,
   TileShape_128x128x128,
-  TileShape_128x256x128
+  TileShape_128x256x128,
+  TileShape_256x128x128,
+  TileShape_256x256x128
 };
 
 // get_tile_shape() returns cute::Shape<...> literals, so it also requires
@@ -218,6 +237,10 @@ constexpr auto get_tile_shape() {
     return cute::Shape<_128, _128, _128>{};
   } else if constexpr (Shape_MNK == TileShape::TileShape_128x256x128) {
     return cute::Shape<_128, _256, _128>{};
+  } else if constexpr (Shape_MNK == TileShape::TileShape_256x128x128) {
+    return cute::Shape<_256, _128, _128>{};
+  } else if constexpr (Shape_MNK == TileShape::TileShape_256x256x128) {
+    return cute::Shape<_256, _256, _128>{};
   }
 }
 #endif  // __CUDACC__
@@ -246,7 +269,14 @@ static auto get_tile_shape_name(TileShape Shape_MNK) {
     return "128x128x128";
   } else if (Shape_MNK == TileShape::TileShape_128x256x128) {
     return "128x256x128";
-  }
+  }  else if (Shape_MNK == TileShape::TileShape_256x128x128)
+    {
+        return "256x128x128";
+    }
+    else if (Shape_MNK == TileShape::TileShape_256x256x128)
+    {
+        return "256x256x128";
+    }
   return "Unknown shape";
 }
 #endif
@@ -257,6 +287,7 @@ enum class ClusterShape {
   ClusterShape_1x2x1,
   ClusterShape_2x2x1,
   ClusterShape_1x4x1,
+  ClusterShape_4x1x1,
   ClusterShape_4x2x1,
   ClusterShape_2x4x1,
   ClusterShape_4x4x1,
@@ -274,7 +305,10 @@ static auto get_cluster_shape_name(ClusterShape Shape_MNK) {
     return "1x2x1";
   } else if (Shape_MNK == ClusterShape::ClusterShape_2x2x1) {
     return "2x2x1";
-  } else if (Shape_MNK == ClusterShape::ClusterShape_1x8x1) {
+  } else if (Shape_MNK == ClusterShape::ClusterShape_4x1x1)
+    {
+        return "4x1x1";
+    } else if (Shape_MNK == ClusterShape::ClusterShape_1x8x1) {
     return "1x8x1";
   } else if (Shape_MNK == ClusterShape::ClusterShape_8x1x1) {
     return "8x1x1";
@@ -293,7 +327,10 @@ constexpr auto get_cluster_shape() {
     return cute::Shape<_1, _2, _1>{};
   } else if constexpr (Shape_MNK == ClusterShape::ClusterShape_2x2x1) {
     return cute::Shape<_2, _2, _1>{};
-  } else if constexpr (Shape_MNK == ClusterShape::ClusterShape_1x8x1) {
+  } else if constexpr (Shape_MNK == ClusterShape::ClusterShape_4x1x1)
+    {
+        return cute::Shape<_4, _1, _1>{};
+    } else if constexpr (Shape_MNK == ClusterShape::ClusterShape_1x8x1) {
     return cute::Shape<_1, _8, _1>{};
   } else if constexpr (Shape_MNK == ClusterShape::ClusterShape_8x1x1) {
     return cute::Shape<_8, _1, _1>{};
@@ -322,6 +359,7 @@ struct CutlassGemmConfig {
   // config options for sm90
   CutlassTileConfigSM90 tile_config_sm90 = CutlassTileConfigSM90::ChooseWithHeuristic;
   CutlassTileConfigSM100 tile_config_sm100 = CutlassTileConfigSM100::ChooseWithHeuristic;
+  CutlassTileConfigSM120 tile_config_sm120 = CutlassTileConfigSM120::ChooseWithHeuristic;
   MainloopScheduleType mainloop_schedule = MainloopScheduleType::AUTO;
   EpilogueScheduleType epilogue_schedule = EpilogueScheduleType::AUTO;
   ClusterShape cluster_shape = ClusterShape::ClusterShape_1x1x1;
@@ -343,6 +381,11 @@ struct CutlassGemmConfig {
   CutlassGemmConfig(CutlassTileConfigSM100 tile_config_sm100, MainloopScheduleType mainloop_schedule,
                     EpilogueScheduleType epilogue_schedule, ClusterShape cluster_shape)
       : tile_config_sm100(tile_config_sm100), mainloop_schedule(mainloop_schedule), epilogue_schedule(epilogue_schedule), cluster_shape(cluster_shape), sm_version(100), is_tma_warp_specialized(true) {
+  }
+
+  CutlassGemmConfig(CutlassTileConfigSM120 tile_config_sm120, MainloopScheduleType mainloop_schedule,
+                    EpilogueScheduleType epilogue_schedule, ClusterShape cluster_shape)
+      : tile_config_sm120(tile_config_sm120), mainloop_schedule(mainloop_schedule), epilogue_schedule(epilogue_schedule), cluster_shape(cluster_shape), sm_version(120), is_tma_warp_specialized(true) {
   }
 
   int getTileConfigAsInt() const {

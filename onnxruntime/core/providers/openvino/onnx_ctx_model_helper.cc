@@ -1,6 +1,7 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <cctype>
 #include <string>
 #include <fstream>
 #include <vector>
@@ -114,8 +115,19 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
+    constexpr const char* path_resolution_guidance =
+        ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
+        "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
+    const auto validate_status =
+        utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context));
+    if (!validate_status.IsOK()) {
+      ORT_THROW_IF_ERROR(Status(validate_status.Category(), validate_status.Code(),
+                                validate_status.ErrorMessage() + path_resolution_guidance));
+    }
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
-    ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
+    ORT_ENFORCE(
+        std::filesystem::exists(blob_filepath),
+        "External EP context file not found: ", blob_filepath.string(), path_resolution_guidance);
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
 
@@ -242,8 +254,18 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
-      std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
-      if (ep_context_path.extension() != ".xml") {
+      const std::filesystem::path cache_context_path{ep_cache_context};
+      // Compare the extension case-insensitively so that ".XML", ".Xml", etc. are also treated as XML.
+      std::string extension = cache_context_path.extension().string();
+      std::transform(extension.begin(), extension.end(), extension.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      const bool is_xml = (extension == ".xml");
+      const std::filesystem::path& validation_base_path = is_xml
+                                                              ? session_context.GetModelPath()
+                                                              : session_context.GetOutputModelPath();
+      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
+      const std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
+      if (!is_xml) {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
         shared_context->Deserialize();
       }

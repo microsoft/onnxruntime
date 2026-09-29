@@ -31,7 +31,7 @@ class BackendManager {
   void TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph, bool include_embed_data);
   ov::CompiledModel GetOVCompiledModel();
   void RewindKVCache(size_t index);
-  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices);
+  void SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(

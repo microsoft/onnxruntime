@@ -3,11 +3,15 @@
 # Licensed under the MIT License.
 import argparse
 import os
+import warnings
 from datetime import date
 
 import numpy as np
 import onnx
 from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils  # noqa: F401
+
+# Suppress protobuf deprecation warnings from onnx internals (label() -> is_required()/is_repeated())
+warnings.filterwarnings("ignore", message="label\\(\\) is deprecated", category=DeprecationWarning)
 
 
 def parse_arguments():

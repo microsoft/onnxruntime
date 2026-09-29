@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <iosfwd>
@@ -231,11 +232,21 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
+  // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
+  // bound once, provided they have the same storage type and are added after their backing view.
+  static ProgramInput BufferView(const Tensor* backing_tensor,
+                                 ProgramTensorMetadataDependency dependency,
+                                 const TensorShape& shape,
+                                 uint32_t offset_in_elements,
+                                 int component = 1);
+
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool use_override_shape;
   TensorShape override_shape;
+  bool is_buffer_view{false};
+  uint32_t buffer_offset_in_elements{0};
 };
 
 struct ProgramOutput {
@@ -253,12 +264,22 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
 
+  // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
+  // bound once, provided they have the same storage type and are added after their backing view.
+  static ProgramOutput BufferView(Tensor* backing_tensor,
+                                  ProgramTensorMetadataDependency dependency,
+                                  const TensorShape& shape,
+                                  uint32_t offset_in_elements,
+                                  int component = 1);
+
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
+  bool is_buffer_view{false};
+  uint32_t buffer_offset_in_elements{0};
 };
 
 enum class ValidationMode {
@@ -324,6 +345,10 @@ class ProgramBase {
   // set the size of a workgroup grid.
   ProgramBase& SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
 
+  // request a fixed subgroup size via the `subgroup-size-control` feature (0 = driver-chosen, the default).
+  // requires the device to support wgpu::FeatureName::SubgroupSizeControl; see ShaderHelper::GenerateSourceCode.
+  ProgramBase& SetSubgroupSize(uint32_t size);
+
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
@@ -356,6 +381,10 @@ class ProgramBase {
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
+  // The input/output that owns the physical buffer for a logical buffer view. A view owner must
+  // occur earlier in the corresponding program list.
+  size_t InputBufferOwner(size_t input_index) const;
+  size_t OutputBufferOwner(size_t output_index) const;
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
@@ -364,6 +393,7 @@ class ProgramBase {
   inline uint32_t WorkgroupSizeX() const { return workgroup_size_x_; }
   inline uint32_t WorkgroupSizeY() const { return workgroup_size_y_; }
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
+  inline uint32_t SubgroupSize() const { return subgroup_size_; }
   inline const std::vector<ProgramUniformVariableValue>& UniformVariables() const { return variables_; }
   inline const std::vector<ProgramOverridableConstantValue>& OverridableConstants() const { return overridable_constants_; }
 
@@ -392,6 +422,7 @@ class ProgramBase {
   uint32_t workgroup_size_x_;
   uint32_t workgroup_size_y_;
   uint32_t workgroup_size_z_;
+  uint32_t subgroup_size_;
 
   std::vector<ProgramUniformVariableValue> variables_;
   std::vector<ProgramOverridableConstantValue> overridable_constants_;

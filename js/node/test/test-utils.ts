@@ -197,7 +197,7 @@ export function assertTensorEqual(actual: Tensor, expected: Tensor, atol?: numbe
 }
 
 export function loadTensorFromFile(pbFile: string): Tensor {
-  const tensorProto = onnx_proto.onnx.TensorProto.decode(fs.readFileSync(pbFile));
+  const tensorProto = onnx_proto.onnx.TensorProto.decode(new Uint8Array(fs.readFileSync(pbFile)));
   let transferredTypedArray: Tensor.DataType;
   let type: Tensor.Type;
   const dims = tensorProto.dims.map((dim) => (typeof dim === 'number' ? dim : dim.toNumber()));

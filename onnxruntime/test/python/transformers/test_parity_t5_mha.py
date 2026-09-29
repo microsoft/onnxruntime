@@ -658,7 +658,7 @@ class T5Attention(nn.Module):
 
         output = None
         if past_key_value is not None and self.is_static_kv:
-            output = torch.tensor(ort_output)
+            output = (torch.tensor(ort_output[0]),)
         else:
             output = (torch.tensor(ort_output[0]), (torch.tensor(ort_output[1]), torch.tensor(ort_output[2])))
 

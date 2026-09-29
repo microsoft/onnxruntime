@@ -20,30 +20,14 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "elementwise_constants.h"
 #include "softmax.h"
 
 //
 // Bundles the constants for use by kernels written in assembly.
 //
 
-MLAS_INTERNAL_DATA const struct {
-    float LowerRange;
-    float UpperRange;
-    float LowerRangeSumExp;
-    float UpperRangeSumExp;
-    float RoundingBias;
-    float Log2Reciprocal;
-    float Log2High;
-    float Log2Low;
-    float poly_0;
-    float poly_1;
-    float poly_2;
-    float poly_3;
-    float poly_4;
-    float poly_56;
-    int32_t MinimumExponent;
-    int32_t MaximumExponent;
-} MlasExpConstants = {
+MLAS_INTERNAL_DATA const MLAS_EXP_CONSTANTS MlasExpConstants = {
     -103.9720840454f,
     88.7762626647950f,
     -88.3762626647949f,
@@ -277,7 +261,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().ComputeExpF32Kernel(Input, Output, N);
 #else
     MlasComputeExpF32Kernel(Input, Output, N);
@@ -876,7 +860,7 @@ Return Value:
         //
         float Maximum;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
         Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
 #else 
         Maximum = MlasReduceMaximumF32Kernel(Input, D);
@@ -894,7 +878,7 @@ Return Value:
         float* Temp = LogSoftmax ? nullptr : Output;
         float Accumulation;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
         Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
 #else
         Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
@@ -910,7 +894,7 @@ Return Value:
             //
             float Parameters[] = {NegativeMaximum, std::log(Accumulation)};
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
             GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #else 
 
@@ -922,7 +906,7 @@ Return Value:
             //
             float Parameters[] = {1.0f / Accumulation};
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
             GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #else
             MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);

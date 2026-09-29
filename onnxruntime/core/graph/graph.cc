@@ -6,6 +6,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <queue>
 #include <stack>
@@ -56,6 +57,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
     const bool sync_needed = GraphProtoSyncNeeded(); \
@@ -527,6 +529,28 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
+// Out-of-line constructor and destructor so Graph is complete when
+// unique_ptr<Graph> in subgraphs_ is destroyed (required by libc++).
+Node::Node() = default;
+Node::~Node() = default;
+
+Node::Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Node::Node(std::string_view name,
+           std::string_view op_type,
+           std::string_view description,
+           gsl::span<NodeArg* const> input_args,
+           gsl::span<NodeArg* const> output_args,
+           const NodeAttributes* attributes,
+           std::string_view domain) {
+  Init(name, op_type, description,
+       input_args,
+       output_args,
+       attributes, domain);
+}
+#endif
+
 Node::EdgeEnd::EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept
     : node_(&node),
       src_arg_index_(src_arg_index),
@@ -658,6 +682,9 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   if (!domain_.empty())
     proto.set_domain(domain_);
+
+  if (!overload_.empty())
+    proto.set_overload(overload_);
 
   if (!description_.empty())
     proto.set_doc_string(description_);
@@ -871,7 +898,16 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
-        edge_set.emplace(*graph.GetNode(fbs_edge->node_index()), fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
+        const auto edge_node_index = fbs_edge->node_index();
+        const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
+        ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
+                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " has out-of-range node index ",
+                      edge_node_index, ". Invalid ORT format model.");
+        const auto* edge_node = graph.GetNode(edge_node_index);
+        ORT_RETURN_IF(edge_node == nullptr,
+                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " references missing node ",
+                      edge_node_index, ". Invalid ORT format model.");
+        edge_set.emplace(*edge_node, fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
       }
     }
     return Status::OK();
@@ -1078,6 +1114,16 @@ Status Node::UpdateInputArgCount() {
   // Verify size of node arg count is same as input number in
   // operator definition.
   if (op.inputs().size() != definitions_.input_arg_count.size()) {
+    // A node cannot feed actual inputs to an operator/function whose schema
+    // declares no formal input parameters.
+    if (op.inputs().empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This is an invalid model. Node (", name_,
+                             ") has ", total_arg_count,
+                             " input(s) but its operator schema (", op.Name(),
+                             ") declares no inputs.");
+    }
+
     // Adjust input arg count array with op definition
     // The adjustment will work as below,
     // In total, there're <total_arg_count> inputs, which
@@ -1091,21 +1137,16 @@ Status Node::UpdateInputArgCount() {
     size_t m = 0;
     auto arg_count_left = total_arg_count;
 
-    if (!op.inputs().empty()) {
-      for (; m < op.inputs().size() - 1; ++m) {
-        if (arg_count_left > 0) {
-          input_arg_count.push_back(1);
-          arg_count_left--;
-        } else {
-          input_arg_count.push_back(0);
-        }
+    for (; m < op.inputs().size() - 1; ++m) {
+      if (arg_count_left > 0) {
+        input_arg_count.push_back(1);
+        arg_count_left--;
+      } else {
+        input_arg_count.push_back(0);
       }
     }
 
     // Set the arg count for the last input formal parameter.
-    // NOTE: in the case that there's no .input(...) defined
-    // in op schema, all input args will be fed as one input
-    // of the operator.
     input_arg_count.push_back(arg_count_left);
 
     graph_->SetGraphResolveNeeded();
@@ -1240,6 +1281,21 @@ Graph::Graph(const Model& owning_model,
       continue;
     }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+    // Reject ORT in-memory address markers on a sparse-tensor Constant attribute before the
+    // sparse-to-dense conversion runs — those markers are an in-process ORT sentinel and must
+    // never appear in a deserialized protobuf. See note on the dense initializer loop below.
+    if (node.attribute_size() > 0 &&
+        node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+      const auto& s = node.attribute(0).sparse_tensor();
+      ORT_ENFORCE(!utils::HasExternalDataInMemory(s.values()) &&
+                      !utils::HasExternalDataInMemory(s.indices()),
+                  "Constant node '", node.name(),
+                  "' sparse-tensor attribute references an ORT in-memory address marker, "
+                  "which is not allowed in a model protobuf.");
+    }
+#endif
+
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     ORT_THROW_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor));
 
@@ -1279,6 +1335,16 @@ Graph::Graph(const Model& owning_model,
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
       ORT_ENFORCE(utils::HasName(sparse_tensor), "Sparse initializer must have a name. This model is invalid");
+      // Reject ORT's in-memory address markers on sparse sub-tensors arriving via the protobuf
+      // path. Such markers are an internal ORT optimization set by trusted loaders (e.g. ORT-format
+      // flatbuffer load) and must never appear in a SparseTensorProto deserialized from an .onnx
+      // protobuf; if they do, the model is crafted and would cause ORT to dereference an
+      // attacker-supplied pointer during sparse-to-dense conversion.
+      for (const auto* sub : {&sparse_tensor.values(), &sparse_tensor.indices()}) {
+        ORT_ENFORCE(!utils::HasExternalDataInMemory(*sub),
+                    "Sparse initializer '", sparse_tensor.values().name(),
+                    "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
+      }
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
       auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, model_path, *tensor);
       ORT_ENFORCE(status.IsOK(), status.ToString());
@@ -1320,6 +1386,14 @@ Graph::Graph(const Model& owning_model,
 
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
+    // ORT in-memory address markers are an in-process sentinel: they can only be planted by ORT
+    // itself (e.g. when constructing a TensorProto that aliases an mmap'd .ort buffer or an OrtValue).
+    // They must never appear in a TensorProto deserialized from an .onnx protobuf — if they do, the
+    // model is crafted and would cause ORT to dereference an attacker-supplied pointer when
+    // resolving the initializer.
+    ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor),
+                "Initializer '", tensor.name(),
+                "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
       LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
@@ -1437,6 +1511,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
+    ORT_ENFORCE(initializer_arg, "Graph ctor should have created NodeArg for initializer. Missing: ", initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
 
@@ -2670,10 +2745,20 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   TypeProto* getOutputType(size_t index) override {
+    if (index >= node_output_types_.size()) {
+      fail_type_inference("output index ", index, " is out of range; node has ",
+                          node_output_types_.size(), " outputs");
+    }
     return &node_output_types_[index];
   }
 
   const TensorProto* getInputData(size_t index) const override {
+    // A schema-optional input that's omitted (not even an empty placeholder) shrinks InputDefs(),
+    // so callers can pass an index the node doesn't actually have.
+    if (index >= getNumInputs()) {
+      return nullptr;
+    }
+
     auto def = node_.InputDefs()[index];
     if (!def)
       return nullptr;
@@ -2682,6 +2767,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // Checks for outer scope initializers if this is a subgraph and the name isn't found locally.
     const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
     if (initializer != nullptr) {
+      if (!utils::HasExternalData(*initializer)) {
+        ORT_THROW_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(*initializer));
+      }
+
       // Check if this is in-memory external data (data stored in OrtValue)
       // ONNX shape inference cannot handle external data, so we need to materialize it
       if (utils::HasExternalDataInMemory(*initializer)) {
@@ -2898,15 +2987,25 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
   // Helper function to get the input value if it's a initializer.
-  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values)
+  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values,
+                                               int& num_dims)
       -> Status {
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
     if (initializer) {
+      if (!utils::HasExternalData(*initializer)) {
+        ORT_RETURN_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(*initializer));
+      }
+
       // Get shape from TensorProto as well as element counts.
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
       auto tensor_shape = utils::GetTensorShapeFromTensorProto(*initializer);
       size_t element_cnt = narrow<size_t>(tensor_shape.Size());
+
+      // Report the initializer's rank so callers can distinguish a 0-D scalar from a rank-1
+      // single-element tensor (both have a single element). Sourcing the rank from the same
+      // TensorProto the values come from keeps value and rank consistent.
+      num_dims = static_cast<int>(tensor_shape.NumDimensions());
 
       // Check if this is in-memory external data (data stored in OrtValue)
       if (utils::HasExternalDataInMemory(*initializer)) {
@@ -2914,11 +3013,16 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
         OrtValue ort_value;
         if (this->GetOrtValueInitializer(input_name, ort_value, true)) {
           const Tensor& tensor = ort_value.Get<Tensor>();
+          auto enforce_tensor_element_count_matches = [&](size_t tensor_element_count) {
+            ORT_ENFORCE(tensor_element_count == element_cnt,
+                        "The element count from Tensor for initializer '", input_name,
+                        "' should match the count from utils::GetTensorShapeFromTensorProto(). Tensor count: ",
+                        tensor_element_count, ", TensorProto count: ", element_cnt);
+          };
+
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             auto data_span = tensor.DataAsSpan<int32_t>();
-            ORT_ENFORCE(data_span.size() == element_cnt,
-                        "The element counts from Tensor should be the same"
-                        "from using utils::GetTensorShapeFromTensorProto()");
+            enforce_tensor_element_count_matches(data_span.size());
 
             size_t index = 0;
             input_values.resize(element_cnt);
@@ -2927,7 +3031,11 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
               ++index;
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            const int64_t* src = tensor.Data<int64_t>();
+            auto data_span = tensor.DataAsSpan<int64_t>();
+            enforce_tensor_element_count_matches(data_span.size());
+
+            const int64_t* src = data_span.data();
+            input_values.resize(element_cnt);
             memcpy(input_values.data(), src, element_cnt * sizeof(int64_t));
           }
         } else {
@@ -3090,6 +3198,15 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   // to flow the type/shape info through it
   status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
+
+  // Record that this subgraph had type/shape inferencing (and thus node/op verification via
+  // VerifyNodeAndOpMatch) performed here through the containing op's inference function
+  // (Scan/If/Loop and similar). The parent's "verify subgraphs" loop uses this to skip a redundant
+  // VerifyNodeAndOpMatch on the same subgraph, avoiding exponential re-traversal of deeply nested
+  // subgraphs.
+  if (subgraph.parent_graph_ != nullptr) {
+    subgraph.parent_graph_->resolve_context_.inferred_subgraphs.insert(&subgraph);
+  }
 
   auto& subgraph_outputs = subgraph.GetOutputs();
   for (const auto* output : subgraph_outputs) {
@@ -3495,7 +3612,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       if (!node.op_) {
         // check whether it refer to a function.
-        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
+        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType(), node.Overload());
         const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
         auto iter = model_local_func_templates.find(func_identifier);
         if (iter != model_local_func_templates.end()) {
@@ -3562,7 +3679,36 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node = *GetNode(node_index);
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+
+      // Propagate type info from outer scope implicit inputs to the subgraph's NodeArgs.
+      // This is needed when the op's type/shape inference function does not invoke subgraph
+      // inferencing (e.g., some contrib ops like BeamSearch), so InferAndVerifySubgraphTypes
+      // may not have been called to propagate type info from outer scope values such as
+      // initializers declared in the parent graph.
+      // When InferAndVerifySubgraphTypes was already called, UpdateTypeAndShape with strict=true
+      // validates that the existing type is consistent with the outer-scope type.
+      const auto& implicit_input_defs = node.GetDefinitions().implicit_input_defs;
+      for (const auto* implicit_node_arg : implicit_input_defs) {
+        auto* subgraph_nodearg = subgraph->GetNodeArg(implicit_node_arg->Name());
+        if (subgraph_nodearg != nullptr &&
+            implicit_node_arg->TypeAsProto() != nullptr) {
+          auto status = subgraph_nodearg->UpdateTypeAndShape(
+              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_);
+          if (!status.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Node:", node.Name(), " [subgraph:", entry.first, "] ", status.ErrorMessage());
+          }
+        }
+      }
+
+      // Skip verification if this subgraph already had type/shape inferencing (and node/op
+      // verification) performed via the containing op's inference function (e.g. Scan/If/Loop).
+      // This avoids exponential re-traversal of deeply nested subgraphs. Ops whose inference
+      // function does not descend into subgraphs (e.g. BeamSearch) are not recorded, so their
+      // subgraphs are still verified here.
+      if (!resolve_context_.inferred_subgraphs.contains(subgraph)) {
+        ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      }
     }
   }
 
@@ -3733,7 +3879,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   FindAllSubgraphs(all_subgraphs);
 
   const auto& model_path = GetModel().ModelPath();
-  std::unordered_set<PathString> validated_external_data_paths;
+  InlinedHashSet<PathString> validated_external_data_paths;
 
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
@@ -3797,7 +3943,101 @@ Status Graph::ConvertInitializersIntoOrtValues() {
     return Status::OK();
   };
 
-  return ForThisAndAllSubgraphs(all_subgraphs, put_weights_maybe_in_memory_func);
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, put_weights_maybe_in_memory_func));
+
+  // Validate and inline external data in node tensor attributes.
+  // In-memory references are rejected (no legitimate source creates them for attributes).
+  // File-based external data paths are validated, read from disk, and inlined as raw_data
+  // so all EPs (including plugins) can access attribute data uniformly.
+  auto inline_external_attr_tensors_func = [&](Graph& graph) -> Status {
+    // Helper: validate and inline a single external TensorProto.
+    auto inline_tensor = [&](ONNX_NAMESPACE::TensorProto& tensor_proto,
+                             const Node& node, std::string_view attr_name) -> Status {
+      ORT_RETURN_IF(utils::HasExternalDataInMemory(tensor_proto),
+                    "Node '", node.Name(), "' attribute '", attr_name,
+                    "' contains an in-memory external data reference, which is not permitted ",
+                    "for node attributes.");
+
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      {
+        auto create_status =
+            onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+        if (!create_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", create_status.ErrorMessage());
+        }
+      }
+      const auto& location = external_data_info->GetRelPath();
+
+      if (validated_external_data_paths.count(location) == 0) {
+        auto path_status = utils::ValidateExternalDataPath(model_path, location);
+        if (!path_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", path_status.ErrorMessage());
+        }
+        validated_external_data_paths.insert(location);
+      }
+
+      std::vector<uint8_t> buffer;
+      auto unpack_status = utils::UnpackInitializerData(tensor_proto, model_path, buffer);
+      if (!unpack_status.IsOK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Node '", node.Name(), "' attribute '", attr_name,
+                               "': ", unpack_status.ErrorMessage());
+      }
+
+      tensor_proto.clear_external_data();
+      tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      utils::SetRawDataInTensorProto(tensor_proto, buffer.data(), buffer.size());
+      return Status::OK();
+    };
+
+    for (auto& node : graph.Nodes()) {
+      for (auto& [attr_name, attr_proto] : node.GetMutableAttributes()) {
+        if (utils::HasTensor(attr_proto)) {
+          auto* tensor_proto = attr_proto.mutable_t();
+          if (utils::HasExternalData(*tensor_proto)) {
+            ORT_RETURN_IF_ERROR(inline_tensor(*tensor_proto, node, attr_name));
+          }
+        } else if (utils::HasTensors(attr_proto)) {
+          for (auto& tensor_proto : *attr_proto.mutable_tensors()) {
+            if (utils::HasExternalData(tensor_proto)) {
+              ORT_RETURN_IF_ERROR(inline_tensor(tensor_proto, node, attr_name));
+            }
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, inline_external_attr_tensors_func);
+}
+
+Status Graph::ValidateInMemoryInitializers() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  auto validate_graph = [](Graph& graph) -> Status {
+    for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
+      if (!utils::HasExternalDataInMemory(*tensor_proto)) {
+        continue;
+      }
+
+      OrtValue ort_value;
+      ORT_RETURN_IF_NOT(graph.GetOrtValueInitializer(name, ort_value),
+                        "The model contains initializers with arbitrary in-memory references. ",
+                        "This is an invalid model.");
+      ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(*tensor_proto, ort_value.Get<Tensor>()),
+                        "In-memory data mismatch for initializer: ", name, ". This is an invalid model.");
+    }
+
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, validate_graph);
 }
 
 void Graph::SetName(const std::string& name) {
@@ -3835,13 +4075,12 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     return;
   }
 
-  // This overload is used when the tensor does not point to an OrtValue which
-  // would need to be updated, but it is okay if it is pointing to flatbuffers or some other place at the moment.
-  // However, if an ort_value present for the name, it must be replaced.
+  // This overload is only for TensorProtos that own/embed their data. TensorProtos with
+  // in-memory external data must be added together with the backing OrtValue.
   if (utils::HasExternalDataInMemory(tensor)) {
-    if (ortvalue_initializers_.count(tensor.name()) > 0) {
-      ORT_THROW("OrtValue needs to be inserted. Use the overload that takes both TensorProto and OrtValue with data");
-    }
+    ORT_THROW(
+        "TensorProto with in-memory external data requires an OrtValue. "
+        "Use the overload that takes both TensorProto and OrtValue.");
   }
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
@@ -3867,10 +4106,16 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
   *(tensor_added) = tensor_proto;
   name_to_initial_tensor_.emplace(tensor_proto.name(), tensor_added);
 
-  if (ortvalue_initializer.IsAllocated()) {
-    const bool has_data_in_memory = utils::HasExternalDataInMemory(tensor_proto);
-    ORT_RETURN_IF_NOT(has_data_in_memory,
-                      "TensorProto is expected to refer to the ortvalue_initializer");
+  const bool has_data_in_memory = utils::HasExternalDataInMemory(tensor_proto);
+  if (has_data_in_memory) {
+    ORT_RETURN_IF_NOT(ortvalue_initializer.IsAllocated(),
+                      "TensorProto with in-memory external data requires an allocated ortvalue_initializer");
+  } else {
+    ORT_RETURN_IF_NOT(!ortvalue_initializer.IsAllocated(),
+                      "TensorProto without in-memory external data cannot have an allocated ortvalue_initializer");
+  }
+
+  if (has_data_in_memory) {
     const auto element_type = static_cast<int32_t>(utils::GetTensorElementType(tensor_proto));
     const auto& tensor = ortvalue_initializer.Get<Tensor>();
     ORT_RETURN_IF_NOT(tensor.GetElementType() == element_type,
@@ -4047,8 +4292,13 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // New initializers data generally are within OrtValues
   // Small initializers are still stored inside TensorProto
-  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) || !ort_value.IsAllocated(),
-                    "All TensorProtos are expected to point to an OrtValue");
+  if (utils::HasExternalDataInMemory(new_initializer)) {
+    ORT_RETURN_IF_NOT(ort_value.IsAllocated(),
+                      "TensorProto with in-memory external data requires an allocated OrtValue");
+  } else {
+    ORT_RETURN_IF_NOT(!ort_value.IsAllocated(),
+                      "TensorProto without in-memory external data cannot have an allocated OrtValue");
+  }
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
@@ -4174,12 +4424,43 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       const DataTypeImpl* const type =
           DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
-                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 
-      constexpr const bool use_tensor_buffer_false = false;
-      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
-      **existing_entry = std::move(new_tensor_proto);
+      // Convert data from little endian before assigning it to tensor.
+      // It would have been better to byteswap it right after loading from file,
+      // but at that moment information about tensor element size was not available.
+      if constexpr (endian::native != endian::little) {
+        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
+            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(old_initializer.data_type()));
+
+        // If element size is unknown, set it to 1 to disable byteswapping
+        if (element_size < 1) element_size = 1;
+
+        auto allocator = CPUAllocator::DefaultInstance();
+
+        auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
+        std::unique_ptr<uint8_t[], decltype(deleter)> native_data{
+            reinterpret_cast<uint8_t*>(allocator->Alloc(tensor_byte_size)), deleter};
+
+        auto src_span = gsl::make_span(
+            reinterpret_cast<const unsigned char*>(user_provided_tensor_buffer), tensor_byte_size);
+        auto dst_span = gsl::make_span(
+            reinterpret_cast<unsigned char*>(native_data.get()), tensor_byte_size);
+
+        ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span));
+
+        auto tensor = Tensor{type, tensor_shape, native_data.release(), allocator};
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      } else {
+        auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      }
     }
   }
 
@@ -4386,6 +4667,10 @@ Node& Graph::AddNode(const Node& other) {
                            &other.GetAttributes(),
                            other.Domain());
 
+  if (!other.Overload().empty()) {
+    new_node.SetOverload(other.Overload());
+  }
+
   // Preserve layering annotation from the source node so that graph transformers
   // that reconstruct nodes (or function inlining) retain the EP assignment hint.
   const auto& annotation = other.GetLayeringAnnotation();
@@ -4417,6 +4702,10 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            output_defs,
                            &attributes,
                            node_proto.domain());
+
+  if (!node_proto.overload().empty()) {
+    new_node.SetOverload(node_proto.overload());
+  }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);
@@ -4710,6 +4999,64 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+
+void Graph::SetNodeReplacementCallback(NodeReplacementCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_replacement_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeReplacement(
+    gsl::span<const NodeIndex> source_node_indices,
+    NodeIndex destination_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_replacement_callback_) {
+    root_graph->node_replacement_callback_(*this, source_node_indices, destination_node_index);
+  }
+}
+
+void Graph::SetNodeRemovalCallback(NodeRemovalCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_removal_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_removal_callback_) {
+    root_graph->node_removal_callback_(*this, node_indices);
+  }
+}
+
+#ifdef ENABLE_TRAINING
+void Graph::SetNodeCloneCallback(NodeCloneCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_clone_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_clone_callback_) {
+    root_graph->node_clone_callback_(*this, source_node_index, cloned_node_index);
+  }
+}
+#endif
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -5114,6 +5461,16 @@ Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+
+      // Clear pre-existing initializers from the subgraph proto. The subgraph proto was populated by
+      // Node::ToProto -> Graph::ToGraphProto() const, which already inlined in-memory data.
+      // The recursive Impl call below will re-add all initializers via the custom handler, so we must
+      // clear to avoid duplicates.
+      subgraph_proto->clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+      subgraph_proto->clear_sparse_initializer();
+#endif
+
       ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func,
                                                                                   state, *subgraph_proto));
     }
@@ -5205,15 +5562,25 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
                                                         void* state,
                                                         /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const {
   ToGraphProtoInternal(graph_proto);
+
+  // Clear any pre-existing initializers from graph_proto. ToGraphProtoInternal populates nodes, inputs,
+  // outputs, and value_info but does not touch initializers. The Impl function below re-adds all
+  // initializers via the custom handler. Without clearing, stale initializers (including in-memory-only
+  // _ORT_MEM_ADDR_ references from ConvertInitializersIntoOrtValues) would remain and produce duplicates.
+  graph_proto.clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+  graph_proto.clear_sparse_initializer();
+#endif
+
   ORT_RETURN_IF_ERROR(ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func, state, graph_proto));
   return Status::OK();
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
+  graph_proto.clear_node();
+  graph_proto.clear_input();
+  graph_proto.clear_output();
+  graph_proto.clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 
@@ -5765,6 +6132,8 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 
     RemoveNode(node_index);
   }
+
+  NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -5905,7 +6274,17 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     }
 #endif
 
+    // Extract the OrtValue (if any) from the source graph BEFORE erasing from
+    // name_to_initial_tensor_, so that the invariant "HasExternalDataInMemory implies
+    // a findable OrtValue" is never broken.
+    OrtValue src_ort_value;
+    const bool had_ort_value = graph_to_inline.GetOrtValueInitializer(src_name, src_ort_value);
+
     graph_to_inline.name_to_initial_tensor_.erase(src_name);
+    if (had_ort_value) {
+      graph_to_inline.ortvalue_initializers_.erase(src_name);
+    }
+
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = std::move(*initializer);
 
@@ -5923,20 +6302,9 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       tensor->set_name(std::move(new_name));
     }
 
-    // We have the following cases:
-    // No external data, just copy the proto. If it was too big,
-    // it would have already been converted to OrtInitializer.
-    // External data in file - copy the proto, it can be loaded during session finalization
-    //          or it would be loaded by EP
-    // External data in memory two cases
-    // - points to flatbuffers ort format (no OrtValue), simply copy the proto
-    // - points to external data in memory (OrtValue), create a copy of OrtValue and tensor_proto
-
-    if (utils::HasExternalDataInMemory(*tensor)) {
-      OrtValue ort_value;
-      if (graph_to_inline.GetOrtValueInitializer(src_name, ort_value)) {
-        ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(ort_value));
-      }
+    // Restore the OrtValue in the destination graph under the (possibly renamed) name.
+    if (had_ort_value) {
+      ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(src_ort_value));
     }
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
@@ -6271,6 +6639,9 @@ Status Graph::InlineFunction(Node& callnode) {
       if (OrtValue ort_value; subgraph.GetOrtValueInitializer(name, ort_value)) {
         ORT_RETURN_IF_ERROR(AddInitializedOrtValue(tensor_proto_to_add, ort_value));
       } else {
+        ORT_RETURN_IF_NOT(!utils::HasExternalDataInMemory(tensor_proto_to_add),
+                          "Initializer '", name, "' has external data in memory but no cached OrtValue. ",
+                          "This is an invalid state.");
         AddInitializedTensor(tensor_proto_to_add);
       }
     }
@@ -6578,16 +6949,70 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       const auto* name = fbs_value_info->name();
       ORT_RETURN_IF(name == nullptr, "NodeArg name is missing. Invalid ORT format model.");
-      node_args_[name->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
+      const auto inserted = node_args_.emplace(name->str(), std::make_unique<NodeArg>(std::move(node_arg_info)));
+      ORT_RETURN_IF(!inserted.second, "Duplicate NodeArg name '", name->str(), "'. Invalid ORT format model.");
     }
   }
 
   // Nodes
   //
-  // Since we access a node using its index, we need to have nodes_ with size max_node_index to avoid
-  // out of bounds access.
-  nodes_.resize(fbs_graph.max_node_index());
+  // Since we access a node using its index, we need to have nodes_ with a size that covers all
+  // referenced indices. We compute the required slot count from actual node and edge data rather
+  // than trusting the serialized max_node_index field.
   auto* fbs_nodes = fbs_graph.nodes();
+  auto* fbs_node_edges = fbs_graph.node_edges();
+
+  uint32_t max_referenced_node_index = 0;
+  bool has_referenced_node_index = false;
+  const auto update_max_referenced_node_index = [&max_referenced_node_index,
+                                                 &has_referenced_node_index](uint32_t node_index) {
+    max_referenced_node_index = has_referenced_node_index ? std::max(max_referenced_node_index, node_index)
+                                                          : node_index;
+    has_referenced_node_index = true;
+  };
+
+  if (fbs_nodes != nullptr) {
+    for (const auto* fbs_node : *fbs_nodes) {
+      ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
+      update_max_referenced_node_index(fbs_node->index());
+    }
+  }
+
+  if (fbs_node_edges != nullptr) {
+    for (const auto* fbs_node_edge : *fbs_node_edges) {
+      ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
+      update_max_referenced_node_index(fbs_node_edge->node_index());
+    }
+  }
+
+  const uint64_t required_node_slot_count_64 = has_referenced_node_index
+                                                   ? static_cast<uint64_t>(max_referenced_node_index) + 1U
+                                                   : 0U;
+  ORT_RETURN_IF(required_node_slot_count_64 > std::numeric_limits<size_t>::max(),
+                "Node index ", max_referenced_node_index,
+                " is out of range. Invalid ORT format model.");
+  const size_t required_node_slot_count = static_cast<size_t>(required_node_slot_count_64);
+
+  // Sanity bound: reject buffers where a crafted node index would cause excessive allocation.
+  // ORT preserves original node indices after graph optimizations, so legitimate models can have
+  // sparse node slots. Allow that sparsity, but keep an absolute cap far above expected real model sizes.
+  const size_t total_entries = (fbs_nodes != nullptr ? fbs_nodes->size() : 0U) +
+                               (fbs_node_edges != nullptr ? fbs_node_edges->size() : 0U);
+  constexpr size_t kMinSlotCap = 1024;
+  constexpr size_t kMaxNodeSlotCount = 1000000;  // ~8 MB of unique_ptr<Node> slots on 64-bit
+  constexpr size_t kSparseNodeSlotMultiplier = 64;
+  const size_t sparse_slot_cap = total_entries > kMaxNodeSlotCount / kSparseNodeSlotMultiplier
+                                     ? kMaxNodeSlotCount
+                                     : total_entries * kSparseNodeSlotMultiplier;
+  const size_t slot_cap = std::min(kMaxNodeSlotCount, std::max(kMinSlotCap, sparse_slot_cap));
+  ORT_RETURN_IF(required_node_slot_count > slot_cap,
+                "Node index ", required_node_slot_count - 1,
+                " is unreasonably large relative to the number of entries (",
+                total_entries, "). Invalid ORT format model.");
+
+  ORT_RETURN_IF(fbs_graph.max_node_index() < required_node_slot_count,
+                "Serialized max node index is smaller than the required node slot count. Invalid ORT format model.");
+  nodes_.resize(required_node_slot_count);
 
   // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node
   // where the subgraph returns a Constant node. The Constant node will be lifted to an initializer by ORT
@@ -6597,18 +7022,22 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
       std::unique_ptr<Node> node;
       ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, load_options, logger_, node));
-      ORT_RETURN_IF(node->Index() >= fbs_graph.max_node_index(), "Node index is out of range");
+      ORT_RETURN_IF(node->Index() >= nodes_.size(), "Node index is out of range");
+      ORT_RETURN_IF(nodes_[node->Index()] != nullptr,
+                    "Duplicate node index ", node->Index(), ". Invalid ORT format model.");
       nodes_[node->Index()] = std::move(node);
       ++num_of_nodes_;
     }
   }
 
   // NodeEdges
-  auto* fbs_node_edges = fbs_graph.node_edges();
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
       ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
-      ORT_RETURN_IF(fbs_node_edge->node_index() >= fbs_graph.max_node_index(), "Node index is out of range");
+      ORT_RETURN_IF(fbs_node_edge->node_index() >= nodes_.size(), "Node index is out of range");
+      ORT_RETURN_IF(nodes_[fbs_node_edge->node_index()] == nullptr,
+                    "NodeEdge references missing node ", fbs_node_edge->node_index(),
+                    ". Invalid ORT format model.");
       ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
     }
   }
@@ -6620,7 +7049,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
         ORT_RETURN_IF(nullptr == fbs_node_arg_name, "NodeArg Name is missing. Invalid ORT format model.");
-        gsl::not_null<NodeArg*> node_arg = GetNodeArg(fbs_node_arg_name->str());
+        auto* node_arg = GetNodeArg(fbs_node_arg_name->str());
+        ORT_RETURN_IF(node_arg == nullptr, "Graph references unknown NodeArg '", fbs_node_arg_name->str(),
+                      "'. Invalid ORT format model.");
         node_args.push_back(node_arg);
       }
     }
@@ -6703,7 +7134,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo,
+                                                                          onnxruntime::OrtValueInfoDeleter>>&
+                                          graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -6726,12 +7159,17 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, std::unique_ptr<OrtValue>>& initializers,
+  auto add_initializers = [this](const InlinedHashMap<std::string,
+                                                      std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
+                                     initializers,
                                  bool is_external) {
-    for (auto& name_and_ortvalue : initializers) {
+    // Copy (do not move) the OrtValue into ortvalue_initializers_. The input OrtModel may be reused
+    // by the caller (e.g. applied to multiple sessions), and OrtValue's default move would clear the
+    // payload while leaving `type_` set, which would silently break later reuse.
+    for (const auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      OrtValue& v = *name_and_ortvalue.second;
+      const OrtValue& v = *name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();
@@ -6752,7 +7190,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
                                                      offset, t.SizeInBytes(), tensor_proto);
 
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
-        ortvalue_initializers_.emplace(name, std::move(v));
+        ortvalue_initializers_.emplace(name, v);
       } else {
         onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }

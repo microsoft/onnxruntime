@@ -25,6 +25,24 @@ def get_input_from_input_name(onnx_model: onnx.ModelProto, input_name: str) -> o
     raise LookupError(f"The provided output name {input_name} is not a graph input.")
 
 
+def get_value_info_for_name(onnx_model: onnx.ModelProto, name: str) -> onnx.ValueInfoProto:
+    """Returns the value info for `name`, searching graph outputs, inputs, then value_info."""
+
+    for vi in onnx_model.graph.output:
+        if vi.name == name:
+            return vi
+
+    for vi in onnx_model.graph.input:
+        if vi.name == name:
+            return vi
+
+    for vi in onnx_model.graph.value_info:
+        if vi.name == name:
+            return vi
+
+    raise LookupError(f"The provided name {name} was not found in graph outputs, inputs, or value_info.")
+
+
 _GRAPH_TOKEN = 0
 
 

@@ -629,6 +629,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(DeviceEpIncompatibilityDetails);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE(Graph);
@@ -1133,6 +1134,27 @@ using ConstHardwareDevice = detail::HardwareDeviceImpl<Ort::detail::Unowned<cons
 
 namespace detail {
 template <typename T>
+struct DeviceEpIncompatibilityDetailsImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  uint32_t GetReasonsBitmask() const;  ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
+  const char* GetNotes() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
+  int32_t GetErrorCode() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtDeviceEpIncompatibilityDetails
+ * \remarks DeviceEpIncompatibilityDetails is always read-only for API users.
+ */
+struct DeviceEpIncompatibilityDetails : detail::DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails> {
+  explicit DeviceEpIncompatibilityDetails(std::nullptr_t) {}  ///< No instance is created
+  explicit DeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* p)
+      : DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails>{p} {}  ///< Take ownership of a pointer created by C API
+};
+
+namespace detail {
+template <typename T>
 struct EpDeviceImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
@@ -1385,6 +1407,35 @@ struct Env : detail::Base<OrtEnv> {
 
   std::vector<ConstEpDevice> GetEpDevices() const;
 
+  /** \brief Get the number of available hardware devices.
+   *
+   * Returns the count of hardware devices discovered on the system.
+   * \return The number of hardware devices available.
+   * \throws Ort::Exception on error.
+   */
+  size_t GetNumHardwareDevices() const;  ///< Wraps OrtApi::GetNumHardwareDevices
+
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system.
+   * \return A vector of hardware devices.
+   * \throws Ort::Exception on error.
+   */
+  std::vector<ConstHardwareDevice> GetHardwareDevices() const;  ///< Wraps OrtApi::GetHardwareDevices
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if the returned details have reasons == 0, that does not guarantee 100% compatibility for all models.
+   *
+   * \param ep_name The name of the execution provider to check.
+   * \param hw The hardware device to check for incompatibility.
+   * \return DeviceEpIncompatibilityDetails containing reasons for incompatibility if any.
+   * \throws Ort::Exception on error.
+   */
+  DeviceEpIncompatibilityDetails GetHardwareDeviceEpIncompatibilityDetails(
+      const char* ep_name, ConstHardwareDevice hw) const;  ///< Wraps OrtApi::GetHardwareDeviceEpIncompatibilityDetails
+
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
@@ -1426,8 +1477,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1436,8 +1488,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified byte array.
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
@@ -1570,6 +1623,9 @@ struct ConstSessionOptionsImpl : Base<T> {
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
+
+  bool GetMemPatternEnabled() const;       ///< Wraps OrtApi::GetMemPatternEnabled
+  ExecutionMode GetExecutionMode() const;  ///< Wraps OrtApi::GetSessionExecutionMode
 };
 
 template <typename T>
@@ -1721,7 +1777,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -1951,6 +2008,14 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                   OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+
+  /** \brief Release a previously captured graph.
+   *
+   * Wraps OrtApi::SessionReleaseCapturedGraph
+   *
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  void ReleaseCapturedGraph(int graph_annotation_id);
 };
 
 }  // namespace detail
@@ -2002,7 +2067,12 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   using B::B;
 
   ONNXTensorElementDataType GetElementType() const;  ///< Wraps OrtApi::GetTensorElementType
-  size_t GetElementCount() const;                    ///< Wraps OrtApi::GetTensorShapeElementCount
+
+  /// Wraps OrtApi::GetTensorShapeElementCount.
+  /// Returns the number of logical elements in the tensor (the product of its shape dimensions).
+  /// Use Ort::Value::GetTensorSizeInBytes() when sizing or bounds-checking the raw buffer returned
+  /// by GetTensorRawData()/GetTensorData\<T\>().
+  size_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
 
@@ -2283,7 +2353,11 @@ struct ConstValueImpl : Base<T> {
   /// <summary>
   /// Returns the total size of the tensor data in bytes. Throws an exception if the OrtValue
   /// does not contain a tensor or if it contains a tensor that contains strings.
-  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  /// For numeric tensors of a type that occupies at least one byte per element, this is
+  /// sizeof(element_type) * total_element_count. For packed sub-byte types (e.g. int4/uint4)
+  /// it is the actual packed storage size, which is smaller than the element count returned by
+  /// GetTensorTypeAndShapeInfo().GetElementCount(). Use this value (not the element count) when
+  /// copying or bounds-checking the raw buffer from GetTensorRawData()/GetTensorData\<T\>().
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
   size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
@@ -2957,7 +3031,9 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
+  OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;
   Ort::Allocator GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
@@ -3475,13 +3551,21 @@ struct GraphImpl : ConstGraphImpl<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().SetGraphInputs()
+  /// <Wraps GetModelEditorApi().SetGraphInputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `inputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `inputs` are unchanged.
   void SetInputs(std::vector<ValueInfo>& inputs);
-  // <Wraps GetModelEditorApi().SetGraphOutputs()
+  /// <Wraps GetModelEditorApi().SetGraphOutputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `outputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `outputs` are unchanged.
   void SetOutputs(std::vector<ValueInfo>& outputs);
-  // <Wraps GetModelEditorApi().AddInitializerToGraph()
+  /// <Wraps GetModelEditorApi().AddInitializerToGraph(). Strong exception safety: on success the
+  /// Graph takes ownership of `initializer` (which is reset to nullptr); on failure (an exception
+  /// is thrown) `initializer` is unchanged and still owned by the caller.
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
-  // <Wraps GetModelEditorApi().AddNodeToGraph()
+  /// <Wraps GetModelEditorApi().AddNodeToGraph(). Strong exception safety: on success the Graph
+  /// takes ownership of `node` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `node` is unchanged and still owned by the caller.
   void AddNode(Node& node);  // Graph takes ownership of Node
 #endif                       // !defined(ORT_MINIMAL_BUILD)
 };
@@ -3515,7 +3599,9 @@ struct ModelImpl : detail::Base<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().AddGraphToModel()
+  /// <Wraps GetModelEditorApi().AddGraphToModel(). Strong exception safety: on success the Model
+  /// takes ownership of `graph` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `graph` is unchanged and still owned by the caller.
   void AddGraph(Graph& graph);
 #endif
 };

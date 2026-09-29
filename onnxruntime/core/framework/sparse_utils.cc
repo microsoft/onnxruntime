@@ -7,6 +7,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/data_transfer_manager.h"
@@ -256,16 +257,36 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
     }
 
     void* output = cpu_result.MutableDataRaw();
+    const auto dense_size = cpu_result.Shape().Size();
+    const auto outer_size = outer_span.size();
+    const auto inner_size = static_cast<int64_t>(inner_span.size());
 
-    size_t src_idx = 0;
+    // Validate CSR structural invariants (O(1) checks).
+    if (outer_size > 0) {
+      ORT_RETURN_IF_NOT(outer_span[0] == 0,
+                        "CSR outer index must start at 0, got: ", outer_span[0]);
+      ORT_RETURN_IF_NOT(outer_span[outer_size - 1] == inner_size,
+                        "CSR outer index last element must equal inner index count (",
+                        inner_size, "), got: ", outer_span[outer_size - 1]);
+    }
+
     size_t inner_idx = 0;
-    for (size_t out_i = 1; out_i < outer_span.size(); ++out_i) {
+    for (size_t out_i = 1; out_i < outer_size; ++out_i) {
+      ORT_RETURN_IF_NOT(outer_span[out_i] >= outer_span[out_i - 1],
+                        "CSR outer index not non-decreasing at position ", out_i,
+                        ": ", outer_span[out_i]);
       auto row_size = outer_span[out_i] - outer_span[out_i - 1];
       for (int64_t cnt = 0; cnt < row_size; ++cnt, ++inner_idx) {
-        assert(inner_idx < inner_span.size());
+        ORT_RETURN_IF_NOT(inner_idx < inner_span.size(),
+                          "CSR inner index out of range: inner_idx=", inner_idx,
+                          " >= inner_span.size()=", inner_span.size());
         auto col = inner_span[inner_idx];
-        auto dst_idx = (out_i - 1) * cols + col;
-        copy_func(output, values, dst_idx, src_idx);
+        ORT_RETURN_IF_NOT(col >= 0 && col < cols, "Invalid CSR column index: ", col);
+        // Use SafeInt to prevent overflow during index calculation.
+        int64_t dst_idx = SafeInt<int64_t>(out_i - 1) * cols + col;
+        ORT_RETURN_IF_NOT(dst_idx >= 0 && dst_idx < dense_size,
+                          "Invalid CSR computed index: ", dst_idx);
+        copy_func(output, values, dst_idx, inner_idx);
       }
     }
   }
@@ -356,15 +377,22 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     if (num_indices == num_values) {
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
         auto dst_idx = indices[src_idx];
-        ORT_RETURN_IF_NOT(dst_idx < dense_size, "Invalid index: ", dst_idx, " > dense_size: ", dense_size);
+        ORT_RETURN_IF_NOT(dst_idx >= 0 && dst_idx < dense_size,
+                          "Invalid COO index: ", dst_idx);
         copy_func(output, values, dst_idx, src_idx);
       }
     } else {
+      const auto rows = src_dims[0];
       const auto cols = src_dims[1];
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
         auto tuple_idx = src_idx * 2;
-        auto dst_idx = indices[tuple_idx] * cols + indices[tuple_idx + 1];
-        ORT_RETURN_IF_NOT(dst_idx < dense_size, "Invalid index: ", dst_idx, " > dense_size: ", dense_size);
+        auto r = indices[tuple_idx];
+        auto c = indices[tuple_idx + 1];
+        ORT_RETURN_IF_NOT(r >= 0 && r < rows && c >= 0 && c < cols,
+                          "Invalid COO 2D index: (", r, ", ", c,
+                          ") must be in [0, ", rows, ") x [0, ", cols, ")");
+        // Use SafeInt to prevent overflow during index calculation.
+        int64_t dst_idx = SafeInt<int64_t>(r) * cols + c;
         copy_func(output, values, dst_idx, src_idx);
       }
     }

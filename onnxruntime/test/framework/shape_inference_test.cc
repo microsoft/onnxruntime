@@ -78,6 +78,91 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   CheckShapeEquality(InputShape(node), OutputShape(node));
 }
 
+TEST(ShapeInferenceDataPropagationTest, RejectsMalformedInitializerBeforeUnpacking) {
+  Model model("malformed shape propagation initializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  Type data_type({2, 3});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_type.value);
+  auto& shape = graph.GetOrCreateNodeArg("shape", nullptr);
+  auto& axes_arg = graph.GetOrCreateNodeArg("axes", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+
+  graph.SetInputs({&data});
+  graph.SetOutputs({&output});
+  graph.AddNode("shape", "Shape", "", {&data}, {&shape});
+
+  TensorProto axes;
+  axes.set_name("axes");
+  axes.set_data_type(TensorProto_DataType_INT64);
+  axes.add_dims(10000);
+  axes.add_int64_data(0);
+  graph.AddInitializedTensor(axes);
+  graph.AddNode("unsqueeze", "Unsqueeze", "", {&shape, &axes_arg}, {&output});
+
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count (1) does not match expected count"));
+}
+
+TEST(ShapeInferenceDataPropagationTest, RejectsMalformedInitializerBeforeOnnxShapeInference) {
+  Model model("malformed shape inference initializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  Type data_type({2, 3});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_type.value);
+  auto& shape_arg = graph.GetOrCreateNodeArg("shape", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+
+  graph.SetInputs({&data});
+  graph.SetOutputs({&output});
+
+  TensorProto shape;
+  shape.set_name("shape");
+  shape.set_data_type(TensorProto_DataType_INT64);
+  shape.add_dims(2);
+  shape.add_int64_data(6);
+  graph.AddInitializedTensor(shape);
+  graph.AddNode("reshape", "Reshape", "", {&data, &shape_arg}, {&output});
+
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count (1) does not match expected count"));
+}
+
+TEST(ShapeInferenceDataPropagationTest, RejectsMalformedGatherInitializerBeforeCustomPropagation) {
+  Model model("malformed gather initializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  Type data_type({2, 3});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_type.value);
+  auto& shape = graph.GetOrCreateNodeArg("shape", nullptr);
+  auto& indices_arg = graph.GetOrCreateNodeArg("indices", nullptr);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+
+  graph.SetInputs({&data});
+  graph.SetOutputs({&output});
+  graph.AddNode("shape", "Shape", "", {&data}, {&shape});
+
+  TensorProto indices;
+  indices.set_name("indices");
+  indices.set_data_type(TensorProto_DataType_INT64);
+  indices.add_int64_data(0);
+  indices.add_int64_data(1);
+  graph.AddInitializedTensor(indices);
+  graph.AddNode("gather", "Gather", "", {&shape, &indices_arg}, {&output});
+
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data field count (2) does not match expected count"));
+}
+
 TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
   {
     // Model #1
@@ -172,6 +257,22 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
 
     // Make sure it can load the model and run shape inference without errors.
     Ort::Session session(*ort_env, model_path, session_options);
+  }
+
+  {
+    // Model #5
+    // Regression test for the Shape -> Identity -> Unsqueeze path. ORT_ENABLE_BASIC removes the Identity,
+    // then graph resolution re-runs data propagation after large initializers have been converted to
+    // in-memory external OrtValues. The Unsqueeze axes initializer exercises the INT64 in-memory external path in
+    // Graph::SaveShapeValuesFromDataPropagation.
+    auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_unsqueeze_inmemory_int64.onnx");
+
+    Ort::SessionOptions session_options{};
+    session_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    ORT_ENFORCE(session.GetOutputCount() == 1);
   }
 }
 

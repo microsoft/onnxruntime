@@ -51,7 +51,7 @@ def GenerateModel(model_path, num_convs):  # noqa: N802
 
         initializers.extend(
             [
-                helper.make_tensor(name("Scale"), TensorProto.FLOAT, [1], [256.0]),
+                helper.make_tensor(name("Scale"), TensorProto.FLOAT, [1], [1.0]),
                 helper.make_tensor(name("Zero_point_uint8"), TensorProto.UINT8, [1], [0]),
                 helper.make_tensor(name("Zero_point_int32"), TensorProto.INT32, [1], [0]),
                 helper.make_tensor(name("W"), TensorProto.UINT8, [1, 1, 3, 3], [128] * 9),
@@ -73,7 +73,7 @@ def GenerateModel(model_path, num_convs):  # noqa: N802
 
     graph = helper.make_graph(nodes, f"QDQ_Conv_x_{num_convs}", inputs, outputs, initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     onnx.save(model, model_path)
 
 

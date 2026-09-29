@@ -182,7 +182,14 @@ ABSL_FLAG(bool, z, DefaultPerformanceTestConfig().run_config.set_denormal_as_zer
 ABSL_FLAG(bool, D, DefaultPerformanceTestConfig().run_config.disable_spinning, "Disables spinning entirely for thread owned by onnxruntime intra-op thread pool.");
 ABSL_FLAG(bool, Z, DefaultPerformanceTestConfig().run_config.disable_spinning_between_run, "Disallows thread from spinning during runs to reduce cpu usage.");
 ABSL_FLAG(int, spin_duration_us, -1, "Sets the spin duration in microseconds for intra-op thread pool. Default (-1) uses iteration-count-based spinning. 0 disables spinning. Positive values enable time-based spinning.");
+ABSL_FLAG(int, spin_backoff_max, 1,
+          "Sets the exponential-backoff cap for the intra-op thread pool spin loop. 1 (default) keeps the "
+          "legacy single-SpinPause behavior. Values >= 2 enable exp-backoff (typical: 4 or 8) to reduce "
+          "CPU/power density during the spin window. Values above 64 are clamped to 64.");
 ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_creation, "Allows user to measure session creation time to measure impact of enabling any initialization optimizations.");
+ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig().run_config.hold_ms_after_session_creation,
+          "When used with -n, keeps the process alive for the specified number of milliseconds after session creation.\n"
+          "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
@@ -203,10 +210,21 @@ ABSL_FLAG(std::string, filter_ep_devices, "",
           "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n"
           "[Example] --filter_ep_devices \"ov_device|NPU ov_device|CPU\" \n"
           "Above example will append npu device first if available, followed by cpu device.");
+ABSL_FLAG(bool, plugin_ep_force_cpu_allocator, DefaultPerformanceTestConfig().plugin_ep_force_cpu_allocator,
+          "Forces the use of the CPU allocator instead of a plugin EP's own allocator when running with plugin execution providers.\n");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
 ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
+ABSL_FLAG(std::string, data_shape, "",
+          "Specifies input shapes for multi-shape profiling within a single session.\n"
+          "The model is compiled once and run with each shape group in round-robin order.\n"
+          "[Usage]: --data_shape \"input_name:[d0,d1,...][d0,d1,...] ...\"\n"
+          "[Example]: --data_shape \"input:[1,3,224,224][1,3,448,448][1,3,112,112]\"\n"
+          "With -I: generates random input of the specified shapes.\n"
+          "Without -I: selects test data folders whose tensor shapes match.\n"
+          "All inputs must have the same number of shape groups.\n"
+          "All dimension values must be positive integers.");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -369,7 +387,11 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   auto is_option_specified = [&](std::string option) {
     for (int i = 1; i < argc; ++i) {
       auto utf8_arg = ToUTF8String(argv[i]);
-      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      const auto short_option = "-" + option;
+      const auto long_option = "--" + option;
+      if (utf8_arg == short_option || utf8_arg == long_option ||
+          utf8_arg.rfind(short_option + "=", 0) == 0 ||
+          utf8_arg.rfind(long_option + "=", 0) == 0) {
         return true;
       }
     }
@@ -470,6 +492,16 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // -I
   test_config.run_config.generate_model_input_binding = absl::GetFlag(FLAGS_I);
 
+  // --data_shape
+  {
+    const auto& data_shape_str = absl::GetFlag(FLAGS_data_shape);
+    if (!data_shape_str.empty()) {
+      if (!ParseDataShapeGroups(data_shape_str, test_config.run_config.data_shape_groups)) {
+        return false;
+      }
+    }
+  }
+
   // -d
   if (absl::GetFlag(FLAGS_d) < 0) return false;
   test_config.run_config.cudnn_conv_algo = absl::GetFlag(FLAGS_d);
@@ -514,8 +546,19 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // --spin_duration_us
   test_config.run_config.spin_duration_us = absl::GetFlag(FLAGS_spin_duration_us);
 
+  // --spin_backoff_max
+  test_config.run_config.spin_backoff_max = absl::GetFlag(FLAGS_spin_backoff_max);
+  test_config.run_config.spin_backoff_max_set = is_option_specified("spin_backoff_max");
+
   // -n
   test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);
+
+  // --hold_ms_after_session_creation
+  test_config.run_config.hold_ms_after_session_creation = absl::GetFlag(FLAGS_hold_ms_after_session_creation);
+  if (test_config.run_config.hold_ms_after_session_creation > 0 &&
+      !test_config.run_config.exit_after_session_creation) {
+    fprintf(stderr, "WARNING: --hold_ms_after_session_creation has no effect without -n.\n");
+  }
 
   // -l
   test_config.model_info.load_via_path = absl::GetFlag(FLAGS_l);
@@ -577,6 +620,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
       }
     }
   }
+
+  // --plugin_ep_force_cpu_allocator
+  test_config.plugin_ep_force_cpu_allocator = absl::GetFlag(FLAGS_plugin_ep_force_cpu_allocator);
 
   // --compile_ep_context
   test_config.run_config.compile_ep_context = absl::GetFlag(FLAGS_compile_ep_context);

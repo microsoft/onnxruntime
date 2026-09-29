@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/lean_attention/lean_api.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -60,6 +61,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
   kernel_options_ = this->GetAttentionKernelOptions();
 
   constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsFp16OrBf16 = kIsFp16 || std::is_same<T, BFloat16>::value;
 
   disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
@@ -74,7 +76,13 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   disable_fused_cross_attention_ = !kIsFp16 || !kernel_options_->UseTrtCrossAttention();
 
-  enable_cudnn_flash_attention_ = kIsFp16 && kernel_options_->UseCudnnFlashAttention();
+  // cuDNN SDPA (cudnn_frontend) supports both FP16 and BF16.
+  enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
+
+  // On SM>=90 (Hopper/Blackwell) cuDNN SDPA is generally the fastest backend, so it is auto-preferred
+  // ahead of flash / cutlass attention unless the user explicitly pinned a different SDPA kernel via
+  // the sdpa_kernel provider option. The SM check itself is done at compute time.
+  auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
 
   disable_decoder_attention_ = !kernel_options_->UseDecoderAttention();
 
@@ -219,24 +227,26 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
     kernel_type = AttentionKernelType::AttentionKernel_DecoderAttention;
+  }
 
-    // No production use-case will incur this copy cost as the implementation of
-    // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
-    // must be shared to have parity in the outputs.
-    // This is just to circumvent the OpTester's limitation of not being able to bind a specific
-    // buffer to inputs/outputs.
+  if (parameters.past_present_share_buffer) {
+    // Buffer-sharing kernels append the new KV in place into present_key/present_value and never read
+    // past_key/past_value, so they assume the runtime aliased past onto present. Nothing else copies the
+    // past cache forward. When the buffers are not actually aliased (e.g. OpTester cannot bind a specific
+    // buffer to both an input and an output), the untouched history slots would be garbage, so seed them
+    // here. When they are aliased the pointers compare equal and this is a no-op.
     auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
     auto* past_value_data = (past_value == nullptr) ? nullptr : past_value->Data<T>();
     auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
     auto* present_value_data = (present_value == nullptr) ? nullptr : present_value->MutableData<T>();
 
-    if (present_key_data != past_key_data) {
-      DUMP_STRING("Copying past_key to present_key for OpTester");
+    if (past_key_data != nullptr && present_key_data != nullptr && present_key_data != past_key_data) {
+      DUMP_STRING("Copying past_key to present_key");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, stream));
     }
-    if (present_value_data != past_value_data) {
-      DUMP_STRING("Copying past_value to present_value for OpTester");
+    if (past_value_data != nullptr && present_value_data != nullptr && present_value_data != past_value_data) {
+      DUMP_STRING("Copying past_value to present_value");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, stream));
     }
@@ -298,8 +308,35 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool use_lean_attention = false;
 #endif
 
+  // === cuDNN SDPA eligibility (computed before flash so it can take priority on SM>=90) ===
+  // cuDNN SDPA only supports no mask, or a 1D key sequence length (padding) mask.
+  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  // cuDNN SDPA is enabled when explicitly requested, or auto-preferred on SM>=90 (unless the user
+  // pinned a different SDPA kernel through the sdpa_kernel provider option).
+  bool cudnn_sdpa_enabled = enable_cudnn_flash_attention_ ||
+                            (auto_enable_cudnn_flash_attention_ && sm >= 90);
+  // Bottom-right causal masking (used by cuDNN when s_q != s_kv) does not support attention bias.
+  bool cudnn_sdpa_bias_ok = attention_bias == nullptr ||
+                            !is_unidirectional_ ||
+                            parameters.sequence_length == parameters.total_sequence_length;
+  bool cudnn_sdpa_supported = cudnn_sdpa_enabled &&
+                              cudnn_sdpa_bias_ok &&
+                              is_mask_none_or_1d_k_len &&
+                              onnxruntime::cudnn_sdpa::is_stable() &&
+                              onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                                    parameters.num_heads,              // num_heads_q
+                                                                    parameters.num_heads,              // num_heads_kv
+                                                                    parameters.head_size,              // head_size_qk
+                                                                    parameters.v_head_size,            // head_size_v
+                                                                    parameters.sequence_length,        // seq_len_q
+                                                                    parameters.total_sequence_length,  // seq_len_kv
+                                                                    is_unidirectional_);
+
 #if USE_FLASH_ATTENTION
+  // On SM>=90 (Hopper/Blackwell) prefer cuDNN SDPA ahead of flash attention.
   bool use_flash_attention = kernel_type == AttentionKernelType::AttentionKernel_Default &&
+                             !(cudnn_sdpa_supported && sm >= 90) &&
                              !disable_flash_attention_ &&
                              nullptr == attention_bias &&
                              nullptr == key_padding_mask &&
@@ -348,19 +385,8 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
-  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
-                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
   bool use_cudnn_sdpa = kernel_type == AttentionKernelType::AttentionKernel_Default &&
-                        enable_cudnn_flash_attention_ &&
-                        is_mask_none_or_1d_k_len &&
-                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
-                                                              parameters.num_heads,              // num_heads_q
-                                                              parameters.num_heads,              // num_heads_kv
-                                                              parameters.head_size,              // head_size_qk
-                                                              parameters.v_head_size,            // head_size_v
-                                                              parameters.sequence_length,        // seq_len_q
-                                                              parameters.total_sequence_length,  // seq_len_kv
-                                                              is_unidirectional_);
+                        cudnn_sdpa_supported;
   DUMP_STRING("Use cuDNN SDPA = ", (use_cudnn_sdpa == true));
   if (use_cudnn_sdpa) {
     kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
@@ -409,14 +435,14 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                        enable_trt_flash_attention_, is_unidirectional_);
+                                        enable_trt_flash_attention_);
 
   DUMP_STRING("Use fused runner = ", (use_fused_runner == true));
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       std::call_once(fused_fp16_runner_created_, [&]() {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm,
                                                           enable_trt_flash_attention_, parameters.scale);
       });
     }
@@ -526,14 +552,16 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   data.allow_debug_info = kernel_options_->AllowDebugInfo();
 
   // For past-present buffer sharing.
+  IAllocatorUniquePtr<void> seqlens_k_buffer;
   if (parameters.past_present_share_buffer) {
-    std::vector<int64_t> seqlens_k(parameters.batch_size, parameters.total_sequence_length - 1);
-    size_t seqlens_k_bytes = 0;
-    seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
+    const size_t seqlens_k_bytes = sizeof(int) * static_cast<size_t>(parameters.batch_size);
+    seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice));
+      // Fill on the compute stream. A host-to-device copy would both race with the
+      // asynchronous launches below and be illegal during CUDA graph capture.
+      onnxruntime::cuda::Fill<int32_t>(stream, data.seqlens_k_total, parameters.total_sequence_length,
+                                       parameters.batch_size);
     }
   }
 
@@ -545,7 +573,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_trt_cross_attention = fused_cross_attention_kernel != nullptr;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_fp16_runner_ != nullptr) {
-      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
+      debug_info.SetTrtFusedKernel(enable_trt_flash_attention_, sequence_length);
     }
     debug_info.Print("MultiHeadAttention",
                      this->Node().Name(),

@@ -10,6 +10,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
 
@@ -44,6 +45,8 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
+class KernelPilot;
+class RunInstrumentationContext;
 
 struct ModelSavingOptions;
 
@@ -1004,6 +1007,11 @@ struct ProviderHost {
 
   virtual bool Utils__HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) = 0;
 
+  virtual Status Utils__ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                                 const std::filesystem::path& external_data_path) = 0;
+  virtual Status Utils__ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                                        const std::filesystem::path& external_data_path) = 0;
+
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1405,6 +1413,47 @@ struct ProviderHost {
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
+
+  // Float8E8M0 support — appended at end to preserve vtable ABI compatibility
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetType_Float8E8M0() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E8M0() = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E8M0() = 0;
+#endif
+  virtual Float8E8M0* Tensor__MutableData_Float8E8M0(Tensor* p) = 0;
+  virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
+  virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
+#endif
+
+  // Retained for provider vtable ABI compatibility. Run instrumentation is no longer active.
+  virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+      const OpKernelContext* p) = 0;
+  virtual const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) = 0;
+  virtual TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) = 0;
+  virtual uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) = 0;
+  virtual void RunInstrumentationContext__AddDeferredRecord(
+      const RunInstrumentationContext* p,
+      std::unique_ptr<DeferredRunInstrumentationRecord> record) = 0;
+  virtual bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
+      const RunInstrumentationContext* p, size_t element_count) = 0;
+  virtual void RunInstrumentationContext__RecordMoeRoutingEvent(
+      const RunInstrumentationContext* p,
+      const TimePoint& start_time,
+      const TimePoint& end_time,
+      const std::string& node_name,
+      NodeIndex node_index,
+      const std::string& node_type,
+      std::string expert_ids_json,
+      std::string router_weights_json,
+      int64_t num_rows,
+      int64_t top_k,
+      int execution_device_id,
+      int64_t completion_ns,
+      const std::string& completion_timestamp_source) = 0;
+
+  // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
+  virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

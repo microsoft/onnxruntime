@@ -11,22 +11,22 @@
 // from onnxruntime/core/framework/allocator_stats.h
 // copied from onnxruntime::AllocatorStats
 struct AllocatorStats {
-  int64_t num_allocs;             // Number of allocations.
-  int64_t num_reserves;           // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
-  int64_t num_arena_extensions;   // Number of arena extensions (Relevant only for arena based allocators)
-  int64_t num_arena_shrinkages;   // Number of arena shrinkages (Relevant only for arena based allocators)
-  int64_t bytes_in_use;           // Number of bytes in use.
-  int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
-  int64_t max_bytes_in_use;       // The maximum bytes in use.
-  int64_t max_alloc_size;         // The max single allocation seen.
-                                  // The upper limit what the allocator can allocate, if such a limit
-                                  // is known. Certain allocator may return 0 to indicate the limit is unknown.
-  int64_t bytes_limit;
+  int64_t num_allocs;              // Number of allocations.
+  int64_t num_reserves;            // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+  int64_t num_arena_extensions;    // Number of arena extensions (Relevant only for arena based allocators)
+  int64_t num_arena_shrinkages;    // Number of arena shrinkages (Relevant only for arena based allocators)
+  int64_t bytes_in_use;            // Number of bytes in use (includes padding).
+  int64_t bytes_requested_in_use;  // Number of bytes actually requested by user code (excludes padding).
+  int64_t total_allocated_bytes;   // The total number of allocated bytes by the allocator.
+  int64_t max_bytes_in_use;        // The maximum bytes in use.
+  int64_t max_alloc_size;          // The max single allocation seen.
+  int64_t bytes_limit;             // The upper limit what the allocator can allocate (0 if unknown).
 
   void ToKeyValuePairs(const OrtApi& api, OrtKeyValuePairs* kvps) const {
     if (num_allocs > 0 || bytes_limit != 0) {
       api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
       api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
+      api.AddKeyValuePair(kvps, "RequestedInUse", std::to_string(bytes_requested_in_use).c_str());
       api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
       api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
       api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
@@ -41,6 +41,7 @@ struct AllocatorStats {
     std::ostringstream ss;
     ss << "Limit:                    " << this->bytes_limit << "\n"
        << "InUse:                    " << this->bytes_in_use << "\n"
+       << "RequestedInUse:           " << this->bytes_requested_in_use << "\n"
        << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
        << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
        << "NumAllocs:                " << this->num_allocs << "\n"

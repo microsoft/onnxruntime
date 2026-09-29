@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
 
@@ -41,11 +42,25 @@
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP2_SVE2P1
+#define HWCAP2_SVE2P1 (UINT64_C(1) << 36)
+#endif
+
 #ifndef HWCAP2_BF16
 #define HWCAP2_BF16 (1 << 14)
 #endif
 
 #endif  // ARM
+
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#include <asm/hwprobe.h>
+#ifndef RISCV_HWPROBE_EXT_ZVFH
+#define RISCV_HWPROBE_EXT_ZVFH (1 << 30)
+#endif
+#ifndef RISCV_HWPROBE_IMA_V
+#define RISCV_HWPROBE_IMA_V (1 << 2)
+#endif
+#endif  // RISCV64
 
 #endif  // Linux
 
@@ -55,6 +70,12 @@
 
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
+#endif
+
+// Support querying SVE2.1 when building with Windows SDKs older than 26100.
+// IsProcessorFeaturePresent returns false when the running HAL cannot detect it.
+#ifndef PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE 48
 #endif
 
 #endif  // _WIN32
@@ -180,6 +201,8 @@ void CPUIDInfo::X86Init() {
 #if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
+  has_arm_sve2p1_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVE2P1) != 0);
+
   // Assuming no hyper-threading, no NUMA groups
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -207,6 +230,10 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
+      if (coreid < 0 || static_cast<size_t>(coreid) >= core_uarchs_.size()) {
+        continue;
+      }
+
       auto uarch = corep->uarch;
       core_uarchs_[coreid] = uarch;
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
@@ -226,6 +253,8 @@ void CPUIDInfo::ArmLinuxInit() {
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
+
+  has_arm_sve_ = has_arm_sve_ || has_arm_sve2p1_;
 }
 
 #elif defined(_WIN32)  // ^ defined(__linux__)
@@ -303,6 +332,19 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+#if defined(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE)
+  // Available from Windows 11 24H2 SDKs; older SDKs lack the constants, in
+  // which case detection falls back to cpuinfo above (or SVE stays off).
+  has_arm_sve_ = has_arm_sve_ || IsProcessorFeaturePresent(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE) != 0;
+#if defined(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE)
+  // SVE i8mm gates the svmmla QGEMM kernels; without it they must not dispatch.
+  has_arm_sve_i8mm_ = has_arm_sve_ &&
+                      IsProcessorFeaturePresent(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE) != 0;
+#endif
+#endif
+  has_arm_sve2p1_ = IsProcessorFeaturePresent(PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE) != 0;
+  has_arm_sve_ = has_arm_sve_ || has_arm_sve2p1_;
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
@@ -334,6 +376,17 @@ void CPUIDInfo::ArmAppleInit() {
 
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 
+#if defined(CPUIDINFO_ARCH_RISCV64) && defined(__linux__)
+void CPUIDInfo::RiscvLinuxInit() {
+  struct riscv_hwprobe pairs[] = {
+      {RISCV_HWPROBE_KEY_IMA_EXT_0, 0},
+  };
+  if (syscall(__NR_riscv_hwprobe, pairs, 1, 0, nullptr, 0) == 0) {
+    has_fp16_ = (pairs[0].value & RISCV_HWPROBE_EXT_ZVFH) != 0;
+  }
+}
+#endif  // defined(CPUIDINFO_ARCH_RISCV64) && defined(__linux__)
+
 uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #ifdef _WIN32
   return GetCurrentProcessorNumber();
@@ -360,11 +413,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
-  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
-  // an unhelpful "Unknown CPU vendor" warning.
-#if !defined(__wasm__)
   VendorInfoInit();
-#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
@@ -377,5 +426,20 @@ CPUIDInfo::CPUIDInfo() {
   ArmAppleInit();
 #endif
 #endif  // defined(CPUIDINFO_ARCH_ARM)
+
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#if defined(__linux__)
+  RiscvLinuxInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_RISCV64)
+}
+
+CPUIDInfo::~CPUIDInfo() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    cpuinfo_deinitialize();
+    pytorch_cpuinfo_init_ = false;
+  }
+#endif
 }
 }  // namespace onnxruntime

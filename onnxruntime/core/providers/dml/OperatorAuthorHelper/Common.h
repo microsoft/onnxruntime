@@ -13,6 +13,14 @@
         }\
     }
 
+#define ML_CHECK_VALID_ARGUMENT_MSG(x, fmt, ...)\
+    {\
+        if ((x) == false)\
+        {\
+            ORT_THROW_HR_MSG(E_INVALIDARG, fmt, __VA_ARGS__);\
+        }\
+    }
+
 #define ML_INVALID_ARGUMENT(msg)\
     ORT_THROW_HR(E_INVALIDARG);\
 

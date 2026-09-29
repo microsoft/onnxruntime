@@ -1,0 +1,578 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Unit tests for the sample-only EPContext data helpers in
+// onnxruntime/test/autoep/library/ep_context_data_utils.h.
+
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#if !defined(_WIN32)
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
+#include <gsl/gsl>
+#include <gtest/gtest.h>
+
+#include "core/graph/model_editor_api_types.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
+
+#include "test/autoep/ep_context_data_callbacks.h"
+#include "test/autoep/library/ep_context_data_utils.h"
+#include "test/util/include/api_asserts.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/test_allocator.h"
+
+namespace onnxruntime {
+namespace test {
+
+namespace {
+
+OrtStatus* ORT_API_CALL LoadInvalidEpContextDataCallback(void* state, const char* file_name,
+                                                         OrtAllocator* /*allocator*/, void** buffer,
+                                                         size_t* data_size) {
+  auto* callback_state = static_cast<EpContextDataCallbackState*>(state);
+  callback_state->read_called = true;
+  callback_state->read_file_name = file_name;
+
+  *buffer = nullptr;
+  *data_size = 1;
+  return nullptr;
+}
+
+// Allocates a real buffer via the provided allocator and then returns an error status. Used to verify the zero-copy
+// reader frees the callback buffer and leaves the owning buffer empty on a callback error path.
+OrtStatus* ORT_API_CALL LoadFailingAfterAllocEpContextDataCallback(void* state, const char* file_name,
+                                                                   OrtAllocator* allocator, void** buffer,
+                                                                   size_t* data_size) {
+  auto* callback_state = static_cast<EpContextDataCallbackState*>(state);
+  callback_state->read_called = true;
+  callback_state->read_file_name = file_name;
+
+  *buffer = nullptr;
+  *data_size = 0;
+  constexpr size_t kSize = 8;
+  OrtStatus* alloc_status = Ort::GetApi().AllocatorAlloc(allocator, kSize, buffer);
+  if (alloc_status != nullptr) {
+    return alloc_status;
+  }
+  *data_size = kSize;
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "synthetic read failure after allocation");
+}
+
+void ExpectOrtStatusError(OrtStatus* status_ptr, OrtErrorCode expected_code, std::string_view expected_message) {
+  Ort::Status status{status_ptr};
+  ASSERT_NE(status_ptr, nullptr) << "Expected a failure status, but the API returned nullptr (OK).";
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), expected_code);
+  EXPECT_THAT(std::string{status.GetErrorMessage()}, ::testing::HasSubstr(std::string{expected_message}));
+}
+
+std::filesystem::path PrepareTempTestDir(std::string_view name) {
+  std::filesystem::path test_dir = std::string{name};
+  std::filesystem::remove_all(test_dir);
+  std::filesystem::create_directories(test_dir);
+  return test_dir;
+}
+
+}  // namespace
+
+TEST(OrtEpLibrary, EpContextDataUtils_PathHelpersRoundTrip) {
+  const auto& api = Ort::GetApi();
+  const std::string file_name = "context_data.bin";
+
+#ifdef _WIN32
+  std::wstring wide_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8ToWideString(api, file_name, wide_file_name));
+  ASSERT_FALSE(wide_file_name.empty());
+  std::string round_tripped_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WideToUtf8String(api, wide_file_name, round_tripped_file_name));
+  EXPECT_EQ(round_tripped_file_name, file_name);
+
+  const std::string invalid_utf8(1, static_cast<char>(0xff));
+  std::wstring invalid_wide;
+  ExpectOrtStatusError(ep_context_data_utils::Utf8ToWideString(api, invalid_utf8, invalid_wide),
+                       ORT_INVALID_ARGUMENT, "not valid UTF-8");
+  EXPECT_TRUE(invalid_wide.empty());
+#endif
+
+  std::filesystem::path file_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, file_name.c_str(), file_path));
+  ASSERT_FALSE(file_path.empty());
+  std::string round_tripped_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, file_path, round_tripped_path));
+  EXPECT_EQ(round_tripped_path, file_name);
+
+  std::filesystem::path empty_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, nullptr, empty_path));
+  EXPECT_TRUE(empty_path.empty());
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, "", empty_path));
+  EXPECT_TRUE(empty_path.empty());
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
+  const auto& api = Ort::GetApi();
+  std::filesystem::path data_path;
+
+  data_path = "stale.ctx";
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, nullptr, nullptr, data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(data_path.empty());
+
+  data_path = "stale.ctx";
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "", nullptr, data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(data_path.empty());
+
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, "relative.ctx", nullptr, data_path));
+  std::string resolved_data_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, resolved_data_path));
+  EXPECT_EQ(resolved_data_path, "relative.ctx");
+
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "unused.ctx", nullptr, nullptr, 1),
+                       ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "unused.ctx", nullptr,
+                                                                                 nullptr, 1),
+                       ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
+
+  ep_context_data_utils::EpContextData read_result;
+  ExpectOrtStatusError(
+      ep_context_data_utils::ReadEpContextData(api, /*ep_context_config=*/nullptr, "", nullptr, read_result),
+      ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(read_result.empty());  // reset up front, even though file_name validation fails
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "", nullptr, nullptr, 0),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, "logical_context_data.bin", "", nullptr, nullptr, 0),
+                       ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
+  const auto& api = Ort::GetApi();
+  std::filesystem::path data_path;
+
+  // Trusted direct callers (graph == nullptr) own the path: ".." is allowed (there is no model directory to contain
+  // against, and absolute paths are already permitted) and the name is accepted as-is rather than rejected.
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx", nullptr, data_path));
+  EXPECT_FALSE(data_path.empty());
+
+#ifdef _WIN32
+  const char* absolute_file_name = "C:\\temp\\escape.ctx";
+  const char* drive_relative_file_name = "C:escape.ctx";
+  const char* root_relative_file_name = "\\escape.ctx";
+#else
+  const char* absolute_file_name = "/tmp/escape.ctx";
+#endif
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path));
+  EXPECT_TRUE(data_path.is_absolute());
+
+  std::vector<char> data;
+  // Trusted (graph == nullptr) reads also allow ".."; the resolver no longer rejects it, so a non-existent target now
+  // surfaces as a normal file-open failure rather than a traversal rejection.
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "../escape.ctx", nullptr, data),
+                       ORT_FAIL, "Failed to open EPContext data file for read");
+
+  ModelEditorGraph empty_model_path_graph;
+  // Untrusted (model-derived) names must be relative. The resolver is the only place absolute/rooted names are
+  // rejected; the logical write-side name is an opaque callback key and is no longer validated as a path.
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+#ifdef _WIN32
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, drive_relative_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, root_relative_file_name,
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+#endif
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx",
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "requires a model path");
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_RejectsNonRegularFileTargets) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_regular_file_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir / "subdir"));
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  // A model-derived name may resolve to a directory and still pass containment ("subdir/.." resolves to the model
+  // directory itself), so the file-type check - not the resolver - is what rejects it.
+  std::vector<char> data;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "subdir", graph.ToExternal(), data),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "subdir/..", graph.ToExternal(), data),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+
+  // The zero-copy entry point applies the same gate on its file-fallback path.
+  std::string directory_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, model_dir / "subdir", directory_name));
+  ep_context_data_utils::EpContextData directory_read_result;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(api, /*ep_context_config=*/nullptr,
+                                                                directory_name.c_str(), nullptr,
+                                                                directory_read_result),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+  EXPECT_TRUE(directory_read_result.empty());
+
+  // Writing over an existing directory is rejected up front instead of surfacing as a confusing stream failure.
+  const std::string payload = "regular file payload";
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, directory_name.c_str(), nullptr,
+                                                                       payload.data(), payload.size()),
+                       ORT_INVALID_ARGUMENT, "must be a regular file");
+
+  // A not-yet-existing target is the normal write case and is still allowed.
+  std::string new_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, model_dir / "new_context_data.bin", new_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, new_file_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, new_file_name.c_str(), nullptr, data));
+  EXPECT_EQ(std::string(data.begin(), data.end()), payload);
+
+#if !defined(_WIN32)
+  // The FIFO case is what motivated the file-type gate: it passes containment and an ifstream open on it blocks
+  // indefinitely, so without the gate this read would hang instead of failing.
+  const std::filesystem::path fifo_path = model_dir / "fifo_context.bin";
+  if (mkfifo(fifo_path.c_str(), 0600) == 0) {
+    ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "fifo_context.bin",
+                                                                          graph.ToExternal(), data),
+                         ORT_INVALID_ARGUMENT, "must be a regular file");
+  }
+#endif
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadWithAllocatorRejectsNullArguments) {
+  const auto& api = Ort::GetApi();
+
+  // This helper takes raw out-pointers rather than references, so a null argument must come back as an OrtStatus*
+  // like every other bad-argument case in the header, not as a crash.
+  void* buffer = nullptr;
+  size_t buffer_size = 0;
+  OrtAllocator* default_allocator = nullptr;
+  ASSERT_ORTSTATUS_OK(api.GetAllocatorWithDefaultOptions(&default_allocator));
+
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, default_allocator, nullptr, &buffer_size),
+                       ORT_INVALID_ARGUMENT, "non-null out_buffer and out_size");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, default_allocator, &buffer, nullptr),
+                       ORT_INVALID_ARGUMENT, "non-null out_buffer and out_size");
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFileWithAllocator(
+                           api, "some_context.bin", nullptr, nullptr, &buffer, &buffer_size),
+                       ORT_INVALID_ARGUMENT, "non-null allocator");
+
+  // The rejected calls must not have written through the output pointers.
+  EXPECT_EQ(buffer, nullptr);
+  EXPECT_EQ(buffer_size, 0u);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_RejectsSymlinkWriteTargets) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_symlink_write_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  const std::filesystem::path outside_dir = test_dir / "outside_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir));
+  ASSERT_TRUE(std::filesystem::create_directories(outside_dir));
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  // A *dangling* symlink is the dangerous case. weakly_canonical() only canonicalizes the longest existing prefix,
+  // and a dangling link reports as not_found, so the link path itself survives resolution: it stays lexically inside
+  // the model directory and passes containment, yet an ofstream would follow it and create the payload outside.
+  // symlink_status() inspects the link rather than following it, which is what rejects this.
+  const std::filesystem::path dangling_link = model_dir / "dangling.ctx";
+  const std::filesystem::path escape_target = std::filesystem::path{".."} / outside_dir.filename() / "escaped.ctx";
+  std::error_code symlink_error;
+  std::filesystem::create_symlink(escape_target, dangling_link, symlink_error);
+  if (symlink_error) {
+    GTEST_SKIP() << "Unable to create symlink for write-target test: " << symlink_error.message();
+  }
+
+  const std::string payload = "symlink payload";
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "dangling.ctx", graph.ToExternal(),
+                                                                       payload.data(), payload.size()),
+                       ORT_INVALID_ARGUMENT, "must not be a symlink");
+  // The escape is what actually matters: nothing may have been created outside the model directory.
+  EXPECT_FALSE(std::filesystem::exists(outside_dir / "escaped.ctx"));
+
+  // A symlink that *does* resolve is handled by containment instead, because weakly_canonical() resolves it before
+  // the write gate sees the path. Pointing outside the model directory is therefore rejected as a containment
+  // failure, not as a symlink - the resolved target is what gets checked.
+  std::string outside_target_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, outside_dir / "target.ctx", outside_target_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, outside_target_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+  const std::filesystem::path escaping_link = model_dir / "escaping.ctx";
+  std::filesystem::create_symlink(std::filesystem::path{".."} / outside_dir.filename() / "target.ctx", escaping_link,
+                                  symlink_error);
+  if (!symlink_error) {
+    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "escaping.ctx", graph.ToExternal(),
+                                                                         payload.data(), payload.size()),
+                         ORT_INVALID_ARGUMENT, "within the model directory");
+  }
+
+  // A trusted caller (graph == nullptr) skips resolution entirely, so the write gate is the only thing standing
+  // between the caller and the link - and here it does reject an ordinary, resolvable symlink.
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, "real.ctx", graph.ToExternal(),
+                                                                      payload.data(), payload.size()));
+  const std::filesystem::path inside_link = model_dir / "inside.ctx";
+  std::filesystem::create_symlink(std::filesystem::path{"real.ctx"}, inside_link, symlink_error);
+  if (!symlink_error) {
+    std::string inside_link_name;
+    ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, inside_link, inside_link_name));
+    ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, inside_link_name.c_str(), nullptr,
+                                                                         payload.data(), payload.size()),
+                         ORT_INVALID_ARGUMENT, "must not be a symlink");
+  }
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_symlink_escape_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  const std::filesystem::path outside_dir = test_dir / "outside_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir));
+  ASSERT_TRUE(std::filesystem::create_directories(outside_dir));
+
+  const std::filesystem::path symlink_path = model_dir / "linked_outside";
+  // Relative symlink targets are resolved by the OS relative to the link's own directory, not the test's working
+  // directory. Point to the sibling outside_dir using a link-relative target; using the test_dir-relative
+  // `outside_dir` path here would create a dangling link under model_dir, and weakly_canonical() would not traverse it.
+  const std::filesystem::path symlink_target = std::filesystem::path{".."} / outside_dir.filename();
+  std::error_code symlink_error;
+  std::filesystem::create_directory_symlink(symlink_target, symlink_path, symlink_error);
+  if (symlink_error) {
+    GTEST_SKIP() << "Unable to create directory symlink for containment test: " << symlink_error.message();
+  }
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  std::filesystem::path data_path;
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "linked_outside/escape.ctx",
+                                                                       graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "resolve to a path within the model directory");
+  EXPECT_TRUE(data_path.empty());
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_file_fallback_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::string payload = "file fallback payload";
+  const std::filesystem::path data_path = test_dir / "context_data.bin";
+  std::string data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, data_file_name));
+
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, data_file_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+
+  std::vector<char> data;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, data_file_name.c_str(), nullptr, data));
+  EXPECT_EQ(std::string(data.begin(), data.end()), payload);
+
+  const std::filesystem::path wrapper_data_path = test_dir / "wrapper_context_data.bin";
+  std::string wrapper_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, wrapper_data_path, wrapper_data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, nullptr, wrapper_data_file_name.c_str(), nullptr, payload.data(), payload.size()));
+
+  ep_context_data_utils::EpContextData wrapper_read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, wrapper_data_file_name.c_str(), nullptr, wrapper_read_result));
+  EXPECT_EQ(std::string(wrapper_read_result.data(), wrapper_read_result.data() + wrapper_read_result.size()), payload);
+
+  const std::filesystem::path fallback_data_path = test_dir / "fallback_context_data.bin";
+  std::string fallback_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, fallback_data_path, fallback_data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(), nullptr, payload.data(),
+      payload.size()));
+
+  // The logical name is an opaque callback-namespace key, so it is not validated as a filesystem path: even a ".."
+  // name writes normally to the separately resolved fallback target, and never to the traversal location.
+  const std::filesystem::path logical_passthrough_path = test_dir / "logical_passthrough_context_data.bin";
+  std::string logical_passthrough_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, logical_passthrough_path,
+                                                              logical_passthrough_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, nullptr, "../logical_context_data.bin", logical_passthrough_file_name.c_str(), nullptr, payload.data(),
+      payload.size()));
+  EXPECT_TRUE(std::filesystem::exists(logical_passthrough_path));
+  EXPECT_FALSE(std::filesystem::exists(test_dir / ".." / "logical_context_data.bin"));
+
+  data.clear();
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, fallback_data_file_name.c_str(), nullptr,
+                                                                       data));
+  EXPECT_EQ(std::string(data.begin(), data.end()), payload);
+
+  const std::filesystem::path empty_data_path = test_dir / "empty_context_data.bin";
+  std::string empty_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, empty_data_path, empty_data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, nullptr, empty_data_file_name.c_str(), nullptr, nullptr, 0));
+
+  ep_context_data_utils::EpContextData empty_read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, empty_data_file_name.c_str(), nullptr, empty_read_result));
+  EXPECT_TRUE(empty_read_result.empty());
+
+  const std::filesystem::path missing_data_path = test_dir / "missing_context_data.bin";
+  std::string missing_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, missing_data_path, missing_data_file_name));
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, missing_data_file_name.c_str(), nullptr,
+                                                                        data),
+                       ORT_FAIL, "Failed to open EPContext data file for read");
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_CallbackFallbackUsesCallbacks) {
+  const auto& api = Ort::GetApi();
+
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = {'c', 'a', 'l', 'l', 'b', 'a', 'c', 'k'};
+  EpContextDataCallbackState write_callback_state;
+
+  ep_context_data_utils::EpContextData read_result;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "callback_context.bin", nullptr, read_result));
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "callback_context.bin");
+  EXPECT_EQ(std::vector<char>(read_result.data(), read_result.data() + read_result.size()),
+            read_callback_state.payload);
+
+  read_callback_state = {};
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "empty_callback_context.bin", nullptr, read_result));
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "empty_callback_context.bin");
+  EXPECT_TRUE(read_result.empty());
+
+  const std::string payload = "callback write payload";
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, StoreEpContextDataCallback, &write_callback_state, "callback_write_context.bin",
+      "callback_write_context.bin", nullptr, payload.data(), payload.size()));
+  ASSERT_TRUE(write_callback_state.write_called);
+  EXPECT_EQ(write_callback_state.write_file_name, "callback_write_context.bin");
+  EXPECT_EQ(std::string(write_callback_state.payload.begin(), write_callback_state.payload.end()), payload);
+
+  write_callback_state = {};
+  const std::string payload_with_unused_fallback = "callback write payload with unused fallback";
+  // With a callback present the file fallback is never used, so the empty fallback name is accepted (not validated).
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+      api, StoreEpContextDataCallback, &write_callback_state,
+      "callback_write_context_unused_fallback.bin", "", nullptr,
+      payload_with_unused_fallback.data(), payload_with_unused_fallback.size()));
+  ASSERT_TRUE(write_callback_state.write_called);
+  EXPECT_EQ(write_callback_state.write_file_name, "callback_write_context_unused_fallback.bin");
+  EXPECT_EQ(std::string(write_callback_state.payload.begin(), write_callback_state.payload.end()),
+            payload_with_unused_fallback);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPayload) {
+  const auto& api = Ort::GetApi();
+
+  EpContextDataCallbackState read_callback_state;
+
+  ep_context_data_utils::EpContextData read_result;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, LoadInvalidEpContextDataCallback, &read_callback_state,
+                           "invalid_callback_context.bin", nullptr, read_result),
+                       ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "invalid_callback_context.bin");
+  EXPECT_TRUE(read_result.empty());
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataAdoptsCallbackBufferZeroCopy) {
+  const auto& api = Ort::GetApi();
+
+  // Callback path: ReadEpContextData adopts the buffer the callback allocates (no copy into a std::vector) and frees
+  // it via the same allocator when the EpContextData owner is destroyed.
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = {'z', 'e', 'r', 'o', '-', 'c', 'o', 'p', 'y'};
+  ep_context_data_utils::EpContextData owned;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "zero_copy_context.bin", nullptr, owned));
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "zero_copy_context.bin");
+  ASSERT_EQ(owned.size(), read_callback_state.payload.size());
+  EXPECT_EQ(std::vector<char>(owned.data(), owned.data() + owned.size()), read_callback_state.payload);
+  // The point of this entry point is adoption, not equality: assert the exact buffer the callback allocated is the
+  // one being handed back. Comparing contents alone would still pass if the reader silently copied.
+  ASSERT_NE(read_callback_state.last_read_buffer, nullptr);
+  EXPECT_EQ(static_cast<const void*>(owned.data()), read_callback_state.last_read_buffer);
+
+  // File-fallback path: with no callback configured, ReadEpContextData reads the file into the owned buffer.
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_zero_copy_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::string payload = "zero copy file payload";
+  const std::filesystem::path data_path = test_dir / "zero_copy_file.bin";
+  std::string data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, data_file_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+
+  ep_context_data_utils::EpContextData file_owned;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, data_file_name.c_str(), nullptr, file_owned));
+  EXPECT_EQ(std::string(file_owned.data(), file_owned.data() + file_owned.size()), payload);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataLeavesOutputEmptyOnCallbackError) {
+  const auto& api = Ort::GetApi();
+
+  // A callback that allocates a buffer and then fails: ReadEpContextData must free that buffer (via its internal RAII
+  // guard) and leave the owning buffer empty, since ownership is transferred to `out` only on success.
+  EpContextDataCallbackState read_callback_state;
+  ep_context_data_utils::EpContextData owned;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, LoadFailingAfterAllocEpContextDataCallback, &read_callback_state,
+                           "failing_after_alloc_context.bin", nullptr, owned),
+                       ORT_FAIL, "synthetic read failure after allocation");
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "failing_after_alloc_context.bin");
+  EXPECT_TRUE(owned.empty());
+  EXPECT_EQ(owned.size(), 0u);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataUsesCallerSuppliedAllocator) {
+  const auto& api = Ort::GetApi();
+
+  // A caller-supplied allocator is used for the callback output buffer, and the same allocator frees it when the
+  // EpContextData owner is destroyed (matching alloc/free).
+  MockedOrtAllocator allocator;
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = {'a', 'l', 'l', 'o', 'c', 'a', 't', 'o', 'r'};
+
+  {
+    ep_context_data_utils::EpContextData owned;
+    ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+        api, LoadEpContextDataCallback, &read_callback_state, "caller_allocator_context.bin", nullptr, owned,
+        &allocator));
+    ASSERT_EQ(owned.size(), read_callback_state.payload.size());
+    EXPECT_EQ(std::vector<char>(owned.data(), owned.data() + owned.size()), read_callback_state.payload);
+    // The caller-supplied allocator (not ORT's default) allocated the callback output buffer.
+    EXPECT_GE(allocator.NumAllocations(), static_cast<size_t>(1));
+  }
+  // Destroying `owned` freed the buffer via the same caller-supplied allocator; nothing should leak.
+  allocator.LeakCheck();
+}
+
+}  // namespace test
+}  // namespace onnxruntime

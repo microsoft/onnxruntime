@@ -212,16 +212,13 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #endif
 
 /**
- * @brief Calculates how much memory will be required for putting contents of the given tensor into a plain array.
- *
- * complex64/complex128 tensors are not supported. The size is calculated from the dimensions and the data type,
- * to accommodate fbs::Tensors with external data.
+ * @brief Calculates the tensor's element count from its dimensions.
  *
  * @param tensor flatbuffer representation of a tensor.
- * @param size_in_bytes Output size in bytes of the tensor's data.
+ * @param num_elements Output number of elements in the tensor.
  * @return Status indicating success or providing error information.
  */
-Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_bytes) {
+static Status GetElementCountFromFbsTensor(const fbs::Tensor& tensor, size_t& num_elements) {
   const auto* tensor_name = tensor.name();
   const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
   const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
@@ -237,7 +234,7 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
                            "'. Invalid ORT format model.");
   }
 
-  size_t num_elements = 1;
+  num_elements = 1;
   for (int64_t dim : *fbs_dims) {
     if (dim < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -262,6 +259,30 @@ Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_by
                              "'. Invalid ORT format model.");
     }
   }
+
+  return Status::OK();
+}
+
+/**
+ * @brief Calculates how much memory will be required for putting contents of the given tensor into a plain array.
+ *
+ * complex64/complex128 tensors are not supported. The size is calculated from the dimensions and the data type,
+ * to accommodate fbs::Tensors with external data.
+ *
+ * @param tensor flatbuffer representation of a tensor.
+ * @param size_in_bytes Output size in bytes of the tensor's data.
+ * @return Status indicating success or providing error information.
+ */
+Status GetSizeInBytesFromFbsTensor(const fbs::Tensor& tensor, size_t& size_in_bytes) {
+  const auto* tensor_name = tensor.name();
+  const auto* tensor_name_str = tensor_name ? tensor_name->c_str() : "<unnamed>";
+  const auto* tensor_data_type_str = fbs::EnumNameTensorDataType(tensor.data_type());
+  if (tensor_data_type_str[0] == '\0') {
+    tensor_data_type_str = "<unknown>";
+  }
+
+  size_t num_elements = 0;
+  ORT_RETURN_IF_ERROR(GetElementCountFromFbsTensor(tensor, num_elements));
 
   size_t byte_size_of_one_element;
 
@@ -357,6 +378,15 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
   if (fbs_data_type == fbs::TensorDataType::STRING) {
     auto fbs_str_data = fbs_tensor.string_data();
     ORT_RETURN_IF(nullptr == fbs_str_data, "Missing string data for initializer. Invalid ORT format model.");
+    size_t expected_num_strings = 0;
+    ORT_RETURN_IF_ERROR(GetElementCountFromFbsTensor(fbs_tensor, expected_num_strings));
+    ORT_RETURN_IF(
+        fbs_str_data->size() != expected_num_strings,
+        "Initializer string data size mismatch for tensor '",
+        fbs_tensor.name() ? fbs_tensor.name()->c_str() : "<unnamed>",
+        "'. Expected ", expected_num_strings, " strings but found ", fbs_str_data->size(),
+        ". Invalid ORT format model.");
+
     auto mutable_str_data = initializer.mutable_string_data();
     mutable_str_data->Reserve(fbs_str_data->size());
     const auto* raw_string_offsets = reinterpret_cast<const uint8_t*>(fbs_str_data->Data());
@@ -372,6 +402,16 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
   } else {
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     if (fbs_raw_data) {
+      size_t expected_num_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, expected_num_bytes));
+      const auto* fbs_name = fbs_tensor.name();
+      const char* tensor_name = fbs_name ? fbs_name->c_str() : "<unnamed>";
+      ORT_RETURN_IF(
+          fbs_raw_data->size() != expected_num_bytes,
+          "Initializer raw data size mismatch for tensor '", tensor_name,
+          "'. Expected ", expected_num_bytes, " bytes but found ", fbs_raw_data->size(),
+          ". Invalid ORT format model.");
+
       if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
@@ -418,17 +458,30 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
                                       SparseTensorProto& initializer,
                                       const OrtFormatLoadOptions& load_options) {
   SparseTensorProto loaded_initializer;
+
+  // Sparse sub-tensors must never carry the in-memory address marker. The marker would point into
+  // the mmap'd flatbuffer buffer; allowing it here would force every downstream consumer of the
+  // sparse->dense conversion to validate the marker, and would conflate the trust boundary
+  // (sparse markers from untrusted .onnx input are an arbitrary-memory-read vector). Force the
+  // inner loader to materialize a normal inline raw_data copy regardless of size; the cost is
+  // small because sparse->dense conversion immediately copies the bytes again.
+  OrtFormatLoadOptions sub_tensor_options = load_options;
+  sub_tensor_options.can_use_flatbuffer_for_initializers = false;
+
   auto fbs_values_tensor = fbs_sparse_tensor.values();
   ORT_RETURN_IF(nullptr == fbs_values_tensor, "Missing values for sparse initializer. Invalid ORT format model.");
+  ORT_RETURN_IF(fbs_values_tensor->data_type() == fbs::TensorDataType::STRING,
+                "Unsupported sparse tensor data type of ",
+                ONNX_NAMESPACE::TensorProto_DataType_STRING);
   auto* values_tensor = loaded_initializer.mutable_values();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, sub_tensor_options));
   ORT_RETURN_IF(values_tensor->name().empty(), "Missing name for SparseTensor initializer. Invalid ORT format model.");
 
   auto fbs_indicies_tensor = fbs_sparse_tensor.indices();
   ORT_RETURN_IF(nullptr == fbs_indicies_tensor, "Missing indicies for sparse initializer: ", "'", values_tensor->name(), "'",
                 "Invalid ORT format model.");
   auto* indicies_tensor = loaded_initializer.mutable_indices();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, sub_tensor_options));
 
   auto fbs_dims = fbs_sparse_tensor.dims();
   ORT_RETURN_IF(nullptr == fbs_dims, "Missing dims for sparse initializer: ", "'", values_tensor->name(), "'",

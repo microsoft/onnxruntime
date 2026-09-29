@@ -7,6 +7,8 @@
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
+#include <numbers>
+#include <string_view>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -22,6 +24,32 @@ static bool IsSupportedDataType(const Node& node) {
       return false;
     }
   }
+  return true;
+}
+
+static bool IsSupportedCpuGeluTargetDataType(const Node& node, std::string_view target_domain) {
+  const auto& provider_type = node.GetExecutionProviderType();
+  // Level 1 runs before partitioning, so an empty provider cannot be treated as CPU.
+  // Keep those graphs eligible for providers such as CUDA that support additional dtypes.
+  if (provider_type != kCpuExecutionProvider) {
+    return true;
+  }
+
+  const auto* input_type = node.InputDefs()[0]->Type();
+  if (input_type == nullptr) {
+    return false;
+  }
+
+  // com.microsoft.Gelu(1) has a CPU kernel only for float. The official ONNX Gelu(20)
+  // CPU kernel also supports float16.
+  if (target_domain == kMSDomain) {
+    return *input_type == "tensor(float)";
+  }
+
+  if (target_domain == kOnnxDomain) {
+    return *input_type == "tensor(float)" || *input_type == "tensor(float16)";
+  }
+
   return true;
 }
 /*
@@ -74,7 +102,8 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, div, 1) ||
-        !IsSupportedDataType(div)) {
+        !IsSupportedDataType(div) ||
+        !IsSupportedCpuGeluTargetDataType(div, op_domain)) {
       continue;
     }
 
@@ -82,7 +111,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     // Some Bert model uses this approximation of SQRT2 in the Gelu function
     float approximated_sqrt_two = 1.4142099618911743f;
     if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), approximated_sqrt_two, true) &&
-        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
+        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), std::numbers::sqrt2_v<float>, true)) {
       continue;
     }
 

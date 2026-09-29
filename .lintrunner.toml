@@ -116,6 +116,8 @@ exclude_patterns = [
     'winml/lib/Api.Image/shaders/**',  # Contains data chunks
     'onnxruntime/contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h', # Bool Switches hang Clang
     'onnxruntime/core/providers/coreml/mlprogram_test_scripts/**',  # test scripts only
+    'tools/python/wgsl_template/test/testcases/**', # Generated golden fixtures; must match tool output byte-for-byte
+    'tools/python/wgsl_template/test/in_tree_golden/**', # Generated golden snapshots; must match tool output byte-for-byte
 ]
 command = [
     'python',

@@ -184,6 +184,9 @@ constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementData
     case o::TensorProto_DataType_FLOAT8E5M2FNUZ:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
       break;
+    case o::TensorProto_DataType_FLOAT8E8M0:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
+      break;
     case o::TensorProto_DataType_FLOAT16:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
       break;

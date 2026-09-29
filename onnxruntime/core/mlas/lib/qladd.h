@@ -50,7 +50,7 @@ MlasCalcQLinearAddParameters(
 
 #if defined(MLAS_NEON_INTRINSICS)
 
-#if ! defined(_MSC_VER)
+#if !defined(_MSC_VER) || defined(__clang__)
 
 #define vld1q_s8_ex(pD, align) vld1q_s8((int8_t*)__builtin_assume_aligned(pD, ((align)/8)))
 #define vst1_s8_ex(pD, D, align) vst1_s8((int8_t*)__builtin_assume_aligned(pD, ((align)/8)), D)

@@ -330,6 +330,12 @@ struct TensorArray : public ArgBase {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
             tensor = std::make_unique<Custom::Tensor<float>>(ctx, ith_input, true);
             break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float16_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+            tensor = std::make_unique<Custom::Tensor<Ort::BFloat16_t>>(ctx, ith_input, true);
+            break;
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
             tensor = std::make_unique<Custom::Tensor<double>>(ctx, ith_input, true);
             break;
@@ -359,6 +365,18 @@ struct TensorArray : public ArgBase {
             break;
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
             tensor = std::make_unique<Custom::Tensor<std::string>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E4M3FN_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E4M3FNUZ_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E5M2_t>>(ctx, ith_input, true);
+            break;
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            tensor = std::make_unique<Custom::Tensor<Ort::Float8E5M2FNUZ_t>>(ctx, ith_input, true);
             break;
           default:
             ORT_CXX_API_THROW("unknown input type", ORT_RUNTIME_EXCEPTION);

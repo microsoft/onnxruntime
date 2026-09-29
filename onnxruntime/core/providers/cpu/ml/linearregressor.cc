@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cpu/ml/linearregressor.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -23,6 +25,9 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
       intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
   ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("targets", &num_targets_));
+  ORT_ENFORCE(num_targets_ > 0 && num_targets_ <= std::numeric_limits<std::ptrdiff_t>::max(),
+              "targets must be in range [1, ", std::numeric_limits<std::ptrdiff_t>::max(),
+              "]. Actual value: ", num_targets_);
   ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
 
   // use the intercepts_ if they're valid
@@ -79,6 +84,11 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
   const auto& X = *ctx->Input<Tensor>(0);
   const auto& input_shape = X.Shape();
 
+  if (input_shape.NumDimensions() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input shape needs to be at least a single dimension.");
+  }
+
   if (input_shape.NumDimensions() > 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shape had more than 2 dimension. Dims=",
                            input_shape.NumDimensions());
@@ -95,8 +105,8 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
                            ") overflows size_t");
   }
   ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
-                    "coefficients size (", coefficients_.size(), ") is less than num_targets (", num_targets_,
-                    ") * num_features (", num_features, ")");
+                    "LinearRegressor: coefficients length (", coefficients_.size(),
+                    ") must be at least targets (", num_targets_, ") * features (", num_features, ")");
 
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();

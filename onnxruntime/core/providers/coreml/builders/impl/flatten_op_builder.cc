@@ -17,6 +17,8 @@ class FlattenOpBuilder : public BaseOpBuilder {
 
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,

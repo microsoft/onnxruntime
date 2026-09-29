@@ -5,6 +5,7 @@
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include <mutex>
 #include "core/util/thread_utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #ifdef _WIN32
 #include "test/platform/windows/env.h"
 #include <Windows.h>
@@ -1007,5 +1008,97 @@ TEST(ThreadPoolTest, SpinDurationPositive_TimeBased) {
   TestSpinDurationMode(100);   // 100us
   TestSpinDurationMode(1000);  // 1ms
 }
+
+// Smoke test: exponential backoff (spin_backoff_max > 1) produces correct results.
+void TestSpinBackoffMode(int spin_duration_us, unsigned int spin_backoff_max) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us,
+                                         /*force_hybrid*/ false,
+                                         spin_backoff_max);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, SpinBackoffDefault_NoBackoff) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 1U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffEnabled) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 4U);
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 8U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffWithTimeBoundedSpin) {
+  TestSpinBackoffMode(1000, 8U);  // 1ms + backoff cap 8
+}
+
+// Tests for sizing default (thread_pool_size <= 0) pools from the environment.
+// Each test pins both variables so ambient values cannot leak in.
+// DegreeOfParallelism scales by a granularity factor on hybrid CPUs, so tests compare an
+// env-sized pool against a reference pool of the intended explicit size rather than asserting
+// absolute values.
+namespace {
+int PoolDegreeWithEnv(const test::EnvVarMap& env_vars, concurrency::ThreadPoolType tpool_type,
+                      int thread_pool_size = 0) {
+  test::ScopedEnvironmentVariables scoped_env(env_vars);
+  OrtThreadPoolParams tpo;
+  tpo.thread_pool_size = thread_pool_size;
+  auto tp = concurrency::CreateThreadPool(&Env::Default(), tpo, tpool_type);
+  return concurrency::ThreadPool::DegreeOfParallelism(tp.get());
+}
+
+const optional<std::string> kUnset{};
+const test::EnvVarMap kAllUnset{{"ORT_INTRA_OP_NUM_THREADS", kUnset},
+                                {"ORT_INTER_OP_NUM_THREADS", kUnset}};
+
+int PoolDegreeForExplicitSize(int thread_pool_size) {
+  return PoolDegreeWithEnv(kAllUnset, concurrency::ThreadPoolType::INTRA_OP, thread_pool_size);
+}
+}  // namespace
+
+TEST(ThreadPoolTest, DefaultPoolSizeFromOrtEnvVars) {
+  EXPECT_EQ(PoolDegreeWithEnv({{"ORT_INTRA_OP_NUM_THREADS", "3"},
+                               {"ORT_INTER_OP_NUM_THREADS", kUnset}},
+                              concurrency::ThreadPoolType::INTRA_OP),
+            PoolDegreeForExplicitSize(3));
+  EXPECT_EQ(PoolDegreeWithEnv({{"ORT_INTRA_OP_NUM_THREADS", kUnset},
+                               {"ORT_INTER_OP_NUM_THREADS", "3"}},
+                              concurrency::ThreadPoolType::INTER_OP),
+            PoolDegreeForExplicitSize(3));
+}
+
+TEST(ThreadPoolTest, ExplicitPoolSizeWinsOverEnvVars) {
+  EXPECT_EQ(PoolDegreeWithEnv({{"ORT_INTRA_OP_NUM_THREADS", "2"},
+                               {"ORT_INTER_OP_NUM_THREADS", kUnset}},
+                              concurrency::ThreadPoolType::INTRA_OP,
+                              /*thread_pool_size=*/4),
+            PoolDegreeForExplicitSize(4));
+}
+
+TEST(ThreadPoolTest, OrtEnvVarZeroRestoresMachineSizedDefault) {
+  // An explicit 0 opts back into the machine-sized default.
+  EXPECT_EQ(PoolDegreeWithEnv({{"ORT_INTRA_OP_NUM_THREADS", "0"},
+                               {"ORT_INTER_OP_NUM_THREADS", kUnset}},
+                              concurrency::ThreadPoolType::INTRA_OP),
+            PoolDegreeWithEnv(kAllUnset, concurrency::ThreadPoolType::INTRA_OP));
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(ThreadPoolTest, InvalidOrtEnvVarValueThrows) {
+  EXPECT_THROW(PoolDegreeWithEnv({{"ORT_INTRA_OP_NUM_THREADS", "-1"},
+                                  {"ORT_INTER_OP_NUM_THREADS", kUnset}},
+                                 concurrency::ThreadPoolType::INTRA_OP),
+               OnnxRuntimeException);
+}
+#endif
 
 }  // namespace onnxruntime

@@ -28,6 +28,7 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
@@ -72,23 +73,43 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   return plugin_ep;
 }
 
+// Do some basic checks on `ort_ep` to detect obvious issues early on.
+static Status SanityCheckOrtEp(const OrtEp& ort_ep) {
+  // Plugin EPs were first introduced in ORT 1.22, so we expect at least this API version.
+  constexpr auto kMinAllowedOrtVersionSupported = 22;
+
+  ORT_RETURN_IF_NOT(ort_ep.ort_version_supported >= kMinAllowedOrtVersionSupported,
+                    "OrtEp has invalid ort_version_supported=", ort_ep.ort_version_supported,
+                    " (expected at least ", kMinAllowedOrtVersionSupported, ").");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName != nullptr, "OrtEp has null GetName function pointer.");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName(&ort_ep) != nullptr, "OrtEp's GetName function returned null.");
+
+  return Status::OK();
+}
+
 Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
     const OrtSessionOptions& session_options,
     const OrtLogger& logger,
     /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
   plugin_ep = nullptr;
-  OrtEp* ort_ep = nullptr;
+  OrtEp* ort_ep_raw = nullptr;
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
                                                               ep_metadata_.data(), hardware_devices_.size(),
-                                                              &session_options, &logger, &ort_ep)));
-  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
+                                                              &session_options, &logger, &ort_ep_raw)));
+  ORT_RETURN_IF(ort_ep_raw == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
                 "' returned a NULL OrtEp instance");
+
+  auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter(ep_factory_));
+
+  ORT_RETURN_IF_ERROR(SanityCheckOrtEp(*ort_ep));
 
   std::shared_ptr<KernelRegistry> kernel_registry;
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
-  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+  plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
                                                         *logger.ToInternal());
@@ -121,34 +142,22 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpDevice* const> ep_devices) {
+  // Resolve the EP's default device. If the EP implements GetDefaultMemoryDevice, use its
+  // answer directly. Otherwise fall back to the first OrtEpDevice's default memory info.
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
 
-  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
-
-  // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
-  bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
-                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
-
-                                 if (mem_a == mem_b) {
-                                   return true;  // Point to the same OrtMemoryInfo instance.
-                                 }
-
-                                 if (mem_a == nullptr || mem_b == nullptr) {
-                                   return false;  // One is nullptr and the other is not.
-                                 }
-
-                                 // Both non-null but point to different instances. Use operator==.
-                                 return *mem_a == *mem_b;
-                               });
-  if (!all_match) {
-    ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,
-              "': expected all OrtEpDevice instances to use the same device_memory_info.");
+  if (ep.ort_version_supported >= 27 && ep.GetDefaultMemoryDevice != nullptr) {
+    const OrtMemoryDevice* memory_device = nullptr;
+    Ort::ThrowOnError(ep.GetDefaultMemoryDevice(&ep, &memory_device));
+    if (memory_device != nullptr) {
+      return *static_cast<const OrtDevice*>(memory_device);
+    }
   }
+
+  // If there's no explicit default memory device, choose the first default memory info.
+  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
   return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
 }
@@ -169,7 +178,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
@@ -177,7 +186,11 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
-  // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
+  // Record if the app requested weightless mode. Validation is deferred to Compile().
+  weightless_requested_ =
+      session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
+
+  // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
     const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
@@ -199,7 +212,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
-      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
       provider_options_[key.substr(ep_prefix.size())] = value;
     }
   }
@@ -468,6 +481,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
+// Out-of-line destructor: EpNode and EpValueInfo must be complete types
+// when unique_ptr members are destroyed (required by libc++).
+PluginExecutionProvider::FusedNodeState::~FusedNodeState() = default;
+
 Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node) {
   std::unique_ptr<EpNode> unique_ep_fused_node = nullptr;
   ORT_RETURN_IF_ERROR(EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos, unique_ep_fused_node));
@@ -569,6 +586,36 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
   ORT_RETURN_IF(ort_ep_->Compile == nullptr, "OrtEp for ", Type(), " did not provide a valid Compile() function");
   ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
                 " did not provide a valid ReleaseNodeComputeInfos() function");
+
+  // Validate EP weightless support if the app requested it.
+  if (weightless_requested_) {
+    if (ort_ep_->ort_version_supported >= 29) {
+      if (ort_ep_->GetWeightlessSupport == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not implement GetWeightlessSupport.");
+      }
+
+      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      if (ort_status != nullptr) {
+        return ToStatusAndRelease(ort_status);
+      }
+
+      if (support == OrtWeightlessSupport_NONE) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "Weightless mode requested (ep.enable_weightless=1) but EP '", Type(),
+                               "' does not support weightless mode on this device.");
+      }
+    } else {
+      LOGS(GetEpLoggerOrDefault(), INFO) << "Weightless mode requested (ep.enable_weightless=1) but EP '"
+                                         << Type() << "' was compiled with API version "
+                                         << ort_ep_->ort_version_supported
+                                         << " which predates GetWeightlessSupport (version 29). "
+                                         << "ORT cannot verify EP weightless support. "
+                                         << "The EP may still handle weightless via its own provider options.";
+    }
+  }
 
   const logging::Logger& logger = GetEpLoggerOrDefault();
   const size_t num_graphs = fused_nodes_and_graphs.size();
@@ -783,6 +830,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::OnSessionInitializationEnd() {
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->OnSessionInitializationEnd == nullptr) {
+    return Base::OnSessionInitializationEnd();
+  }
+  return ToStatusAndRelease(ort_ep_->OnSessionInitializationEnd(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::Sync() const {
   if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
     return Base::Sync();
@@ -843,6 +897,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
     }
 
+    // A successful callback may return nullptr to request ORT's default CPU allocator.
+    if (ort_allocator_ptr == nullptr) {
+      continue;
+    }
+
     if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
       ORT_THROW(
           "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
@@ -850,10 +909,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
           "EP library should be opaque to ORT");
     }
 
+    auto* ep_factory = &ep_factory_;
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
-        [this](OrtAllocator* allocator) {
-          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        [ep_factory](OrtAllocator* allocator) {
+          ep_factory->ReleaseAllocator(ep_factory, allocator);
         });
 
     // Use the arena wrapper when the allocator supports Shrink(), matching
@@ -1016,11 +1076,25 @@ bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return ort_ep_->IsGraphCaptured(ort_ep_.get(), graph_annotation_id);
 }
 
-Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReplayGraph == nullptr) {
-    return Base::ReplayGraph(graph_annotation_id);
+    return Base::ReplayGraph(graph_annotation_id, sync);
   }
-  return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id)));
+  if (sync) {
+    ORT_RETURN_IF_ERROR(Sync());
+  }
+  return Status::OK();
+}
+
+Status PluginExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  // For plugin EPs that don't implement ReleaseCapturedGraph (version < 27 or null function pointer),
+  // fall back to the base class no-op implementation. This is intentional: the request is silently
+  // ignored since the plugin EP doesn't support explicit graph resource release.
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->ReleaseCapturedGraph == nullptr) {
+    return Base::ReleaseCapturedGraph(graph_annotation_id);
+  }
+  return ToStatusAndRelease(ort_ep_->ReleaseCapturedGraph(ort_ep_.get(), graph_annotation_id));
 }
 
 OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {

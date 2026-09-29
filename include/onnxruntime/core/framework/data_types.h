@@ -290,7 +290,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
                                               Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
-                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
                                               ,
@@ -310,7 +310,7 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
                                                     Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                                     ,
-                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
                                                     ,

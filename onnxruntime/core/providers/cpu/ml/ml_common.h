@@ -10,6 +10,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/inlined_containers.h"
+#include <numbers>
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -202,7 +203,7 @@ static inline float ErfInv(float x) {
   float sgn = x < 0 ? -1.0f : 1.0f;
   x = (1 - x) * (1 + x);
   float log = std::log(x);
-  float v = 2 / (static_cast<float>(M_PI) * 0.147f) + 0.5f * log;
+  float v = 2 / (std::numbers::pi_v<float> * 0.147f) + 0.5f * log;
   float v2 = 1 / (0.147f) * log;
   float v3 = -v + std::sqrt(v * v - v2);
   x = sgn * std::sqrt(v3);
@@ -268,7 +269,7 @@ static inline void multiclass_probability(int64_t classcount,
   }
 }
 
-static constexpr float ml_sqrt2 = static_cast<float>(M_SQRT2);
+static constexpr float ml_sqrt2 = std::numbers::sqrt2_v<float>;
 
 static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));
@@ -366,14 +367,15 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
     } else {
       switch (add_second_class) {
         case 0:  // 0=all positive weights, winning class is positive
-          scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  // put opposite score in positive slot
-          *Z = static_cast<T>(scores[0]);
-          *(Z + 1) = static_cast<T>(scores[1]);
-          break;
-        case 1:  // 1 = all positive weights, winning class is negative
-          scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  // put opposite score in positive slot
+        case 1:  // 1=all positive weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
+            scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
+          } else {
+            scores.push_back(scores[0]);
+            scores[0] = 1 - scores[0];  // put opposite score in positive slot
+          }
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
@@ -503,10 +505,17 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
       switch (add_second_class) {
         case 0:
         case 1:
-          update_scores = [](const float score, float* output) {
-            *output++ = 1.f - score;
-            *output = score;
-          };
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            update_scores = [](const float score, float* output) {
+              *output++ = ComputeLogistic(-score);
+              *output = ComputeLogistic(score);
+            };
+          } else {
+            update_scores = [](const float score, float* output) {
+              *output++ = 1.f - score;
+              *output = score;
+            };
+          }
           break;
 
         case 2:  // 2 = mixed weights, winning class is positive

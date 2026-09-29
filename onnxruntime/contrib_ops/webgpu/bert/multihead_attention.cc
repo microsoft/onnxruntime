@@ -103,8 +103,51 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   TensorShape output_qk_shape(output_qk_dims);
   Tensor* output_qk = context.Output(3, output_qk_shape);
 
+  // Match CPU EP semantics: when no present_key/present_value output is requested,
+  // ignore past_key/past_value. The CPU EP sets past_sequence_length=0 in this case,
+  // effectively treating the input as if there is no KV cache.
+  if (present_key == nullptr && present_value == nullptr) {
+    past_key = nullptr;
+    past_value = nullptr;
+    parameters.past_sequence_length_ = 0;
+    parameters.total_sequence_length_ = parameters.kv_sequence_length_;
+  }
+
   if (output_qk == nullptr &&  // Flash attention does not output QK scores
-      CanApplyFlashAttention(bias, parameters, context)) {
+      CanApplyFlashAttention(parameters, context)) {
+    if (bias != nullptr) {
+      // Apply bias and transpose Q from BSD to BNSH before FlashAttention
+      TensorShapeVector q_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.sequence_length_, parameters.head_size_});
+      Tensor Q = context.CreateGPUTensor(query->DataType(), TensorShape(q_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
+          context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, bias, 0, &Q));
+
+      WebgpuAttentionParameters params_bnsh(parameters);
+      if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {
+        // Cross-attention: K/V are already BNSH, only Q needs bias+transpose
+        params_bnsh.qkv_format_ = Q_K_V_BNSH;
+        return ApplyFlashAttention(&Q, key, value, attention_bias, output, past_key, present_key, past_value,
+                                   present_value, params_bnsh, context);
+      }
+
+      // Self-attention: K/V also need bias+transpose
+      TensorShapeVector k_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.kv_sequence_length_, parameters.head_size_});
+      Tensor K = context.CreateGPUTensor(key->DataType(), TensorShape(k_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads_, parameters.kv_sequence_length_,
+                                            parameters.head_size_, key, bias, parameters.hidden_size_, &K));
+
+      TensorShapeVector v_dims({parameters.batch_size_, parameters.num_heads_,
+                                parameters.kv_sequence_length_, parameters.v_head_size_});
+      Tensor V = context.CreateGPUTensor(value->DataType(), TensorShape(v_dims));
+      ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads_, parameters.kv_sequence_length_,
+                                            parameters.v_head_size_, value, bias, 2 * parameters.hidden_size_, &V));
+
+      params_bnsh.qkv_format_ = Q_K_V_BNSH;
+      return ApplyFlashAttention(&Q, &K, &V, attention_bias, output, past_key, present_key, past_value,
+                                 present_value, params_bnsh, context);
+    }
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
   }

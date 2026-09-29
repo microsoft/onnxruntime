@@ -30,10 +30,8 @@ constexpr size_t kTensorRTEngineHeaderSize = 64;
 // Helper functions for engine header validation
 std::string BinaryToHexString(const void* data, size_t size);
 std::vector<uint8_t> HexStringToBinary(const std::string& hex);
-
 bool GraphHasCtxNode(const GraphViewer& graph_viewer, size_t& node_idx);
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
-std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
 Status CreateCtxNode(const GraphViewer& graph_viewer,
                      Graph& graph_build,
                      const std::string engine_cache_path,
@@ -44,10 +42,6 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
                      const std::string onnx_model_path,
                      const std::string& ep_context_node_name,
                      int trt_version);
-std::string GetCtxModelPath(const std::string& ep_context_file_path,
-                            const std::string& original_model_path);
-bool IsAbsolutePath(const std::string& path_string);
-bool IsRelativePathToParentPath(const std::string& path_string);
 void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
                                      char* engine_data,
                                      size_t size);

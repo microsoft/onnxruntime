@@ -19,7 +19,9 @@ constexpr float kSiluMaxValue = 20.0f;
 constexpr float kGeluMinValue = -10.0f;
 constexpr float kGeluMaxValue = 10.0f;
 constexpr float kInvSqrt2 = 0.7071067811865475244f;
+#if defined(MLAS_TARGET_AMD64)
 constexpr int64_t kFusedBytesPerElement = 2;
+#endif
 constexpr int64_t kSiluUnfusedBytesPerElement = 5;
 constexpr int64_t kGeluUnfusedBytesPerElement = 7;
 
@@ -119,7 +121,7 @@ void RunUnfusedUnaryBenchmark(benchmark::State& state,
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * bytes_per_iteration);
 }
 
-static void UnaryKernelArgs(benchmark::internal::Benchmark* b) {
+static void UnaryKernelArgs(benchmark::Benchmark* b) {
   for (int n : {1, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1024, 4096, 16384, 65536, 262144}) {
     b->Arg(n);
   }

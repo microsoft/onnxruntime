@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
@@ -38,6 +41,24 @@ class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
 
 class Gemm final : public WebGpuKernel {
  public:
+  // Abstract base class for alternative optimized Gemm implementations.
+  // Implementations can provide optimized computation paths by deriving from this class.
+  class GemmOptImpl {
+   public:
+    explicit GemmOptImpl(const Gemm& parent) : parent_(parent) {}
+    virtual ~GemmOptImpl() = default;
+
+    // Called during Compute phase to execute implementation-specific computation.
+    // @param context       The WebGPU compute context.
+    // @param handled       Output parameter. Set to true if this implementation handled the computation.
+    // @return Status::OK() on success, or an error status on failure.
+    virtual Status Compute(ComputeContext& context,
+                           /*out*/ bool& handled) = 0;
+
+   protected:
+    const Gemm& parent_;
+  };
+
   Gemm(const OpKernelInfo& info) : WebGpuKernel(info) {
     int64_t transA_temp;
     info.GetAttrOrDefault("transA", &transA_temp, static_cast<int64_t>(0));
@@ -53,11 +74,22 @@ class Gemm final : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
+  bool TransA() const { return transA_; }
+  bool TransB() const { return transB_; }
+  float Alpha() const { return alpha_; }
+  float Beta() const { return beta_; }
+
  private:
   bool transA_;
   bool transB_;
   float alpha_;
   float beta_;
+
+  // Alternative optimized implementation (lazily created on the first Compute call,
+  // once the device capabilities can be queried from the compute context). A null
+  // impl_ after initialization means this device has no vendor-optimized path.
+  mutable std::unique_ptr<GemmOptImpl> impl_;
+  mutable std::once_flag impl_init_flag_;
 };
 
 }  // namespace webgpu

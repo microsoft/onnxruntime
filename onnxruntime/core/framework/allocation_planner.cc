@@ -496,14 +496,27 @@ class PlannerImpl {
     return true;
   }
 
-  /*! \brief Given a tensor-type, return the size of an element of the tensor.
+  /*! \brief Given a tensor-type, return the primitive element type of the tensor.
    */
-  static size_t GetElementSize(const DataType& tensor_type) {
+  static MLDataType GetPrimitiveElementType(const DataType& tensor_type) {
     MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
-    MLDataType elt_type = tensor_type_base->GetElementType();
-    return elt_type->Size();
+    return tensor_type_base->GetElementType();
+  }
+
+  /*! \brief Given a tensor-type, return the size in bytes of the C++ carrier used for an element.
+   */
+  static size_t GetElementSize(const DataType& tensor_type) {
+    return GetPrimitiveElementType(tensor_type)->Size();
+  }
+
+  /*! \brief Given a tensor-type, return how many logical (sub-byte) elements are packed into one
+   *  carrier element. Returns 1 for regular types and >1 for packed sub-byte types (e.g. 2 for int4/uint4).
+   */
+  static int32_t GetSubElemCount(const DataType& tensor_type) {
+    const auto* prim_type = GetPrimitiveElementType(tensor_type)->AsPrimitiveDataType();
+    return prim_type != nullptr ? prim_type->GetNumSubElems() : 1;
   }
 
   static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
@@ -514,6 +527,16 @@ class PlannerImpl {
     auto type2_size = GetElementSize(ptype2);
     bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
     bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+
+    // Packed sub-byte types (e.g. int4/uint4) share the same one-byte C++ carrier size as int8/uint8, but a
+    // carrier stores GetNumSubElems() logical elements, so the physical storage is ceil(N / sub_elems) bytes.
+    // Two tensors with equal logical shape and equal carrier size can therefore have different storage sizes
+    // (e.g. uint4[1024] needs 512 bytes while uint8[1024] needs 1024 bytes). Reusing the smaller buffer for the
+    // larger tensor produces a heap buffer overflow when the tensor is later written. Only treat the tensors as
+    // the same size when the sub-element packing density also matches, which guarantees identical storage bytes.
+    if (GetSubElemCount(ptype1) != GetSubElemCount(ptype2)) {
+      return false;
+    }
 
     // sizeof(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
     // a tensor of type double. This won't work for string tensors since they need to be placement new'ed.
@@ -913,12 +936,7 @@ class PlannerImpl {
           ProcessDef(index, node_output);
           OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-          // Downstream nodes of certain providers may require a CPU accessible location override
-          // to make sure the EP does not incur an unnecessary copy.
-          // We only do it for CPU based EPs. We are not likely to encounter
-          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
-          // However, we still ignore them.
-          if (output_device.Type() == OrtDevice::CPU) {
+          if (output_device.UsesCpuMemory()) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
@@ -2574,7 +2592,7 @@ void DeviceBasedPartitioner::Initialize() {
   }
   std::ifstream if_stream(config_file_);
   if (if_stream.is_open()) {
-    try {
+    ORT_TRY {
       json json_config = json::parse(if_stream);
       if (json_config["type"] != Type()) {
         EXIT_ON_ERR("Partitioner type is not DeviceBasedPartitioner");
@@ -2589,8 +2607,14 @@ void DeviceBasedPartitioner::Initialize() {
         const std::string type_str = device_type;
         device_types_.push_back(static_cast<OrtDevice::DeviceType>(std::atoi(type_str.c_str())));
       }
-    } catch (const std::exception& ex) {
-      EXIT_ON_ERR(ex.what());
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        LOGS(logger_, WARNING) << ex.what();
+      });
+      node_names_by_stream_.clear();
+      if_stream.close();
+      return;
     }
     if_stream.close();
     ORT_ENFORCE(node_names_by_stream_.size() == device_types_.size(),
@@ -2628,7 +2652,9 @@ void DeviceBasedPartitioner::SaveConfig() const {
     }
   }
   ORT_CATCH(const std::exception& ex) {
-    LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(logger_, WARNING) << "Caught exception during saving DeviceBasedPartitioner config: " << ex.what();
+    });
   }
 }
 
@@ -2640,7 +2666,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
   if (!config_file.empty()) {
     std::ifstream f(config_file);
     if (f.is_open()) {
-      try {
+      ORT_TRY {
         json json_config = json::parse(f);
         if (json_config.contains("type")) {
           auto type = json_config["type"];
@@ -2648,8 +2674,11 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
             partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
           }
         }
-      } catch (const std::exception& ex) {
-        LOGS(logger, WARNING) << "Caught exception when reading partition config file: " << ex.what();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger, WARNING) << "Caught exception when reading partition config file: " << ex.what();
+        });
       }
       f.close();
     }

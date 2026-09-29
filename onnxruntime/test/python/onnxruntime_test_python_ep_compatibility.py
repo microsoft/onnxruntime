@@ -11,9 +11,12 @@ import onnx
 
 from onnxruntime.capi.onnxruntime_pybind11_state import (
     OrtCompiledModelCompatibility,
+    OrtDeviceEpIncompatibilityReason,
     get_compatibility_info_from_model,
     get_compatibility_info_from_model_bytes,
     get_ep_devices,
+    get_hardware_device_ep_incompatibility_details,
+    get_hardware_devices,
     get_model_compatibility_for_ep_devices,
 )
 
@@ -117,6 +120,67 @@ class TestEpCompatibility(unittest.TestCase):
             get_compatibility_info_from_model("", "TestEP")
         with self.assertRaises(RuntimeError):
             get_compatibility_info_from_model("model.onnx", "")
+
+
+class TestHardwareDeviceCompatibility(unittest.TestCase):
+    def test_get_hardware_devices_returns_devices(self):
+        """Test that get_hardware_devices returns at least one device (CPU)."""
+        devices = get_hardware_devices()
+        self.assertIsNotNone(devices)
+        self.assertTrue(len(devices) > 0, "Expected at least one hardware device")
+
+        # Each device should be a valid OrtHardwareDevice
+        for device in devices:
+            self.assertIsNotNone(device)
+            # Device should have type property which is an OrtHardwareDeviceType enum
+            # CPU=0, GPU=1, NPU=2
+            device_type = device.type
+            self.assertIn(device_type.value, [0, 1, 2], f"Unexpected device type: {device_type}")
+            # Device should have vendor property
+            vendor = device.vendor
+            self.assertIsNotNone(vendor)
+
+    def test_get_hardware_device_ep_incompatibility_details_cpu_ep(self):
+        """Test getting incompatibility details for CPU EP with CPU device."""
+        devices = get_hardware_devices()
+        self.assertTrue(len(devices) > 0, "Expected at least one hardware device")
+
+        # Find CPU device (type.value == 0)
+        cpu_devices = [d for d in devices if d.type.value == 0]
+        if not cpu_devices:
+            self.skipTest("No CPU device available")
+
+        cpu_device = cpu_devices[0]
+        details = get_hardware_device_ep_incompatibility_details("CPUExecutionProvider", cpu_device)
+
+        # Should return a dict with expected keys
+        self.assertIsInstance(details, dict)
+        self.assertIn("reasons_bitmask", details)
+        self.assertIn("notes", details)
+        self.assertIn("error_code", details)
+
+        # CPU EP should be compatible with CPU device (no incompatibility reasons)
+        self.assertEqual(details["reasons_bitmask"], 0)  # 0 = no incompatibility
+        self.assertEqual(details["error_code"], 0)
+
+    def test_get_hardware_device_ep_incompatibility_details_invalid_ep(self):
+        """Test that empty EP name raises error."""
+        devices = get_hardware_devices()
+        self.assertTrue(len(devices) > 0, "Expected at least one hardware device")
+
+        first_device = devices[0]
+        # Empty EP name should raise error
+        with self.assertRaises(RuntimeError):
+            get_hardware_device_ep_incompatibility_details("", first_device)
+
+    def test_ortdevice_ep_incompatibility_reason_enum(self):
+        """Test that the OrtDeviceEpIncompatibilityReason enum has expected values."""
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.NONE.value, 0)
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.DRIVER_INCOMPATIBLE.value, 1)
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.DEVICE_INCOMPATIBLE.value, 2)
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.MISSING_DEPENDENCY.value, 4)
+        # UNKNOWN is the high-bit flag (0x80000000) and may be exposed as signed or unsigned.
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.UNKNOWN.value & 0xFFFFFFFF, 0x80000000)
 
 
 if __name__ == "__main__":

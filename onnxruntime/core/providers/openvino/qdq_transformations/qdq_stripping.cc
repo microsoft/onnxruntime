@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include <array>
+#include <charconv>
 #include <set>
 #include <memory>
 #include <vector>
@@ -839,9 +840,9 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
       if (pb_key == "location") {
         location = pb_value;
       } else if (pb_key == "offset") {
-        data_offset = std::stoul(pb_value);
+        std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), data_offset);
       } else if (pb_key == "length") {
-        size = std::stoul(pb_value);
+        std::from_chars(pb_value.data(), pb_value.data() + pb_value.size(), size);
       }
     }
 

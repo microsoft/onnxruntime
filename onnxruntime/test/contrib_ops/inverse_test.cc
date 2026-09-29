@@ -86,5 +86,20 @@ TEST(InverseContribOpTest, four_by_four_batches_float) {
   test.AddOutput<float>("Output", {3, 4, 4, 4}, output);
   test.Run();
 }
+
+TEST(InverseContribOpTest, scalar_input_fails) {
+  OpTester test("Inverse", 1, kMSDomain);
+  test.AddInput<float>("X", {}, {4.f});
+  test.AddOutput<float>("Y", {}, {0.25f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "rank must be >= 2");
+}
+
+TEST(InverseContribOpTest, one_dim_input_fails) {
+  OpTester test("Inverse", 1, kMSDomain);
+  test.AddInput<float>("X", {4}, {4.f, 7.f, 2.f, 6.f});
+  test.AddOutput<float>("Y", {4}, {0.f, 0.f, 0.f, 0.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "rank must be >= 2");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

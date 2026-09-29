@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -9,10 +11,22 @@
 #include "core/framework/int2.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/tensor/quantize_linear_common.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
 #ifdef USE_CUDA
+TEST(QuantizeLinearOpTest, CudaElementCountRange) {
+  EXPECT_TRUE(cuda::IsQDQElementCountSupported(0));
+  EXPECT_TRUE(cuda::IsQDQElementCountSupported(std::numeric_limits<int32_t>::max()));
+  EXPECT_FALSE(cuda::IsQDQElementCountSupported(static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1));
+  EXPECT_FALSE(cuda::IsQDQElementCountSupported(-1));
+  EXPECT_NE(cuda::QDQElementCountErrorMessage().find("INT32_MAX"), std::string::npos);
+}
+
 static void RunQDQOp25CudaOnly(OpTester& test) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (cuda_ep == nullptr) {
@@ -549,6 +563,18 @@ TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpMLFloat16Test, Int8RoundsFractionalValues) {
+  OpTester test("QuantizeLinear", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<MLFloat16>("x", dims,
+                           {MLFloat16(0.050018310546875f), MLFloat16(-0.050018310546875f),
+                            MLFloat16(0.04998779296875f), MLFloat16(-0.04998779296875f)});
+  test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(0.0999755859375f)});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, -1, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // quantize with scalar zero point and scale
@@ -1123,6 +1149,23 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test int2 QuantizeLinear per axis on the last axis. Each scale covers a single element, so every
+// scale interval starts and ends inside a packed byte and must not overwrite its neighbors.
+TEST(QuantizeLinearOpTest, Int2_PerAxis_LastAxis) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<float>("x", dims, {1.0f, 1.0f, 1.0f, 1.0f, -2.0f, -2.0f, -2.0f, -2.0f});
+  test.AddInput<float>("scale", {4}, {1.0f, 1.0f, 4.0f, 1.0f}, true);
+  test.AddInput<Int2x4>("zero_point", {4}, {Int2x4(0, 0, 0, 0)}, true);
+  // y = clamp(round(x / scale), -2, 1)
+  // row 0: [1, 1, round(0.25), 1] = [1, 1, 0, 1]
+  // row 1: [-2, -2, round(-0.5), -2] = [-2, -2, 0, -2]
+  test.AddOutput<Int2x4>("y", dims, {Int2x4(1, 1, 0, 1), Int2x4(-2, -2, 0, -2)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // Test int4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
 // This exercises the TryParallelFor call which splits the input into blocks of even size.
 TEST(QuantizeLinearOpTest, OddLarge_Int4) {
@@ -1455,7 +1498,7 @@ void QuantizeLinearOp19Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpTest, Float8) {
@@ -1497,7 +1540,7 @@ void QuantizeLinearOp19F16Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpMLFloat16Test, Float8) {

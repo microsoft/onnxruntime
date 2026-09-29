@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 import torch
 from torch._C._onnx import OperatorExportTypes
 
@@ -32,44 +34,49 @@ def torch_onnx_export(
     use_external_data_format=None,
     export_modules_as_functions=False,
 ):
-    if Version(torch.__version__) >= Version("1.11.0"):
-        torch.onnx.export(
-            model=model,
-            args=args,
-            f=f,
-            export_params=export_params,
-            verbose=verbose,
-            training=training,
-            input_names=input_names,
-            output_names=output_names,
-            operator_export_type=operator_export_type,
-            opset_version=opset_version,
-            do_constant_folding=do_constant_folding,
-            dynamic_axes=dynamic_axes,
-            keep_initializers_as_inputs=keep_initializers_as_inputs,
-            custom_opsets=custom_opsets,
-            export_modules_as_functions=export_modules_as_functions,
-            dynamo=False,
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="You are using the legacy TorchScript-based", category=DeprecationWarning
         )
-    else:
-        torch.onnx.export(
-            model=model,
-            args=args,
-            f=f,
-            export_params=export_params,
-            verbose=verbose,
-            training=training,
-            input_names=input_names,
-            output_names=output_names,
-            operator_export_type=operator_export_type,
-            opset_version=opset_version,
-            _retain_param_name=_retain_param_name,
-            do_constant_folding=do_constant_folding,
-            example_outputs=example_outputs,
-            strip_doc_string=strip_doc_string,
-            dynamic_axes=dynamic_axes,
-            keep_initializers_as_inputs=keep_initializers_as_inputs,
-            custom_opsets=custom_opsets,
-            enable_onnx_checker=enable_onnx_checker,
-            use_external_data_format=use_external_data_format,
-        )
+        warnings.filterwarnings("ignore", message="The feature will be removed", category=DeprecationWarning)
+        if Version(torch.__version__) >= Version("1.11.0"):
+            torch.onnx.export(
+                model=model,
+                args=args,
+                f=f,
+                export_params=export_params,
+                verbose=verbose,
+                training=training,
+                input_names=input_names,
+                output_names=output_names,
+                operator_export_type=operator_export_type,
+                opset_version=opset_version,
+                do_constant_folding=do_constant_folding,
+                dynamic_axes=dynamic_axes,
+                keep_initializers_as_inputs=keep_initializers_as_inputs,
+                custom_opsets=custom_opsets,
+                export_modules_as_functions=export_modules_as_functions,
+                dynamo=False,
+            )
+        else:
+            torch.onnx.export(
+                model=model,
+                args=args,
+                f=f,
+                export_params=export_params,
+                verbose=verbose,
+                training=training,
+                input_names=input_names,
+                output_names=output_names,
+                operator_export_type=operator_export_type,
+                opset_version=opset_version,
+                _retain_param_name=_retain_param_name,
+                do_constant_folding=do_constant_folding,
+                example_outputs=example_outputs,
+                strip_doc_string=strip_doc_string,
+                dynamic_axes=dynamic_axes,
+                keep_initializers_as_inputs=keep_initializers_as_inputs,
+                custom_opsets=custom_opsets,
+                enable_onnx_checker=enable_onnx_checker,
+                use_external_data_format=use_external_data_format,
+            )

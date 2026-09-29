@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/framework/ep_context_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -22,8 +23,10 @@ ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
   enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
 
   // Note: the older compilation approach only supports compiling to an output file.
+  // Use ToPathString() so that the UTF-8 session config value is converted to the
+  // platform-native path string on Windows, preserving non-ASCII Unicode characters.
   output_model_location = std::filesystem::path(
-      config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, ""));
+      ToPathString(config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "")));
 
   std::string external_initializers_file_path = config_options.GetConfigOrDefault(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
@@ -51,6 +54,10 @@ const BufferHolder* ModelGenOptions::TryGetOutputModelBuffer() const {
 
 const BufferWriteFuncHolder* ModelGenOptions::TryGetOutputModelWriteFunc() const {
   return std::get_if<BufferWriteFuncHolder>(&output_model_location);
+}
+
+const EpContextDataWriteFuncHolder* ModelGenOptions::TryGetEpContextDataWriteFunc() const {
+  return ep_context_data_write_func.write_func != nullptr ? &ep_context_data_write_func : nullptr;
 }
 
 bool ModelGenOptions::AreInitializersEmbeddedInOutputModel() const {

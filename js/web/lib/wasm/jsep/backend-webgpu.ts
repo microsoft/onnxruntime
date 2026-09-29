@@ -252,10 +252,20 @@ export class WebGpuBackend {
     }
     requireFeatureIfAvailable('shader-f16');
     // Try subgroups
-    requireFeatureIfAvailable('subgroups' as GPUFeatureName);
+    requireFeatureIfAvailable('subgroups');
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
+    const adapterWithRequestInfo = adapter as GPUAdapter & {
+      requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+    };
+    const adapterInfo =
+      adapter.info ??
+      (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
+        ? await adapterWithRequestInfo.requestAdapterInfo()
+        : undefined);
+    // adapterInfo is optional and may not be available in all browsers.
+    // AdapterInfoImpl will handle the case when adapterInfo is undefined.
+    this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
@@ -826,7 +836,7 @@ export class WebGpuBackend {
   ): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await downloadGpuData(this, gpuBuffer, size);
-      return createView(data.buffer, type);
+      return createView(data.buffer as ArrayBuffer, type);
     };
   }
   // #endregion

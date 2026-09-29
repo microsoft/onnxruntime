@@ -577,7 +577,7 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
                               int8_t, int16_t, int32_t, int64_t, std::string,
                               Int4x2, UInt4x2, Int2x4, UInt2x4,
 #if !defined(DISABLE_FLOAT8_TYPES)
-                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0,
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
                               Float4E2M1x2,
@@ -613,7 +613,7 @@ void Check<TensorSeq>(std::string_view name, const OrtValue& expected, const Ten
                               int8_t, int16_t, int32_t, int64_t, std::string,
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
+                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0,
 #endif
                               MLFloat16, BFloat16>
       t_disp(element_type);

@@ -216,7 +216,7 @@ void UniDirectionalAttnLstm<T>::LoadPeepholeWeights(const gsl::span<const T>& pe
 template <typename T>
 void UniDirectionalAttnLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) {
   const size_t hidden_size = CheckedToSizeT(hidden_size_);
-  const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size_, 4);
+  const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size, size_t{4});
 
   // add Wb and Rb
   auto copy_fused_bias = [&WbRb_values, hidden_size, Wb_to_Rb_offset](size_t offset, gsl::span<T>& out) {

@@ -153,7 +153,12 @@ static void RunTest(const embedlayernorm::OpData& data,
       execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else {
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      if (sum_output) {
+        // OpenVINO EP only supports 2 outputs for EmbedLayerNormalization, skip when 3rd output (embedding_sum) is requested
+        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      } else {
+        tester.Run();
+      }
     }
   }
 }
@@ -193,6 +198,16 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
           /* use_float16 = */ false,
           /* sum_output = */ true);
+}
+
+// Regression test: shape inference with mask_index_type=0 and 2 outputs (no embedding_sum)
+// must not write to output index 2, which would be out-of-bounds.
+// Before the fix in EmbedLayerNormalizationShapeInference (shape_inference_functions.cc),
+// this case triggered a heap OOB write when getNumOutputs()==2 and mask_index_type==0.
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_NoMaskIndex_NoSumOutput) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
+          /* use_float16 = */ false,
+          /* sum_output = */ false);
 }
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {

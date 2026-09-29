@@ -21,11 +21,27 @@ struct ovep_exception : public std::exception {
     unknown,
   };
 
+  static std::string to_string(type t) {
+    switch (t) {
+      case type::compile_model:
+        return "Model compilation error";
+      case type::import_model:
+        return "Model import error";
+      case type::query_prop:
+        return "Query property error";
+      case type::read_model:
+        return "Model reading error";
+      default:
+        return "Unknown error type";
+    }
+  }
+
   ovep_exception(const std::exception& ex, enum class type exception_type)
       : message_{ex.what()},
         type_{exception_type},
         error_code_{ze_result_code_from_string(message_)},
-        error_name_{ze_result_name_from_string(message_)} {}
+        error_name_{ze_result_name_from_string(message_)} {
+  }
 
   ovep_exception(const std::string& message, enum class type exception_type)
       : message_{message},
@@ -53,7 +69,7 @@ struct ovep_exception : public std::exception {
       return {category_ort, common::INVALID_GRAPH, message};
     }
 
-    std::string error_message = "Unhandled exception type: " + std::to_string(static_cast<int>(type_));
+    std::string error_message = "Unhandled exception type: " + to_string(type_) + "\n" + message_;
     return {category_ort, common::EP_FAIL, error_message};
   }
 

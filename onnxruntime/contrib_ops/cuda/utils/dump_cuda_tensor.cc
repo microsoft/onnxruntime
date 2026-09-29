@@ -85,7 +85,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool i
                              is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
-    std::cout << std::string(name) << std::endl;
+    std::cout << name << std::endl;
   }
 
   int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
@@ -106,7 +106,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
                              is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
-    std::cout << std::string(name) << std::endl;
+    std::cout << name << std::endl;
   }
 
   int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
@@ -127,7 +127,7 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
                              is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
-    std::cout << std::string(name) << std::endl;
+    std::cout << name << std::endl;
   }
 
   int snippet_threshold = DumpTensorConfig::instance().get_snippet_threshold();
@@ -165,8 +165,12 @@ void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, i
     DumpGpuTensor<UInt4x2>(name, tensor.Data<UInt4x2>(), dim0, dim1, dim2, dim3, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<Int4x2>()) {
     DumpGpuTensor<Int4x2>(name, tensor.Data<Int4x2>(), dim0, dim1, dim2, dim3, is_gpu_tensor);
+  } else if (dataType == DataTypeImpl::GetType<BFloat16>()) {
+    DumpGpuTensor<BFloat16>(name, tensor.Data<BFloat16>(), dim0, dim1, dim2, dim3, is_gpu_tensor);
   } else {
-    std::cout << std::string(name) << std::endl;
+    if (name != nullptr) {
+      std::cout << name << std::endl;
+    }
     std::cout << "The data type is not supported in DumpGpuTensor" << std::endl;
   }
 }
@@ -190,8 +194,12 @@ void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, i
     DumpGpuTensor<UInt4x2>(name, tensor.Data<UInt4x2>(), dim0, dim1, dim2, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<Int4x2>()) {
     DumpGpuTensor<Int4x2>(name, tensor.Data<Int4x2>(), dim0, dim1, dim2, is_gpu_tensor);
+  } else if (dataType == DataTypeImpl::GetType<BFloat16>()) {
+    DumpGpuTensor<BFloat16>(name, tensor.Data<BFloat16>(), dim0, dim1, dim2, is_gpu_tensor);
   } else {
-    std::cout << std::string(name) << std::endl;
+    if (name != nullptr) {
+      std::cout << name << std::endl;
+    }
     std::cout << "The data type is not supported in DumpGpuTensor" << std::endl;
   }
 }
@@ -215,8 +223,12 @@ void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
     DumpGpuTensor<UInt4x2>(name, tensor.Data<UInt4x2>(), dim0, dim1, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<Int4x2>()) {
     DumpGpuTensor<Int4x2>(name, tensor.Data<Int4x2>(), dim0, dim1, is_gpu_tensor);
+  } else if (dataType == DataTypeImpl::GetType<BFloat16>()) {
+    DumpGpuTensor<BFloat16>(name, tensor.Data<BFloat16>(), dim0, dim1, is_gpu_tensor);
   } else {
-    std::cout << std::string(name) << std::endl;
+    if (name != nullptr) {
+      std::cout << name << std::endl;
+    }
     std::cout << "The data type is not supported in DumpGpuTensor" << std::endl;
   }
 }
@@ -229,7 +241,7 @@ void DumpGpuTensor(const char* name, const Tensor& tensor) {
   const auto& shape = tensor.Shape();
 
   if (nullptr != name) {
-    std::cout << std::string(name) << std::endl;
+    std::cout << name << std::endl;
   }
   std::cout << "Shape:" << shape << std::endl;
   std::cout << tensor.Location().ToString() << std::endl;

@@ -8,7 +8,9 @@
 #include <string>
 
 struct OrtThreadPoolParams {
-  // 0: Use default setting. (All the physical cores or half of the logical cores)
+  // 0: Use default setting: the ORT_INTRA_OP_NUM_THREADS / ORT_INTER_OP_NUM_THREADS environment
+  //    variable for the corresponding pool type if set, otherwise all the physical cores or half
+  //    of the logical cores.
   // 1: Don't create thread pool
   // n: Create a thread pool with n threads.
   int thread_pool_size = 0;
@@ -34,6 +36,16 @@ struct OrtThreadPoolParams {
   //    0 = disable spinning (equivalent to allow_spinning = false)
   //   >0 = calibrated iteration-based spinning for specified duration (best-effort)
   int spin_duration_us = onnxruntime::concurrency::kSpinDurationDefault;
+
+  // Maximum exponential-backoff cap for the thread pool spin loop.
+  //   1 (default) = no backoff, one SpinPause() per iteration (original behavior).
+  //   >= 2        = enable exponential backoff: each iteration emits 1, 2, 4, ...
+  //                 SpinPause() calls, capped at this value. The iteration count
+  //                 is scaled internally so the wall-clock spin window still
+  //                 tracks spin_duration_us.
+  // Values above concurrency::kSpinBackoffMaxLimit are clamped to that limit.
+  // Ignored when spinning is disabled or when spin_count is forced to zero.
+  unsigned int spin_backoff_max = 1;
 
   // It it is non-negative, thread pool will split a task by a decreasing block size
   // of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)

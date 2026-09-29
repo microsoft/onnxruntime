@@ -19,18 +19,35 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   const auto* filter = context.Input<Tensor>(1);
   TensorShape input_shape = input->Shape();
   TensorShape filter_shape = filter->Shape();
+
+  const auto rank = input_shape.NumDimensions();
+  if (rank < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input X must have at least 3 dimensions (N x C x D1...Dn).",
+                           " X: ", input_shape.ToString().c_str());
+  }
+  if (filter_shape.NumDimensions() < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
+                           " W: ", filter_shape.ToString().c_str());
+  }
+
   const InlinedVector<size_t> perm = {2, 3, 0, 1};
   TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
   ConvAttributes::ConvPadVector local_pads(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_transpose_attrs_.dilations.begin(), conv_transpose_attrs_.dilations.end());
   TensorShapeVector local_strides(conv_transpose_attrs_.strides.begin(), conv_transpose_attrs_.strides.end());
   TensorShapeVector kernel_shape_vector;
-  auto rank = input_shape.NumDimensions();
   TensorShape input_spacial_shape = input_shape.Slice(is_channels_last ? 1 : 2, is_channels_last ? rank - 1 : rank);
   local_pads.reserve(2 * (input_spacial_shape.NumDimensions()));
   ORT_RETURN_IF_ERROR(conv_transpose_attrs_.ComputeKernelShape(filter_shape, kernel_shape_vector, false));
   if (local_output_padding.empty()) {
     local_output_padding.resize(kernel_shape_vector.size(), 0);
+  }
+  if (local_output_padding.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_padding size (", local_output_padding.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
   }
   if (local_pads.empty()) {
     local_pads.resize(kernel_shape_vector.size() * 2, 0);
@@ -41,11 +58,31 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   if (local_strides.empty()) {
     local_strides.resize(kernel_shape_vector.size(), 1);
   }
+  if (local_strides.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "strides size (", local_strides.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
+  }
+  if (local_dilations.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "dilations size (", local_dilations.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
+  }
+  // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
+  for (size_t i = 0; i < local_output_padding.size(); ++i) {
+    int64_t limit = std::max(local_strides[i], local_dilations[i]);
+    if (local_output_padding[i] >= limit) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding[", i, "] (", local_output_padding[i],
+                             ") must be less than max(stride, dilation) (", limit,
+                             ") for spatial dimension ", i, ".");
+    }
+  }
   auto group = conv_transpose_attrs_.group;
   auto num_output_channels = group * filter_shape[1];
   auto batch_size = input_shape[0];
   TensorShapeVector output_shape_vector;
-  conv_transpose_attrs_.ComputePadsAndOutputShape(input_spacial_shape, num_output_channels, kernel_shape_vector, local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape_vector, is_channels_last);
+  ORT_RETURN_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(input_spacial_shape, num_output_channels, kernel_shape_vector, local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape_vector, is_channels_last));
   TensorShape computed_output_shape(output_shape_vector);
   std::vector<uint32_t> strides;
   std::vector<uint32_t> pads;

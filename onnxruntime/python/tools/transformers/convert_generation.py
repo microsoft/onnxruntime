@@ -1910,6 +1910,7 @@ def replace_mha_with_gqa(
             domain="com.microsoft",
             num_heads=num_heads // world_size,
             kv_num_heads=(num_heads // world_size if kv_num_heads == 0 else kv_num_heads // world_size),
+            causal=1,
             local_window_size=window_size,
             do_rotary=int(q_rotary is not None and k_rotary is not None),
             rotary_interleaved=interleaved,

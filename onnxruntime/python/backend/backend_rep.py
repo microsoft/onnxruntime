@@ -10,11 +10,23 @@ from onnx.backend.base import BackendRep
 
 from onnxruntime import RunOptions
 
+# Allowlist of RunOptions attributes that are safe to set via the backend API.
+# 'terminate' excluded: setting it True would deny the current inference call.
+# 'training_mode' excluded: silently switches inference behavior in training builds.
+_ALLOWED_RUN_OPTIONS = frozenset(
+    {
+        "log_severity_level",
+        "log_verbosity_level",
+        "logid",
+        "only_execute_path_to_fetches",
+    }
+)
+
 
 class OnnxRuntimeBackendRep(BackendRep):
     """
-    Computes the prediction for a pipeline converted into
-    an :class:`onnxruntime.InferenceSession` node.
+    Wraps an :class:`onnxruntime.InferenceSession` to implement ONNX's
+    :class:`onnx.backend.base.BackendRep` interface for running predictions.
     """
 
     def __init__(self, session):
@@ -27,12 +39,24 @@ class OnnxRuntimeBackendRep(BackendRep):
         """
         Computes the prediction.
         See :meth:`onnxruntime.InferenceSession.run`.
+
+        :param inputs: a list of input arrays (one per model input) or a single
+            array when the model has exactly one input
+        :param kwargs: only a safe subset of :class:`onnxruntime.RunOptions` attributes are
+            accepted; see ``_ALLOWED_RUN_OPTIONS`` for the list
+        :return: list of output arrays
         """
 
         options = RunOptions()
         for k, v in kwargs.items():
-            if hasattr(options, k):
+            if k in _ALLOWED_RUN_OPTIONS:
                 setattr(options, k, v)
+            elif hasattr(options, k):
+                raise RuntimeError(
+                    f"RunOptions attribute '{k}' is not permitted via the backend API. "
+                    f"Allowed attributes: {', '.join(sorted(_ALLOWED_RUN_OPTIONS))}"
+                )
+            # else: silently ignore unknown keys
 
         if isinstance(inputs, list):
             inps = {}

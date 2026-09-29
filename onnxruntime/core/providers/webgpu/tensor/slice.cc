@@ -151,15 +151,25 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
   auto steps_raw = steps_tensor == nullptr ? steps_default : getInt64Input(steps_tensor);
 
+  ORT_RETURN_IF_NOT(axes_raw.size() == starts_raw.size(), "axes and starts must have the same size");
+  ORT_RETURN_IF_NOT(steps_raw.size() == starts_raw.size(), "steps and starts must have the same size");
+  ORT_RETURN_IF_NOT(ends_raw.size() == starts_raw.size(), "ends and starts must have the same size");
+
   // get final axes
   std::vector<uint32_t> axes, axes_fixed;
+  InlinedHashSet<uint32_t> unique_axes;
+  unique_axes.reserve(axes_raw.size());
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
     int64_t val = axes_raw[i];
     if (val < 0) {
       val += input_rank;
     }
+    ORT_RETURN_IF_NOT(val >= 0 && val < static_cast<int64_t>(input_rank),
+                      "'axes' has an axis outside of the tensor dimension count");
+    const auto axis = static_cast<uint32_t>(val);
+    ORT_RETURN_IF_NOT(unique_axes.insert(axis).second, "'axes' has duplicates");
     axes_fixed.push_back(static_cast<int32_t>(val));
-    axes.push_back(static_cast<int32_t>(val));
+    axes.push_back(axis);
   }
 
   std::vector<uint32_t> starts;
@@ -252,10 +262,28 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // The shader decomposes a full index per output element, one div and one mod per rank, so a
+  // scalar thread does a lot of arithmetic to move two bytes. When the innermost axis is taken
+  // as a contiguous, four-aligned run, four output elements come from four consecutive input
+  // elements and the whole thing can run in units of four - the index arithmetic is unchanged,
+  // it just operates on the reduced shapes. int64 stays scalar (it is stored as vec2<u32>).
+  const auto& in_shape = input_tensor->Shape();
+  const size_t last = input_rank - 1;
+  int components = 1;
+  if (input_rank > 0 && !input_tensor->IsDataType<int64_t>() &&
+      steps_reordered[last] == 1 && signs_reordered[last] > 0 &&
+      starts_reordered[last] % 4 == 0 && in_shape[last] % 4 == 0 && output_dims[last] % 4 == 0) {
+    components = 4;
+  }
+  if (components > 1) {
+    starts_reordered[last] /= components;
+    output_size /= components;
+  }
+
   SliceProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({output_tensor})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});
   return context.RunProgram(program);
