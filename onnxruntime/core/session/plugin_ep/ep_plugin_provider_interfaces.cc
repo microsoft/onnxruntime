@@ -902,19 +902,19 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       continue;
     }
 
-    if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
-      ORT_THROW(
-          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
-          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
-          "EP library should be opaque to ORT");
-    }
-
     auto* ep_factory = &ep_factory_;
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
         [ep_factory](OrtAllocator* allocator) {
           ep_factory->ReleaseAllocator(ep_factory, allocator);
         });
+
+    if (ort_allocator->Info(ort_allocator.get())->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+      ORT_THROW(
+          "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
+          "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
+          "EP library should be opaque to ORT");
+    }
 
     // Use the arena wrapper when the allocator supports Shrink(), matching
     // the logic in Environment::CreateSharedAllocatorImpl. This ensures

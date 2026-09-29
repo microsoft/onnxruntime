@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "core/framework/allocator.h"
+#include "core/session/abi_devices.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -58,6 +59,55 @@ struct DummyAllocator : OrtAllocator {
   const OrtMemoryInfo* memory_info;
   AllocatorStats stats{};
 };
+
+struct NullAllocatorEpFactory : OrtEpFactory {
+  NullAllocatorEpFactory() : OrtEpFactory{} {
+    ort_version_supported = ORT_API_VERSION;
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* /*this_ptr*/,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    *allocator = nullptr;
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* /*allocator*/) noexcept {}
+};
+
+struct ArenaTypeAllocatorEpFactory : OrtEpFactory {
+  ArenaTypeAllocatorEpFactory() : OrtEpFactory{} {
+    ort_version_supported = ORT_API_VERSION;
+    CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* /*memory_info*/,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept {
+    auto& factory = *static_cast<ArenaTypeAllocatorEpFactory*>(this_ptr);
+    *allocator = new DummyAllocator(factory.arena_memory_info);
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
+    ++static_cast<ArenaTypeAllocatorEpFactory*>(this_ptr)->num_released;
+    delete static_cast<DummyAllocator*>(allocator);
+  }
+
+  Ort::MemoryInfo arena_memory_info{"FakeEP GPU", OrtMemoryInfoDeviceType_GPU, /*vendor_id*/ 0xFA4E, /*device_id*/ 0,
+                                    OrtDeviceMemoryType_DEFAULT, /*alignment*/ 0, OrtArenaAllocator};
+  int num_released{0};
+};
+
+Ort::MemoryInfo CreateFakeEpMemoryInfo() {
+  return Ort::MemoryInfo{"FakeEP GPU", OrtMemoryInfoDeviceType_GPU, /*vendor_id*/ 0xFA4E, /*device_id*/ 0,
+                         OrtDeviceMemoryType_DEFAULT, /*alignment*/ 0, OrtDeviceAllocator};
+}
 }  // namespace
 
 // validate CreateSharedAllocator allows adding an arena to the shared allocator
@@ -162,6 +212,61 @@ TEST(SharedAllocators, GetSharedAllocator) {
 
   // there should always be a CPU allocator available
   get_allocator_and_check_name(onnxruntime::CPU);
+}
+
+// OrtEpFactory::CreateAllocator may return a null allocator to use ORT's default CPU allocator.
+TEST(SharedAllocators, CreateSharedAllocatorAcceptsNullAllocator) {
+  auto memory_info = CreateFakeEpMemoryInfo();
+  NullAllocatorEpFactory factory;
+  OrtEpDevice ep_device{};
+  ep_device.ep_factory = &factory;
+  ep_device.device_memory_info = memory_info;
+
+  DummyAllocator sentinel{memory_info};
+  OrtAllocator* allocator = &sentinel;
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().CreateSharedAllocator(*ort_env, &ep_device, OrtDeviceMemoryType_DEFAULT,
+                                                          OrtDeviceAllocator, nullptr, &allocator));
+  EXPECT_EQ(allocator, nullptr);
+  EXPECT_EQ(ort_env->GetSharedAllocator(memory_info), nullptr);
+}
+
+TEST(SharedAllocators, CreateSharedAllocatorRequiresFactoryCreateAllocator) {
+  auto memory_info = CreateFakeEpMemoryInfo();
+  OrtEpFactory factory{};
+  factory.ort_version_supported = ORT_API_VERSION;
+  OrtEpDevice ep_device{};
+  ep_device.ep_factory = &factory;
+  ep_device.device_memory_info = memory_info;
+
+  Ort::Status status{Ort::GetApi().CreateSharedAllocator(*ort_env, &ep_device, OrtDeviceMemoryType_DEFAULT,
+                                                         OrtDeviceAllocator, nullptr, nullptr)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+}
+
+// An allocator rejected for using OrtArenaAllocator must still be released.
+TEST(SharedAllocators, CreateSharedAllocatorReleasesRejectedArenaAllocator) {
+  auto memory_info = CreateFakeEpMemoryInfo();
+  ArenaTypeAllocatorEpFactory factory;
+  OrtEpDevice ep_device{};
+  ep_device.ep_factory = &factory;
+  ep_device.device_memory_info = memory_info;
+
+  Ort::Status status{Ort::GetApi().CreateSharedAllocator(*ort_env, &ep_device, OrtDeviceMemoryType_DEFAULT,
+                                                         OrtDeviceAllocator, nullptr, nullptr)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(factory.num_released, 1);
+  EXPECT_EQ(ort_env->GetSharedAllocator(memory_info), nullptr);
+}
+
+TEST(SharedAllocators, ReleaseSharedAllocatorIsNoOpWhenNotRegistered) {
+  auto memory_info = CreateFakeEpMemoryInfo();
+  OrtEpFactory factory{};
+  OrtEpDevice ep_device{};
+  ep_device.ep_factory = &factory;
+  ep_device.device_memory_info = memory_info;
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().ReleaseSharedAllocator(*ort_env, &ep_device, OrtDeviceMemoryType_DEFAULT));
 }
 
 }  // namespace test
