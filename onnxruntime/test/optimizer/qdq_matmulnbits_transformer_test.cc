@@ -1696,7 +1696,7 @@ TEST(QDQTransformerTests, AuthoredLargeBlockMatMulNBitsInsideA16QDQ) {
 
   for (const char* option : {"", "32", "-1"}) {
     SCOPED_TRACE(option);
-    auto check_graph = [](InferenceSessionWrapper& session) {
+    auto check_graph = [block_size](InferenceSessionWrapper& session) {
       const Graph& graph = session.GetGraph();
       EXPECT_EQ(MatMulNBitsBlockSize(graph), block_size);
       EXPECT_EQ(CountQuantizedActivations(graph, ONNX_NAMESPACE::TensorProto_DataType_UINT16, "QuantizeLinear"), 2);
