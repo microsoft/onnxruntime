@@ -35,7 +35,6 @@ microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.z
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 # ONNX 1.23.0 final release (opset 28).
-# ONNX_VERSION=1.23.0
 # The 7 CI requirements.txt files are pinned to onnx==1.23.0.
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.0.zip;75a298554b4fc8af73d35b657fad59c496844807
 # Use the latest commit of 10.9-GA

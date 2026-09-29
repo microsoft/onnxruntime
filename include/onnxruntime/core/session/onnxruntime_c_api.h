@@ -224,8 +224,10 @@ typedef enum ONNXTensorElementDataType {
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
   // Float6 types introduced in ONNX 1.23.
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,  // 6-bit float stored in an int32_data entry
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,  // 6-bit float stored in an int32_data entry
+  // ORT tensor storage uses one byte per element. TensorProto typed serialization uses int32_data;
+  // TensorProto raw_data uses bit-packed 6-bit values.
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
