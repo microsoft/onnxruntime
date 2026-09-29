@@ -3284,8 +3284,16 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (partitioned_cuda_graph_ep_ != nullptr) {
+      const auto max_ids_config = session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsPartitionedCudaGraphMaxIds, "16");
+      int32_t max_graph_ids = 0;
+      if (!TryParseStringWithClassicLocale(max_ids_config, max_graph_ids) || max_graph_ids <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsPartitionedCudaGraphMaxIds,
+                               " must be a decimal integer in [1, 2147483647]. Received: \"", max_ids_config, "\".");
+      }
       partitioned_graph_execution_ =
-          std::make_unique<PartitionedGraphExecution>(*session_state_, *partitioned_cuda_graph_ep_);
+          std::make_unique<PartitionedGraphExecution>(*session_state_, *partitioned_cuda_graph_ep_,
+                                                      static_cast<size_t>(max_graph_ids));
     }
 
     if (saving_model) {

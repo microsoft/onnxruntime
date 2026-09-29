@@ -18,6 +18,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -78,18 +79,35 @@ struct CapturedRun {
 }  // namespace
 
 struct PartitionedGraphExecution::Impl {
-  Impl(const SessionState& state, IExecutionProvider& ep) : session_state(state), provider(ep) {
+  Impl(const SessionState& state, IExecutionProvider& ep, size_t max_ids)
+      : session_state(state), provider(ep), max_graph_ids(max_ids) {
     const auto& graph = session_state.GetGraphViewer();
+    const auto& plan = *session_state.GetExecutionPlan();
     for (NodeIndex index : graph.GetNodesInTopologicalOrder(state.GetSessionOptions().execution_order)) {
       const auto& node = *graph.GetNode(index);
       bool capture = node.GetExecutionProviderType() == provider.Type() && !utils::IsMemcpyNode(node);
+      if (capture) {
+        for (const auto* output : node.OutputDefs()) {
+          if (!output->Exists()) {
+            continue;
+          }
+          int value_index;
+          ORT_THROW_IF_ERROR(state.GetOrtValueNameIdxMap().GetIdx(output->Name(), value_index));
+          if (plan.GetLocation(value_index).UsesCpuMemory()) {
+            capture = false;
+            break;
+          }
+        }
+      }
       if (partitions.empty() || partitions.back().capture != capture) {
         partitions.push_back({capture, {}});
       }
       partitions.back().nodes.push_back(index);
     }
     for (const auto& [device, allocator] : state.GetAllocators()) {
-      if (device.Type() == OrtDevice::GPU) {
+      // Pinned host staging buffers are released at stream cleanup or retained by the EP
+      // for graph replay. They do not follow the device scratch allocation/free sequence.
+      if (device.Type() == OrtDevice::GPU && !device.UsesCpuMemory()) {
         ORT_ENFORCE(allocator->AsArena() != nullptr,
                     "Partitioned CUDA capture requires a CUDA arena allocator.");
         allocators.push_back(allocator);
@@ -108,8 +126,8 @@ struct PartitionedGraphExecution::Impl {
       auto* stream = state.streams.p_->GetStream(plan.node_stream_map_[index]);
       OpKernelContextInternal context(session_state, *state.frame, *kernel, logger, options.terminate, stream);
       ORT_RETURN_IF_ERROR(kernel->Compute(&context));
-      if (!partition.capture && utils::IsMemcpyNode(kernel->Node())) {
-        // Copies stay outside capture. Complete D2H before CPU reads, and H2D before host buffers can be reused.
+      if (!partition.capture && kernel->Node().GetExecutionProviderType() == provider.Type()) {
+        // Complete eager CUDA work before CPU consumers read host outputs or reuse copy sources.
         ORT_RETURN_IF_ERROR(provider.Sync());
       }
     }
@@ -131,9 +149,9 @@ struct PartitionedGraphExecution::Impl {
         ORT_RETURN_IF_NOT(value->IsTensor() && !value->Get<Tensor>().IsDataTypeString(),
                           "Partitioned CUDA capture supports only non-string tensor values.");
         const auto& tensor = value->Get<Tensor>();
-        bool host_input = i < input_count && tensor.Location().device.Type() == OrtDevice::CPU;
-        ORT_RETURN_IF(i >= input_count && tensor.Location().device.Type() == OrtDevice::CPU,
-                      "Partitioned CUDA capture does not support CUDA kernels producing host outputs.");
+        bool host_input = i < input_count && tensor.Location().device.UsesCpuMemory();
+        ORT_RETURN_IF(i >= input_count && tensor.Location().device.UsesCpuMemory(),
+                      "A captured CUDA partition unexpectedly produced a host output at node '", node.Name(), "'.");
         captured.signatures.emplace_back(value_offset, TensorSignature(tensor, host_input));
       }
     }
@@ -244,6 +262,12 @@ struct PartitionedGraphExecution::Impl {
     }
     auto it = runs.find(graph_id);
     if (it == runs.end()) {
+      ORT_RETURN_IF(runs.size() >= max_graph_ids,
+                    "Partitioned CUDA graph ID limit (", max_graph_ids, ") reached; cannot capture gpu_graph_id=",
+                    graph_id,
+                    ". Reuse an existing ID, use gpu_graph_id=-1 for eager execution, or recreate the session "
+                    "with a larger ",
+                    kOrtSessionOptionsPartitionedCudaGraphMaxIds, ".");
       const auto& copies = manager.GetFeedsDeviceCopyInfo();
       for (size_t i = 0; i < feeds.size(); ++i) {
         ORT_RETURN_IF_NOT(feeds[i].IsTensor() && !feeds[i].Get<Tensor>().IsDataTypeString(),
@@ -295,6 +319,7 @@ struct PartitionedGraphExecution::Impl {
 
   const SessionState& session_state;
   IExecutionProvider& provider;
+  const size_t max_graph_ids;
   InlinedVector<Partition> partitions;
   InlinedVector<AllocatorPtr> allocators;
   InlinedHashMap<int, std::unique_ptr<CapturedRun>> runs;
@@ -306,14 +331,16 @@ struct PartitionedGraphExecution::Impl {
 struct PartitionedGraphExecution::Impl {};
 #endif
 
-PartitionedGraphExecution::PartitionedGraphExecution(const SessionState& state, IExecutionProvider& provider)
+PartitionedGraphExecution::PartitionedGraphExecution(const SessionState& state, IExecutionProvider& provider,
+                                                     size_t max_graph_ids)
 #ifdef ORT_ENABLE_STREAM
-    : impl_(std::make_unique<Impl>(state, provider))
+    : impl_(std::make_unique<Impl>(state, provider, max_graph_ids))
 #endif
 {
 #ifndef ORT_ENABLE_STREAM
   ORT_UNUSED_PARAMETER(state);
   ORT_UNUSED_PARAMETER(provider);
+  ORT_UNUSED_PARAMETER(max_graph_ids);
 #endif
 }
 

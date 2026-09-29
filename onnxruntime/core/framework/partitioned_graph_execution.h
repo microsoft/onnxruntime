@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -21,7 +22,7 @@ class SessionState;
 // Experimental, sequential CPU/CUDA execution with a captured graph per CUDA partition.
 class PartitionedGraphExecution {
  public:
-  PartitionedGraphExecution(const SessionState& session_state, IExecutionProvider& provider);
+  PartitionedGraphExecution(const SessionState& session_state, IExecutionProvider& provider, size_t max_graph_ids);
   ~PartitionedGraphExecution();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PartitionedGraphExecution);
 

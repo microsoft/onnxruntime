@@ -12,11 +12,11 @@ device-copy nodes, and empty graphs. This path preserves the user's memory-patte
 setting and normal capture/replay behavior; it does not allocate partition-specific
 retained frames or scratch.
 
-Otherwise, it walks the partitioned graph sequentially, runs CPU nodes and device
-copies eagerly, and captures contiguous CUDA compute
-partitions separately. This supports CPU prefixes, CPU suffixes, and CPU computation
-between multiple CUDA partitions. It does not capture CPU computation or move
-weights between devices during a run.
+Otherwise, it walks the partitioned graph sequentially, runs CPU nodes, device
+copies, and CUDA nodes producing host outputs (such as Shape) eagerly, and captures
+contiguous CUDA compute partitions separately. This supports CPU prefixes, CPU
+suffixes, and CPU computation between multiple CUDA partitions. It does not capture
+CPU computation or move weights between devices during a run.
 
 Selection is based on the finalized graph placement, not a runtime capture attempt.
 Unsupported control flow is still rejected; capture errors do not silently trigger
@@ -30,6 +30,7 @@ import onnxruntime as ort
 
 options = ort.SessionOptions()
 options.add_session_config_entry("session.enable_partitioned_cuda_graph", "1")
+options.add_session_config_entry("session.partitioned_cuda_graph_max_ids", "16")
 options.add_session_config_entry(
     "session.name_based_layer_assignment",
     "cpu(embed_tokens);gpu(layers.,lm_head)",
@@ -68,16 +69,31 @@ EP then captures on the next pass. The plugin runs these preparation passes with
 capture disabled, then honors its `min_num_runs_before_cuda_graph_capture` setting
 with up to eight further passes (including capture). Values from zero through seven
 are supported; a larger count returns an explicit capture-attempt-limit error.
-A retained execution frame keeps intermediate tensors alive. Scratch allocations
-are intercepted in ORT's arena or plugin arena adapter and reused at the same
-addresses during capture. Later invocations execute CPU partitions and copies
-again, but replay the CUDA partitions instead of invoking their kernels.
+A retained execution frame keeps intermediate tensors alive. Device scratch
+allocations are intercepted in ORT's arena or plugin arena adapter and reused at the
+same addresses during capture. Pinned host staging buffers are excluded from this
+interception: their release is deferred until stream cleanup during preparation,
+and the CUDA EP retains buffers referenced by captured copies for replay.
+Later invocations execute CPU partitions, CUDA host-output nodes, and copies again,
+but replay the CUDA compute partitions instead of invoking their kernels.
 
 `gpu_graph_id=-1` uses the ordinary eager executor, allowing uncaptured prefill.
 Different nonnegative IDs can represent different fixed-shape decode buckets.
 Every captured bucket retains its own intermediates and scratch until session
 destruction. Captured GPU allocations are isolated from eager runs and other
 buckets.
+
+`session.partitioned_cuda_graph_max_ids` limits the number of retained nonnegative
+graph IDs per session. It defaults to **16** and accepts a decimal integer from 1
+through 2147483647; zero does not mean unlimited. Once the limit is reached, an
+unseen ID is rejected before constructing its retained execution state or running
+any partitions. This rejection does not invalidate the session: existing IDs and
+eager runs remain usable. Reusing an ID does not consume another slot.
+The limit counts user-visible buckets, not the internal CUDA graphs within each
+bucket, and is not a CPU/GPU byte budget. Choose a lower limit for large captures.
+There is no eviction or per-ID retirement; recreate the session to release all
+buckets or change the limit. Whole-session capture and ordinary eager execution
+ignore this setting.
 
 ## Prototype constraints
 
@@ -105,12 +121,14 @@ capture requirements instead.
   partitions may already have updated outputs or in-place state.
   This differs from CPU tensor data transferred through a `MemcpyFromHost` node,
   which is refreshed on every invocation.
-- CUDA kernels producing host outputs are rejected. Shape/data-dependent changes
+- CUDA kernels producing host outputs run eagerly and synchronize before subsequent
+  CPU work. Their outputs, including pinned host tensors, are checked as host control
+  inputs when consumed directly by a captured partition. Shape/data-dependent changes
   in tensor allocations or scratch allocation sequences are rejected rather than
   silently replaying stale parameters.
 - Memory patterns are disabled. Intermediates and scratch remain resident, and
   scratch allocation reuse is deliberately conservative. Capturing many buckets
-  may substantially increase memory consumption.
+  may substantially increase memory consumption even within the configured ID limit.
 - Partition replay and device copies synchronize at boundaries. This establishes
   correctness but does not overlap transfers and computation.
 - Capture warm-up executes CPU computation repeatedly, so stateful CPU operators
@@ -124,6 +142,32 @@ This is not a claim that a particular 27B model fits in 12 or 24 GB. That requir
 measurement with its actual quantization, context length, KV cache, placement, and
 capture buckets. CPU offloading may also impose substantial decode latency.
 
+## Observability limitations
+
+The partition runner invokes kernels directly instead of using the standard
+sequential executor's kernel wrapper. This affects preparation/capture passes and
+the eager CPU, copy, and CUDA host-output nodes executed during partitioned replay:
+
+- Session-level and run-level profiling do not emit the standard per-node kernel
+  events or allocator-statistics fields for these invocations. Session/run timing
+  is still available, but is not a complete node-level profile.
+- Node allocation-statistics collection, memory-profiler hooks, executor-provided
+  NVTX ranges, and debug input/output dumps are bypassed.
+- Kernel failures do not receive the wrapper's standard node-name/type exception
+  attribution; diagnostics depend on the kernel's own error message.
+
+CUDA partition replay launches an existing graph without re-invoking its kernels.
+Use a CUDA trace to verify actual graph launches, and ordinary eager runs
+(`gpu_graph_id=-1`) for standard executor diagnostics. Eager allocation statistics
+do not describe the extra retained memory of partitioned capture.
+Sharing the kernel-execution wrapper is deferred; any new executor hooks must also
+be considered explicitly for this runner.
+
+MoE statistics remain incompatible with graph capture, so this path must not be
+used to bypass that exclusion. Adaptive CPU/GPU MoE routing would violate fixed
+placement and capture/allocation-sequence assumptions. Supporting it would require
+a separate design, such as an eager orchestrator around fixed CUDA sub-operations.
+
 ## Validation targets
 
 Framework coverage checks scratch address retention, allocation-sequence errors,
@@ -131,6 +175,10 @@ and mixed CPU/CUDA execution with two CUDA partitions separated by CPU work.
 Changing input values between replays must change the output, and the CUDA EP must
 report that both partition graphs were captured. Additional buckets and eager
 execution between replays must preserve the original capture.
+Unequal-length CUDA Concat coverage checks pinned host staging buffers across
+two CUDA partitions, changing CPU inputs, different-shape buckets, and eager runs.
+CUDA Shape coverage checks that host outputs are recomputed between captured
+partitions rather than skipped during replay.
 Routing coverage also checks all-CUDA graphs, CPU shape nodes without device
 copies, and empty graphs. Eligible graphs must capture under the user-supplied graph
 ID instead of the partition executor's internal IDs, and preserve enabled or disabled
@@ -140,7 +188,11 @@ coverage for configurable warm-up counts and scratch retention across the alloca
 C ABI boundary. Failure regressions check that scratch retained by a kernel during
 a rejected replay is freed only by that kernel, and that partial replay failures
 invalidate every captured bucket while pre-execution validation remains recoverable.
+Graph-ID limit coverage checks the default and configured bounds, invalid settings,
+repeated rejection without new device allocations or changed outputs, and continued
+replay/eager execution at capacity. Whole-session routing remains exempt from the limit.
 
 Real-model evaluation must compare eager and captured output parity, confirm
-partition replay in logs, and measure peak VRAM and prefill/decode latency. A
-configured `enable_cuda_graph` option alone does not prove that replay occurred.
+partition replay using a CUDA trace or replay logs, and measure peak VRAM and
+prefill/decode latency. A configured `enable_cuda_graph` option alone does not prove
+that replay occurred.

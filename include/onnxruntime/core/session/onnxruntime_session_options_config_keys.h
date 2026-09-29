@@ -450,6 +450,14 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// See docs/partitioned_cuda_graphs.md for prototype limitations.
 static const char* const kOrtSessionOptionsEnablePartitionedCudaGraph = "session.enable_partitioned_cuda_graph";
 
+/// Maximum number of distinct nonnegative gpu_graph_id buckets retained by partitioned CUDA capture.
+/// A decimal integer in [1, 2147483647]; defaults to "16". There is no unlimited setting.
+/// A new ID is rejected before allocating its retained state when the limit is reached.
+/// Existing IDs and eager runs (gpu_graph_id=-1) remain usable. This bounds bucket count, not memory in bytes.
+/// Each bucket may contain multiple CUDA partition graphs and is retained until session destruction.
+/// Only read when partitioned execution is selected; ordinary eager and whole-session capture ignore this option.
+static const char* const kOrtSessionOptionsPartitionedCudaGraphMaxIds = "session.partitioned_cuda_graph_max_ids";
+
 /// Enables the CUDA MatMulNBits fpA_intB path for non-prepacked weights.
 /// "0" or "off" disables it; any other non-empty value enables it.
 /// Overrides the process-wide ORT_FPA_INTB_GEMM environment variable.
