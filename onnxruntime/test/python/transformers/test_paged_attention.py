@@ -1712,6 +1712,30 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
             local_window_size_override=4 if local else -1,
         )
 
+    @unittest.skipIf(
+        platform.system() != "Linux" or not torch.cuda.is_available(),
+        reason="The rotary reference requires CUDA and Triton on Linux.",
+    )
+    def test_qk_norm_qwen38_non_causal_local_window_prefill(self):
+        # Two queries select multi-row split-reduce with 256-wide heads and 6:1 GQA.
+        # Appending at positions 15/16 crosses a cache page; visible keys are
+        # [14, 17) and [15, 17), distinguishing local masking from causal masking.
+        config = Config(1, 2, 17, 24, 4, 256, 16, True, True, False, False, 0.0, ep="WebGpuExecutionProvider")
+        config.use_qk_norm = True
+        config.is_causal = False
+        with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
+            torch.manual_seed(0)
+            # The shared reference generates independent Q/K/V and Q/K gains and
+            # checks both attention output and the normalized-then-rotated K cache.
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                new_seqlens_override=torch.tensor([2], dtype=torch.int32),
+                past_seqlens_override=torch.tensor([15], dtype=torch.int32),
+                local_window_size_override=2,
+            )
+
     def test_qk_norm_split_norm_dimension(self):
         # A single 512-channel head selects the normalization helper's split-dimension shader.
         config = Config(1, 1, 32, 1, 1, 512, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
