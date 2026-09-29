@@ -1836,8 +1836,10 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
-  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  /// \deprecated Use SetWeightlessMode().
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);                ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
+  ModelCompilationOptions& SetWeightlessMode(OrtWeightlessSupport weightless_mode);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessMode
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
