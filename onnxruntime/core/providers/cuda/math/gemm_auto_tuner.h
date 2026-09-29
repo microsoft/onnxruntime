@@ -44,7 +44,10 @@ GemmDispatchPolicy ResolveGemmDispatchPolicy(const std::optional<std::string>& s
 enum class GemmKernel : uint8_t {
   kCublas = 0,
   kSmallNGemv = 1,
+  kTinyGemm2 = 2,
 };
+
+constexpr uint8_t GemmKernelBit(GemmKernel kernel) { return static_cast<uint8_t>(1u << static_cast<int>(kernel)); }
 
 const char* GemmKernelName(GemmKernel kernel);
 
@@ -61,10 +64,12 @@ struct GemmTuneKey {
   int k{0};
   // Operand alignment picks a different small-N kernel, so it is part of the key.
   bool small_n_vectorized{false};
+  // GemmKernelBit of every candidate that was eligible, since alignment can change the set.
+  uint8_t candidates{0};
 
   bool operator==(const GemmTuneKey& other) const {
     return device_uuid == other.device_uuid && data_type == other.data_type && m == other.m && n == other.n &&
-           k == other.k && small_n_vectorized == other.small_n_vectorized;
+           k == other.k && small_n_vectorized == other.small_n_vectorized && candidates == other.candidates;
   }
 };
 

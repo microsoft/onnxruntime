@@ -79,6 +79,9 @@ void RunEligibleShapes(DispatchMode mode) {
   RunMatMulOperatorCase<T>(9, 48, 5120, mode);
   RunMatMulOperatorCase<T>(33, 37, 1032, mode);
   RunMatMulOperatorCase<T>(64, 48, 5120, mode);
+  // Beyond the small-N GEMV (N > 1024) but eligible for tinygemm2 on SM 9.0+.
+  RunMatMulOperatorCase<T>(4, 2880, 720, mode);
+  RunMatMulOperatorCase<T>(17, 1032, 1024, mode);
 }
 
 TEST(MatMulSmallNGemvOpTest, DispatchesEligibleShapesWhenForced) {

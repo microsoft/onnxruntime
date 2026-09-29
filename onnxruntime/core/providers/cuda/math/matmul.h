@@ -32,11 +32,12 @@ class MatMul final : public CudaKernel {
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
-  // Picks between cuBLAS (`run_cublas`) and the small-N GEMV for an eligible single GEMM.
+  // Picks cuBLAS (`run_cublas`) or one of the eligible `candidates` (GemmKernelBit mask) for a single GEMM.
   template <typename RunCublas>
-  Status SelectSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c, int m, int n, int k,
-                          const RunCublas& run_cublas, bool& use_small_n) const;
-  Status RunSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c, int m, int n, int k) const;
+  Status SelectGemmKernel(OpKernelContext* ctx, const void* a, const void* b, void* c, int m, int n, int k,
+                          uint8_t candidates, const RunCublas& run_cublas, GemmKernel& selected) const;
+  Status RunGemmKernel(OpKernelContext* ctx, GemmKernel kernel, const void* a, const void* b, void* c, int m, int n,
+                       int k) const;
 
   const float alpha_;
   const bool trans_A_;

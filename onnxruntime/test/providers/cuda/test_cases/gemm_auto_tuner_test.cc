@@ -97,6 +97,10 @@ TEST(GemmAutoTunerTest, CacheKeepsFirstInsertion) {
   GemmTuneKey other = key;
   other.small_n_vectorized = !key.small_n_vectorized;
   EXPECT_FALSE(cache.Lookup(other).has_value());
+
+  other = key;
+  other.candidates = GemmKernelBit(GemmKernel::kTinyGemm2);
+  EXPECT_FALSE(cache.Lookup(other).has_value());
 }
 
 TEST(GemmAutoTunerTest, TimesAndSelectsFasterCandidate) {

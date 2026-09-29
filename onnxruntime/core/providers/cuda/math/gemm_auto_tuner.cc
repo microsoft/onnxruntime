@@ -86,6 +86,8 @@ const char* GemmKernelName(GemmKernel kernel) {
       return "cublas";
     case GemmKernel::kSmallNGemv:
       return "small_n_gemv";
+    case GemmKernel::kTinyGemm2:
+      return "tinygemm2";
   }
   return "unknown";
 }
@@ -101,6 +103,7 @@ size_t GemmTuneKeyHash::operator()(const GemmTuneKey& key) const {
   combine(static_cast<size_t>(key.n));
   combine(static_cast<size_t>(key.k));
   combine(static_cast<size_t>(key.small_n_vectorized));
+  combine(static_cast<size_t>(key.candidates));
   return seed;
 }
 
