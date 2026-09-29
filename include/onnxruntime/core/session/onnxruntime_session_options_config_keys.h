@@ -88,7 +88,8 @@ static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
 // total output size minus the size of input initializers that become unused.
 // Nodes whose estimated net increase exceeds this limit are skipped.
 // The value should be a non-negative integer in decimal string form.
-// The default value of "0" disables the threshold check (all sizes are allowed).
+// The default value of "0" disables this net-growth check. The separate absolute
+// constant-folding output-size limit remains in effect.
 static const char* const kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold =
     "session.constant_folding_node_weight_size_threshold";
 
