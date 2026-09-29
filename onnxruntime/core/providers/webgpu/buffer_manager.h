@@ -94,9 +94,6 @@ class IBufferCacheManager {
 class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
-  // Register deferred work before releasing any buffers it uses. Submission or abandonment ends it.
-  void BeginRecording(const CommandRecordingState& recording) const;
-  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) const;
   void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
   void MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGPUBuffer dst, size_t size) const;
   WGPUBuffer Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
@@ -108,7 +105,7 @@ class BufferManager {
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(CommandRecordingState& recording) const;
   // Drop retained references when a recording is abandoned instead of submitted.
-  void DiscardPendingBuffers(const CommandRecordingState& recording) const;
+  void DiscardPendingBuffers(CommandRecordingState& recording) const;
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
   void AbsorbCachedBuffers(wgpu::BufferUsage usage,
@@ -118,13 +115,13 @@ class BufferManager {
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
   WebGpuContext& context_;
+  // Protects both the caches and pending_buffers_.
   mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;
   std::unique_ptr<IBufferCacheManager> default_cache_;
-  const bool supports_buffer_reuse_;
-  // An entry exists only while that recording has unsubmitted work, even if no buffers were freed.
+  // Created on release, only for reusable buffers waiting for this recording's submission.
   mutable InlinedHashMap<const CommandRecordingState*, InlinedVector<wgpu::Buffer>> pending_buffers_;
 };
 

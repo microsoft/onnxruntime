@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -118,6 +119,9 @@ struct CommandRecordingState {
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
+  // Concurrent allocator frees inspect only this flag, never the encoders or deferred dispatches.
+  // BufferManager clears it under its cache lock after submission or abandonment.
+  std::atomic<bool> has_unsubmitted_work{false};
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
@@ -256,6 +260,14 @@ class WebGpuContext final {
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 
+  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
+    if (!recording.command_encoder) {
+      recording.command_encoder = device_.CreateCommandEncoder();
+      recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+    }
+    return recording.command_encoder;
+  }
+
   const wgpu::ComputePassEncoder& GetComputePassEncoder(CommandRecordingState& recording) {
     if (!recording.compute_pass_encoder) {
       auto& command_encoder = GetCommandEncoder(recording);
@@ -387,13 +399,6 @@ class WebGpuContext final {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
-
-  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
-    if (!recording.command_encoder) {
-      recording.command_encoder = device_.CreateCommandEncoder();
-    }
-    return recording.command_encoder;
-  }
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,

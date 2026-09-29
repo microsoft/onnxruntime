@@ -496,21 +496,7 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
-      default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)},
-      supports_buffer_reuse_{storage_cache_->SupportsBufferReuse() || uniform_cache_->SupportsBufferReuse() ||
-                             query_resolve_cache_->SupportsBufferReuse() || default_cache_->SupportsBufferReuse()} {
-}
-
-void BufferManager::BeginRecording(const CommandRecordingState& recording) const {
-  if (supports_buffer_reuse_) {
-    std::lock_guard<std::mutex> lock{mutex_};
-    pending_buffers_.try_emplace(&recording);
-  }
-}
-
-const wgpu::CommandEncoder& BufferManager::GetCommandEncoder(CommandRecordingState& recording) const {
-  BeginRecording(recording);
-  return context_.GetCommandEncoder(recording);
+      default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)} {
 }
 
 void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
@@ -541,7 +527,7 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
   staging_buffer.Unmap();
 
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-  auto& command_encoder = GetCommandEncoder(recording);
+  auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
   ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
@@ -560,7 +546,7 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
-  auto& command_encoder = GetCommandEncoder(recording);
+  auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
@@ -584,7 +570,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);
-      GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
+      context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
       if (submit_zero_initialize) {
         ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
       }
@@ -624,11 +610,10 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   EnforceBufferUnmapped(context_, buffer);
   std::lock_guard<std::mutex> lock{mutex_};
   auto& cache = GetCacheManager(buffer);
-  if (cache.SupportsBufferReuse()) {
-    if (auto it = pending_buffers_.find(recording); it != pending_buffers_.end()) {
-      it->second.emplace_back(wgpu::Buffer::Acquire(buffer));
-      return;
-    }
+  if (cache.SupportsBufferReuse() && recording != nullptr &&
+      recording->has_unsubmitted_work.load(std::memory_order_relaxed)) {
+    pending_buffers_[recording].emplace_back(wgpu::Buffer::Acquire(buffer));
+    return;
   }
 
   cache.ReleaseBuffer(buffer);
@@ -647,7 +632,7 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  auto& command_encoder = GetCommandEncoder(recording);
+  auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
   ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
@@ -684,6 +669,8 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
 
 void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
+  // Serialize the transition to idle with Free, so a concurrent release cannot miss this refresh.
+  recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
   if (auto it = pending_buffers_.find(&recording); it != pending_buffers_.end()) {
     for (auto& buffer : it->second) {
       GetCacheManager(buffer.Get()).ReleaseBuffer(buffer.MoveToCHandle());
@@ -701,8 +688,9 @@ void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) cons
   default_cache_->OnRefresh(recording.graph_capture_state);
 }
 
-void BufferManager::DiscardPendingBuffers(const CommandRecordingState& recording) const {
+void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
+  recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
   pending_buffers_.erase(&recording);
 }
 
