@@ -149,6 +149,7 @@ class ExecutionProviders {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
 
   void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
+    const Env& env = Env::Default();
     // Convert ProviderOptions to string for telemetry logging
     std::string provider_options_str;
     for (const auto& config_pair : options) {
@@ -158,12 +159,10 @@ class ExecutionProviders {
       provider_options_str += config_pair.first + ":" + config_pair.second;
     }
 #if defined(_WIN32) && defined(USE_1DS_TELEMETRY)
-    const Env& env = Env::Default();
     if (env.GetTelemetryProvider().IsEnabled()) {
       WindowsTelemetry::LogLocalProviderOptions(provider_id, provider_options_str, capture_state);
     }
 #else
-    const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
 #endif
   }

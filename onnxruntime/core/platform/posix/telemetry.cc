@@ -444,32 +444,6 @@ std::string GetFileName(std::string_view path) {
   return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
 }
 
-#ifdef _WIN32
-std::string GetWindowsPlatformDeviceId() {
-  ULONG buffer_size = 0;
-  if (::GetAdaptersInfo(nullptr, &buffer_size) != ERROR_BUFFER_OVERFLOW || buffer_size == 0) {
-    return {};
-  }
-
-  std::vector<unsigned char> buffer(buffer_size);
-  auto* adapter_info = reinterpret_cast<IP_ADAPTER_INFO*>(buffer.data());
-  if (::GetAdaptersInfo(adapter_info, &buffer_size) != ERROR_SUCCESS ||
-      adapter_info->AdapterName[0] == '\0') {
-    return {};
-  }
-
-  std::string device_id(adapter_info->AdapterName);
-  std::transform(device_id.begin(), device_id.end(), device_id.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return device_id;
-}
-
-std::string GetHashedWindowsPlatformDeviceId() {
-  const std::string device_id = GetWindowsPlatformDeviceId();
-  return device_id.empty() ? std::string{} : "w:" + HashDeviceId(device_id);
-}
-#endif
-
 }  // namespace
 
 PosixTelemetry::PosixTelemetry() {
@@ -561,10 +535,6 @@ void PosixTelemetry::Initialize() {
   config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
-#ifdef _WIN32
-  // The 1DS network detector leaves a netprofm.dll allocation at process exit.
-  config[CFG_BOOL_ENABLE_NET_DETECT] = false;
-#endif
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
     config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
@@ -1086,9 +1056,6 @@ void PosixTelemetry::LogProcessInfo() const {
         .AddString("hostEnvironment", host_environment.environment_class)
         .AddString("environmentDetectionConfidence", host_environment.detection_confidence)
         .AddString("deviceIdScope", host_environment.device_id_scope)
-#ifdef _WIN32
-        .AddString("windowsPlatformDeviceId", GetHashedWindowsPlatformDeviceId())
-#endif
         .AddInt32("processorCount", GetProcessorCount())
         .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
