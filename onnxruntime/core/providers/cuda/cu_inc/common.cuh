@@ -311,6 +311,11 @@ __device__ __inline__ double _Log(double a) { return log(a); }
 template <>
 __device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
+// Keeps the exponent non-positive on both branches, matching OP_Sigmoid.
+__device__ __inline__ float _Sigmoid(float a) {
+  return a > 0.0f ? 1.0f / (1.0f + expf(-a)) : 1.0f - 1.0f / (1.0f + expf(a));
+}
+
 template <typename T>
 __device__ __inline T _Tanh(T a);
 
