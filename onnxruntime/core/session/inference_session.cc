@@ -1264,11 +1264,11 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
         external_data_loader_mgr_.AbortLoad();
       }
     });
-#endif
     status = DoPostLoadProcessing(*model_);
     ORT_RETURN_IF_ERROR_SESSIONID_(status);
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     post_load_processing_succeeded = true;
+#else
+    ORT_RETURN_IF_ERROR_SESSIONID_(DoPostLoadProcessing(*model_));
 #endif
 
     // all steps complete, mark the model as loaded.

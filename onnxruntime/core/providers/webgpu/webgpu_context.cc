@@ -69,6 +69,10 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
         std::lock_guard<std::mutex> lock{initialize_mutex_};
         initialize_thread_id_ = std::this_thread::get_id();
       }
+      auto clear_initialize_thread_id = gsl::finally([this]() {
+        std::lock_guard<std::mutex> lock{initialize_mutex_};
+        initialize_thread_id_ = {};
+      });
       ORT_TRY {
         Initialize(config);
       }
@@ -86,10 +90,6 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
       }
       ORT_CATCH(...) {
         completion.set_exception(std::current_exception());
-      }
-      {
-        std::lock_guard<std::mutex> lock{initialize_mutex_};
-        initialize_thread_id_ = {};
       }
     };
 #if defined(__wasm__) && !defined(__EMSCRIPTEN_PTHREADS__)
