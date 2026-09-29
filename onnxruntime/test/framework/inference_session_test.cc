@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cfloat>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -15,6 +17,7 @@
 #include <random>
 #include <set>
 #include <thread>
+#include <tuple>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -253,6 +256,188 @@ Status RunModelWithValues(InferenceSession& session_object,
   std::vector<OrtValue> fetches;
   return session_object.Run(run_options, feeds, output_names, &fetches);
 }
+
+namespace {
+enum class GraphCaptureOperation {
+  Check,
+  Run,
+  Replay,
+  Release
+};
+
+// Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
+class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+
+  bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
+  bool IsGraphCaptureEnabled() const override { return true; }
+
+  bool IsGraphCaptured(int graph_annotation_id) const override {
+    Notify(GraphCaptureOperation::Check);
+    return graph_annotation_id != -1 && captured_.load();
+  }
+
+  Status OnRunStart(const RunOptions&) override {
+    Notify(GraphCaptureOperation::Run);
+    ++run_count;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
+        ++capture_run_count_ == 2) {
+      captured_ = true;
+    }
+    return Status::OK();
+  }
+
+  Status ReplayGraph(int, bool) override {
+    Notify(GraphCaptureOperation::Replay);
+    ++replay_count;
+    return fail_replay ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Replay failed for testing") : Status::OK();
+  }
+
+  Status ReleaseCapturedGraph(int) override {
+    Notify(GraphCaptureOperation::Release);
+    captured_ = false;
+    capture_run_count_ = 0;
+    return Status::OK();
+  }
+
+  std::function<void(GraphCaptureOperation)> on_operation;
+  std::atomic<int> run_count{0};
+  std::atomic<int> replay_count{0};
+  bool fail_replay = false;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphCaptureTestExecutionProvider);
+
+  void Notify(GraphCaptureOperation operation) const {
+    if (on_operation) {
+      on_operation(operation);
+    }
+  }
+
+  const bool concurrent_run_supported_;
+  std::atomic<bool> captured_{false};
+  std::atomic<int> capture_run_count_{0};
+};
+
+class GraphCaptureSessionTest : public ::testing::Test {
+ protected:
+  void CreateSession(bool concurrent_run_supported = false) {
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
+    session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    ep_ = ep.get();
+    ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
+    ASSERT_STATUS_OK(session_->Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_->Initialize());
+  }
+
+  Status Execute(GraphCaptureOperation operation) {
+    if (operation == GraphCaptureOperation::Release) {
+      return session_->ReleaseCapturedGraph(0);
+    }
+    RunOptions options;
+    if (operation == GraphCaptureOperation::Run) {
+      ORT_RETURN_IF_ERROR(options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+    }
+    return RunModelWithValues(*session_, options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  }
+
+  std::unique_ptr<InferenceSession> session_;
+  GraphCaptureTestExecutionProvider* ep_ = nullptr;
+};
+}  // namespace
+
+TEST_F(GraphCaptureSessionTest, CaptureRetriesAndRecapture) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 2);
+  EXPECT_EQ(ep_->replay_count.load(), 0);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 1);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 2);
+}
+
+TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  ep_->fail_replay = true;
+  EXPECT_THAT(Execute(GraphCaptureOperation::Replay).ErrorMessage(), testing::HasSubstr("Replay failed for testing"));
+  ep_->fail_replay = false;
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+}
+
+class GraphCaptureRunSerializationTest
+    : public GraphCaptureSessionTest,
+      public ::testing::WithParamInterface<std::tuple<GraphCaptureOperation, GraphCaptureOperation, bool>> {};
+
+TEST_P(GraphCaptureRunSerializationTest, RespectsConcurrentRunSupport) {
+  const auto [first_operation, second_operation, concurrent_run_supported] = GetParam();
+  ASSERT_NO_FATAL_FAILURE(CreateSession(concurrent_run_supported));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+
+  std::promise<void> entered, resume, second_started;
+  auto entered_future = entered.get_future();
+  auto resume_future = resume.get_future().share();
+  auto second_started_future = second_started.get_future();
+  std::atomic<bool> block_claimed{false}, blocked{false}, overlapped{false};
+  ep_->on_operation = [&](GraphCaptureOperation operation) {
+    if (operation == first_operation && !block_claimed.exchange(true)) {
+      blocked = true;
+      entered.set_value();
+      EXPECT_EQ(resume_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+      blocked = false;
+    } else if (blocked.load()) {
+      // This also detects graph-state queries that bypass Run's serialization.
+      overlapped = true;
+    }
+  };
+
+  auto first = std::async(std::launch::async, [&]() { return Execute(first_operation); });
+  EXPECT_EQ(entered_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  auto second = std::async(std::launch::async, [&]() {
+    second_started.set_value();
+    return Execute(second_operation);
+  });
+  EXPECT_EQ(second_started_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  const auto second_status = second.wait_for(concurrent_run_supported ? std::chrono::milliseconds(5000)
+                                                                      : std::chrono::milliseconds(200));
+  resume.set_value();
+  const auto first_result = first.get();
+  const auto second_result = second.get();
+  ep_->on_operation = {};
+
+  ASSERT_STATUS_OK(first_result);
+  ASSERT_STATUS_OK(second_result);
+  EXPECT_EQ(second_status, concurrent_run_supported ? std::future_status::ready : std::future_status::timeout);
+  EXPECT_EQ(overlapped.load(), concurrent_run_supported);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InferenceSession, GraphCaptureRunSerializationTest,
+    ::testing::Values(
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Run, false),
+        std::make_tuple(GraphCaptureOperation::Run, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Release, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
 
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
