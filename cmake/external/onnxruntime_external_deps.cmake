@@ -1075,6 +1075,14 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT onnxruntime_BUILD_SHARED_LIB)
+      # curl's imported mbedTLS helper is not exported with ORT's static package.
+      get_target_property(_ort_curl_link_libraries libcurl_static INTERFACE_LINK_LIBRARIES)
+      list(FILTER _ort_curl_link_libraries EXCLUDE REGEX "CURL::mbedtls")
+      set_target_properties(libcurl_static PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_ort_curl_link_libraries}")
+      target_link_libraries(libcurl_static PRIVATE mbedtls)
+    endif()
     target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
     if(ANDROID)
       target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
