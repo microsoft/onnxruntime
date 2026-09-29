@@ -47,6 +47,7 @@ void CreateExternalDataFile(size_t length, PathString& path,
   FILE* file = nullptr;
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
+  ASSERT_NE(file, nullptr);
 
   std::vector<uint8_t> chunk(1024 * 1024);
   ASSERT_EQ(kFilePrefixSize, fwrite(chunk.data(), 1, kFilePrefixSize, file));
@@ -324,6 +325,7 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
   PathString model_path = ORT_TSTR("cuda_external_initializer_model_XXXXXX");
   FILE* model_file = nullptr;
   ASSERT_NO_FATAL_FAILURE(CreateTestFile(model_file, model_path));
+  ASSERT_NE(model_file, nullptr);
   ScopedFileDeleter model_deleter{model_path};
   std::unique_ptr<FILE, int (*)(FILE*)> model_file_owner(model_file, fclose);
   const auto model_bytes = model.SerializeAsString();
