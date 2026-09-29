@@ -1,0 +1,301 @@
+# Weightless mode
+
+Status: implemented
+Last updated: 2026-09-28
+
+## Motivation
+
+A compiled (EPContext) model normally contains a copy of every constant initializer it uses, often inside the
+EP's opaque `ep_cache_context` binary. Each hardware-specific variant of the model then carries its own copy
+of the weights. For large models this means:
+
+- compiled models are about as large as the source model, and
+- an application that ships several variants (e.g., for different hardware generations) ships the weights
+  several times.
+
+In weightless mode the EP does not embed or copy constant initializers. The weights are stored once, outside
+the EP binary, and are provided to the EP when a session is created. Several compiled variants can share one
+copy of the weights.
+
+Not every EP can do this for every initializer. Some hardware has to transform weights at compile time (for
+example, reorder or quantize them), and that is only possible for initializers the EP is allowed to copy. For
+this reason weightless mode comes in several *modes*, and each EP reports which modes it supports on each
+device.
+
+## Design contract
+
+| Item | Decision |
+|---|---|
+| Mode type | `OrtWeightlessSupport` enum (`onnxruntime_c_api.h`). Each non-zero value is a single bit. Future values must be a power of 2 (1, 2, 4, 8, ...). |
+| EP discovery | `"weightless_support"` EP metadata entry (`kOrtEpDevice_EpMetadataKey_WeightlessSupport`) on each `OrtEpDevice`. The value is the bitwise OR of the supported modes, as a base-10 string. |
+| EP enforcement | `OrtEp::GetWeightlessSupport(const OrtEp*, uint32_t* supported_modes)` returns the same bitmask. ORT calls it during `Compile()`. |
+| Application request | Exactly **one** mode, via `OrtCompileApi::ModelCompilationOptions_SetWeightlessMode()` or the `"ep.enable_weightless_mode"` session option (`kOrtSessionOptionEpEnableWeightlessMode`). |
+| Validation | ORT rejects combined or unknown values and fails if the requested mode is not among the modes the EP supports. |
+| Compiled model | ORT records the mode in the compiled model's metadata under `"weightless_mode"` (`kOrtModelMetadata_WeightlessMode`). |
+| Deprecated | `ModelCompilationOptions_SetWeightlessEnabled(bool)`, `"ep.enable_weightless"` (since 1.30) and `"ep.enable_weightless_ep_context_nodes"` (since 1.29). |
+
+### Modes
+
+| Value | Name | Meaning |
+|---|---|---|
+| `0` | `OrtWeightlessSupport_NONE` | EP: weightless mode not supported. Application: weightless mode disabled (default). |
+| `1` | `OrtWeightlessSupport_EXTERNAL_ONLY` | Weightless for initializers stored **outside** the ONNX file (external data). Initializers stored inside the ONNX file are still copied by the EP during compilation. |
+| `2` | `OrtWeightlessSupport_ALL` | Weightless for **all** initializers, internal and external. The source model must be available at runtime (see [section 4](#4-runtime-and-packaging-requirements)). |
+
+Because the values are bit flags, an EP that supports both `EXTERNAL_ONLY` and `ALL` reports `3`.
+An application never requests `3`; it chooses one mode.
+
+## 1. EP reports its supported modes
+
+An EP reports its weightless modes in two places. The two must agree (see [1.4](#1-ep-reports-its-supported-modes)).
+
+**1.1 EP metadata (discovery, before a session exists).** In `OrtEpFactory::GetSupportedDevices()` the EP adds
+the `"weightless_support"` entry to the metadata passed to `OrtEpApi::CreateEpDevice()`. The value may differ
+per device, for example when older hardware or drivers only support `EXTERNAL_ONLY`.
+
+```cpp
+// Supports both modes on this device: EXTERNAL_ONLY (1) | ALL (2) = 3.
+ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "3");
+```
+
+If the entry is missing, applications must assume `"0"` (not supported).
+
+**1.2 `OrtEp::GetWeightlessSupport()` (enforcement, during compilation).** When the application requests a
+weightless mode, ORT calls this function from `PluginExecutionProvider::Compile()`:
+
+```cpp
+OrtStatus* ORT_API_CALL MyEp::GetWeightlessSupportImpl(const OrtEp* this_ptr, uint32_t* supported_modes) noexcept {
+  *supported_modes = OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL;
+  return nullptr;
+}
+```
+
+> In 1.29 the output parameter of `GetWeightlessSupport` was `OrtWeightlessSupport*`. Since 1.30 it is
+> `uint32_t*` so that it can hold a combination of modes. Both are 32 bits wide, so EP binaries built against
+> 1.29 keep working. EP sources need the signature updated.
+
+**1.3 How the EP gets the weights.** The EP reads the mode the application chose from the
+`"ep.enable_weightless_mode"` session config entry (`OrtEpApi::GetSessionConfigEntry`). When it later creates a
+session from the compiled model, it can read the recorded mode from the model metadata
+(`OrtApi::Graph_GetModelMetadata()`, key `"weightless_mode"`). Weightless mode does not prescribe how the EP
+obtains the initializer data. There are two strategies, and an EP may pick either one:
+
+| | ORT-provided initializers | EP-managed initializers |
+|---|---|---|
+| `drop_constant_initializers` in `OrtNodeFusionOptions` | `false` | `true` |
+| What the EP keeps at compile time | Nothing; the initializers stay inputs of the fused/EPContext node. | References to the initializers (e.g., the file, offset and length of external data) in its EPContext data. |
+| Where the weights are in the compiled model | ORT copies them into the compiled model (see [4.1](#41-where-the-weights-are-stored)). | Not in the compiled model. They stay in the source model and its external data files. |
+| How the EP gets the data at runtime | ORT passes them to `Compute()` through `KernelContext_GetInput()`. | The EP loads the data itself when the session is created, from the locations in [4.2](#42-requirements-per-mode). |
+
+The EP-managed strategy lets the EP prepare the weights once at session creation instead of receiving them
+through the kernel context. The ORT-provided strategy needs no file handling in the EP.
+
+**1.4 Consistency check.** Applications choose a mode from the EP metadata, while ORT validates the request
+against `GetWeightlessSupport()`. After calling `GetWeightlessSupport()`, ORT compares its result with the
+`"weightless_support"` metadata of every `OrtEpDevice` the EP was created for. A missing entry counts as `"0"`.
+The 1.29 string values `"none"`, `"external_only"` and `"all"` are accepted as `"0"`, `"1"` and `"2"`. If a
+device's value differs:
+
+- ORT logs a warning naming the device and both values. A mismatch is an EP bug, but the requested mode may
+  still be supported, so compilation continues.
+- If the requested mode is also unsupported, the `ORT_EP_FAIL` error includes the same description. That is the
+  case where an application chose a mode the metadata advertised and `GetWeightlessSupport()` rejected it.
+
+## 2. Application checks the supported modes
+
+The application reads the metadata of the `OrtEpDevice` it plans to use and tests the bit for each mode:
+
+```cpp
+Ort::ConstEpDevice ep_device = /* selected from env.GetEpDevices() */;
+
+uint32_t supported_modes = OrtWeightlessSupport_NONE;
+if (const char* value = ep_device.EpMetadata().GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport)) {
+  supported_modes = static_cast<uint32_t>(std::stoul(value));
+}
+
+const bool supports_external_only = (supported_modes & OrtWeightlessSupport_EXTERNAL_ONLY) != 0;
+const bool supports_all = (supported_modes & OrtWeightlessSupport_ALL) != 0;
+```
+
+## 3. Application chooses a mode and requests it
+
+The application picks the mode that fits its deployment, or none at all. The main trade-off is what has to be
+shipped and available at runtime (see [section 4](#4-runtime-and-packaging-requirements)):
+
+- `EXTERNAL_ONLY`: the weights in the source model's external data file are not embedded in the EP binary.
+  Small internal initializers are still embedded. The source model file itself is **not** needed at runtime.
+- `ALL`: no initializer is embedded in the EP binary. The source model **is** needed at runtime.
+- `NONE`: the compiled model is self-contained. No weight sharing between variants.
+
+The request is made at compile time, with the compile API:
+
+```cpp
+Ort::SessionOptions session_options;
+session_options.AppendExecutionProvider_V2(env, {ep_device}, ep_options);
+
+Ort::ModelCompilationOptions compile_options(env, session_options);
+compile_options.SetInputModelPath(ORT_TSTR("model.onnx"));
+compile_options.SetOutputModelPath(ORT_TSTR("model_ctx.onnx"));
+compile_options.SetOutputModelExternalInitializersFile(ORT_TSTR("model_ctx.onnx.data"), 0);
+compile_options.SetWeightlessMode(OrtWeightlessSupport_EXTERNAL_ONLY);
+
+Ort::CompileModel(env, compile_options);
+```
+
+or with the equivalent session options (for example when compiling through `"ep.context_enable"`):
+
+```cpp
+session_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightlessMode, "1");  // OrtWeightlessSupport_EXTERNAL_ONLY
+session_options.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, "model_ctx.onnx.data");
+```
+
+The same option also works in the JIT flow (no EPContext model): the EP runs without copying the initializers
+covered by the mode.
+
+The mode is a compile-time choice. ORT writes it to the compiled model's metadata as `"weightless_mode"` =
+`"1"` or `"2"`. Nothing is written for `NONE` or for the deprecated `"ep.enable_weightless"` option, which does
+not select a mode. The application does not need to set `"ep.enable_weightless_mode"` again when it creates a
+session from the compiled model. It can read the recorded mode from the model metadata to find out what the
+model needs at runtime.
+
+### Validation and errors
+
+| Condition | Result |
+|---|---|
+| `ModelCompilationOptions_SetWeightlessMode()` called with a value other than 0, 1 or 2 (e.g. `3`) | `ORT_INVALID_ARGUMENT`, returned immediately. |
+| `"ep.enable_weightless_mode"` set to a value other than `"0"`, `"1"` or `"2"` | `ORT_INVALID_ARGUMENT` from `Compile()` or when the compiled model is written. |
+| Mode is `NONE` | No weightless checks. |
+| EP built against API 29 or later does not implement `GetWeightlessSupport` | `ORT_NOT_IMPLEMENTED`. |
+| `(supported_modes & requested_mode) == 0`, including an EP reporting `0` | `ORT_EP_FAIL`. The message lists the supported modes and any mismatch with the EP metadata. |
+| `GetWeightlessSupport()` differs from the `"weightless_support"` EP metadata of a device | Warning (see [1.4](#1-ep-reports-its-supported-modes)). |
+| EP built against an API older than 29 | No check. ORT logs an INFO message and lets the EP handle the request. |
+| Session created from a model with `"weightless_mode"` = `"2"` without `"ep.context_source_model_path"` or a source model buffer | Warning. The EP may still find the source model through `"onnx_model_filename"` (see [4.2](#42-requirements-per-mode)). |
+
+The deprecated `"ep.enable_weightless"` = `"1"` (and `SetWeightlessEnabled(true)`, which sets it) still works. It
+does not select a mode, so ORT accepts any mode the EP supports. It is ignored if `"ep.enable_weightless_mode"`
+is set.
+
+## 4. Runtime and packaging requirements
+
+Weightless mode moves the weights out of the EP binary. The application is responsible for keeping them
+available and telling ORT where they are when the session is created.
+
+### 4.1 Where the weights are stored
+
+This depends on the EP's strategy ([1.3](#1-ep-reports-its-supported-modes)).
+
+**ORT-provided initializers.** The initializers are inputs of the EPContext nodes, and ORT copies every
+initializer the compiled graph references into the compiled model:
+
+- If an external initializers file is set, through `ModelCompilationOptions_SetOutputModelExternalInitializersFile()`
+  or the `"ep.context_model_external_initializers_file_name"` session option
+  (`kOrtSessionOptionsEpContextModelExternalInitializersFileName`), the initializers are written to that file.
+  The session option places **all** initializers in the file (size threshold 0). The compile API applies the
+  given size threshold.
+- Otherwise the initializers are embedded in the compiled `.onnx` file. The model is then not weightless in
+  any useful sense: it is as large as before and the weights can't be shared between variants.
+
+**EP-managed initializers.** The initializers are dropped from the compiled graph, so ORT does not copy them.
+The EP's references point to the source model's data:
+
+- `EXTERNAL_ONLY`: the source model's external data files.
+- `ALL`: the source model's external data files and the source model itself (for the initializers stored inside
+  the `.onnx`).
+
+An application generally can't tell which strategy an EP uses, so it should follow the requirements in 4.2,
+which cover both.
+
+### 4.2 Requirements per mode
+
+| | `NONE` | `EXTERNAL_ONLY` | `ALL` |
+|---|---|---|---|
+| **Compile time:** external initializers file (`"ep.context_model_external_initializers_file_name"` or `SetOutputModelExternalInitializersFile`) | Optional | **Required** | **Required** |
+| **Runtime:** compiled model (`*_ctx.onnx`) and EP context binary (if `ep_cache_context` is stored in a separate file, `embed_mode = 0`) | Required | Required | Required |
+| **Runtime:** compiled model's external initializers file | Only if one was generated | **Required** (ORT-provided) | **Required** (ORT-provided) |
+| **Runtime:** source model's external data files | Not used | **Required** (EP-managed) | **Required** (EP-managed) |
+| **Runtime:** source model `.onnx` (`"ep.context_source_model_path"`, source model buffer, or `"onnx_model_filename"`) | Not used | Not used | **Required** |
+
+The external initializers file is only strictly needed by EPs that use ORT-provided initializers. It is
+required in the table because the application can't rely on knowing the EP's strategy. For EP-managed
+initializers the file holds only the initializers of nodes that weren't compiled.
+
+**Locating external data files.** Both the compiled model's external initializers file and the source model's
+external data files are looked up relative to the directory of the model that references them. When they are
+elsewhere, for example in one folder shared by several variants, or when the model is loaded from memory, set
+`"session.model_external_initializers_file_folder_path"`
+(`kOrtSessionOptionsModelExternalInitializersFileFolderPath`). All external data files must then be in that
+folder.
+
+**Locating the source model (`ALL`).** The EP looks for the source model in this order:
+
+1. The buffer set with `OrtApi::SessionOptionsSetWeightlessSourceModelBuffer()`, for when the source model is
+   not a file (e.g., loaded from a package or downloaded). The buffer must stay valid for the lifetime of the
+   session.
+2. The path in `"ep.context_source_model_path"` (`kOrtSessionOptionEpContextSourceModelPath`).
+3. The `"onnx_model_filename"` attribute of the EPContext node, which records the source model file name
+   at compile time. A relative value is resolved against the directory of the compiled model: the directory of
+   the model path, or of `"ep.context_file_path"` (`kOrtSessionOptionEpContextFilePath`) when the compiled
+   model is loaded from memory. This works when the source model is deployed next to the compiled model, or at
+   the same relative location as at compile time.
+
+`"ep.context_source_model_path"` is only needed in `ALL` mode, and only when the source model isn't at the
+location given by `"onnx_model_filename"`. ORT logs a warning if a model recorded as `ALL` is loaded without a
+path or buffer, because the attribute fallback is then the only way left.
+
+```cpp
+// Creating a session from a model compiled with OrtWeightlessSupport_ALL.
+Ort::SessionOptions session_options;
+session_options.AppendExecutionProvider_V2(env, {ep_device}, ep_options);
+session_options.AddConfigEntry(kOrtSessionOptionEpContextSourceModelPath, "C:/models/model.onnx");
+session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "C:/models/weights");
+
+Ort::Session session(env, ORT_TSTR("C:/models/model_ctx.onnx"), session_options);
+```
+
+When the EP context binary is stored in a separate file (`embed_mode = 0`) and the compiled model is loaded
+from memory, or its location is overridden, also set `"ep.context_file_path"` so the binary can be found.
+
+### 4.3 Packaging
+
+What an application ships for each mode:
+
+| Artifact | `NONE` | `EXTERNAL_ONLY` | `ALL` |
+|---|---|---|---|
+| Compiled model `*_ctx.onnx` (one per variant) | Yes | Yes | Yes |
+| EP context binary (one per variant, if not embedded) | Yes, includes weights | Yes, includes internal initializers only | Yes, no weights |
+| Compiled model external initializers file | Only if generated | Yes | Yes |
+| Source model external data files | No | Yes, if the EP manages initializers | Yes, if the EP manages initializers |
+| Source model `.onnx` | No | No | Yes |
+
+Weight files can be shared by all variants compiled from the same source model.
+
+**Model packages.** A variant sets its session options in `executor_info["ort"].session_options` (see
+`onnxruntime/core/session/model_package/README.md`). `"ep.context_source_model_path"`,
+`"session.model_external_initializers_file_folder_path"` and `"ep.context_file_path"` are path-valued options:
+ORT resolves their values with the same rules as `model_file`, relative to the variant directory, or as a
+`sha256:<hex>` reference to a shared asset. A package can therefore store the source model and its weights once,
+as shared assets, and point every `ALL` variant at them:
+
+```jsonc
+"session_options": {
+  "ep.context_source_model_path": "sha256:<hex>/model.onnx",
+  "session.model_external_initializers_file_folder_path": "sha256:<hex>"
+}
+```
+
+If a variant does not set `"ep.context_source_model_path"`, the EP falls back to `"onnx_model_filename"`,
+resolved against the directory of the variant's compiled model. That only works if the source model is stored
+inside the variant directory under that name.
+
+## 5. Open issues
+
+1. **The external initializers file is not enforced.** With ORT-provided initializers, compiling in weightless
+   mode without an external initializers file embeds the weights in the compiled `.onnx`. ORT can't require
+   the file in general, because EPs that manage their initializers don't need it. ORT could warn when a
+   weightless EPContext node has initializer inputs and no external initializers file is set.
+2. **The source model is not enforced for `ALL`.** ORT warns, but doesn't fail, when a model recorded as `ALL`
+   is loaded without a source model path or buffer, because the EP may still find the source model through
+   `"onnx_model_filename"`.
+3. **Metadata and `GetWeightlessSupport` consistency is only checked when weightless mode is requested.**
+   `GetWeightlessSupport()` is only called then, so an inconsistent EP goes unnoticed until an application
+   requests a mode.
