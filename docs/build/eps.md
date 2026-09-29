@@ -110,7 +110,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.9.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.14.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
@@ -120,13 +120,13 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
          * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
          * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
        * Please make sure TensorRT built-in parser/open-sourced onnx-tensorrt specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) are **version-matched**, if enabling `--use_tensorrt_oss_parser`. 
-         * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+         * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.14 built-in binaries and onnx-tensorrt [10.14-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.14-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
 
 
-### **[Note to ORT 1.21/1.22 open-sourced parser users]** 
+### **[Note to ORT 1.21/1.22/1.23/1.24 open-sourced parser users]**
 
-* ORT 1.21/1.22 link against onnx-tensorrt 10.8-GA/10.9-GA, which requires newly released onnx 1.18.
-  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA/10.9-GA when building ORT 1.21/1.22: 
+* ORT 1.21/1.22/1.23 link against onnx-tensorrt 10.8-GA/10.9-GA, and ORT 1.24 links against onnx-tensorrt 10.14-GA, which requires newly released onnx 1.18.
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA/10.9-GA when building ORT 1.21/1.22/1.23:
     * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
       with `onnx;https://github.com/onnx/onnx/archive/e709452ef2bbc1d113faf678c24e6d3467696e83.zip;c0b9f6c29029e13dea46b7419f3813f4c2ca7db8`  
     * Download [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) as raw file and save file to [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) (do not copy/paste from browser, as it might alter line break type)
