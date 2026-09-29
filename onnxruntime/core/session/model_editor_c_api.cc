@@ -95,6 +95,9 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
     n->attributes.reserve(attribs_len);
     for (size_t i = 0; i < attribs_len; ++i) {
       n->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
+    }
+
+    for (size_t i = 0; i < attribs_len; ++i) {
       // take ownership. as we took a copy that means releasing the original value
       OrtApis::ReleaseOpAttr(attributes[i]);
       attributes[i] = nullptr;
