@@ -701,6 +701,34 @@ TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
   loader->AbortLoad();
 }
 
+TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterDirectStorageLoader) {
+  InferenceSession session{SessionOptions{}, GetEnvironment()};
+  auto off_provider = WebGpuProviderFactoryCreator::Create(
+                          WeightLoadAccelerationOptions(
+                              kWeightLoadAcceleration_Off))
+                          ->CreateProvider();
+  ASSERT_NE(off_provider, nullptr);
+  auto allocators = off_provider->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  const auto memory_info = allocators.front()->Info();
+  ASSERT_STATUS_OK(
+      session.RegisterExecutionProvider(std::move(off_provider)));
+
+  auto accelerated_provider =
+      WebGpuProviderFactoryCreator::Create(
+          WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required))
+          ->CreateProvider();
+  ASSERT_NE(accelerated_provider, nullptr);
+  const auto status =
+      session.RegisterExecutionProvider(std::move(accelerated_provider));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("already been registered"),
+            std::string::npos);
+  EXPECT_EQ(session.GetExternalDataLoaderManager().GetExternalDataLoader(
+                memory_info),
+            nullptr);
+}
+
 TEST(WebGpuContextTest, RequiredPipelinedRejectsNonPipelinedExistingContext) {
   auto off_options =
       WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off);

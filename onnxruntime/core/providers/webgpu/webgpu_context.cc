@@ -77,11 +77,39 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
         ORT_RETHROW;
       }
     };
+    auto initialize_synchronously = [this, &initialize]() {
+      std::promise<void> completion;
+      initialize_future_ = completion.get_future().share();
+      try {
+        initialize();
+        completion.set_value();
+      } catch (...) {
+        completion.set_exception(std::current_exception());
+      }
+      {
+        std::lock_guard<std::mutex> lock{initialize_mutex_};
+        initialize_thread_id_ = {};
+      }
+    };
 #if defined(__wasm__) && !defined(__EMSCRIPTEN_PTHREADS__)
-    initialize();
+    initialize_synchronously();
+#elif defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    const bool initialize_asynchronously =
+        !config.compile_only &&
+        IsWeightLoadAccelerationPipelined(
+            config.weight_load_acceleration_mode) &&
+        config.device == nullptr &&
+        !config.adapter_index.has_value() &&
+        static_cast<wgpu::BackendType>(config.backend_type) ==
+            wgpu::BackendType::D3D12;
+    if (initialize_asynchronously) {
+      initialize_future_ =
+          std::async(std::launch::async, std::move(initialize)).share();
+    } else {
+      initialize_synchronously();
+    }
 #else
-    initialize_future_ =
-        std::async(std::launch::async, std::move(initialize)).share();
+    initialize_synchronously();
 #endif
   });
 

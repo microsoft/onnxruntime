@@ -70,7 +70,8 @@ class ExecutionProviders {
   }
 
   common::Status
-  Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
+  CanAdd(const std::string& provider_id,
+         const std::shared_ptr<IExecutionProvider>& p_exec_provider) const {
     // A null provider would crash later when we dereference it (e.g. GetProviderOptions()).
     // Fail with a clear error instead so the caller can diagnose the missing provider.
     if (p_exec_provider == nullptr) {
@@ -83,6 +84,15 @@ class ExecutionProviders {
     if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
       auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
       LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      return status;
+    }
+    return common::Status::OK();
+  }
+
+  common::Status
+  Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
+    auto status = CanAdd(provider_id, p_exec_provider);
+    if (!status.IsOK()) {
       return status;
     }
 

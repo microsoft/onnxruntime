@@ -994,6 +994,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   const std::string& provider_type = p_exec_provider->Type();
+  ORT_RETURN_IF_ERROR_SESSIONID_(
+      execution_providers_.CanAdd(provider_type, p_exec_provider));
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
