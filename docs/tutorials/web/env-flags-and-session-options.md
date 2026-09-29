@@ -113,12 +113,12 @@ The `env.wasm.wasmPaths` flag is used to override the WebAssembly binary file pa
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/';
   ```
 
-- Set `env.wasm.wasmPaths` to an object with keys as the WebAssembly binary file name and values as the path to the WebAssembly binary file.
+- Set `env.wasm.wasmPaths` to an object with optional `wasm` and `mjs` properties. Each property accepts an absolute URL string or a `URL` object for the corresponding file.
   ```js
-  // Set separate WebAssembly binary file paths
+  // Set separate WebAssembly module and binary file paths
   ort.env.wasm.wasmPaths = {
-    'ort-wasm-simd.jsep.wasm': 'https://example.com/path/to/ort-wasm-simd.jsep.wasm'
-    'ort-wasm-simd-threaded.jsep.wasm': 'https://example.com/path/to/ort-wasm-simd-threaded.jsep.wasm',
+    mjs: 'https://example.com/path/to/ort-wasm-simd-threaded.jsep.mjs',
+    wasm: 'https://example.com/path/to/ort-wasm-simd-threaded.jsep.wasm',
   };
   ```
 
