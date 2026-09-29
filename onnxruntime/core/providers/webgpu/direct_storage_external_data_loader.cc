@@ -150,7 +150,7 @@ common::Status LoadBatchToD3D12(
       std::min(kMaxAllocationWorkers, static_cast<uint32_t>(batch.tensors.size()));
 
   std::future<HRESULT> allocation_future;
-  try {
+  ORT_TRY {
     allocation_future = std::async(std::launch::async, [&]() {
       std::atomic<size_t> next_index{0};
       std::atomic<HRESULT> allocation_result{S_OK};
@@ -194,11 +194,12 @@ common::Status LoadBatchToD3D12(
 
       std::vector<std::thread> workers;
       workers.reserve(metrics.allocation_workers - 1);
-      try {
+      ORT_TRY {
         for (uint32_t worker = 1; worker < metrics.allocation_workers; ++worker) {
           workers.emplace_back(allocate);
         }
-      } catch (...) {
+      }
+      ORT_CATCH(...) {
         allocation_result.store(E_FAIL, std::memory_order_relaxed);
       }
       allocate();
@@ -208,7 +209,8 @@ common::Status LoadBatchToD3D12(
       allocation_end = Clock::now();
       return allocation_result.load(std::memory_order_relaxed);
     });
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to start DirectStorage allocation workers: ",
                            ex.what());
@@ -294,9 +296,10 @@ common::Status LoadBatchToD3D12(
   const auto initialization_end = Clock::now();
 
   HRESULT allocation_result = E_FAIL;
-  try {
+  ORT_TRY {
     allocation_result = allocation_future.get();
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "D3D12 allocation workers failed: ", ex.what());
   }
@@ -327,6 +330,28 @@ common::Status LoadBatchToD3D12(
       request.CancellationTag = kCancellationTag;
       request.Name = tensor.key.name.c_str();
       queue->EnqueueRequest(&request);
+    }
+    const uint64_t resource_size =
+        (static_cast<uint64_t>(tensor.key.length) + 15) & ~uint64_t{15};
+    for (uint64_t padding_offset = tensor.key.length;
+         padding_offset < resource_size;) {
+      const uint32_t padding_size = static_cast<uint32_t>(
+          std::min(static_cast<uint64_t>(tensor.key.length),
+                   resource_size - padding_offset));
+      DSTORAGE_REQUEST request{};
+      request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
+      request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_BUFFER;
+      request.Options.CompressionFormat = DSTORAGE_COMPRESSION_FORMAT_NONE;
+      request.Source.File.Source = file;
+      request.Source.File.Offset = tensor.key.offset;
+      request.Source.File.Size = padding_size;
+      request.Destination.Buffer.Resource = tensor.resource.Get();
+      request.Destination.Buffer.Offset = padding_offset;
+      request.Destination.Buffer.Size = padding_size;
+      request.CancellationTag = kCancellationTag;
+      request.Name = tensor.key.name.c_str();
+      queue->EnqueueRequest(&request);
+      padding_offset += padding_size;
     }
   }
   queue->EnqueueStatus(status_array.Get(), 0);
@@ -437,8 +462,16 @@ common::Status PrepareTensorForBatch(
   ORT_RETURN_IF(batch.tensors_by_key.find(key) != batch.tensors_by_key.end(),
                 "Duplicate DirectStorage initializer: ", tensor_name);
 
-  const size_t requests = length / kMaxRequestSize +
-                          (length % kMaxRequestSize != 0 ? 1 : 0);
+  const size_t file_requests =
+      length / kMaxRequestSize +
+      (length % kMaxRequestSize != 0 ? 1 : 0);
+  const size_t padding = (16 - length % 16) % 16;
+  const size_t padding_requests =
+      padding == 0 ? 0 : padding / length + (padding % length != 0 ? 1 : 0);
+  ORT_RETURN_IF(file_requests >
+                    std::numeric_limits<size_t>::max() - padding_requests,
+                "DirectStorage request count overflow.");
+  const size_t requests = file_requests + padding_requests;
   ORT_RETURN_IF(batch.request_count >
                     std::numeric_limits<size_t>::max() - requests,
                 "DirectStorage request count overflow.");
@@ -466,11 +499,12 @@ void EndAccessNoThrow(ImportedAllocation& allocation) noexcept {
     return;
   }
 
-  try {
+  ORT_TRY {
     wgpu::SharedBufferMemoryEndAccessState end_state{};
     allocation.memory.EndAccess(allocation.buffer, &end_state);
     allocation.access_started = false;
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     // Cleanup paths, including allocator Free, must not propagate Dawn failures.
   }
 }
@@ -761,7 +795,7 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
   ComPtr<ID3D12Device> d3d_device = impl_->context.DirectStorageD3D12Device();
   ORT_RETURN_IF_NOT(d3d_device != nullptr,
                     "Failed to access the DirectStorage D3D12 device.");
-  try {
+  ORT_TRY {
     impl_->preload_future = std::async(
         std::launch::async,
         [batch = impl_->preload_batch.get(), &metrics = impl_->preload_metrics,
@@ -775,7 +809,8 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
               },
               metrics);
         });
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     const auto status = ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
         "Failed to start the DirectStorage initializer preload: ", ex.what());
@@ -827,9 +862,14 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
                     "DirectStorage initializer batch has not been started.");
   auto& batch = *impl_->batch;
   const auto fail_or_fallback =
-      [this](const common::Status& status) -> common::Status {
-    if (IsWeightLoadAccelerationRequired(impl_->mode) ||
-        status.Code() == common::MODEL_LOAD_CANCELED) {
+      [this, &is_canceled](const common::Status& status) -> common::Status {
+    if (status.Code() == common::MODEL_LOAD_CANCELED ||
+        (is_canceled && is_canceled())) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, MODEL_LOAD_CANCELED,
+          "DirectStorage initializer loading was canceled.");
+    }
+    if (IsWeightLoadAccelerationRequired(impl_->mode)) {
       return status;
     }
     LOGS_DEFAULT(WARNING)
@@ -954,7 +994,8 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
 
       wgpu::BufferDescriptor buffer_descriptor{};
       buffer_descriptor.label = tensor.key.name.c_str();
-      buffer_descriptor.size = static_cast<uint64_t>(tensor.key.length);
+      buffer_descriptor.size =
+          (static_cast<uint64_t>(tensor.key.length) + 15) & ~uint64_t{15};
       buffer_descriptor.usage = wgpu::BufferUsage::Storage |
                                 wgpu::BufferUsage::CopySrc |
                                 wgpu::BufferUsage::CopyDst;
@@ -1004,7 +1045,7 @@ void DirectStorageExternalDataLoader::AbortLoad() const noexcept {
     return;
   }
 
-  try {
+  ORT_TRY {
     if (impl_->preload_future.valid()) {
       impl_->preload_future.wait();
     }
@@ -1023,7 +1064,8 @@ void DirectStorageExternalDataLoader::AbortLoad() const noexcept {
       }
       impl_->batch.reset();
     }
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     // Abort is best-effort and is required not to throw.
   }
 }

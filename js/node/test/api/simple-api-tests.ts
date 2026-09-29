@@ -103,10 +103,7 @@ describe('API Tests - simple API tests', () => {
         // Builds without WebGPU/DirectStorage and machines without compatible
         // hardware can reject the provider after parsing. The regression here
         // is specifically that Node must recognize and forward the option.
-        assert.doesNotMatch(
-          String(error),
-          /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/,
-        );
+        assert.doesNotMatch(String(error), /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/);
       }
     }
   });

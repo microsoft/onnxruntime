@@ -80,10 +80,11 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
     auto initialize_synchronously = [this, &initialize]() {
       std::promise<void> completion;
       initialize_future_ = completion.get_future().share();
-      try {
+      ORT_TRY {
         initialize();
         completion.set_value();
-      } catch (...) {
+      }
+      ORT_CATCH(...) {
         completion.set_exception(std::current_exception());
       }
       {
