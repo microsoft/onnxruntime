@@ -237,9 +237,10 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
-                                                            OrtWeightlessSupport* support) noexcept {
-  *support = OrtWeightlessSupport_ALL;
+OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* this_ptr,
+                                                            uint32_t* supported_modes) noexcept {
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  *supported_modes = ep->config_.weightless_support;
   return nullptr;
 }
 

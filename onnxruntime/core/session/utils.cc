@@ -580,6 +580,35 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Warns if a model compiled with OrtWeightlessSupport_ALL is loaded without a source model. The EP may still
+// locate the source model via the "onnx_model_filename" EPContext node attribute, so this is not an error.
+static void CheckWeightlessSourceModel(const OrtSessionOptions* options, InferenceSession& sess) {
+  auto [status, model_metadata] = sess.GetModelMetadata();
+  if (!status.IsOK() || !model_metadata) {
+    return;
+  }
+
+  const auto& custom_metadata = model_metadata->custom_metadata_map;
+  auto it = custom_metadata.find(kOrtModelMetadata_WeightlessMode);
+  if (it == custom_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
+    return;
+  }
+
+  const bool has_source_model_path = !sess.GetSessionOptions().config_options.GetConfigOrDefault(
+                                                                                 kOrtSessionOptionEpContextSourceModelPath, "")
+                                          .empty();
+  const bool has_source_model_buffer = options != nullptr && options->weightless_source_model_data != nullptr;
+  if (!has_source_model_path && !has_source_model_buffer) {
+    LOGS(*sess.GetLogger(), WARNING)
+        << "The model was compiled with weightless mode OrtWeightlessSupport_ALL, which requires the source model "
+        << "at runtime, but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
+        << "The EP will try to locate the source model via the 'onnx_model_filename' EPContext node attribute.";
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
@@ -602,6 +631,8 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   //   3. Non-compiling EPs (like CPU EP, which may be implicitly added during Initialize()) don't participate
   //      in compatibility validation - they return NOT_APPLICABLE by default.
   ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
+
+  CheckWeightlessSourceModel(options, sess);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
