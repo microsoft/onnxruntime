@@ -192,7 +192,7 @@ Important test code includes:
 - [`js/react_native/e2e`](../js/react_native/e2e) for Detox-based Android and iOS application tests.
 - [`csharp/test/Microsoft.ML.OnnxRuntime.Tests.MAUI`](../csharp/test/Microsoft.ML.OnnxRuntime.Tests.MAUI) for consuming
   the NuGet package from a MAUI application. Its active CI target is Android.
-- Provider unit tests under each EP source tree and the shared provider test binaries.
+- Provider unit tests under [`onnxruntime/test/providers`](../onnxruntime/test/providers), which are built into the shared `onnxruntime_provider_test` binary.
 
 Mobile hardware behavior is not fully represented by simulators and emulators. Changes to CoreML, QNN, WebGPU, or
 device-specific performance should also be validated on representative physical hardware.
