@@ -17,6 +17,10 @@ interface BackendInfo {
 const backends: Map<string, BackendInfo> = new Map();
 const backendsSortedByPriority: string[] = [];
 
+// The same backend object can be registered with multiple names (e.g. the WebAssembly backend as "wasm" and "cpu").
+// Its init() is called once for each name, but calls for different names are not run concurrently.
+const backendInitQueues: Map<Backend, Promise<void>> = new Map();
+
 /**
  * Register a backend.
  *
@@ -81,7 +85,15 @@ const tryResolveAndInitializeBackend = async (backendName: string): Promise<Back
     const isInitializing = !!backendInfo.initPromise;
     try {
       if (!isInitializing) {
-        backendInfo.initPromise = backendInfo.backend.init(backendName);
+        const backend = backendInfo.backend;
+        const previousInit = backendInitQueues.get(backend);
+        backendInfo.initPromise = previousInit
+          ? previousInit.then(
+              async () => backend.init(backendName),
+              async () => backend.init(backendName),
+            )
+          : backend.init(backendName);
+        backendInitQueues.set(backend, backendInfo.initPromise);
       }
       await backendInfo.initPromise;
       backendInfo.initialized = true;
