@@ -6,9 +6,9 @@ scenarios:
 1. Create a complete model in memory and create an inference session from it.
 2. Load an existing model and augment it with nodes and initializers before session initialization.
 
-The API was introduced in ONNX Runtime 1.22. Obtain the function table with `OrtApi::GetModelEditorApi()` in C or
-`Ort::GetModelEditorApi()` in C++. It requires a full build; `GetModelEditorApi()` returns `nullptr` in a minimal
-build.
+The API was introduced in ONNX Runtime 1.22. In C, obtain the function table with
+`OrtApi::GetModelEditorApi()`; it returns `nullptr` in a minimal build. In C++, `Ort::GetModelEditorApi()` returns a
+reference and throws `Ort::Exception` when the API is unavailable. The API requires a full build.
 
 The API cannot remove or replace existing nodes or initializers, and it does not support control-flow nodes
 (`If`, `Loop`, `Scan`) because graph-valued attributes cannot be created.
