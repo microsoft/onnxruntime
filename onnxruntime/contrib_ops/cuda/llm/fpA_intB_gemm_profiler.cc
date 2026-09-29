@@ -132,6 +132,24 @@ std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupw
   return mRunner->getConfigs();
 }
 
+std::optional<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config>
+WeightOnlyGroupwiseQuantGemmPluginProfiler::getDeterministicConfig(int m) const {
+  const auto configs = mRunner->getConfigs();
+  if (m < 16) {
+    for (const auto& config : configs) {
+      if (config.enableCudaKernel) {
+        return config;
+      }
+    }
+  }
+  for (const auto& config : configs) {
+    if (!config.enableCudaKernel && config.split_k_style == cutlass_extensions::SplitKStyle::NO_SPLIT_K) {
+      return config;
+    }
+  }
+  return std::nullopt;
+}
+
 bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
