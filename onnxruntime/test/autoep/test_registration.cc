@@ -76,8 +76,9 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   // "BNSH" because the example EP does not fuse the Transpose -> GQA -> Transpose sequence; only an
   // EP that does should report "BNHS".
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout), "BNSH");
-  // Verify the example plugin reports weightless support for all initializers.
-  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
+  // Verify the example plugin reports weightless support for both external initializers only and all initializers
+  // (OrtWeightlessSupport_EXTERNAL_ONLY | OrtWeightlessSupport_ALL).
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "3");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");

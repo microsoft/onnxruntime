@@ -49,4 +49,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetWeightlessEnabled,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ bool use_weightless);
 
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetWeightlessMode,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ OrtWeightlessSupport weightless_mode);
+
 }  // namespace OrtCompileAPI

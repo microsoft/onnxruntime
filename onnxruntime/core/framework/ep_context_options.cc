@@ -6,12 +6,30 @@
 #include <string>
 #include <utility>
 #include "core/common/common.h"
+#include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/framework/ep_context_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace epctx {
+
+Status ParseWeightlessMode(const std::string& value, OrtWeightlessSupport& mode) {
+  // The app must select a single mode.
+  uint32_t parsed_mode = 0;
+  if (!TryParseStringWithClassicLocale(value, parsed_mode) ||
+      (parsed_mode != OrtWeightlessSupport_NONE && parsed_mode != OrtWeightlessSupport_EXTERNAL_ONLY &&
+       parsed_mode != OrtWeightlessSupport_ALL)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value '", value, "' for ",
+                           kOrtSessionOptionEpEnableWeightlessMode, ". Valid values are: ",
+                           "0 (OrtWeightlessSupport_NONE), 1 (OrtWeightlessSupport_EXTERNAL_ONLY), and ",
+                           "2 (OrtWeightlessSupport_ALL).");
+  }
+
+  mode = static_cast<OrtWeightlessSupport>(parsed_mode);
+  return Status::OK();
+}
+
 // class ModelGenOptions
 
 ModelGenOptions::ModelGenOptions() = default;

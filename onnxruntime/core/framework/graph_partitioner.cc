@@ -1374,6 +1374,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 // TODO: Move function to ep_context_utils.h/cc
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
+                                   const ConfigOptions& config_options,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
@@ -1511,6 +1512,25 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
           LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
         });
       }
+    }
+  }
+
+  // Record the weightless mode the model was compiled with, so that it is known when the model is loaded.
+  // Remove any value inherited from the source model's metadata if weightless mode was not requested.
+  {
+    OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+    const std::string weightless_mode_str =
+        config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightlessMode, "");
+    if (!weightless_mode_str.empty()) {
+      ORT_RETURN_IF_ERROR(epctx::ParseWeightlessMode(weightless_mode_str, weightless_mode));
+    }
+
+    auto& model_metadata = ep_context_model.MetaData();
+    if (weightless_mode != OrtWeightlessSupport_NONE) {
+      model_metadata.insert_or_assign(kOrtModelMetadata_WeightlessMode,
+                                      std::to_string(static_cast<int>(weightless_mode)));
+    } else {
+      model_metadata.erase(kOrtModelMetadata_WeightlessMode);
     }
   }
 
@@ -1916,7 +1936,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     // form (no nodes compiled) is instead emitted by InferenceSession (epctx::BuildAndSaveOptimizedModel);
     // see there for how its serialization point is chosen.
     if (ep_context_gen_options.enable && AnyEpContextNodesProduced()) {
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, config_options, ep_context_gen_options, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);

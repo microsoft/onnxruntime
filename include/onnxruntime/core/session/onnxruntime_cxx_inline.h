@@ -1365,6 +1365,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bo
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessMode(OrtWeightlessSupport weightless_mode) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessMode(this->p_, weightless_mode));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>
