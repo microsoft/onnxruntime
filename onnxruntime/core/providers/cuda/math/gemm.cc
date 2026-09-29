@@ -109,8 +109,8 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
       const int bias_rows = rank == 2 ? static_cast<int>(b_shape[0]) : 1;
       const int bias_cols = rank == 0 ? 1 : static_cast<int>(b_shape[rank - 1]);
       // The main GEMM applies beta, except when K == 0 and it is skipped.
-      BroadcastBias(Stream(ctx), b_data, out_data, M, N, bias_rows, bias_cols,
-                    K == 0 ? ToCudaType<T>::FromFloat(beta_) : one);
+      ORT_RETURN_IF_ERROR(BroadcastBias(Stream(ctx), b_data, out_data, M, N, bias_rows, bias_cols,
+                                        K == 0 ? ToCudaType<T>::FromFloat(beta_) : one));
     }
   }
 

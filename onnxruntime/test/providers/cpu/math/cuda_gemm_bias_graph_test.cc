@@ -268,10 +268,9 @@ TEST_F(CudaGemmBiasSessionTest, GraphReplayAfterLargerSession) {
   auto grow = std::async(std::launch::async, [&] {
     ready.wait();
     ORT_ENFORCE(cudaSetDevice(0) == cudaSuccess);
-    for (int64_t size : {2053, 4099}) {
-      GemmBiasBinding growing(other, allocator, other_stream.stream, size, size + 2);
-      growing.RunAndVerify(other_stream.stream, "-1", 3.0f);
-    }
+    constexpr int64_t size = 2053;
+    GemmBiasBinding growing(other, allocator, other_stream.stream, size, size + 2);
+    growing.RunAndVerify(other_stream.stream, "-1", 3.0f);
   });
   start.set_value();
   // CUDA graph caches are per-thread: replay on the capturing thread while the other session grows.

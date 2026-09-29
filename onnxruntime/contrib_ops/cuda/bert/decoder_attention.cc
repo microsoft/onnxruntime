@@ -270,8 +270,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
-  BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>()),
-                reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), m, n, 1, n, one);
+  ORT_RETURN_IF_ERROR(BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>()),
+                                    reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), m, n, 1, n, one));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -292,8 +292,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       k = hidden_size;
       kv_sequence_length = sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
-      BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
-                    reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one);
+      ORT_RETURN_IF_ERROR(BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
+                                        reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -309,8 +309,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       k = hidden_size;
       kv_sequence_length = key_sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
-      BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
-                    reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one);
+      ORT_RETURN_IF_ERROR(BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
+                                        reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -330,8 +330,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       m = sequence_length * batch_size;
       kv_sequence_length = cache_sequence_length + sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
-      BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
-                    reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one);
+      ORT_RETURN_IF_ERROR(BroadcastBias(stream, reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size),
+                                        reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), m, n, 1, n, one));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,

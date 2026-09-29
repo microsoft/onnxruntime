@@ -35,7 +35,7 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count) {
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output, value, N);
 }
 
-template <typename T, typename Index>
+template <typename T, typename Index, bool ApplyScale>
 __global__ void BroadcastBiasKernel(const T* bias, T* output, int64_t count,
                                     DivMod<Index> cols, int bias_row_stride, int bias_col_stride, T scale) {
   // Keep offsets and the loop increment wide even when fast 32-bit division is sufficient.
@@ -44,36 +44,60 @@ __global__ void BroadcastBiasKernel(const T* bias, T* output, int64_t count,
     Index row, col;
     cols.divmod(static_cast<Index>(id), row, col);
     const T value = bias[static_cast<int64_t>(row) * bias_row_stride + col * bias_col_stride];
-    output[id] = scale == T(1) ? value : scale * value;
+    if constexpr (ApplyScale) {
+      output[id] = scale * value;
+    } else {
+      output[id] = value;
+    }
   }
 }
 
+template <typename T, typename Index, bool ApplyScale>
+void LaunchBroadcastBias(cudaStream_t stream, const T* bias, T* output, int64_t count, int cols,
+                         int bias_row_stride, int bias_col_stride, T scale, int blocks, int threads) {
+  BroadcastBiasKernel<T, Index, ApplyScale><<<blocks, threads, 0, stream>>>(
+      bias, output, count, DivMod<Index>(cols), bias_row_stride, bias_col_stride, scale);
+}
+
 template <typename T>
-void BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
-                   int bias_rows, int bias_cols, T scale) {
-  ORT_ENFORCE(rows >= 0 && cols >= 0 &&
-                  (bias_rows == 1 || bias_rows == rows) && (bias_cols == 1 || bias_cols == cols),
-              "Invalid bias broadcast dimensions");
+Status BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
+                     int bias_rows, int bias_cols, T scale) {
+  ORT_RETURN_IF_NOT(rows >= 0 && cols >= 0 &&
+                        (bias_rows == 1 || bias_rows == rows) && (bias_cols == 1 || bias_cols == cols),
+                    "Invalid bias broadcast: output [", rows, ", ", cols, "], bias [",
+                    bias_rows, ", ", bias_cols, "]");
   const int64_t count = static_cast<int64_t>(rows) * cols;
   if (count == 0) {
-    return;
+    return Status::OK();
   }
 
   constexpr int threads = GridDim::maxThreadsPerBlock;
   const int blocks = static_cast<int>(std::min<int64_t>(CeilDiv(count, threads), 65535));
   const int row_stride = bias_rows == 1 ? 0 : bias_cols;
   const int col_stride = bias_cols == 1 ? 0 : 1;
+  const bool apply_scale = !(scale == T(1));
   if (count <= std::numeric_limits<int>::max()) {
-    BroadcastBiasKernel<<<blocks, threads, 0, stream>>>(
-        bias, output, count, DivMod<int>(cols), row_stride, col_stride, scale);
+    if (apply_scale) {
+      LaunchBroadcastBias<T, int, true>(stream, bias, output, count, cols, row_stride, col_stride,
+                                        scale, blocks, threads);
+    } else {
+      LaunchBroadcastBias<T, int, false>(stream, bias, output, count, cols, row_stride, col_stride,
+                                         scale, blocks, threads);
+    }
   } else {
-    BroadcastBiasKernel<<<blocks, threads, 0, stream>>>(
-        bias, output, count, DivMod<int64_t>(cols), row_stride, col_stride, scale);
+    if (apply_scale) {
+      LaunchBroadcastBias<T, int64_t, true>(stream, bias, output, count, cols, row_stride, col_stride,
+                                            scale, blocks, threads);
+    } else {
+      LaunchBroadcastBias<T, int64_t, false>(stream, bias, output, count, cols, row_stride, col_stride,
+                                             scale, blocks, threads);
+    }
   }
+  return CUDA_CALL(cudaGetLastError());
 }
 
 #define SPECIALIZED_BROADCAST_BIAS(T) \
-  template void BroadcastBias<T>(cudaStream_t, const T*, T*, int, int, int, int, T);
+  template Status BroadcastBias<T>(cudaStream_t, const T*, T*, int, int, int, int, T);
 
 SPECIALIZED_BROADCAST_BIAS(float)
 SPECIALIZED_BROADCAST_BIAS(double)

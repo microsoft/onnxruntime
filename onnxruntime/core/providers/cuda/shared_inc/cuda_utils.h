@@ -13,6 +13,7 @@
 
 #include <gsl/gsl>
 #include "core/common/float16.h"
+#include "core/common/status.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
@@ -39,8 +40,8 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 // Each bias dimension must be either 1 or the corresponding output dimension.
 // A unit scale copies values without arithmetic; non-unit scaling is used by zero-K Gemm.
 template <typename T>
-void BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
-                   int bias_rows, int bias_cols, T scale);
+Status BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, int cols,
+                     int bias_rows, int bias_cols, T scale);
 
 /*
   This is a utility wrapper for arbitrary type array
