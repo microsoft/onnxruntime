@@ -2849,12 +2849,18 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
-  AddTest(TARGET onnxruntime_webgpu_external_dawn_test
-          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-          LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
-          DEPENDS ${all_dependencies}
-  )
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+  if (onnxruntime_BUILD_SHARED_LIB)
+    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native
+            DEPENDS ${all_dependencies})
+  else()
+    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            DEPENDS ${all_dependencies})
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
 endif()
 
