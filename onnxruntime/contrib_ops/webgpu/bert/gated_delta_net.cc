@@ -110,6 +110,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
+                             WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
                              WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
                              WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
@@ -645,9 +646,14 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     return Status::OK();
   }
 
+  const uint32_t subgroup_min_size =
+      context.AdapterInfo().vendor == std::string_view{"apple"} &&
+              context.HasFeature(wgpu::FeatureName::Subgroups)
+          ? context.AdapterInfo().subgroupMinSize
+          : 0u;
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                                final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params,
-                               capture_state_updates};
+                               capture_state_updates, subgroup_min_size};
   add_qkv_inputs(program);
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});
@@ -667,7 +673,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                  final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_qkv, use_packed_params,
-                 capture_state_updates, workgroup_size, kValueChannelsPerWorkgroup)
+                 capture_state_updates, subgroup_min_size, workgroup_size, kValueChannelsPerWorkgroup)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},

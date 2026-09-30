@@ -11,6 +11,7 @@
 #param qk_l2_norm
 #param use_packed_params
 #param capture_state_updates
+#param subgroup_min_size
 #param value_channels_per_workgroup
 #use .getByOffset .setByOffset
 
@@ -49,6 +50,10 @@ $MAIN {
   let value_head = (workgroup / num_value_tiles) % uniforms.num_heads_v;
   let batch = workgroup / (num_value_tiles * uniforms.num_heads_v);
   let key_index = local_idx;
+#if subgroup_min_size
+  let subgroup_index = key_index / sg_size;
+  let subgroup_count = (workgroup_size_x + sg_size - 1u) / sg_size;
+#endif
   let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
   var state: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
   if (key_index < uniforms.head_size_qk) {
@@ -94,6 +99,26 @@ $MAIN {
       query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
     }
 #if qk_l2_norm
+#if subgroup_min_size
+    let key_norm_partial = subgroupAdd(key_value * key_value);
+    let query_norm_partial = subgroupAdd(query_value * query_value);
+    if (sg_id == 0u) {
+      key_norm[subgroup_index] = key_norm_partial;
+      query_norm[subgroup_index] = query_norm_partial;
+    }
+    workgroupBarrier();
+    if (key_index == 0u) {
+      var key_norm_sum = 0.0;
+      var query_norm_sum = 0.0;
+      for (var subgroup = 0u; subgroup < subgroup_count; subgroup++) {
+        key_norm_sum += key_norm[subgroup];
+        query_norm_sum += query_norm[subgroup];
+      }
+      key_norm[0] = key_norm_sum;
+      query_norm[0] = query_norm_sum;
+    }
+    workgroupBarrier();
+#else
     key_norm[key_index] = key_value * key_value;
     query_norm[key_index] = query_value * query_value;
     workgroupBarrier();
@@ -104,6 +129,7 @@ $MAIN {
       }
       workgroupBarrier();
     }
+  #endif
     key_value *= inverseSqrt(key_norm[0] + 1e-12);
     query_value *= inverseSqrt(query_norm[0] + 1e-12);
 #endif
@@ -111,7 +137,7 @@ $MAIN {
 #if use_packed_params
     var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
 #else
-    var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+  var gate = f32(decay.getByOffset(token * uniforms.num_heads_v + value_head));
 #if qwen_gate
     gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
@@ -120,7 +146,41 @@ $MAIN {
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       state[value_offset] *= gate_scale;
     }
-#endif
+#if subgroup_min_size
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let retrieved_partial = subgroupAdd(state[value_offset] * key_value);
+      let pre_output_partial = subgroupAdd(state[value_offset] * query_value);
+      if (sg_id == 0u) {
+        let reduction_offset = value_offset * workgroup_size_x + subgroup_index;
+        retrieved[reduction_offset] = retrieved_partial;
+        pre_output[reduction_offset] = pre_output_partial;
+      }
+    }
+    let key_query_partial = subgroupAdd(key_value * query_value);
+    if (sg_id == 0u) {
+      key_query[subgroup_index] = key_query_partial;
+    }
+    workgroupBarrier();
+    if (key_index == 0u) {
+      var key_query_sum = 0.0;
+      for (var subgroup = 0u; subgroup < subgroup_count; subgroup++) {
+        key_query_sum += key_query[subgroup];
+      }
+      key_query[0] = key_query_sum;
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        var retrieved_sum = 0.0;
+        var pre_output_sum = 0.0;
+        let reduction_offset = value_offset * workgroup_size_x;
+        for (var subgroup = 0u; subgroup < subgroup_count; subgroup++) {
+          retrieved_sum += retrieved[reduction_offset + subgroup];
+          pre_output_sum += pre_output[reduction_offset + subgroup];
+        }
+        retrieved[reduction_offset] = retrieved_sum;
+        pre_output[reduction_offset] = pre_output_sum;
+      }
+    }
+    workgroupBarrier();
+#else
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       let reduction_offset = value_offset * workgroup_size_x + key_index;
       retrieved[reduction_offset] = state[value_offset] * key_value;
@@ -139,13 +199,15 @@ $MAIN {
       }
       workgroupBarrier();
     }
+#endif
+#endif
     if (key_index == 0u) {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
 #if use_packed_params
       beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
 #else
-      beta_value = beta.getByOffset(token * uniforms.num_heads_v + value_head);
+  beta_value = f32(beta.getByOffset(token * uniforms.num_heads_v + value_head));
 #if sigmoid_beta
       beta_value = gdn_sigmoid(beta_value);
 #endif
