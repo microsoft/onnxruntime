@@ -44,6 +44,7 @@ Status CheckInputs(const T* query,
                    DynamicSparseAttentionMode attention_mode,
                    DynamicSparseAttentionKvSource selected_kv_source,
                    float scale,
+                   bool has_scale,
                    float qk_norm_epsilon,
                    DynamicSparseAttentionParameters& parameters) {
   ORT_RETURN_IF_NOT(query != nullptr, "DynamicSparseAttention: query is required.");
@@ -246,7 +247,7 @@ Status CheckInputs(const T* query,
   parameters.rotary_max_position = rotary_max_position;
   parameters.rotary_offset = rotary_offset;
   parameters.local_window_size = local_window_size;
-  parameters.scale = scale == 0.0f ? 1.0f / std::sqrt(static_cast<float>(head_size)) : scale;
+  parameters.scale = has_scale ? scale : 1.0f / std::sqrt(static_cast<float>(head_size));
   parameters.qk_norm_epsilon = qk_norm_epsilon;
   parameters.is_packed_qkv = is_packed_qkv;
   parameters.do_rotary = do_rotary;

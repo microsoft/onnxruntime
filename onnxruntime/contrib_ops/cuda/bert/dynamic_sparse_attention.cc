@@ -92,7 +92,8 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
               "DynamicSparseAttention: rotary_offset must be a nonnegative int.");
   rotary_offset_ = static_cast<int>(rotary_offset);
 
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  scale_ = 0.0f;
+  has_scale_ = info.GetAttr("scale", &scale_).IsOK();
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   do_rotary_ = ParseBoolAttribute(info, "do_rotary", 0);
   rotary_interleaved_ = ParseBoolAttribute(info, "rotary_interleaved", 0);
@@ -130,7 +131,7 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
       selected_indices, selected_counts, seqlens_k, total_sequence_length,
       cos_cache, sin_cache, position_ids, q_norm_weight, k_norm_weight, head_sink,
       num_heads_, kv_num_heads_, local_window_size_, rotary_offset_, do_rotary_,
-      auxiliary_kv_shared_, attention_mode_, selected_kv_source_, scale_,
+      auxiliary_kv_shared_, attention_mode_, selected_kv_source_, scale_, has_scale_,
       qk_norm_epsilon_, parameters));
   parameters.rotary_interleaved = rotary_interleaved_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;

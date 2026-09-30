@@ -1693,7 +1693,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Whether rotary pairs use interleaved layout.</dd>
 <dt><tt>rotary_offset</tt> : int</dt>
-<dd>First head channel covered by rotary embedding.</dd>
+<dd>First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room for the rotary dimensions within head_size.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scaling factor applied to QK. Defaults to 1/sqrt(head_size).</dd>
 <dt><tt>selected_kv_source</tt> : string</dt>
@@ -1706,7 +1706,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query [batch, sequence, num_heads * head_size], or packed QKV.</dd>
+<dd>Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.</dd>
 <dt><tt>key</tt> (optional) : T</dt>
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>value</tt> (optional) : T</dt>

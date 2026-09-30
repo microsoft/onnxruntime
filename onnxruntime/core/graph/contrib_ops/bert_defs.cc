@@ -463,6 +463,16 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+  if (num_heads <= 0 || num_heads > std::numeric_limits<int>::max()) {
+    fail_shape_inference("num_heads must be a positive int");
+  }
+  if (kv_num_heads <= 0 || kv_num_heads > std::numeric_limits<int>::max() ||
+      num_heads % kv_num_heads != 0) {
+    fail_shape_inference("kv_num_heads must be positive and divide num_heads");
+  }
+
   if (hasInputShape(ctx, 0)) {
     const auto& query_shape = getInputShape(ctx, 0);
     const auto& query_dims = query_shape.dim();
@@ -471,10 +481,8 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     }
 
     auto output_shape = query_shape;
-    const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-    const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
     if (ctx.getInputType(2) == nullptr) {
-      if (num_heads > 0 && kv_num_heads > 0 && query_dims[2].has_dim_value()) {
+      if (query_dims[2].has_dim_value()) {
         const int64_t packed_heads = num_heads + 2 * kv_num_heads;
         const int64_t packed_hidden_size = query_dims[2].dim_value();
         if (packed_hidden_size % packed_heads != 0) {
@@ -482,8 +490,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         }
         output_shape.mutable_dim(2)->set_dim_value(num_heads * (packed_hidden_size / packed_heads));
       }
-    } else if (num_heads > 0 && query_dims[2].has_dim_value() &&
-               query_dims[2].dim_value() % num_heads != 0) {
+    } else if (query_dims[2].has_dim_value() && query_dims[2].dim_value() % num_heads != 0) {
       fail_shape_inference("Query hidden size must be divisible by the number of query heads");
     }
     updateOutputShape(ctx, 0, output_shape);
@@ -503,10 +510,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
     if (hasInputShape(ctx, 0)) {
       const auto& query_dims = getInputShape(ctx, 0).dim();
-      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
-      if (query_dims.size() == 3 && num_heads > 0 && kv_num_heads > 0 &&
-          query_dims[2].has_dim_value()) {
+      if (query_dims.size() == 3 && query_dims[2].has_dim_value()) {
         const bool is_packed = ctx.getInputType(2) == nullptr;
         const int64_t divisor = is_packed ? num_heads + 2 * kv_num_heads : num_heads;
         if (query_dims[2].dim_value() % divisor != 0) {
@@ -582,7 +586,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("rotary_interleaved", "Whether rotary pairs use interleaved layout.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("rotary_offset", "First head channel covered by rotary embedding.",
+        .Attr("rotary_offset",
+              "First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room "
+              "for the rotary dimensions within head_size.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("qk_norm_epsilon", "Epsilon for optional per-head Q/K RMS normalization.",
               AttributeProto::FLOAT, 1e-6f)
@@ -591,7 +597,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query",
-               "Query [batch, sequence, num_heads * head_size], or packed QKV.", "T")
+               "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
+               "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
+               "T")
         .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
                OpSchema::Optional)
         .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
