@@ -297,7 +297,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       block_size == kFusedDecodeFastPathBlockSize;
   const bool has_norm_input = norm_scale != nullptr;
 
-  int32_t subgroup_matrix_config_index = -1;
+  std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
   const bool would_use_subgroup_unfused =
       CanApplySubgroupMatrixMatMulNBits(context,
                                         accuracy_level_,
@@ -307,7 +307,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         K,
                                         static_cast<uint32_t>(bits_),
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config_index,
+                                        subgroup_matrix_config,
                                         M);
   const bool would_use_dp4a_unfused =
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, N, K, components_a,

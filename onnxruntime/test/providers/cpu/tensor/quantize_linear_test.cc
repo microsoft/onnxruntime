@@ -1149,6 +1149,23 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Test int2 QuantizeLinear per axis on the last axis. Each scale covers a single element, so every
+// scale interval starts and ends inside a packed byte and must not overwrite its neighbors.
+TEST(QuantizeLinearOpTest, Int2_PerAxis_LastAxis) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<float>("x", dims, {1.0f, 1.0f, 1.0f, 1.0f, -2.0f, -2.0f, -2.0f, -2.0f});
+  test.AddInput<float>("scale", {4}, {1.0f, 1.0f, 4.0f, 1.0f}, true);
+  test.AddInput<Int2x4>("zero_point", {4}, {Int2x4(0, 0, 0, 0)}, true);
+  // y = clamp(round(x / scale), -2, 1)
+  // row 0: [1, 1, round(0.25), 1] = [1, 1, 0, 1]
+  // row 1: [-2, -2, round(-0.5), -2] = [-2, -2, 0, -2]
+  test.AddOutput<Int2x4>("y", dims, {Int2x4(1, 1, 0, 1), Int2x4(-2, -2, 0, -2)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // Test int4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
 // This exercises the TryParallelFor call which splits the input into blocks of even size.
 TEST(QuantizeLinearOpTest, OddLarge_Int4) {

@@ -120,6 +120,19 @@ MlasReduceMaxRvv(
     return __riscv_vfmv_f_s_f32m1_f32(maximum);
 }
 
+MLAS_FORCEINLINE
+float
+MlasReduceMinRvv(
+    vfloat32m4_t value,
+    size_t vl
+    )
+{
+    vfloat32m1_t minimum =
+        __riscv_vfmv_s_f_f32m1(std::numeric_limits<float>::max(), 1);
+    minimum = __riscv_vfredmin_vs_f32m4_f32m1(value, minimum, vl);
+    return __riscv_vfmv_f_s_f32m1_f32(minimum);
+}
+
 }  // namespace
 
 float
@@ -151,6 +164,43 @@ MlasReduceMaximumF32KernelRvv(
     }
 
     return MlasReduceMaxRvv(maximum, VectorLength);
+}
+
+void
+MLASCALL
+MlasReduceMinimumMaximumF32KernelRvv(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    )
+{
+    const size_t VectorLength = __riscv_vsetvlmax_e32m4();
+
+    //
+    // Same shape as the maximum reduction above, carrying both extrema across
+    // the row in vectors that start at their identities, so an empty or short
+    // final group leaves the untouched lanes at the identity.
+    //
+
+    vfloat32m4_t minimum =
+        __riscv_vfmv_v_f_f32m4(std::numeric_limits<float>::max(), VectorLength);
+    vfloat32m4_t maximum =
+        __riscv_vfmv_v_f_f32m4(std::numeric_limits<float>::lowest(), VectorLength);
+
+    while (N > 0) {
+        const size_t vl = __riscv_vsetvl_e32m4(N);
+        const vfloat32m4_t input = __riscv_vle32_v_f32m4(Input, vl);
+
+        minimum = __riscv_vfmin_vv_f32m4_tu(minimum, minimum, input, vl);
+        maximum = __riscv_vfmax_vv_f32m4_tu(maximum, maximum, input, vl);
+
+        Input += vl;
+        N -= vl;
+    }
+
+    *Min = MlasReduceMinRvv(minimum, VectorLength);
+    *Max = MlasReduceMaxRvv(maximum, VectorLength);
 }
 
 float

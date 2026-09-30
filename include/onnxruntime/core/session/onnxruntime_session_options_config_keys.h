@@ -20,10 +20,28 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
-// Log MoE expert-routing decisions at INFO severity.
+// Log MoE expert-counter updates at INFO severity. This enables counter updates even when expert counting is disabled.
+// At most 1024 updates are logged per Run; further updates emit one WARNING truncation marker but still count.
 // "0": disable (default); "1": enable.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";
+
+// Persist per-expert usage counters across Run() calls, without changing placement.
+// "0": disable (default); "1": enable. Counting alone does not emit statistics logs.
+// Overlapping Run() calls on the same session are rejected while enabled.
+static const char* const kOrtSessionOptionsConfigEnableMoeExpertCounting =
+    "session.enable_moe_expert_counting";
+// Optional UTF-8 initial counter-state file. Requires expert counting or statistics logging to be enabled.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterStateFile =
+    "session.moe_expert_counter_state_file";
+// Exponential decay applied to every expert counter after each invocation of its MoE/QMoE node.
+// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.9.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterAlpha =
+    "session.moe_expert_counter_alpha";
+// Increment applied to each expert selected during an invocation.
+// Must be finite and non-negative, with alpha + beta <= 1. The default is 0.1.
+static const char* const kOrtSessionOptionsConfigMoeExpertCounterBeta =
+    "session.moe_expert_counter_beta";
 
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
@@ -446,6 +464,20 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Overrides the process-wide ORT_FPA_INTB_PROFILE_M environment variable.
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+
+/// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
+/// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
+/// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.
+/// "0" or unset (default) disables chunking. Overrides ORT_MATMULNBITS_M_CHUNK_SIZE.
+static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
+
+/// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
+/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS and a small-N
+/// GEMV for small M) on the current device and caches the fastest for the process. Tuning is skipped
+/// while a CUDA graph is being captured, so run at least one warm-up inference before capture.
+/// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
+/// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
+static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
 
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched

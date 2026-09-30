@@ -3,7 +3,6 @@
 
 #include "gtest/gtest.h"
 
-#include "core/providers/cpu/math/gemm_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -62,11 +61,12 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
   TensorShape a_shape(a_dims);
   TensorShape b_shape(b_dims);
   TensorShape c_shape(c_dims);
-  GemmHelper helper(a_shape, a_trans != 0, b_shape, b_trans != 0, c_shape);
-  ASSERT_STATUS_OK(helper.State());
-  const auto M = helper.M();
-  const auto K = helper.K();
-  const auto N = helper.N();
+  ASSERT_EQ(a_shape.NumDimensions(), 2u);
+  ASSERT_EQ(b_shape.NumDimensions(), 2u);
+  const int64_t M = a_shape[a_trans ? 1 : 0];
+  const int64_t K = a_shape[a_trans ? 0 : 1];
+  const int64_t N = b_shape[b_trans ? 0 : 1];
+  ASSERT_EQ(K, b_shape[b_trans ? 1 : 0]);
 
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));

@@ -37,10 +37,11 @@ jobs:
         with:
           architecture: x64
 
-      - name: Install Visual Studio Spectre-mitigated libs
-        uses: ./.github/actions/install-vs-spectre-libs
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
         with:
-          architecture: x64
+          key: windows-x64-build-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
         shell: cmd
