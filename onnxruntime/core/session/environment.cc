@@ -573,11 +573,16 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
 #endif
+  // Windows ETW needs these calls even without ORT_USE_TELEMETRY.
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
+#endif
 
   auto status = Status::OK();
 
@@ -711,10 +716,16 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
     });
   }
+  ORT_CATCH(...) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to register EP library under '", registration_name, "' with unknown exception.");
+    });
+  }
 
 #if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, TimeDiffMicroSeconds(tp));
-#else
+#elif defined(_WIN32)
   env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
 #endif
   return status;
@@ -755,10 +766,12 @@ Status Environment::CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationT
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
 
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
   Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
+#endif
 
-  std::vector<EpFactoryInternal*> internal_factories = {};
+  std::vector<EpFactoryInternal*> internal_factories;
   std::unique_ptr<EpLibrary> ep_library;
 
   // An application can allow EP libraries to create virtual devices by using an EP library registration name that
@@ -775,8 +788,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
-  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
-                                                 internal_factories));
+  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, internal_factories));
 
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }
