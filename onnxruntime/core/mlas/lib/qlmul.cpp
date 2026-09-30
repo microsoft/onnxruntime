@@ -74,7 +74,13 @@ MlasQLinearMulKernel(
 {
     typedef MLAS_SignedUnsignedIntOps<DataType> SUI;
 
-    const float32x4_t VectorScaleRatio = vmovq_n_f32(ScaleA * ScaleB / ScaleC);
+    // ScaleA * ScaleB can overflow float32 (e.g. two scales around 2e19) even
+    // when the true ratio is finite and well within range; computing the
+    // product and division in double avoids that spurious overflow (24-bit
+    // significands multiply exactly within 53 bits, so this is exact where
+    // float32 is not).
+    const float32x4_t VectorScaleRatio = vmovq_n_f32(
+        static_cast<float>(static_cast<double>(ScaleA) * static_cast<double>(ScaleB) / static_cast<double>(ScaleC)));
     const typename SUI::i8x8_t VectorZeroPointA = SUI::vmov_n_i8((DataType)ZeroPointA);
     const typename SUI::i8x8_t VectorZeroPointB = SUI::vmov_n_i8((DataType)ZeroPointB);
     const float32x4_t VectorZeroPointC = vmovq_n_f32((float)ZeroPointC);
