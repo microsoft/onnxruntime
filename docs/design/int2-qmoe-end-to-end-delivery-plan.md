@@ -35,7 +35,7 @@ Mixed-width QMoE contract
 The first supported configuration is:
 
 - CUDA execution provider.
-- FP16 activations with FP32 accumulation where required for accuracy.
+- FP16 or BF16 activations with FP32 accumulation.
 - Symmetric blockwise integer quantization.
 - FC1 INT2 and FC2 INT4.
 - One selected block size, chosen from 32, 64, or 128 after quality and kernel profiling.
@@ -43,7 +43,7 @@ The first supported configuration is:
 - Top-k routing with multiple tokens and experts.
 - Raw portable model weights plus execution-provider-specific runtime prepacking.
 
-BF16, asymmetric zero points, additional block sizes, WebGPU, and alternative SwiGLU layouts are follow-up coverage.
+Asymmetric zero points, additional block sizes, WebGPU, and alternative SwiGLU layouts are follow-up coverage.
 
 ### Format Boundary
 
@@ -180,7 +180,7 @@ Long-context prefill must not dequantize every expert into persistent FP16 stora
 
 Full-model GPT-OSS-20B validation demonstrates why a separate prefill path is required. Its `top_k=4` routing produces 76 expanded rows for a 19-token prompt, outside the packed GEMV gate of eight expanded rows. The correctness fallback then requests 1,592,524,800 bytes to materialize all FC1 and FC2 expert weights, exceeding the default 1 GiB scratch limit. Raising the limit is useful only for bounded diagnosis and is not a production solution.
 
-The estimates below assume one engineer familiar with ORT CUDA and QMoE, one initial architecture (SM80/A100), symmetric FP16 mixed FC1 INT2 / FC2 INT4 with block size 64, and include implementation, focused correctness tests, and profiling. They exclude external review and CI queue time. BF16, asymmetric zero points, additional block sizes, and broad architecture tuning require follow-up estimates.
+The estimates below assume one engineer familiar with ORT CUDA and QMoE, one initial architecture (SM80/A100), symmetric FP16/BF16 mixed FC1 INT2 / FC2 INT4 with block size 64, and include implementation, focused correctness tests, and profiling. They exclude external review and CI queue time. Asymmetric zero points, additional block sizes, and broad architecture tuning require follow-up estimates.
 
 #### Option A: Full Temporary Dequantization
 
@@ -205,13 +205,13 @@ Use routing results to dequantize only active experts, or process expert/row til
 
 #### Option C: Native Packed W2A16 Grouped GEMM
 
-Consume packed INT2/INT4 expert weights directly in a grouped GEMM without materializing complete A16 expert weights in global memory. Tile-local unpacking and conversion to FP16 for floating-point Tensor Core computation are allowed; this does not require a hardware INT2-by-FP16 instruction. This is the preferred production path.
+Consume packed INT2/INT4 expert weights directly in a grouped GEMM without materializing complete A16 expert weights in global memory. Tile-local unpacking and conversion to FP16 or BF16 for floating-point Tensor Core computation are allowed; this does not require a hardware INT2-by-A16 instruction. This is the preferred production path.
 
 - **Kernel foundation: 2-3 engineering weeks** for packed INT2 iterators, conversion, block-scale loading, mixed FC widths, and explicit instantiations.
 - **QMoE integration: 2-3 engineering weeks** for grouped expert descriptors, routing, SwiGLU/finalization epilogues, workspace planning, and dispatch.
 - **Correctness and tuning: 2-3 engineering weeks** for tactic profiling, M=128/512/2048 parity and performance, and regression coverage on SM80.
 - **Total: approximately 6-9 engineering weeks for one architecture and the primary configuration.**
-- **Follow-up: 2-4 engineering weeks** for BF16, additional block sizes, asymmetric zero points where required, and SM90/SM100/SM120 tuning.
+- **Follow-up: 2-4 engineering weeks** for additional block sizes, asymmetric zero points where required, and SM90/SM100/SM120 tuning.
 - **Use:** production TTFT and memory target.
 - **Risk:** largest implementation and review surface; architecture-specific profiling may require separate dispatch thresholds or kernels.
 
@@ -219,13 +219,13 @@ Consume packed INT2/INT4 expert weights directly in a grouped GEMM without mater
 
 The preferred review boundary is a separately testable grouped-GEMM kernel followed by QMoE integration. These are PR 4a and PR 4b in the overall delivery sequence, not two separate implementations of prefill.
 
-The first release targets SM80/A100, FP16 activations, symmetric FC1 gate/up INT2 and FC2 down INT4, block size 64, and the existing interleaved SwiGLU semantics. Keep the portable model contract (`weights_prepacked=0`) and runtime prepacking unchanged. BF16, additional block sizes and bit-width combinations, asymmetric zero points, and architecture-specific tuning are follow-ups. Do not expand the existing packed-GEMV gate of eight total routing-expanded rows merely to serve prefill.
+The first release targets SM80/A100, FP16/BF16 activations, symmetric FC1 gate/up INT2 and FC2 down INT4, block size 64, and the existing interleaved SwiGLU semantics. Keep the portable model contract (`weights_prepacked=0`) and runtime prepacking unchanged. Additional block sizes and bit-width combinations, asymmetric zero points, and architecture-specific tuning are follow-ups. Do not expand the existing packed-GEMV gate of eight total routing-expanded rows merely to serve prefill.
 
 **PR 4a: SM80 packed W2A16 grouped GEMM foundation**
 
 - Reuse the existing INT2 numeric converters and layout traits where compatible. Prove compatibility with grouped-GEMM iterators, fragments, and block-scale indexing rather than assuming a new `uint2b_t` instantiation is sufficient.
-- Start with a fixed-tactic prototype for one expert, then multiple experts. Complete packed INT2 loads, tile-local conversion, block-64 scale handling, FP32 accumulation, shape/alignment eligibility, and explicit instantiations. Verify that the FC2 W4A16 path supports the required block-64 configuration.
-- Add independently callable kernel tests covering uneven expert row counts, empty experts, distinct scales across experts/output columns/K blocks, and supported alignment boundaries. Include kernel benchmarks and evidence that complete A16 expert weights are not materialized.
+- Start with a fixed-tactic prototype for one expert, then multiple experts. Complete packed INT2 loads, tile-local conversion, block-64 scale handling, FP32 accumulation, shape/alignment eligibility, and explicit FP16/BF16 instantiations. Verify that the FC2 W4A16 path supports the required block-64 configuration.
+- Add independently callable FP16/BF16 kernel tests covering uneven expert row counts, empty experts, distinct scales across experts/output columns/K blocks, and supported alignment boundaries. Include kernel benchmarks and evidence that complete A16 expert weights are not materialized.
 - Leave QMoE's default execution path unchanged. Merge only when the kernel is directly exercised by tests and has basic performance evidence, not as an untested collection of unused type definitions.
 
 **PR 4b: Mixed INT2/INT4 QMoE prefill integration**
@@ -322,7 +322,7 @@ Merged as [#32761](https://github.com/microsoft/onnxruntime/pull/32761) in `a11b
 
 ### PR 4a: CUDA Packed Prefill Kernel Foundation
 
-- Option C SM80 FP16 W2A16 grouped GEMM with block size 64, independent tests, and kernel benchmarks.
+- Option C SM80 FP16/BF16 W2A16 grouped GEMM with block size 64, independent tests, and kernel benchmarks.
 - Verify W4A16 block-64 support for FC2; keep QMoE default dispatch unchanged.
 - Approximately 2-3 engineering weeks, including the initial prototype.
 
