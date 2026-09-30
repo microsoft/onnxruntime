@@ -14,6 +14,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+#include "core/session/abi_devices.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/model_package/model_package_variant_selector.h"
@@ -94,7 +95,7 @@ ModelPackageComponentContext::ModelPackageComponentContext(const std::string& co
       owned_ep_infos_(options.EpInfos()),
       execution_devices_(options.ExecutionDevices()),
       devices_selected_(options.DevicesSelected()),
-      from_policy_(options.FromPolicy()) {
+      selection_policy_(options.SelectionPolicy()) {
   // Point the span at our owned copy.
   ep_infos_ = gsl::span<const VariantSelectionEpInfo>(owned_ep_infos_);
 }
@@ -112,27 +113,29 @@ Status ModelPackageComponentContext::ResolveVariant() {
                 "ModelPackageComponentContext::ResolveVariant requires non-empty ep_infos "
                 "(from ModelPackageOptions or explicit span).");
 
-  return ResolveVariantImpl(ep_infos_);
+  return ResolveVariantImpl();
 }
 
-Status ModelPackageComponentContext::ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos) {
-  std::optional<VariantInfo> selected_variant;
+Status ModelPackageComponentContext::ResolveVariantImpl() {
+  std::optional<VariantSelection> selection;
   VariantSelector selector;
-  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos, selected_variant));
+  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos_, selection));
 
-  ORT_RETURN_IF(!selected_variant.has_value(),
+  ORT_RETURN_IF(!selection.has_value(),
                 "No suitable model variant found for the configured execution providers.");
 
-  ORT_RETURN_IF(selected_variant->component_name != component_model_name_,
+  const VariantInfo& selected_variant = selection->variant;
+  ORT_RETURN_IF(selected_variant.component_name != component_model_name_,
                 "Selected variant's component model name does not match context's component model name.");
 
   component_model_info_.selected_variant_index.reset();
+  selected_ep_index_.reset();
 
   size_t matched_variants = 0;
   for (size_t i = 0; i < component_model_info_.variants.size(); ++i) {
-    if (component_model_info_.variants[i].variant_name == selected_variant->variant_name) {
+    if (component_model_info_.variants[i].variant_name == selected_variant.variant_name) {
       component_model_info_.selected_variant_index = i;
-      component_model_info_.variants[i] = *selected_variant;
+      component_model_info_.variants[i] = selected_variant;
       ++matched_variants;
     }
   }
@@ -142,7 +145,30 @@ Status ModelPackageComponentContext::ResolveVariantImpl(gsl::span<const VariantS
   ORT_RETURN_IF(matched_variants > 1,
                 "Selected variant matched multiple variants; selection is ambiguous.");
 
+  selected_ep_index_ = selection->ep_index;
   return Status::OK();
+}
+
+const VariantSelectionEpInfo* ModelPackageComponentContext::SelectedEpInfo() const {
+  return selected_ep_index_.has_value() ? &ep_infos_[*selected_ep_index_] : nullptr;
+}
+
+InlinedVector<const OrtEpDevice*> ModelPackageComponentContext::SelectedEpDevices() const {
+  InlinedVector<const OrtEpDevice*> ep_devices;
+  if (!selected_ep_index_.has_value()) {
+    return ep_devices;
+  }
+
+  // selected_ep_index_ is set only after a variant has been selected.
+  const std::optional<std::string>& device =
+      component_model_info_.variants[*component_model_info_.selected_variant_index].ep_compatibility.device;
+  for (const OrtEpDevice* ep_device : ep_infos_[*selected_ep_index_].ep_devices) {
+    if (!device.has_value() || MatchesVariantDevice(ep_device->device, *device)) {
+      ep_devices.push_back(ep_device);
+    }
+  }
+
+  return ep_devices;
 }
 
 Status ModelPackageComponentContext::GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const {
@@ -313,21 +339,25 @@ Status ModelPackageComponentContext::ConfigureSessionOptions(
     return Status::OK();
   }
 
-  ORT_RETURN_IF(ep_infos_.empty(), "No execution provider was selected for the model package.");
-  const auto& ep_info = ep_infos_[0];
+  const VariantSelectionEpInfo* ep_info = SelectedEpInfo();
+  ORT_RETURN_IF(ep_info == nullptr, "No execution provider was selected for the model package.");
+  const InlinedVector<const OrtEpDevice*> ep_devices = SelectedEpDevices();
   ProviderPolicyContext policy_context;
-  ORT_RETURN_IF_ERROR(policy_context.AddEpDefaultOptionsToSession(options.value, ep_info.ep_devices));
-  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_info.ep_devices, options));
+  ORT_RETURN_IF_ERROR(policy_context.AddEpDefaultOptionsToSession(
+      options.value, std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end())));
+  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices, options));
 
-  if (ep_info.provider_factory) {
-    options.provider_factories.push_back(ep_info.provider_factory);
-  } else if (!ep_info.ep_devices.empty()) {
+  // The saved provider factory is configured for the full device list.
+  // Use it only if the selected variant does not exclude any device from that list.
+  if (ep_info->provider_factory && ep_devices.size() == ep_info->ep_devices.size()) {
+    options.provider_factories.push_back(ep_info->provider_factory);
+  } else if (!ep_devices.empty()) {
     std::unique_ptr<IExecutionProviderFactory> provider_factory;
-    ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env, ep_info.ep_devices, provider_factory));
+    ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env, ep_devices, provider_factory));
     options.provider_factories.push_back(std::move(provider_factory));
   } else {
-    ORT_RETURN_IF(ep_info.ep_name != kCpuExecutionProvider,
-                  "Cannot recreate the selected execution provider: ", ep_info.ep_name);
+    ORT_RETURN_IF(ep_info->ep_name != kCpuExecutionProvider,
+                  "Cannot recreate the selected execution provider: ", ep_info->ep_name);
   }
 
   // Variant selection has already resolved the policy. Do not select a different EP at session creation.

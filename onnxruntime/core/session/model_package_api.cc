@@ -11,8 +11,10 @@
 #include "core/session/ort_env.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/abi_devices.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
+#include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
 #endif
 
@@ -329,24 +331,16 @@ ORT_API_STATUS_IMPL(CreateSession,
                       ORT_FAIL, "Provider option keys/values size mismatch.");
 
     if (!provider_option_keys.empty()) {
-      const auto& ep_infos = mp_ctx.EpInfos();
-      ORT_API_RETURN_IF(ep_infos.empty() || ep_infos[0].ep_devices.empty(), ORT_NOT_IMPLEMENTED,
+      const InlinedVector<const OrtEpDevice*> ep_devices = mp_ctx.SelectedEpDevices();
+      ORT_API_RETURN_IF(ep_devices.empty(), ORT_NOT_IMPLEMENTED,
                         "Cannot apply package provider_options: the selected EP does not expose OrtEpDevices.");
-      std::vector<const char*> provider_option_key_ptrs;
-      std::vector<const char*> provider_option_value_ptrs;
-      provider_option_key_ptrs.reserve(provider_option_keys.size());
-      provider_option_value_ptrs.reserve(provider_option_values.size());
-
+      // ConfigureSessionOptions adds device defaults only for EP options that have not already been set.
+      // This preserves EP options from the variant's session options.
+      const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_devices.front()->ep_name.c_str());
       for (size_t i = 0; i < provider_option_keys.size(); ++i) {
-        provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
-        provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
+        ORT_API_RETURN_IF_STATUS_NOT_OK(effective_options_storage->value.config_options.AddConfigEntry(
+            (prefix + provider_option_keys[i]).c_str(), provider_option_values[i].c_str()));
       }
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
-          gsl::span<const OrtEpDevice* const>(ep_infos[0].ep_devices.data(), ep_infos[0].ep_devices.size()),
-          gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
-          gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
-          effective_options_storage->value));
     }
 
     effective_options = &*effective_options_storage;
@@ -378,6 +372,8 @@ ORT_API_STATUS_IMPL(CreateSession,
     effective_options = &*effective_options_storage;
   }
 
+  // Use the EP targeted by the selected variant when the session options contain no EP factories.
+  const bool uses_captured_ep = effective_options_storage->provider_factories.empty();
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       mp_ctx.ConfigureSessionOptions(env->GetEnvironment(), *effective_options_storage));
 
@@ -389,6 +385,13 @@ ORT_API_STATUS_IMPL(CreateSession,
       selected_file_path,
       mp_ctx,
       sess));
+
+  // Report the selection policy and its selected EPs through ORT telemetry.
+  // Skip this event when the caller provides EP factories for session creation.
+  if (uses_captured_ep && mp_ctx.SelectionPolicy().has_value()) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::ProviderPolicyContext{}.LogTelemetry(
+        *sess, *mp_ctx.SelectionPolicy(), mp_ctx.ExecutionDevices(), mp_ctx.DevicesSelected()));
+  }
 
   // 4) Initialize.
   ORT_API_RETURN_IF_ERROR(InitializeSession(effective_options, *sess));

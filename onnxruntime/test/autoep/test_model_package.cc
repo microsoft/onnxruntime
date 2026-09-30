@@ -4,6 +4,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -18,6 +19,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/providers.h"
+#include "core/graph/constants.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -245,6 +247,71 @@ class RecordingProviderFactory : public IExecutionProviderFactory {
   std::shared_ptr<IExecutionProviderFactory> wrapped_;
 };
 
+// A variant built from `model`, without variant session or provider options.
+VariantSpec MakeVariant(std::string_view variant_name, std::string_view ep, std::string_view device = {},
+                        std::string_view compatibility_string = {},
+                        const std::filesystem::path& model = "testdata/mul_1.onnx") {
+  VariantSpec variant{};
+  variant.variant_name = variant_name;
+  variant.ep = ep;
+  variant.device = device;
+  variant.compatibility_string = compatibility_string;
+  variant.source_model = model;
+  return variant;
+}
+
+// Selects a variant for a package with a single component using the EPs captured from selection_options.
+// The package options and package context are released before returning, so the returned component context must
+// remain usable without them. Throws on any error, including when no variant matches.
+Ort::ModelPackageComponentContext SelectPackageComponent(const std::filesystem::path& package_root,
+                                                         const std::string& component_name,
+                                                         const Ort::SessionOptions& selection_options) {
+  const Ort::ModelPackageOptions package_options(*ort_env, selection_options);
+  return Ort::ModelPackageContext(package_root.c_str()).SelectComponent(component_name.c_str(), package_options);
+}
+
+// Selects a variant for the "model_1" component. Adds each supplied OrtEpDevice to the session options in input order.
+// The session options are released before returning.
+Ort::ModelPackageComponentContext SelectPackageComponentForEps(const std::filesystem::path& package_root,
+                                                               std::initializer_list<const OrtEpDevice*> ep_devices) {
+  Ort::SessionOptions selection_options;
+  const std::unordered_map<std::string, std::string> ep_options;
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{ep_device}}, ep_options);
+  }
+  return SelectPackageComponent(package_root, "model_1", selection_options);
+}
+
+// Creates a session for the variant selected for `component`. Uses the default CreateSession path when
+// `session_options` is nullptr. Throws on any error.
+Ort::Session CreatePackageSession(Ort::ModelPackageComponentContext& component,
+                                  const Ort::SessionOptions* session_options) {
+  return session_options != nullptr ? component.CreateSession(*ort_env, *session_options)
+                                    : component.CreateSession(*ort_env);
+}
+
+// Returns the name of the EP assigned to the session's first input.
+std::string GetInputEpName(const Ort::Session& session) {
+  const std::vector<Ort::ConstEpDevice> ep_devices = session.GetEpDeviceForInputs();
+  return ep_devices.empty() || ep_devices[0] == nullptr ? std::string{} : std::string{ep_devices[0].EpName()};
+}
+
+// Callback that chooses devices by EP name.
+// The state parameter must point to a std::string containing the EP name.
+OrtStatus* ORT_API_CALL SelectEpByName(const OrtEpDevice** ep_devices, size_t num_devices,
+                                       const OrtKeyValuePairs* /*model_metadata*/,
+                                       const OrtKeyValuePairs* /*runtime_metadata*/, const OrtEpDevice** selected,
+                                       size_t max_selected, size_t* num_selected, void* state) {
+  const std::string& ep_name = *static_cast<const std::string*>(state);
+  *num_selected = 0;
+  for (size_t i = 0; i < num_devices && *num_selected < max_selected; ++i) {
+    if (ep_name == Ort::GetApi().EpDevice_EpName(ep_devices[i])) {
+      selected[(*num_selected)++] = ep_devices[i];
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -319,22 +386,60 @@ TEST(ModelPackageApiTest, LegacyProviderFactoryIsRetained) {
   std::filesystem::remove_all(root);
 }
 
+// A missing selected EP must be reported before session initialization.
+// With CPU EP fallback disabled, initialization would otherwise fail first and hide the error about the missing EP.
 TEST(ModelPackageApiTest, SelectedProviderCannotSilentlyFallBackToCpu) {
   const auto root = std::filesystem::temp_directory_path() / "ort_mp_failed_factory";
   const char* ep_name = "ModelPackageLegacyEP";
+  for (const bool disable_cpu_ep_fallback : {false, true}) {
+    SCOPED_TRACE(testing::Message() << "CPU EP fallback disabled: " << disable_cpu_ep_fallback);
+    VariantSpec variant{"legacy", ep_name, "", "", "testdata/mul_1.onnx", {}, {}};
+    if (disable_cpu_ep_fallback) {
+      variant.session_options =
+          std::unordered_map<std::string, std::string>{{kOrtSessionOptionsDisableCPUEPFallback, "1"}};
+    }
+    BuildPackage(root, "model", {variant});
+    auto observations = std::make_shared<ProviderObservations>();
+    Ort::SessionOptions options;
+    static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
+        std::make_shared<RecordingProviderFactory>(ep_name, observations));
+    PackageHandles handles(root, "model", options);
+    observations->return_null = true;
+    OrtSession* session = nullptr;
+    Ort::Status status(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &session));
+    EXPECT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
+    EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("was not registered"));
+    EXPECT_EQ(session, nullptr);
+    EXPECT_EQ(observations->created, 2u);
+    EXPECT_EQ(observations->initialized, 0u);
+  }
+  std::filesystem::remove_all(root);
+}
+
+// When ModelPackageOptions is created, factories that create no provider are skipped.
+// The default CreateSession path uses the selected EP's factory to create a new instance.
+TEST(ModelPackageApiTest, RetainedFactoryMatchesItsEpAfterNullProvider) {
+  const auto root = std::filesystem::temp_directory_path() / "ort_mp_null_provider";
+  const char* ep_name = "ModelPackageLegacyEP";
   BuildPackage(root, "model", {{"legacy", ep_name, "", "", "testdata/mul_1.onnx", {}, {}}});
+  auto null_observations = std::make_shared<ProviderObservations>();
+  null_observations->return_null = true;
   auto observations = std::make_shared<ProviderObservations>();
   Ort::SessionOptions options;
-  static_cast<OrtSessionOptions*>(options)->provider_factories.push_back(
-      std::make_shared<RecordingProviderFactory>(ep_name, observations));
+  auto& factories = static_cast<OrtSessionOptions*>(options)->provider_factories;
+  factories.push_back(std::make_shared<RecordingProviderFactory>("ModelPackageNullEP", null_observations));
+  factories.push_back(std::make_shared<RecordingProviderFactory>(ep_name, observations));
   PackageHandles handles(root, "model", options);
-  observations->return_null = true;
-  OrtSession* session = nullptr;
-  Ort::Status status(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &session));
-  EXPECT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
-  EXPECT_EQ(session, nullptr);
+  ASSERT_EQ(null_observations->created, 1u);
+  ASSERT_EQ(observations->created, 1u);
+
+  OrtSession* raw_session = nullptr;
+  ASSERT_ORTSTATUS_OK(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &raw_session));
+  Ort::Session session(raw_session);
+  EXPECT_EQ(null_observations->created, 1u);
   EXPECT_EQ(observations->created, 2u);
-  EXPECT_EQ(observations->initialized, 0u);
+  EXPECT_EQ(observations->initialized, 1u);
+  CheckSquareModel(session);
   std::filesystem::remove_all(root);
 }
 
@@ -884,6 +989,277 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 }
+
+// A package with only an ORT CPU EP variant must load under PREFER_CPU even when the example plugin EP has
+// higher priority. Since the package has no variant for that EP, variant selection continues to the ORT CPU EP.
+// The variant includes provider options, so the default CreateSession path requires the ORT CPU EP's OrtEpDevice.
+// ORT saves the device selected by the policy. No OrtEpDevice instances are passed to the CPU provider,
+// so its GetEpDevices returns an empty list.
+TEST(ModelPackageTest, VariantSelection_FallsBackToOrtCpuEpVariant) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_ort_cpu_fallback";
+  auto variant = MakeVariant("cpu_variant", kCpuExecutionProvider, "cpu");
+  variant.provider_options = std::unordered_map<std::string, std::string>{{"device_id", "1"}};
+  BuildPackage(package_root, "model_1", {variant});
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  // Both CreateSession paths use only the ORT CPU EP targeted by the selected variant,
+  // even when the supplied session options specify a selection policy.
+  Ort::SessionOptions session_options;
+  session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
+  auto component = SelectPackageComponent(package_root, "model_1", session_options);
+  ASSERT_EQ(component.GetSelectedVariantName(), "cpu_variant");
+
+  for (const bool pass_session_options : {true, false}) {
+    SCOPED_TRACE(testing::Message() << "session options passed to CreateSession: " << pass_session_options);
+    Ort::Session session = CreatePackageSession(component, pass_session_options ? &session_options : nullptr);
+    EXPECT_EQ(GetInputEpName(session), kCpuExecutionProvider);
+    ASSERT_NO_FATAL_FAILURE(CheckSquareModel(session));
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// EP priority takes precedence over variant compatibility scores: the first captured EP with a matching variant
+// is selected. These cases also verify that selection moves to the next EP when the first EP returns
+// EP_UNSUPPORTED or has no captured device of the type required by its variant.
+// The two CPU plugin EPs are added explicitly and are considered in that order.
+TEST(ModelPackageTest, VariantSelection_SelectsFirstEpWithMatchingVariant) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_ep_priority";
+  const std::string& example_ep_name = Utils::example_ep_info.ep_name;
+  const std::string& kernel_ep_name = Utils::example_ep_kernel_registry_info.ep_name;
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  RegisteredEpDeviceUniquePtr kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(
+      Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info, kernel_ep));
+
+  {
+    // The variant of the first EP has no compatibility string (EP_NOT_APPLICABLE).
+    SCOPED_TRACE("the variant of the second EP is listed first and validates as EP_SUPPORTED_OPTIMAL");
+    const std::string optimal = example_ep_name + ";version=0.1.0;ort_api_version=" + std::to_string(ORT_API_VERSION);
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("example_ep_variant", example_ep_name, "", optimal),
+                  MakeVariant("kernel_ep_variant", kernel_ep_name)});
+    const auto component = SelectPackageComponentForEps(package_root, {kernel_ep.get(), example_ep.get()});
+    EXPECT_EQ(component.GetSelectedVariantName(), "kernel_ep_variant");
+  }
+
+  {
+    // The example EP rejects its compatibility strings when the version field is missing.
+    SCOPED_TRACE("the first EP rejects its variant with EP_UNSUPPORTED");
+    const std::string unsupported = example_ep_name + ";ort_api_version=" + std::to_string(ORT_API_VERSION);
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("example_ep_variant", example_ep_name, "", unsupported),
+                  MakeVariant("kernel_ep_variant", kernel_ep_name)});
+    const auto component = SelectPackageComponentForEps(package_root, {example_ep.get(), kernel_ep.get()});
+    EXPECT_EQ(component.GetSelectedVariantName(), "kernel_ep_variant");
+  }
+
+  {
+    // The example EP is captured for a CPU device.
+    SCOPED_TRACE("the first EP was added with a CPU device, but its variant requires an NPU");
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("example_ep_variant", example_ep_name, "npu"),
+                  MakeVariant("kernel_ep_variant", kernel_ep_name)});
+    const auto component = SelectPackageComponentForEps(package_root, {example_ep.get(), kernel_ep.get()});
+    EXPECT_EQ(component.GetSelectedVariantName(), "kernel_ep_variant");
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// The package has a variant only for the example EP, which is added after the kernel EP.
+// Without EP factories in the session options, CreateSession uses the example EP for its captured devices.
+// The kernel EP supports Mul only from opset 14, so using it instead would leave the opset 7 Mul in mul_1.onnx
+// to the ORT CPU EP. The default path must pass the variant's provider options to the example EP's factory,
+// not the first EP's. A selection policy supplied to CreateSession does not replace the EP chosen for the variant.
+// EP factories provided by the caller are used as given, but must include a factory for the selected EP.
+TEST(ModelPackageTest, VariantSelection_RegistersSelectedEpOrCallerEps) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_selected_ep";
+  const std::string& example_ep_name = Utils::example_ep_info.ep_name;
+  auto variant = MakeVariant("example_ep_variant", example_ep_name);
+  variant.provider_options = std::unordered_map<std::string, std::string>{{"run_really_fast", "package"}};
+  BuildPackage(package_root, "model_1", {variant});
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  RegisteredEpDeviceUniquePtr kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(
+      Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info, kernel_ep));
+
+  // The wrapper records the session options passed to the example EP's factory.
+  Ort::SessionOptions selection_options;
+  const std::unordered_map<std::string, std::string> ep_options;
+  selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{kernel_ep.get()}}, ep_options);
+  selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{example_ep.get()}}, ep_options);
+  auto observations = std::make_shared<ProviderObservations>();
+  auto& example_factory = static_cast<OrtSessionOptions*>(selection_options)->provider_factories.back();
+  example_factory = std::make_shared<RecordingProviderFactory>(example_ep_name, observations, example_factory);
+  auto component = SelectPackageComponent(package_root, "model_1", selection_options);
+  ASSERT_EQ(component.GetSelectedVariantName(), "example_ep_variant");
+
+  const auto create_and_check = [&component](const Ort::SessionOptions* create_session_options,
+                                             const std::string& input_ep) {
+    Ort::Session session = CreatePackageSession(component, create_session_options);
+    EXPECT_EQ(GetInputEpName(session), input_ep);
+    ASSERT_NO_FATAL_FAILURE(CheckSquareModel(session));
+  };
+
+  {
+    SCOPED_TRACE("default path");
+    ASSERT_NO_FATAL_FAILURE(create_and_check(nullptr, example_ep_name));
+    const std::string key = OrtSessionOptions::GetProviderOptionPrefix(example_ep_name.c_str()) + "run_really_fast";
+    ASSERT_EQ(observations->config.count(key), 1u);
+    EXPECT_EQ(observations->config.at(key), "package");
+  }
+
+  {
+    // Adding the built-in ORT CPU EP as "CPU" through AppendExecutionProvider does not add a provider factory.
+    SCOPED_TRACE("session options append the CPU EP by name");
+    Ort::SessionOptions create_session_options;
+    create_session_options.AppendExecutionProvider("CPU", {});
+    ASSERT_NO_FATAL_FAILURE(create_and_check(&create_session_options, example_ep_name));
+  }
+
+  {
+    // This policy would select the kernel EP instead of the example EP chosen for the variant.
+    SCOPED_TRACE("the policy in the session options must not replace the selected example EP");
+    std::string kernel_ep_name = Utils::example_ep_kernel_registry_info.ep_name;
+    Ort::SessionOptions create_session_options;
+    create_session_options.SetEpSelectionPolicy(SelectEpByName, &kernel_ep_name);
+    ASSERT_NO_FATAL_FAILURE(create_and_check(&create_session_options, example_ep_name));
+  }
+
+  {
+    SCOPED_TRACE("session options append only the kernel EP");
+    Ort::SessionOptions create_session_options;
+    create_session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{kernel_ep.get()}}, ep_options);
+    OrtSession* raw_session = nullptr;
+    Ort::Status status(GetModelPackageFns().CreateSession(*ort_env, component, create_session_options, &raw_session));
+    Ort::Session session{raw_session};
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.GetErrorCode(), ORT_EP_FAIL);
+    EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("was not registered"));
+    EXPECT_EQ(static_cast<OrtSession*>(session), nullptr);
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// Selection continues to the next EP if the current EP has no variants or all its variants are incompatible.
+// If ORT cannot check a variant's compatibility and no other variant matches that EP, selection returns an error.
+// This test covers missing device information and errors returned by the EP's compatibility callback, ensuring
+// that a successful selection for another EP does not hide these problems.
+TEST(ModelPackageTest, VariantSelection_StopsAtEpWithUncheckedVariant) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_unchecked_variant";
+  const std::string& example_ep_name = Utils::example_ep_info.ep_name;
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  RegisteredEpDeviceUniquePtr kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(
+      Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info, kernel_ep));
+  const OrtEpDevice* cpu_ep = nullptr;
+  ASSERT_NO_FATAL_FAILURE(Utils::GetEp(*ort_env, kCpuExecutionProvider, cpu_ep));
+
+  // Expects variant selection to fail when a variant's compatibility cannot be checked and no other variant matches
+  // that EP. The error message must include ep_name.
+  const auto expect_stop_at = [&package_root](const Ort::SessionOptions& selection_options,
+                                              const std::string& ep_name) {
+    try {
+      SelectPackageComponent(package_root, "model_1", selection_options);
+      FAIL() << "Expected variant selection to fail: ORT could not determine whether the variant "
+                "is compatible with the EP.";
+    } catch (const Ort::Exception& e) {
+      EXPECT_THAT(e.what(), ::testing::HasSubstr("No suitable model variant found"));
+      EXPECT_THAT(e.what(), ::testing::HasSubstr("could not be checked"));
+      EXPECT_THAT(e.what(), ::testing::HasSubstr(ep_name));
+    }
+  };
+  const std::unordered_map<std::string, std::string> ep_options;
+
+  {
+    SCOPED_TRACE("the second EP is captured without devices");
+    auto observations = std::make_shared<ProviderObservations>();
+    const char* ep_name = "ModelPackageLegacyEP";
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("legacy_variant", ep_name, "cpu"),
+                  MakeVariant("example_ep_variant", example_ep_name)});
+    Ort::SessionOptions selection_options;
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{kernel_ep.get()}}, ep_options);
+    auto& factories = static_cast<OrtSessionOptions*>(selection_options)->provider_factories;
+    factories.push_back(std::make_shared<RecordingProviderFactory>(ep_name, observations));
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{example_ep.get()}}, ep_options);
+    expect_stop_at(selection_options, ep_name);
+  }
+
+  {
+    // The example EP's compatibility callback returns an error for strings containing "fail_validation".
+    SCOPED_TRACE("the example EP fails to validate its variant");
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("example_ep_variant", example_ep_name, "", example_ep_name + ";fail_validation"),
+                  MakeVariant("cpu_variant", kCpuExecutionProvider)});
+    Ort::SessionOptions selection_options;
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{example_ep.get()}}, ep_options);
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{cpu_ep}}, ep_options);
+    expect_stop_at(selection_options, example_ep_name);
+  }
+
+  {
+    SCOPED_TRACE("another variant of the same EP matches");
+    auto observations = std::make_shared<ProviderObservations>();
+    const char* ep_name = "ModelPackageLegacyEP";
+    BuildPackage(package_root, "model_1",
+                 {MakeVariant("legacy_device_variant", ep_name, "cpu"),
+                  MakeVariant("legacy_any_device_variant", ep_name),
+                  MakeVariant("example_ep_variant", example_ep_name)});
+    Ort::SessionOptions selection_options;
+    auto& factories = static_cast<OrtSessionOptions*>(selection_options)->provider_factories;
+    factories.push_back(std::make_shared<RecordingProviderFactory>(ep_name, observations));
+    selection_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice{example_ep.get()}}, ep_options);
+    const auto component = SelectPackageComponent(package_root, "model_1", selection_options);
+    ASSERT_EQ(component.GetSelectedVariantName(), "legacy_any_device_variant");
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+#if defined(USE_COREML) && defined(__APPLE__)
+// Verifies that the GPU device selected by the policy satisfies the variant's GPU requirement
+// and that CreateSession uses the CoreML EP.
+TEST(ModelPackageTest, CreateSession_AddsInternalEpSelectedByPolicy) {
+  bool has_coreml_gpu = false;
+  for (const Ort::ConstEpDevice& ep_device : ort_env->GetEpDevices()) {
+    has_coreml_gpu = has_coreml_gpu || (std::string_view{ep_device.EpName()} == kCoreMLExecutionProvider &&
+                                        ep_device.Device().Type() == OrtHardwareDeviceType_GPU);
+  }
+  if (!has_coreml_gpu) {
+    GTEST_SKIP() << "The CoreML EP factory does not advertise a GPU device on this machine.";
+  }
+
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_policy_internal_ep";
+  BuildPackage(package_root, "model_1", {MakeVariant("coreml_variant", kCoreMLExecutionProvider, "gpu")});
+
+  Ort::SessionOptions selection_options;
+  selection_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+  auto component = SelectPackageComponent(package_root, "model_1", selection_options);
+  ASSERT_EQ(component.GetSelectedVariantName(), "coreml_variant");
+
+  Ort::Session session = component.CreateSession(*ort_env);
+  EXPECT_EQ(GetInputEpName(session), kCoreMLExecutionProvider);
+  ASSERT_NO_FATAL_FAILURE(CheckSquareModel(session));
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+#endif  // defined(USE_COREML) && defined(__APPLE__)
 
 // Passing a directory path to OrtCreateSession is no longer treated as a model package. It must
 // fail with a clear message pointing at the model package API rather than a generic load error.

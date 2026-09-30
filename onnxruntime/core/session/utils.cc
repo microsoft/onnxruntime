@@ -866,63 +866,41 @@ Status PrintAvailableAndSelectedEpInfos(const Environment& env, std::vector<Vari
   return Status::OK();
 }
 
-// Gets EP info needed for model package workflow to select suitable model.
-//
-// For simplicity, there are some constraints in this initial implementation:
-// - Only the first EP is used for variant selection.
-// - All devices should be supported by the same EP
-//
+// Gets EP information for model variant selection: one entry for each non-null provider in provider_list.
+// Entries preserve provider order, which determines EP priority. All devices in an entry belong to the same EP.
 Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
-                                 std::vector<VariantSelectionEpInfo>& ep_infos,
-                                 gsl::span<const OrtEpDevice* const> selected_devices) {
-  if (provider_list.empty()) {
-    return Status::OK();
-  }
+                                 std::vector<VariantSelectionEpInfo>& ep_infos) {
+  for (const auto& provider : provider_list) {
+    if (!provider) {
+      continue;
+    }
 
-  // Use the first provider in the list for variant selection.
-  auto& provider = provider_list[0];
-  if (!provider) {
-    return Status::OK();
-  }
+    VariantSelectionEpInfo& ep_info = ep_infos.emplace_back();
 
-  ep_infos.push_back(VariantSelectionEpInfo{});
-  auto& ep_info = ep_infos.back();
+    // Add ep name to ep_info
+    ep_info.ep_name = provider->Type();
+    ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
 
-  // Add ep name to ep_info
-  ep_info.ep_name = provider->Type();
-  ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
+    // Add ep devices to ep_info
+    ep_info.ep_devices = provider->GetEpDevices();
+    const auto& ep_devices = ep_info.ep_devices;
 
-  // CPU is built-in and needs no device/factory metadata for variant selection.
-  if (ep_info.ep_name == onnxruntime::kCpuExecutionProvider) {
-    return Status::OK();
-  }
+    // Add ep factory to ep_info
+    ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
 
-  // Add ep devices to ep_info
-  ep_info.ep_devices = provider->GetEpDevices();
-  if (ep_info.ep_devices.empty()) {
-    for (const auto* device : selected_devices) {
-      if (device->ep_name == ep_info.ep_name) {
-        ep_info.ep_devices.push_back(device);
+    // Add hardware devices to ep_info
+    ep_info.hardware_devices.reserve(ep_devices.size());
+    for (const auto& ep_device : ep_devices) {
+      if (ep_device->device != nullptr) {
+        ep_info.hardware_devices.push_back(ep_device->device);
       }
     }
-  }
-  const auto& ep_devices = ep_info.ep_devices;
 
-  // Add ep factory to ep_info
-  ep_info.ep_factory = ep_devices.empty() ? nullptr : ep_devices.front()->ep_factory;
-
-  // Add hardware devices to ep_info
-  ep_info.hardware_devices.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    if (ep_device->device != nullptr) {
-      ep_info.hardware_devices.push_back(ep_device->device);
+    // Add ep metadata to ep_info
+    ep_info.ep_metadata.reserve(ep_devices.size());
+    for (const auto& ep_device : ep_devices) {
+      ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
     }
-  }
-
-  // Add ep metadata to ep_info
-  ep_info.ep_metadata.reserve(ep_devices.size());
-  for (const auto& ep_device : ep_devices) {
-    ep_info.ep_metadata.push_back(&ep_device->ep_metadata);
   }
 
   return Status::OK();
@@ -930,7 +908,9 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
 
 // Create session for model package workflow.
 //
-// The caller configures provider factories and custom domains before model load.
+// The caller configures provider factories and custom operator domains before loading the model.
+// Register EPs and check that the selected EP is present before initialization, so its absence is reported
+// instead of a later initialization error.
 OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                         const onnxruntime::Environment& env,
                                         const std::filesystem::path& selected_model_path,
@@ -956,19 +936,13 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(CreateAndRegisterExecutionProviders(options_to_use, *sess));
 
-  const auto& selected_ep = model_package_context.EpInfos().front().ep_name;
+  const VariantSelectionEpInfo* selected_ep_info = model_package_context.SelectedEpInfo();
+  ORT_API_RETURN_IF(selected_ep_info == nullptr, ORT_FAIL, "No variant is selected for the component.");
+  const auto& selected_ep = selected_ep_info->ep_name;
   const auto& registered_eps = sess->GetRegisteredProviderTypes();
   ORT_API_RETURN_IF(selected_ep != kCpuExecutionProvider &&
                         std::find(registered_eps.begin(), registered_eps.end(), selected_ep) == registered_eps.end(),
                     ORT_EP_FAIL, "The selected model package execution provider was not registered: ", selected_ep);
-
-  if (model_package_context.IsFromPolicy()) {
-    ProviderPolicyContext provider_policy_context;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(
-        *sess, *options_to_use,
-        model_package_context.ExecutionDevices(),
-        model_package_context.DevicesSelected()));
-  }
 
   return nullptr;
 }
