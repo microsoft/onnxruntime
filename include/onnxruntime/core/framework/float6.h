@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
-#include <limits>
 
 namespace onnxruntime {
 
@@ -23,7 +24,16 @@ inline float Float6ToFloat(uint8_t bits, int exponent_bits, int mantissa_bits, i
   return sign == 0 ? value : -value;
 }
 
-inline uint8_t FloatToFloat6(float value, int exponent_bits, int mantissa_bits, int exponent_bias) {
+template <int ExponentBits, int MantissaBits, int ExponentBias>
+inline uint8_t FloatToFloat6(float value) {
+  static const auto magnitudes = [] {
+    std::array<float, 32> values{};
+    for (uint8_t bits = 0; bits < values.size(); ++bits) {
+      values[bits] = Float6ToFloat(bits, ExponentBits, MantissaBits, ExponentBias);
+    }
+    return values;
+  }();
+
   if (std::isnan(value)) {
     return 0x20;
   }
@@ -33,21 +43,20 @@ inline uint8_t FloatToFloat6(float value, int exponent_bits, int mantissa_bits, 
     return static_cast<uint8_t>(sign | 0x1F);
   }
   const float magnitude = std::abs(value);
-  const float max_finite = Float6ToFloat(0x1F, exponent_bits, mantissa_bits, exponent_bias);
-  if (magnitude > max_finite) {
+  if (magnitude > magnitudes.back()) {
     return static_cast<uint8_t>(sign | 0x1F);
   }
-  uint8_t best = sign;
-  float best_distance = std::numeric_limits<float>::infinity();
-  for (uint8_t bits = 0; bits < 0x20; ++bits) {
-    const float candidate = Float6ToFloat(bits, exponent_bits, mantissa_bits, exponent_bias);
-    const float distance = std::abs(magnitude - candidate);
-    if (distance < best_distance || (distance == best_distance && (bits & 1) == 0)) {
-      best = static_cast<uint8_t>(sign | bits);
-      best_distance = distance;
+
+  const auto upper = std::lower_bound(magnitudes.begin(), magnitudes.end(), magnitude);
+  size_t index = static_cast<size_t>(upper - magnitudes.begin());
+  if (index != 0) {
+    const float lower_distance = magnitude - magnitudes[index - 1];
+    const float upper_distance = magnitudes[index] - magnitude;
+    if (lower_distance < upper_distance || (lower_distance == upper_distance && ((index - 1) & 1) == 0)) {
+      --index;
     }
   }
-  return best;
+  return static_cast<uint8_t>(sign | index);
 }
 
 struct Float6E2M3 {
@@ -56,7 +65,7 @@ struct Float6E2M3 {
   struct FromBitsT {};
   static constexpr FromBitsT FromBits() { return FromBitsT(); }
   constexpr Float6E2M3(uint8_t bits, FromBitsT) : val(bits & 0x3F) {}
-  explicit Float6E2M3(float value) : val(FloatToFloat6(value, 2, 3, 1)) {}
+  explicit Float6E2M3(float value) : val(FloatToFloat6<2, 3, 1>(value)) {}
   constexpr uint8_t ToBits() const { return val; }
   operator float() const { return Float6ToFloat(val, 2, 3, 1); }
   static constexpr size_t CalcNumFloat6Bytes(size_t num_float6_elems) {
@@ -70,7 +79,7 @@ struct Float6E3M2 {
   struct FromBitsT {};
   static constexpr FromBitsT FromBits() { return FromBitsT(); }
   constexpr Float6E3M2(uint8_t bits, FromBitsT) : val(bits & 0x3F) {}
-  explicit Float6E3M2(float value) : val(FloatToFloat6(value, 3, 2, 3)) {}
+  explicit Float6E3M2(float value) : val(FloatToFloat6<3, 2, 3>(value)) {}
   constexpr uint8_t ToBits() const { return val; }
   operator float() const { return Float6ToFloat(val, 3, 2, 3); }
   static constexpr size_t CalcNumFloat6Bytes(size_t num_float6_elems) {

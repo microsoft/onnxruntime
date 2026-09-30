@@ -119,7 +119,7 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 FREE_THREADED_REQUIREMENTS=$(mktemp)
-grep -v '^onnx==' /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
+grep -v -E '^(onnx|onnxscript|onnx-ir)==' /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt > "${FREE_THREADED_REQUIREMENTS}"
 trap 'rm -f "${FREE_THREADED_REQUIREMENTS}"' EXIT
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
