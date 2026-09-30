@@ -1772,6 +1772,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto fused_routing = route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE packed INT GEMV requires materialized routing outputs.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+          expert_indices, SafeInt<size_t>(num_rows) * SafeInt<size_t>(k_), stream));
+    }
+#endif
     const bool expert_maps_built = ck::fusedBuildExpertMapsSortFirstToken(
         expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
         num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
@@ -1836,9 +1842,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                workspace_size, total_scratch_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_record != nullptr) {
-      ORT_RETURN_IF_ERROR(routing_record->CaptureTile(
-          expert_indices, expert_scales, 0, SafeInt<size_t>(num_rows) * SafeInt<size_t>(k_), true, stream));
+    if (routing_snapshot_) {
+      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
     }
 #endif
     return Status::OK();
