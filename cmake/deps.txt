@@ -35,7 +35,6 @@ microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.z
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 # ONNX 1.23.0 final release (opset 28).
-# ONNX_VERSION=1.23.0
 # The 7 CI requirements.txt files are pinned to onnx==1.23.0.
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.0.zip;75a298554b4fc8af73d35b657fad59c496844807
 # Use the latest commit of 10.9-GA
@@ -67,8 +66,8 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.30.0.tar.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
 vulkan_headers;https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.344;57bc528ef7c4a3f7bfbb59e64a187e3734bd29d8
 # cpp_client_telemetry (1DS SDK) for cross-platform telemetry on non-Windows platforms.
-# Pinned to the stable release plus the ORT-maintained compatibility patch.
-cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.240.1.zip;96cd290d746b86a31c8e08dd167cf39d390c0134
+# Pinned to the stable release.
+cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.267.1.zip;9d29169b8e51157d44a24a0d6cf6847260ea2efc
 # Static HTTP transport used by 1DS on non-vcpkg Linux builds.
 curl;https://github.com/curl/curl/releases/download/curl-8_21_0/curl-8.21.0.tar.xz;c3b4712175609f1e1662e716efd4fd48901e863d
 mbedtls;https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2;e892e98cff90cf7e0736c525bf357626a2513c4c

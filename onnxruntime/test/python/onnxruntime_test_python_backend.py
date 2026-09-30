@@ -27,7 +27,38 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
-    def test_prepare_model_bytes_and_path_allow_unreleased_opset_when_policy_disabled(self):
+    def test_prepare_model_bytes_allows_unreleased_opset_when_policy_disabled(self):
+        model = self._make_unreleased_opset_model()
+
+        original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+        try:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = False
+            rep = backend.prepare(model.SerializeToString())
+        finally:
+            OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+        result = rep.run(np.array([1.0], dtype=np.float32))
+        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
+
+    def test_prepare_model_path_allows_unreleased_opset_when_policy_disabled(self):
+        model = self._make_unreleased_opset_model()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = os.path.join(tmpdir, "unreleased_opset.onnx")
+            with open(model_path, "wb") as model_file:
+                model_file.write(model.SerializeToString())
+
+            original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
+            try:
+                OnnxRuntimeBackend.allowReleasedOpsetsOnly = False
+                rep = backend.prepare(model_path)
+            finally:
+                OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+
+        result = rep.run(np.array([1.0], dtype=np.float32))
+        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
+
+    @staticmethod
+    def _make_unreleased_opset_model():
         model = helper.make_model(
             helper.make_graph(
                 [helper.make_node("Identity", ["X"], ["Y"])],
@@ -37,22 +68,7 @@ class TestBackend(unittest.TestCase):
             ),
             opset_imports=[helper.make_opsetid("", 28)],
         )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model_path = os.path.join(temp_dir, "unreleased.onnx")
-            with open(model_path, "wb") as model_file:
-                model_file.write(model.SerializeToString())
-
-            original_policy = OnnxRuntimeBackend.allowReleasedOpsetsOnly
-            try:
-                OnnxRuntimeBackend.allowReleasedOpsetsOnly = False
-                for model_input in (model.SerializeToString(), model_path):
-                    with self.subTest(model_input_type=type(model_input).__name__):
-                        rep = backend.prepare(model_input)
-                        result = rep.run(np.array([1.0], dtype=np.float32))
-                        np.testing.assert_array_equal(result[0], np.array([1.0], dtype=np.float32))
-            finally:
-                OnnxRuntimeBackend.allowReleasedOpsetsOnly = original_policy
+        return model
 
     def test_allocation_plan_works_with_only_execute_path_to_fetches_option(self):
         """

@@ -58,6 +58,13 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        if: matrix.vcpkg_option == 'vcpkg'
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-webgpu-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
@@ -116,6 +123,7 @@ jobs:
             --build_csharp `
             --parallel `
             --use_binskim_compliant_compile_flags `
+            --enable_lto `
             --cmake_generator "Visual Studio 17 2022" `
             --build_shared_lib `
             --enable_onnx_tests `
@@ -307,6 +315,12 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-webgpu-plugin-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
