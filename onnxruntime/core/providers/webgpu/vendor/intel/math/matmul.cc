@@ -12,6 +12,12 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
+namespace {
+
+constexpr std::array<uint32_t, 3> kSupportedMatMulSubgroupSizes{32, 16, 8};
+
+}  // namespace
+
 Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
                                            ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -36,15 +42,46 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K) {
-  return CanApplySubgroup(context, M, N, K);
+std::optional<uint32_t> SelectMatMulSubgroupSize(uint32_t adapter_min_subgroup_size,
+                                                 uint32_t adapter_max_subgroup_size,
+                                                 bool has_subgroup_size_control) {
+  if (adapter_min_subgroup_size == adapter_max_subgroup_size) {
+    for (const uint32_t size : kSupportedMatMulSubgroupSizes) {
+      if (adapter_min_subgroup_size == size) {
+        return size;
+      }
+    }
+    return std::nullopt;
+  }
+
+  if (has_subgroup_size_control) {
+    for (const uint32_t size : kSupportedMatMulSubgroupSizes) {
+      if (adapter_min_subgroup_size <= size && size <= adapter_max_subgroup_size) {
+        return size;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
-Status ApplyMatMulIntel(ComputeContext& context,
-                        const Activation& activation,
-                        const std::vector<const Tensor*>& inputs,
-                        Tensor* output,
-                        bool is_channels_last) {
+std::optional<uint32_t> SelectMatMulSubgroupSize(const ComputeContext& context) {
+  if (!context.HasFeature(wgpu::FeatureName::Subgroups)) {
+    return std::nullopt;
+  }
+
+  const auto& adapter_info = context.AdapterInfo();
+  return SelectMatMulSubgroupSize(
+      adapter_info.subgroupMinSize,
+      adapter_info.subgroupMaxSize,
+      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl));
+}
+
+Status ApplyMatMulSubgroup(ComputeContext& context,
+                           const Activation& activation,
+                           const std::vector<const Tensor*>& inputs,
+                           Tensor* output,
+                           bool is_channels_last,
+                           uint32_t subgroup_size) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -106,11 +143,12 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const bool is_vec4 = dim_b_outer % 4 == 0;
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
   const bool is_xe_3lpg = arch == gpu_arch::kXe3Lpg;
-  // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
-  const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
   const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
+  // Fall back to scalar A loads when rows cannot be distributed evenly among
+  // the cooperative vec4 lane groups (for example, forced low-M execution).
+  const bool a_vec4 = CanUseAVec4CooperativeLoad(arch, dim_inner, elements_per_thread[1]);
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
@@ -129,6 +167,9 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16,
                                 is_channels_last, elements_per_thread};
+  if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(subgroup_size);
+  }
   program
       .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
                  a_vec4, b_is_fp16, is_channels_last)

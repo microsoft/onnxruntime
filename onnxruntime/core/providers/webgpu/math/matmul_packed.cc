@@ -47,9 +47,12 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(
         shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
         /*transA = */ false, /*transB = */ false, /*alpha = */ 1.f, /*need_handle_matmul = */ true,
-        /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_));
+        /*output_components = */ 4, tile_inner_, need_split_k, split_dim_inner_));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(
+        shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
+        /*transpose_a = */ false, /*transpose_b = */ false, /*alpha = */ 1.f,
+        /*need_handle_matmul = */ true, tile_inner_));
   }
   return Status::OK();
 }
