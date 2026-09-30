@@ -180,11 +180,13 @@ inference t+1, node L
 
 CUDA devices expose their copy-engine count, but that value does not provide a portable expert-level concurrency
 guarantee. The initial implementation therefore permits at most two in-flight expert exchanges per CUDA device. Two
-independent pinned buffers and two extra CUDA staging slots allow one device-to-host transfer and one host-to-device
-transfer from different exchanges to overlap on hardware with bidirectional copy engines. Hardware with one copy
-engine serializes the transfers without changing correctness. Additional exchanges remain queued for a later
-completion or inference boundary. For the measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this
-limit requires about 3.4 MiB of pinned staging memory and 3.4 MiB of temporary CUDA storage.
+independent pinned buffers, two extra CUDA staging slots, and separate device-to-host and host-to-device streams form a
+bidirectional pipeline. After exchange A finishes its device-to-host transfer, its host-to-device transfer may overlap
+the device-to-host transfer of exchange B. Events preserve the CPU-first ordering within each exchange; buffers and
+CUDA slots are never shared by transfers that overlap. Hardware with one copy engine serializes the transfers without
+changing correctness. Additional exchanges remain queued for a later completion or inference boundary. For the
+measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this limit requires about 3.4 MiB of pinned staging
+memory and 3.4 MiB of temporary CUDA storage.
 
 ## End-of-inference redistribution
 
@@ -284,9 +286,11 @@ the tests and documentation for its own scope.
 - Use the session-global counters and optional initial counter state to rank experts.
 - Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and let the pilot schedule exchanges after inference.
 - Move the CUDA expert to CPU before moving its replacement to CUDA.
-- Manage CUDA slots, two staging slots, two pinned buffers, transfer streams, completion events, immutable
-  per-invocation mappings, and atomic publication of completed swaps.
+- Manage CUDA slots, two staging slots, two pinned buffers, dedicated device-to-host and host-to-device streams,
+  completion events, immutable per-invocation mappings, and atomic publication of completed swaps.
 - Permit at most two in-flight exchanges per CUDA device and queue the rest.
+- Pipeline the host-to-device transfer of one exchange with the device-to-host transfer of the other when the hardware
+  exposes bidirectional copy engines.
 - Never wait for an incomplete exchange when a `MoE` starts; use the pre-exchange placement for that invocation.
 - Redistribute the global CUDA expert budget after inference without draining pending exchanges, while maximizing the
   number of completely CUDA-resident nodes.
