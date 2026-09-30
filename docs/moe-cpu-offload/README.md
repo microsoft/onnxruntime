@@ -9,16 +9,15 @@
 Implement adaptive expert placement for Qwen 3.6 and other Mixture-of-Experts (MoE) models whose expert weights do not
 all fit in GPU memory.
 
-CPU memory keeps the canonical copy of every expert. CUDA holds a configurable subset of expert copies. Each `MoE` and
-`QMoE` node maintains one exponentially decayed counter per expert, uses those counters to rank experts, and updates
-its CUDA placement asynchronously.
+Each expert is resident either on CPU or CUDA. The configured global offload target determines how many experts remain
+on CPU, while the complementary set resides on CUDA. Each `MoE` and `QMoE` node maintains one exponentially decayed
+counter per expert, uses those counters to rank experts, and updates its placement asynchronously.
 
-The placement policy has two levels:
+The placement policy has two levels, both evaluated by the pilot after a complete model inference:
 
-- After a `MoE` or `QMoE` invocation, exchange a hot CPU expert with a cold CUDA expert when the counter difference
-  exceeds a configurable threshold.
-- After a complete model inference, redistribute the global CUDA expert budget across nodes while maximizing the
-  number of nodes that can run entirely on CUDA.
+- Exchange hot CPU experts with cold CUDA experts when their counter differences exceed a configurable threshold.
+- Redistribute the global CUDA expert budget across nodes while maximizing the number of nodes that can run entirely
+  on CUDA.
 
 Training, router changes, expert-weight quantization, and multiple CUDA devices are outside this implementation.
 
@@ -81,8 +80,8 @@ The global CUDA budget is:
 cuda_expert_count = total_expert_count - cpu_offload_expert_count
 ```
 
-One CUDA slot contains all weights required to execute one expert. CUDA slots contain copies only; moving an expert
-into or out of CUDA never removes or modifies its canonical CPU weights.
+One CUDA slot contains all weights required to execute one expert. Moving an expert changes its residency: the expert
+leaving CUDA is transferred to CPU before the replacement expert is transferred from CPU to CUDA.
 
 ## Expert counters
 
@@ -131,10 +130,10 @@ second implementation step.
 
 ## Per-node placement update
 
-One invocation uses an immutable expert-to-slot mapping:
+One invocation uses an immutable expert-to-device mapping:
 
 - CUDA-resident experts execute on CUDA.
-- Non-resident experts execute from their permanent CPU weights.
+- CPU-resident experts execute on CPU.
 - Counter updates do not change the mapping used by the current invocation.
 
 After execution and counter updates, a node with experts on both CPU and CUDA computes:
@@ -150,38 +149,47 @@ The node exchanges the corresponding experts only when:
 cpu_max > (1 + epsilon) * cuda_min
 ```
 
-At most one exchange is scheduled per node invocation. Counter ties use expert ID order.
+Counter ties use expert ID order. The pilot evaluates placement only after the complete model inference and selects at
+most one exchange per node for that boundary. Exchanges are fully asynchronous with respect to the next inference.
 
-The exchange starts immediately after the node finishes:
+Each exchange uses a pinned host staging buffer and an extra CUDA staging slot so the published mapping remains usable
+until the complete exchange is ready:
 
-1. Record completion of all CUDA work that references the current slot.
-2. Make the transfer stream wait for that completion event.
-3. Copy the selected CPU expert into the selected CUDA slot asynchronously.
+1. Record completion of all CUDA work that references the expert selected for CPU residency.
+2. Copy that CUDA expert to the pinned staging buffer, then commit it to its CPU allocation.
+3. Only after the device-to-host transfer completes, stage the selected CPU expert in pinned memory and copy it to the
+   extra CUDA slot.
 4. Record a transfer-completion event.
-5. Publish the new mapping atomically after the copy completes.
+5. Publish the new mapping atomically only after both directions have completed.
 
-The current invocation never waits for the exchange. Before the node's next invocation, the cache manager waits for
-any pending exchange to finish. The next invocation must use the new complete mapping; it must not observe a partially
-copied slot or continue with the replaced mapping.
+The CPU-bound transfer must always complete before the CPU-to-CUDA transfer starts. An exchange never overwrites the
+currently published CUDA slot. If the next inference reaches the same `MoE` or `QMoE` before the exchange completes,
+the kernel uses the pre-exchange mapping and does not wait. A later invocation observes the new placement only after
+the pilot has published the completed exchange.
 
 ```text
-token t, node L
-    -> execute with immutable placement P
-    -> update counters
-    -> evaluate cpu_max > (1 + epsilon) * cuda_min
-    -> enqueue one qualifying exchange asynchronously
-    -> continue the model
+inference t
+    -> every MoE/QMoE executes with immutable placement P
+    -> counters are updated
+    -> after Run() completes, the pilot selects and enqueues exchanges
 
-token t+1, before node L
-    -> finish the pending exchange if necessary
-    -> publish placement P+1
-    -> execute with P+1
+inference t+1, node L
+    -> if L's exchange is incomplete, execute with placement P without waiting
+    -> if L's exchange is complete, publish and execute with placement P+1
 ```
+
+CUDA devices expose their copy-engine count, but that value does not provide a portable expert-level concurrency
+guarantee. The initial implementation therefore permits at most two in-flight expert exchanges per CUDA device. Two
+independent pinned buffers and two extra CUDA staging slots allow one device-to-host transfer and one host-to-device
+transfer from different exchanges to overlap on hardware with bidirectional copy engines. Hardware with one copy
+engine serializes the transfers without changing correctness. Additional exchanges remain queued for a later
+completion or inference boundary. For the measured Qwen model, where one QMoE expert occupies 1,775,616 bytes, this
+limit requires about 3.4 MiB of pinned staging memory and 3.4 MiB of temporary CUDA storage.
 
 ## End-of-inference redistribution
 
-After each complete model inference, recompute how many CUDA slots belong to each `MoE` and `QMoE` node while preserving
-the global CUDA budget.
+After each complete model inference, the pilot first publishes completed exchanges, then recomputes how many CUDA
+experts belong to each `MoE` and `QMoE` node while preserving the global CUDA budget.
 
 The allocation objective is lexicographic:
 
@@ -192,11 +200,9 @@ The allocation objective is lexicographic:
 Within each node, keep the experts with the highest counters. Redistribution may transfer slot ownership between
 nodes, whereas a per-node exchange changes the expert stored in a slot without changing that node's slot count.
 
-Before computing or scheduling redistribution, drain every pending per-node exchange: wait for each transfer-completion
-event and publish its completed mapping. Redistribution therefore starts from a stable placement in which no transfer
-can still publish an owner for a slot. Only after this drain may redistribution reassign slot ownership.
-Redistribution copies are asynchronous. Every affected node must finish its pending redistribution before its next
-invocation. Slot metadata is published only after all weights for that slot are ready.
+Redistribution never drains or waits for pending exchanges. It schedules up to the available two-exchange concurrency
+limit and leaves additional non-conflicting exchanges queued. A node with an incomplete exchange continues using its
+published pre-exchange placement. Slot metadata changes only after both transfer directions complete.
 
 ## Operator integration
 
@@ -206,13 +212,12 @@ contract.
 The graph node remains assigned to the CUDA execution provider. Its CUDA kernel:
 
 - owns or accesses the runtime expert cache;
-- keeps canonical expert weights in CPU memory;
 - dispatches resident experts to CUDA;
-- invokes shared CPU expert-compute helpers for non-resident experts;
+- invokes shared CPU expert-compute helpers for CPU-resident experts;
 - submits counter updates and, once adaptive swaps are enabled, placement changes to the cache manager.
 
-The implementation must verify that initializer prepacking and memory planning can retain canonical weights on CPU
-without materializing every expert on CUDA. If the existing input-memory contract cannot support this without
+The implementation must verify that initializer prepacking and memory planning can materialize each expert only on its
+assigned device. If the existing input-memory contract cannot support this without
 regressing the regular CUDA path, an internal graph transformer may insert an experimental `MoEWithCPUOffload`
 operator. That operator must reuse `MoE`/`QMoE` schema semantics and kernels and must not become part of the exported
 model contract.
@@ -239,7 +244,8 @@ subgraphs cannot collide. The state persists across `Run()` calls and is isolate
 
 The CUDA cache manager owns device-specific resources and execution state:
 
-- CUDA slots and current immutable mappings;
+- CUDA slots, two extra staging slots, and current immutable mappings;
+- two reusable pinned host staging buffers;
 - pending exchanges and redistribution transfers;
 - CUDA completion events.
 
@@ -266,7 +272,7 @@ the tests and documentation for its own scope.
   boundary kernel when the budget does not contain a whole number of kernels.
 - Keep the remaining experts, including all experts of the last kernels, on CPU.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
-- Retain canonical weights for every expert on CPU and copy only CUDA-resident experts to device slots.
+- Materialize each expert only on its assigned device.
 - Dispatch resident experts on CUDA and offloaded experts through the shared CPU expert-compute path.
 - Combine CPU and CUDA expert results without changing the exported `MoE` or `QMoE` model contract.
 - Preserve the existing CUDA implementation when offloading is disabled.
@@ -276,16 +282,17 @@ the tests and documentation for its own scope.
 ### Step 2: adaptive expert swaps
 
 - Use the session-global counters and optional initial counter state to rank experts.
-- Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and schedule at most one local exchange per node
-  invocation.
-- Manage CUDA slots, transfer streams, completion events, immutable per-invocation mappings, and atomic publication of
-  completed swaps.
-- Submit copies asynchronously after the current node finishes, overlap them with later model work, and require
-  completion before that node executes again.
-- Redistribute the global CUDA expert budget after inference, first draining pending local exchanges and then
-  maximizing the number of completely CUDA-resident nodes.
-- Test the epsilon boundary, safe slot reuse, asynchronous publication, global budget preservation, delayed exchanges
-  followed by redistribution, counter-based placement, and explicit transfer failures.
+- Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and let the pilot schedule exchanges after inference.
+- Move the CUDA expert to CPU before moving its replacement to CUDA.
+- Manage CUDA slots, two staging slots, two pinned buffers, transfer streams, completion events, immutable
+  per-invocation mappings, and atomic publication of completed swaps.
+- Permit at most two in-flight exchanges per CUDA device and queue the rest.
+- Never wait for an incomplete exchange when a `MoE` starts; use the pre-exchange placement for that invocation.
+- Redistribute the global CUDA expert budget after inference without draining pending exchanges, while maximizing the
+  number of completely CUDA-resident nodes.
+- Test the epsilon boundary, transfer ordering, two-exchange concurrency, queued exchanges, nonblocking use of the old
+  mapping, asynchronous publication, global budget preservation, counter-based placement, and explicit transfer
+  failures.
 
 After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
 CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and
