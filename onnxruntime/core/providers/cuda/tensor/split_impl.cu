@@ -191,9 +191,9 @@ Status SplitSmallInner(cudaStream_t stream, const size_t element_size,
                        const void* input_data,
                        const TArray<void*, kMaxSmallInnerSplitOutputs>& output_data,
                        const gsl::span<const int64_t>& input_shape) {
-  CUDA_LONG outer_size = 1;
+  int64_t outer_size = 1;
   for (size_t i = 0; i < input_shape.size() - 1; ++i) {
-    outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
+    outer_size *= input_shape[i];
   }
   int64_t inner_size_in_byte = input_shape[input_shape.size() - 1] * static_cast<int64_t>(element_size);
 
