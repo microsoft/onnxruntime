@@ -78,7 +78,8 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   if (p_input_node == nullptr) {
     return false;
   }
-  if (p_input_node->OpType() == "YieldOp" && node_output_is_graph_output) {
+  if ((p_input_node->OpType() == "YieldOp" && node_output_is_graph_output) ||
+      p_input_node->ContainsSubgraph()) {
     return false;
   }
 

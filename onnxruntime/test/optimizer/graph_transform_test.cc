@@ -13492,5 +13492,46 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
   ASSERT_EQ(op_to_count["STFT"], 0);
 }
 
+TEST_F(GraphTransformationTests, GraphCleanupPreservesControlFlowAndLegacyInitializerInputs) {
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(MODEL_FOLDER "fusion/identity_loop_lexical_scope.onnx", model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    auto transformer = std::make_unique<RuleBasedGraphTransformer>("IdentityElimination");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<EliminateIdentity>()));
+    GraphTransformerManager manager{5};
+    ASSERT_STATUS_OK(manager.Register(std::move(transformer), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(manager.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    bool loop_output_preserved = false;
+    bool forwarding_identity_preserved = false;
+    for (const auto& node : graph.Nodes()) {
+      loop_output_preserved |= node.OpType() == "Loop" && node.OutputDefs()[0]->Name() == "x_mid";
+      forwarding_identity_preserved |= node.OpType() == "Identity" && node.InputDefs()[0]->Name() == "x_mid";
+    }
+    EXPECT_TRUE(loop_output_preserved);
+    EXPECT_TRUE(forwarding_identity_preserved);
+
+    auto proto = model->ToProto();
+    std::shared_ptr<Model> reloaded;
+    ASSERT_STATUS_OK(Model::Load(std::move(proto), reloaded, nullptr, *logger_));
+  }
+
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(MODEL_FOLDER "fusion/constant_sharing_ir3_inputs.onnx", model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    bool modified = false;
+    ConstantSharing transformer;
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+
+    for (const NodeArg* input : graph.GetInputsIncludingInitializers()) {
+      if (input->Name() != "Input3") {
+        EXPECT_NE(graph.GetAllInitializedTensors().find(input->Name()), graph.GetAllInitializedTensors().end());
+      }
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
