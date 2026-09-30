@@ -94,6 +94,25 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {1, 7, 9, 13})) {
       continue;
     }
+
+    const auto& greater_inputs = greater_node.InputDefs();
+    if (greater_inputs.size() != 2 ||
+        greater_inputs[0]->Name() != reduce_sum_node.OutputDefs()[0]->Name()) {
+      continue;
+    }
+
+    constexpr bool check_outer_scope = true;
+    const auto* threshold_proto = graph.GetConstantInitializer(greater_inputs[1]->Name(), check_outer_scope);
+    if (!threshold_proto) {
+      continue;
+    }
+
+    const Initializer threshold(graph, *threshold_proto, graph.ModelPath(), check_outer_scope);
+    if (threshold.data_type() != TensorProto_DataType_INT64 || threshold.size() != 1 ||
+        threshold.DataAsSpan<int64_t>()[0] != 0) {
+      continue;
+    }
+
     nodes_to_remove.push_back(greater_node);
 
     Node& isallfinite_node = graph.AddNode(graph.GenerateNodeName("IsAllFinite"),

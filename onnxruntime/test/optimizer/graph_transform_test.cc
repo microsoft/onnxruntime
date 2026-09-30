@@ -11233,21 +11233,27 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
 
 #if defined(USE_CUDA)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  const std::pair<const ORTCHAR_T*, bool> cases[] = {
+      {MODEL_FOLDER "fusion/isinf_reducesum_threshold_zero.onnx", true},
+      {MODEL_FOLDER "fusion/isinf_reducesum.onnx", false},
+  };
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<IsInfReduceSumFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  for (const auto& [model_uri, should_fuse] : cases) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["IsInf"], 0);
-  EXPECT_EQ(op_to_count["Cast"], 0);
-  EXPECT_EQ(op_to_count["ReduceSum"], 0);
-  EXPECT_EQ(op_to_count["com.microsoft.IsAllFinite"], 1);
-  EXPECT_EQ(op_to_count["Not"], 1);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<IsInfReduceSumFusion>(),
+                                                       TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+    const auto op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count.count("IsInf"), should_fuse ? 0U : 1U);
+    EXPECT_EQ(op_to_count.count("ReduceSum"), should_fuse ? 0U : 1U);
+    EXPECT_EQ(op_to_count.count("com.microsoft.IsAllFinite"), should_fuse ? 1U : 0U);
+    EXPECT_EQ(op_to_count.count("Not"), should_fuse ? 1U : 0U);
+  }
 }
 #endif
 #endif
