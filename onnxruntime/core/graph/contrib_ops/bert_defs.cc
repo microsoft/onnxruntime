@@ -3649,15 +3649,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
+          const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
+          const bool has_value = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (has_key != has_value) {
+            fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
+          }
           if (!hasInputShape(ctx, 0)) {
             return;
           }
           const auto& query_shape = getInputShape(ctx, 0);
-          const bool has_key = ctx.getInputType(1) != nullptr;
-          const bool has_value = ctx.getInputType(2) != nullptr;
-          if (has_key != has_value) {
-            fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
-          }
           const bool packed_qkv = !has_key;
           const int rank = query_shape.dim_size();
           const int token_dims = rank - (packed_qkv ? 1 : 2);
@@ -3680,7 +3680,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
 
           const ONNX_NAMESPACE::TensorShapeProto* state_shape = nullptr;
-          if (hasInputShape(ctx, 6)) {
+          if (ctx.getNumInputs() > 6 && hasInputShape(ctx, 6)) {
             state_shape = &getInputShape(ctx, 6);
             if (state_shape->dim_size() != 4) {
               fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
@@ -3712,7 +3712,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           updateOutputShape(ctx, 0, out_shape);
 
           auto add_batch_dim = [&](ONNX_NAMESPACE::TensorShapeProto& shape) {
-            if (hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
+            if (ctx.getNumInputs() > 9 && hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
               *shape.add_dim() = getInputShape(ctx, 9).dim(0);
             } else if (rank == (packed_qkv ? 3 : 4)) {
               *shape.add_dim() = query_shape.dim(0);

@@ -112,6 +112,51 @@ TEST(GatedDeltaNetShapeInferenceTest, PackedQkv) {
   VerifyPackedQkvShapeInference({2, 5, 10240}, {2, 5, 48, 128});
 }
 
+TEST(GatedDeltaNetShapeInferenceTest, ShortOptionalInputList) {
+  std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+  Model model("gated_delta_net_short_inputs", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto query_type;
+  query_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  query_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+  query_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(10240);
+  auto& query = graph.GetOrCreateNodeArg("query", &query_type);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  graph.AddNode("gdn", "GatedDeltaNet", "short packed QKV inputs",
+                {&query}, {&output}, nullptr, kMSDomain);
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_NE(output.Shape(), nullptr);
+  ASSERT_EQ(output.Shape()->dim_size(), 3);
+  EXPECT_EQ(output.Shape()->dim(0).dim_value(), 5);
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, UnknownQueryShapeRequiresPairedKeyValue) {
+  for (bool key_only : {true, false}) {
+    std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
+    Model model("gated_delta_net_unpaired_inputs", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    ONNX_NAMESPACE::TypeProto input_type;
+    input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    auto& query = graph.GetOrCreateNodeArg("query", &input_type);
+    auto& supplied = graph.GetOrCreateNodeArg("supplied", &input_type);
+    auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+    auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+    graph.AddNode("gdn", "GatedDeltaNet", "unpaired key or value",
+                  key_only ? std::vector<NodeArg*>{&query, &supplied}
+                           : std::vector<NodeArg*>{&query, &empty, &supplied},
+                  {&output}, nullptr, kMSDomain);
+    graph.SetOutputs({&output});
+
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "key and value must both be present");
+  }
+}
+
 Inputs MakeInputs(const Geometry& g, uint32_t seed, bool with_state = true) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<float> u(-1.0f, 1.0f);
