@@ -109,7 +109,15 @@ class SplitBase {
       // the ONNX type/shape inferencing handles the check that num_outputs is > 0
       // ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
 
-      if (num_outputs_ != -1 && info.GetInputCount() == 2) {
+      bool has_split_input = false;
+      if (info.GetInputCount() > 1) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+        has_split_input = !info.GetKernelInfo().GetInputName(1).empty();
+#else
+        has_split_input = info.node().InputDefs()[1]->Exists();
+#endif
+      }
+      if (num_outputs_ != -1 && has_split_input) {
         ORT_THROW("If 'num_outputs' is specified, the 'split' input should not be provided.");
       }
     }
