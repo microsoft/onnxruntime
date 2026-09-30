@@ -137,6 +137,32 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
+class DisableCpuFallbackKernel : public OpKernel {
+ public:
+  explicit DisableCpuFallbackKernel(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* /*context*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Test kernel should not be executed");
+  }
+};
+
+constexpr const char* kDisableCpuFallbackExecutionProvider = "DisableCpuFallbackExecutionProvider";
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, Abs);
+ONNX_OPERATOR_KERNEL_EX(If,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+ONNX_OPERATOR_KERNEL_EX(Abs,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
   return kernel_registry.Register(
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
@@ -145,6 +171,26 @@ Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
 KernelRegistryAndStatus GetFusedKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = RegisterOperatorKernels(*ret.kernel_registry);
+  return ret;
+}
+
+Status RegisterDisableCpuFallbackTestKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(
+      kernel_registry.Register(BuildKernelCreateInfo<
+                               ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                               kOnnxDomain,
+                                                               13,
+                                                               If)>()));
+  return kernel_registry.Register(BuildKernelCreateInfo<
+                                  ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                                  kOnnxDomain,
+                                                                  13,
+                                                                  Abs)>());
+}
+
+KernelRegistryAndStatus GetDisableCpuFallbackTestKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterDisableCpuFallbackTestKernels(*ret.kernel_registry);
   return ret;
 }
 
@@ -198,6 +244,45 @@ class FuseExecutionProvider : public IExecutionProvider {
     ORT_THROW_IF_ERROR(k.st);
     return k.kernel_registry;
   }
+};
+
+class DisableCpuFallbackTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit DisableCpuFallbackTestExecutionProvider(bool claim_leaf_ops)
+      : IExecutionProvider{kDisableCpuFallbackExecutionProvider},
+        claim_leaf_ops_{claim_leaf_ops} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const IKernelLookup& /*kernel_lookup*/,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* /* resource_accountant */) const override {
+    std::vector<std::unique_ptr<ComputeCapability>> result;
+
+    for (const auto& node : graph.Nodes()) {
+      const bool should_claim = node.OpType() == "If" ||
+                                (claim_leaf_ops_ && node.OpType() == "Abs");
+      if (!should_claim) {
+        continue;
+      }
+
+      auto sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+
+    return result;
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    static KernelRegistryAndStatus k = GetDisableCpuFallbackTestKernelRegistry();
+    ORT_THROW_IF_ERROR(k.st);
+    return k.kernel_registry;
+  }
+
+ private:
+  bool claim_leaf_ops_;
 };
 
 namespace test {
@@ -1984,6 +2069,123 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(false, true, false, version, sess_env),
                                         (version == 3 ? "Invalid input name" : "Missing Input:"));
   }
+}
+
+static void CreateNestedIfModel(const PathString& model_file_name) {
+  ONNX_NAMESPACE::TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::GraphProto leaf_graph;
+  {
+    onnxruntime::Model model("nested_if_leaf_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    graph.AddOuterScopeNodeArg("branch_data");
+    auto& branch_output = graph.GetOrCreateNodeArg("branch_output", &float_tensor);
+
+    graph.AddNode("branch_abs", "Abs", "Abs node in nested branch", {&branch_data}, {&branch_output});
+    graph.SetOutputs({&branch_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    leaf_graph = graph.ToGraphProto();
+  }
+
+  ONNX_NAMESPACE::GraphProto middle_graph;
+  {
+    onnxruntime::Model model("nested_if_middle_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    ORT_UNUSED_PARAMETER(inner_cond);
+    ORT_UNUSED_PARAMETER(branch_data);
+    graph.AddOuterScopeNodeArg("inner_cond");
+    graph.AddOuterScopeNodeArg("branch_data");
+
+    auto& middle_output = graph.GetOrCreateNodeArg("middle_output", &float_tensor);
+    auto& inner_if = graph.AddNode("middle_if", "If", "Inner If node", {&inner_cond}, {&middle_output});
+    inner_if.AddAttribute("then_branch", leaf_graph);
+    inner_if.AddAttribute("else_branch", leaf_graph);
+
+    graph.SetOutputs({&middle_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    middle_graph = graph.ToGraphProto();
+  }
+
+  onnxruntime::Model model("nested_if_main_graph", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto& outer_cond = graph.GetOrCreateNodeArg("outer_cond", &bool_tensor);
+  auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+  auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+  ORT_UNUSED_PARAMETER(inner_cond);
+  ORT_UNUSED_PARAMETER(branch_data);
+  auto& output = graph.GetOrCreateNodeArg("output", &float_tensor);
+
+  auto& outer_if = graph.AddNode("outer_if", "If", "Outer If node", {&outer_cond}, {&output});
+  outer_if.AddAttribute("then_branch", middle_graph);
+  outer_if.AddAttribute("else_branch", middle_graph);
+
+  graph.SetInputs({&outer_cond, &inner_cond, &branch_data});
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<DisableCpuFallbackTestExecutionProvider>(false)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(),
+                                      "fallback to CPU EP has been explicitly disabled");
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if_fully_assigned.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+
+  std::function<void(Graph&)> assign_to_test_ep = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kDisableCpuFallbackExecutionProvider);
+      for (const auto& [attribute_name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+        ORT_UNUSED_PARAMETER(attribute_name);
+        assign_to_test_ep(*subgraph);
+      }
+    }
+  };
+  auto& graph = session_object.GetMutableGraph();
+  assign_to_test_ep(graph);
+
+  EXPECT_FALSE(inference_session_utils::AreAnyNodesAssignedToCpuEp(graph));
 }
 
 static void CreateFuseOpModel(const PathString& model_file_name) {
