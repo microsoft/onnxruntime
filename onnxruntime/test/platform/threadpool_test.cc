@@ -1347,6 +1347,15 @@ TEST(ThreadPoolTest, CostBasedSplitDecisionIsAThreshold) {
 // If this fails, ORT_DEFAULT_PARALLEL_COST_SCALE was reverted to 1 or the
 // scale is not reaching the split decision in ParallelFor.
 TEST(ThreadPoolTest, CostScaleDefaultSplitsAtKnownBoundary) {
+  // ParallelForCostScale() caches ORT_PARALLEL_COST_SCALE in a function-local
+  // static on first call.  If that env var is already set in this process the
+  // cached value may differ from ORT_DEFAULT_PARALLEL_COST_SCALE, making the
+  // boundary assertion meaningless.  Skip rather than produce a false failure.
+  if (std::getenv("ORT_PARALLEL_COST_SCALE") != nullptr) {
+    GTEST_SKIP() << "ORT_PARALLEL_COST_SCALE is set in the environment; "
+                    "skipping compile-time default boundary test to avoid "
+                    "interference with the env override.";
+  }
   constexpr std::ptrdiff_t n = 65537;
   auto tp = MakePool(4);
   std::vector<float> actual;

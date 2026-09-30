@@ -148,11 +148,11 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
 // 2 (one level of exponential backoff). Values >= 2 enable backoff; 1 = no backoff.
 unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
                                  const logging::Logger& logger) {
-  unsigned int backoff = 1U;
+  unsigned int backoff = 2U;
   if (!TryParseStringWithClassicLocale(str, backoff)) {
     LOGS(logger, WARNING) << "Invalid value for " << config_key
-                          << ": \"" << str << "\", using default (no backoff)";
-    return 1U;
+                          << ": \"" << str << "\", using default (2)";
+    return 2U;
   }
   if (backoff == 0U) {
     LOGS(logger, WARNING) << config_key << " is set to 0; treating as 1 (no backoff). "

@@ -202,7 +202,8 @@ static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "sessio
 // SpinPause() per iteration. The total wall-clock spin duration targeted by
 // session.{intra,inter}_op.spin_duration_us is preserved by scaling the iteration
 // count against the backoff cap.
-//   "1" (default) = no backoff, one SpinPause() per iteration (original behavior).
+//   "2" (default) = one level of exponential backoff (recommended).
+//   "1"           = no backoff, one SpinPause() per iteration (original behavior).
 //   ">= 2"        = enable exponential backoff capped at this value. Typical
 //                   values: 4 (hybrid/E-core friendly) or 8 (desktop/server).
 // Values above 64 are clamped to 64.
