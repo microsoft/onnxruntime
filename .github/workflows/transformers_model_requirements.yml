@@ -33,7 +33,7 @@ permissions:
 jobs:
   llama-requirements:
     name: Validate Llama requirements
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-llama-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-llama-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -51,7 +51,7 @@ jobs:
           python -m pip check
 
       - name: Build ONNX Runtime
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python tools/ci_build/build.py \
             --build_dir build/Linux \
@@ -72,7 +72,7 @@ jobs:
           python -m pip install pytest
 
       - name: Run Llama tests
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python -m pytest --slow \
             onnxruntime/test/python/transformers/test_parity_rotary_embedding.py \
@@ -80,7 +80,7 @@ jobs:
 
   stable-diffusion-requirements:
     name: Validate Stable Diffusion requirements
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-stable-diffusion-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-stable-diffusion-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -99,7 +99,7 @@ jobs:
           python -m pip check
 
       - name: Build ONNX Runtime
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python tools/ci_build/build.py \
             --build_dir build/Linux \
@@ -120,14 +120,14 @@ jobs:
           python -m pip install pytest
 
       - name: Run Stable Diffusion slow tests
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python -m pytest --slow \
             onnxruntime/test/python/transformers/test_optimizer_stable_diffusion.py
 
   whisper-requirements:
     name: Validate Whisper requirements
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-whisper-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    runs-on: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')) && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-whisper-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -146,7 +146,7 @@ jobs:
           python -m pip check
 
       - name: Build ONNX Runtime
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python tools/ci_build/build.py \
             --build_dir build/Linux \
@@ -167,7 +167,7 @@ jobs:
           python -m pip install pytest
 
       - name: Run Whisper slow tests
-        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        if: (github.event_name == 'workflow_dispatch' && inputs.run_slow_tests) || (github.event_name == 'pull_request' && github.head_ref == 'dev/erscor/2026/9/30-bump-transformers')
         run: |
           python -m pytest --slow \
             onnxruntime/test/python/transformers/test_generation.py::TestBeamSearchWhisper \
