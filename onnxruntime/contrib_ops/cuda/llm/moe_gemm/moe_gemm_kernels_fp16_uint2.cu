@@ -21,6 +21,12 @@ void RunInt2GroupedGemmImpl(const Int2GroupedGemmParamsT<ElementType>& params) {
   ORT_ENFORCE(params.activations && params.packed_weights && params.block_scales &&
                   params.expert_row_ends && params.output,
               "INT2 grouped GEMM requires non-null device buffers");
+  const auto is_aligned = [](const void* buffer) {
+    return reinterpret_cast<uintptr_t>(buffer) % 16 == 0;
+  };
+  ORT_ENFORCE(is_aligned(params.activations) && is_aligned(params.packed_weights) &&
+                  is_aligned(params.block_scales) && is_aligned(params.output),
+              "INT2 grouped GEMM requires 16-byte aligned activations, packed weights, block scales, and output");
   GroupedGemmInput<ElementType, cutlass::uint2b_t, ElementType, ElementType> inputs{
       params.activations,
       params.expert_row_ends,

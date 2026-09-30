@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -556,6 +557,67 @@ TEST_F(Int2GroupedGemmTest, DISABLED_GptOssKernelBenchmark) {
     RunCase(rows, 2880, 2880, 4, true, true);
   }
 }
+
+template <typename ElementType>
+void TestMisalignedBuffers() {
+  alignas(16) ElementType activations[16]{};
+  alignas(16) uint8_t packed_weights[32]{};
+  alignas(16) ElementType scales[16]{};
+  alignas(16) ElementType output[16]{};
+  int64_t row_end = 1;
+  llm::kernels::cutlass_kernels::Int2GroupedGemmParamsT<ElementType> aligned;
+  aligned.activations = activations;
+  aligned.packed_weights = packed_weights;
+  aligned.block_scales = scales;
+  aligned.output = output;
+  aligned.expert_row_ends = &row_end;
+  aligned.num_rows = 1;
+  aligned.num_columns = 64;
+  aligned.reduction_size = 64;
+  aligned.num_experts = 1;
+  aligned.sm = 80;
+  aligned.multiprocessor_count = 108;
+  for (int tile_rows : {32, 64}) {
+    SCOPED_TRACE(tile_rows);
+    aligned.tile_rows = tile_rows;
+    for (int buffer_index = 0; buffer_index < 4; ++buffer_index) {
+      SCOPED_TRACE(buffer_index);
+      auto params = aligned;
+      switch (buffer_index) {
+        case 0:
+          params.activations += 8 / sizeof(ElementType);
+          break;
+        case 1:
+          params.packed_weights += 8;
+          break;
+        case 2:
+          params.block_scales += 8 / sizeof(ElementType);
+          break;
+        case 3:
+          params.output += 8 / sizeof(ElementType);
+          break;
+      }
+      ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
+      try {
+        RunInt2GroupedGemm(params);
+        FAIL() << "Expected buffer alignment rejection before any CUDA access";
+      } catch (const OnnxRuntimeException& error) {
+        EXPECT_NE(std::string(error.what()).find("requires 16-byte aligned"), std::string::npos)
+            << error.what();
+      }
+    }
+  }
+}
+
+TEST(Int2GroupedGemmValidationTest, RejectsMisalignedFp16Buffers) {
+  TestMisalignedBuffers<half>();
+}
+
+#if defined(ENABLE_BF16)
+TEST(Int2GroupedGemmValidationTest, RejectsMisalignedBf16Buffers) {
+  TestMisalignedBuffers<__nv_bfloat16>();
+}
+#endif
 
 TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   Int2GroupedGemmParams params;
