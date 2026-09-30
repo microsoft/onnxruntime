@@ -13492,5 +13492,29 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
   ASSERT_EQ(op_to_count["STFT"], 0);
 }
 
+TEST_F(GraphTransformationTests, FusionPreservesPublicAndSharedValues) {
+  const std::vector<std::pair<std::basic_string<ORTCHAR_T>, bool>> models = {
+      {ORT_TSTR("fusion/matmul_transpose_public_cast.onnx"), false},
+      {ORT_TSTR("fusion/gather_to_slice_public_range.onnx"), false},
+      {ORT_TSTR("fusion/fast_gelu_public_entry.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_past_key_transpose.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_qk_intermediate.onnx"), false},
+      {ORT_TSTR("fusion/qdq_public_first_node.onnx"), true},
+      {ORT_TSTR("fusion/qdq_shared_source_value.onnx"), true},
+  };
+
+  for (const auto& [model, enable_qdq_cleanup] : models) {
+    SessionOptions so;
+    so.graph_optimization_level = TransformerLevel::MaxLevel;
+    if (enable_qdq_cleanup) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    }
+
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(PathString(MODEL_FOLDER) + model));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
