@@ -8,9 +8,9 @@ packaging
 protobuf==6.33.6
 psutil
 sympy
-nvtx==0.2.5
+nvtx==0.2.16
 torchvision==0.22.0
-tensorrt==10.13.3.9
+tensorrt==10.13.3.9.post1
 mediapipe
 controlnet_aux==0.0.9
 # The following are for SDXL
