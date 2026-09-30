@@ -288,7 +288,7 @@ struct MoeFCGemm {
                   platform::is_same<uint2b_t, ElementB>::value ||
                   platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
       if (args.weight_scales == nullptr) {
-        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t and uint4b_t");
+        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
         return Status::kInvalid;
       }
       static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
