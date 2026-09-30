@@ -35,11 +35,8 @@ GpuBufferAllocator::GpuBufferAllocator(
 // Built-in callers can supply a different submission policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  // Streamless clears are independent of Run and must not read its capture state.
   CommandRecordingState recording;
-  if (recording_getter_) {
-    // Preserve the per-graph cache's release policy without borrowing the Session's commands.
-    recording.graph_capture_state = recording_getter_().graph_capture_state;
-  }
   return Allocate(size, recording, true);
 #else
   return Allocate(size, recording_getter_(), should_submit_zero_initialize_ && should_submit_zero_initialize_());

@@ -101,7 +101,7 @@ void RunWorkers(FirstError& error, Work work) {
 }
 
 template <typename Allocator>
-void CopyTensorRoundTrip(Allocator& allocator, float value) {
+void CopyTensorRoundTrip(Allocator& allocator, float value, bool verify_zero_initialization = false) {
   const auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::array<float, kElements> input_data{};
   input_data.fill(value);
@@ -112,6 +112,14 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
   auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+
+  if (verify_zero_initialization) {
+    output_data.fill(-1.0f);
+    ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
+    if (output_data != std::array<float, kElements>{}) {
+      throw std::runtime_error("Streamless allocation was not zero initialized");
+    }
+  }
 
   ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
   ThrowOnError(ort_env->CopyTensor(gpu_tensor, gpu_copy, nullptr));
@@ -142,10 +150,13 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         Device(), OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, nullptr);
   }
 
-  std::unique_ptr<Ort::Session> CreateSession() const {
+  std::unique_ptr<Ort::Session> CreateSession(bool enable_graph_capture = false) const {
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     std::unordered_map<std::string, std::string> ep_options;
+    if (enable_graph_capture) {
+      ep_options["enableGraphCapture"] = "1";
+    }
     session_options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
     return std::make_unique<Ort::Session>(
         *ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
@@ -745,6 +756,47 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesConcurrent
   RunWorkers(error, [&](int thread_id) {
     for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
       CopyTensorRoundTrip(allocator, static_cast<float>(thread_id * kIterations + iteration + 1));
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesDuringGraphReplay) {
+  auto session = CreateSession(true);
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  std::array<float, kElements> output_data{};
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  Ort::IoBinding binding(*session);
+  binding.BindInput("X", gpu_input);
+  binding.BindOutput("Y", gpu_output);
+  const auto run_and_verify = [&](float value) {
+    input_data.fill(value);
+    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    session->Run(Ort::RunOptions{nullptr}, binding);
+    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    VerifyOutput(output_data, value);
+  };
+
+  // Warm up and capture before starting allocator workers. Only replay is concurrent;
+  // bound tensors and the binding itself stay on the Run thread.
+  run_and_verify(1.0f);
+  CopyTensorRoundTrip(allocator, 1.0f, true);
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 2);
+      if (thread_id == 0) {
+        run_and_verify(value);
+      } else {
+        CopyTensorRoundTrip(allocator, value, true);
+      }
     }
   });
   ASSERT_FALSE(error.Failed()) << error.Message();
