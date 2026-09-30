@@ -2065,23 +2065,6 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
   }
 }
 
-/*
-Test graph as below.
-      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
-                                         \   /          /
-                                           Div         Div -- scalar_1
-[1, 1, 256, 256] (float)  scalar_3           \         /
-                \           /                  Add
-                      Div                       / \
-                        \                     /  Identity
-                          \                /       |
-                                Add              graph out [1, 1, 256, 256] (float)
-                                 |
-                               Identity
-                                 |
-                graph out [1, 1, 256, 256] (float)
-
-*/
 TEST_F(GraphTransformationTests, ScaledSumFusionWithGraphInputThirdTerm) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input_a = builder.MakeInput<float>({{2, 3}});
@@ -2123,6 +2106,23 @@ TEST_F(GraphTransformationTests, ScaledSumFusionWithGraphInputThirdTerm) {
                                         TransformerLevel::Level1, 1, check_before, check_after));
 }
 
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
+                                         \   /          /
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Div                       / \
+                        \                     /  Identity
+                          \                /       |
+                                Add              graph out [1, 1, 256, 256] (float)
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
 TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
   auto pre_graph_checker = [](Graph& graph) -> Status {
     auto op_count_pre = CountOpsInGraph(graph);

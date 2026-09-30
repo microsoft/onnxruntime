@@ -155,8 +155,8 @@ Status QDQFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const
     }
 
     // QuantizeLinear zero_point is INT8 or UINT8. FakeQuant uses quant_zero_point as FLOAT.
-    // So, remove the old initializers and update the zero point to be of FLOAT type if it exists.
-    // If the initializer does not exist, create a new zero point initializer with the correct type.
+    // Add a FLOAT replacement for FakeQuant and retain the original initializer until graph cleanup
+    // so any other consumers remain valid. Create a zero point initializer when none exists.
     const auto quant_type = ReplaceOrCreateZeroPointInitializer(graph, quantize_node);
 
     // Fuse the QDQ pattern into FakeQuant and move the inputs and outputs.
