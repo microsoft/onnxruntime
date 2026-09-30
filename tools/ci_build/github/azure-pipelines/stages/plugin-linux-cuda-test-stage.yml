@@ -13,9 +13,7 @@ stages:
       clean: all
     pool:
       name: ${{ parameters.machine_pool }}
-      os: linux
-      demands:
-        - 1ES.ImageOverride -equals onnxruntime-ubuntu2404-CUDA
+      demands: ImageOverride -equals onnxruntime-ubuntu2404-CUDA
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
 

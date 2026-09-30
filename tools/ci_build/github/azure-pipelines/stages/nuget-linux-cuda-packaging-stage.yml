@@ -125,14 +125,11 @@ stages:
   - Linux_C_API_Packaging_GPU
   jobs:
   - job: Linux_Packaging_combined_CUDA
-    condition: succeeded()
     workspace:
       clean: all
     pool:
       name: 'Onnxruntime-Linux-GPU-A10'
-      demands:
-        - 1ES.ImageOverride -equals onnxruntime-ubuntu2404-CUDA
-      os: linux
+      demands: ImageOverride -equals onnxruntime-ubuntu2404-CUDA
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
