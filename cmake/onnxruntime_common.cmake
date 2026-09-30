@@ -100,7 +100,9 @@ if (WIN32)
 elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc"
-         "${ONNXRUNTIME_ROOT}/core/platform/linux/pci_device_discovery.h")
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/pci_device_discovery.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/wsl_device_discovery.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/wsl_device_discovery.cc")
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
