@@ -30,6 +30,9 @@ namespace {
 using llm::kernels::cutlass_kernels::Int2GroupedGemmParams;
 using llm::kernels::cutlass_kernels::IsInt2GroupedGemmSupported;
 using llm::kernels::cutlass_kernels::RunInt2GroupedGemm;
+#if defined(ENABLE_BF16)
+using llm::kernels::cutlass_kernels::Bf16Int2GroupedGemmParams;
+#endif
 
 class DeviceBuffer {
  public:
@@ -299,6 +302,123 @@ class Int2GroupedGemmTest : public ::testing::Test {
     }
   }
 
+#if defined(ENABLE_BF16)
+  void RunBf16Case(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
+                   int tile_rows = 32, bool sample_reference = false) {
+    std::vector<int64_t> row_ends;
+    int64_t num_rows = 0;
+    for (const auto rows : expert_rows) {
+      num_rows += rows;
+      row_ends.push_back(num_rows);
+    }
+    const int num_experts = static_cast<int>(expert_rows.size());
+    const size_t expert_bytes = static_cast<size_t>(num_columns) * reduction_size / 4;
+    const int num_blocks = reduction_size / 64;
+    std::vector<uint8_t> raw_weights(expert_bytes * num_experts, 0);
+    std::vector<__nv_bfloat16> scales(static_cast<size_t>(num_experts) * num_blocks * num_columns);
+    std::vector<__nv_bfloat16> activations(static_cast<size_t>(num_rows) * reduction_size);
+    std::vector<__nv_bfloat16> output(static_cast<size_t>(num_rows) * num_columns);
+    const auto quantized_value = [](int expert, int column, int depth) {
+      return (expert * 3 + column * 5 + depth + depth / 7) % 4;
+    };
+    for (int expert = 0; expert < num_experts; ++expert) {
+      for (int column = 0; column < num_columns; ++column) {
+        for (int depth = 0; depth < reduction_size; ++depth) {
+          const size_t index = static_cast<size_t>(expert) * expert_bytes +
+                               static_cast<size_t>(column) * reduction_size / 4 + depth / 4;
+          raw_weights[index] |= static_cast<uint8_t>(quantized_value(expert, column, depth) << (2 * (depth % 4)));
+        }
+        for (int block = 0; block < num_blocks; ++block) {
+          scales[(static_cast<size_t>(expert) * num_blocks + block) * num_columns + column] =
+              static_cast<__nv_bfloat16>(0.03125f * (1 + (expert * 3 + block * 5 + column) % 7));
+        }
+      }
+    }
+    for (int64_t row = 0; row < num_rows; ++row) {
+      for (int depth = 0; depth < reduction_size; ++depth) {
+        activations[row * reduction_size + depth] =
+            static_cast<__nv_bfloat16>(static_cast<float>((row * 3 + depth * 5 + depth / 7) % 17 - 8) / 16.0f);
+      }
+    }
+
+    DeviceBuffer device_raw(raw_weights.size());
+    DeviceBuffer device_packed(raw_weights.size());
+    DeviceBuffer device_transposed(expert_bytes);
+    DeviceBuffer device_permutation(64 * sizeof(int32_t));
+    DeviceBuffer device_scales(scales.size() * sizeof(__nv_bfloat16));
+    DeviceBuffer device_activations(activations.size() * sizeof(__nv_bfloat16));
+    DeviceBuffer device_output(output.size() * sizeof(__nv_bfloat16));
+    DeviceBuffer device_row_ends(row_ends.size() * sizeof(int64_t));
+    CUDA_CALL_THROW(cudaMemcpy(device_raw.Data<uint8_t>(), raw_weights.data(), raw_weights.size(), cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpy(device_scales.Data<__nv_bfloat16>(), scales.data(),
+                               scales.size() * sizeof(__nv_bfloat16), cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpy(device_activations.Data<__nv_bfloat16>(), activations.data(),
+                               activations.size() * sizeof(__nv_bfloat16), cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpy(device_row_ends.Data<int64_t>(), row_ends.data(),
+                               row_ends.size() * sizeof(int64_t), cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemsetAsync(device_output.Data<__nv_bfloat16>(), 0xff,
+                                    output.size() * sizeof(__nv_bfloat16), stream_));
+    for (int expert = 0; expert < num_experts; ++expert) {
+      llm::kernels::fpA_intB_gemv::unpack_uint2_transposed_to_int8_direct_cuda(
+          stream_, device_transposed.Data<int8_t>(), device_raw.Data<uint8_t>() + expert * expert_bytes,
+          num_columns, reduction_size);
+      llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
+          stream_, 80, device_packed.Data<int8_t>() + expert * expert_bytes, device_transposed.Data<int8_t>(),
+          device_permutation.Data<int32_t>(), {static_cast<size_t>(reduction_size), static_cast<size_t>(num_columns)},
+          llm::kernels::weight_only::QuantType::W2_A16, false);
+    }
+
+    Bf16Int2GroupedGemmParams params;
+    params.activations = device_activations.Data<__nv_bfloat16>();
+    params.packed_weights = device_packed.Data<uint8_t>();
+    params.block_scales = device_scales.Data<__nv_bfloat16>();
+    params.expert_row_ends = device_row_ends.Data<int64_t>();
+    params.output = device_output.Data<__nv_bfloat16>();
+    params.num_rows = num_rows;
+    params.num_columns = num_columns;
+    params.reduction_size = reduction_size;
+    params.num_experts = num_experts;
+    params.tile_rows = tile_rows;
+    params.sm = 80;
+    params.multiprocessor_count = properties_.multiProcessorCount;
+    params.stream = stream_;
+    ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
+    RunInt2GroupedGemm(params);
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
+    CUDA_CALL_THROW(cudaMemcpy(output.data(), device_output.Data<__nv_bfloat16>(),
+                               output.size() * sizeof(__nv_bfloat16), cudaMemcpyDeviceToHost));
+    ASSERT_TRUE(std::all_of(output.begin(), output.end(),
+                            [](__nv_bfloat16 value) { return std::isfinite(static_cast<float>(value)); }));
+
+    int64_t row_start = 0;
+    for (int expert = 0; expert < num_experts; ++expert) {
+      for (int64_t row = row_start; row < row_ends[expert]; ++row) {
+        if (sample_reference && row != row_start && row != row_ends[expert] - 1 &&
+            row != (row_start + row_ends[expert]) / 2) {
+          continue;
+        }
+        for (int column = 0; column < num_columns; ++column) {
+          if (sample_reference && column % 64 != 0 && column % 64 != 63) {
+            continue;
+          }
+          float expected = 0.0f;
+          for (int depth = 0; depth < reduction_size; ++depth) {
+            const float scale = static_cast<float>(
+                scales[(static_cast<size_t>(expert) * num_blocks + depth / 64) * num_columns + column]);
+            const float weight = static_cast<float>(quantized_value(expert, column, depth) - 2) * scale;
+            expected += static_cast<float>(activations[row * reduction_size + depth]) * weight;
+          }
+          expected = static_cast<float>(static_cast<__nv_bfloat16>(expected));
+          ASSERT_NEAR(static_cast<float>(output[row * num_columns + column]), expected,
+                      0.02f + std::abs(expected) * 0.02f)
+              << "expert=" << expert << " row=" << row << " column=" << column;
+        }
+      }
+      row_start = row_ends[expert];
+    }
+  }
+#endif
+
   cudaDeviceProp properties_{};
   cudaStream_t stream_ = nullptr;
 };
@@ -366,6 +486,23 @@ TEST_F(Int2GroupedGemmTest, Prefill512) {
 TEST_F(Int2GroupedGemmTest, Prefill2048) {
   RunCase({0, 1025, 1, 1022}, 128, 256);
 }
+
+#if defined(ENABLE_BF16)
+TEST_F(Int2GroupedGemmTest, Bf16CandidateTacticsParity) {
+  for (int tile_rows : {32, 64}) {
+    SCOPED_TRACE(tile_rows);
+    RunBf16Case({1, 0, 2}, 64, 64, tile_rows);
+  }
+}
+
+TEST_F(Int2GroupedGemmTest, Bf16EmptyExpertsAndPartialTiles) {
+  RunBf16Case({0, 1, 0, 39, 88, 0}, 64, 128);
+}
+
+TEST_F(Int2GroupedGemmTest, Bf16GptOssFc1SampledParity) {
+  RunBf16Case(std::vector<int64_t>(32, 16), 5760, 2880, 32, true);
+}
+#endif
 
 TEST_F(Int2GroupedGemmTest, Int4Block64EmptyExpertsAndPartialTiles) {
   RunCase({0, 1, 0, 39, 88, 0}, 64, 128, 4);
