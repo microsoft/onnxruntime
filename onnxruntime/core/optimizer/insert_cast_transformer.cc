@@ -675,7 +675,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
         }
       }
 
-      if (node->OpType() == "Cast") {
+      if (node->OpType() == "Cast" && node->Domain() == kOnnxDomain) {
         auto to_attribute = attributes.find("to");
         if (to_attribute != attributes.end() &&
             to_attribute->second.i() == TensorProto_DataType_FLOAT16) {
