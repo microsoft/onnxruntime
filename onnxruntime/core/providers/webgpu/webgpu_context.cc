@@ -6,15 +6,11 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
-// which trips ORT's -Werror=unused-parameter under GCC.
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
@@ -22,8 +18,7 @@
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
-#include "dawn/platform/DawnPlatform.h"
-#include "dawn/native/DawnNative.h"
+#include "core/providers/webgpu/webgpu_context_dawn_platform.h"
 #endif
 #endif
 #if defined(__GNUC__)
@@ -46,33 +41,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-namespace {
-
-// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
-// thread pools from the core count. Uses half the logical processors (approximating physical
-// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
-uint32_t GetDawnWorkerThreadCount() {
-  return std::max(2u, std::thread::hardware_concurrency() / 2u);
-}
-
-class DawnPlatform final : public dawn::platform::Platform {
- public:
-  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
-    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
-  }
-};
-
-DawnPlatform& GetDawnPlatform() {
-  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
-  // avoid static destruction order issues with Dawn's instance teardown.
-  static DawnPlatform* platform = new DawnPlatform();
-  return *platform;
-}
-
-}  // namespace
-#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
@@ -123,14 +91,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       wgpu::Adapter adapter;
       if (config.adapter_index) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-        dawn::native::Instance native_instance(
-            reinterpret_cast<dawn::native::InstanceBase*>(instance_.Get()));
-        const auto adapters = native_instance.EnumerateAdapters(&req_adapter_options);
+        const auto adapters = EnumerateBundledDawnAdapters(instance_.Get(), req_adapter_options);
         ORT_ENFORCE(*config.adapter_index < adapters.size(),
                     "WebGPU adapterIndex ", *config.adapter_index,
                     " is out of range; Dawn enumerated ", adapters.size(),
                     " adapter(s) for the requested backend and power-preference hint.");
-        adapter = wgpu::Adapter(adapters[*config.adapter_index].Get());
+        adapter = adapters[*config.adapter_index];
         LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
                            << " of " << adapters.size()
                            << " adapter(s) for the requested backend and power-preference hint.";
@@ -1331,7 +1297,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #else
 #if !defined(USE_EXTERNAL_DAWN)
     if (dawn_procs == nullptr) {
-      dawn_procs = &dawn::native::GetProcs();
+      dawn_procs = &GetBundledDawnProcs();
     }
 #else
     ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
@@ -1350,11 +1316,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
-    dawn_instance_desc.platform = &GetDawnPlatform();
-    instance_desc.nextInChain = &dawn_instance_desc;
-#endif
+    default_instance_ = CreateBundledDawnInstance(instance_desc).MoveToCHandle();
+#else
     default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
+#endif
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   }
