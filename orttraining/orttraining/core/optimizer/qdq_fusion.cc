@@ -17,7 +17,7 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
   // not previously exist.
 
   const auto quant_node_input_defs = quantize_node.MutableInputDefs();
-  int zero_point_type = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+  int zero_point_type = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
   ONNX_NAMESPACE::TensorProto zero_point_tensor_float;
   if (quant_node_input_defs.size() >= 3) {
     // The quantize node has the zero point input
@@ -41,8 +41,6 @@ int ReplaceOrCreateZeroPointInitializer(Graph& graph, Node& quantize_node) {
     for (const auto dim : zero_point_tensor_int.dims()) {
       zero_point_tensor_float.add_dims(dim);
     }
-    graph.RemoveInitializedTensor(zero_point_tensor_int.name());
-
     // Since the quantize node has the zero point initializer input, replace it
     graph_utils::ReplaceNodeInput(quantize_node, 2,
                                   graph_utils::AddInitializerWithOrtValue(graph, zero_point_tensor_float));
@@ -94,7 +92,8 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
   // Try to match the current node with QuantizeLinear in the effort of searching for the pattern
   // QuantizeLinear -> DequantizeLinear.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(quantize_node, "QuantizeLinear", {10, 13, 19}) ||
-      !graph_utils::IsSupportedProvider(quantize_node, compatible_execution_providers)) {
+      !graph_utils::IsSupportedProvider(quantize_node, compatible_execution_providers) ||
+      graph.NodeProducesGraphOutput(quantize_node)) {
     return {false, nullptr};
   }
 

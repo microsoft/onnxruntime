@@ -205,7 +205,7 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
           } else {
             // The other input is 1). a constant initializer or graph input, OR 2). it is not a scale operator:
             // then we only add node arg into data input args, NOT need add any mode into nodes_to_remove.
-            data_input_args.push_back(mutable_the_other_input_node->MutableInputDefs()[0]);
+            data_input_args.push_back(the_other_input_arg);
             scales.push_back(scale_value);
           }
         }

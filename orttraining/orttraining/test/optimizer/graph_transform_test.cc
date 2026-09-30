@@ -868,6 +868,27 @@ TEST_F(GraphTransformationTests, TransposeReplacement) {
   }
 }
 
+TEST_F(GraphTransformationTests, TransposeReplacementWithoutPerm) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3}});
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Transpose", {input}, {output});
+  };
+
+  auto check_not_replaced = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("Transpose") == 1);
+    TEST_RETURN_IF(op_count.count("Reshape") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<TransposeReplacement>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_not_replaced, check_not_replaced));
+}
+
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
@@ -1456,7 +1477,7 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(2, true, true)));
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
-                                    public ::testing::WithParamInterface<std::tuple<PathString>> {
+                                    public ::testing::WithParamInterface<std::tuple<PathString, int64_t, int64_t>> {
 };
 
 TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
@@ -1477,6 +1498,70 @@ TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
   ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "FakeQuant") {
+      EXPECT_EQ(node.GetAttributes().at("quant_min").i(), std::get<1>(GetParam()));
+      EXPECT_EQ(node.GetAttributes().at("quant_max").i(), std::get<2>(GetParam()));
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, QDQFusionPreservesPublicQuantizeOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeScalarInitializer<float>(0.1f);
+    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* quantized = builder.MakeOutput<uint8_t>(std::vector<int64_t>{2});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    builder.AddNode("QuantizeLinear", {input, scale, zero_point}, {quantized});
+    builder.AddNode("DequantizeLinear", {quantized, scale, zero_point}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, QDQFusionPreservesSharedZeroPoint) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>({{2}});
+    auto* input_b = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeScalarInitializer<float>(0.1f);
+    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* quantized_a = builder.MakeIntermediate();
+    auto* quantized_b = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    auto* output_b = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    builder.AddNode("QuantizeLinear", {input_a, scale, zero_point}, {quantized_a});
+    builder.AddNode("DequantizeLinear", {quantized_a, scale, zero_point}, {output_a});
+    builder.AddNode("QuantizeLinear", {input_b, scale, zero_point}, {quantized_b});
+    builder.AddNode("DequantizeLinear", {quantized_b, scale, zero_point}, {output_b});
+  };
+
+  auto check_before = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 2);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 2);
+    return Status::OK();
+  };
+  auto check_after = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_count.count("QuantizeLinear") != 0);
+    TEST_RETURN_IF(op_count.count("DequantizeLinear") != 0);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.FakeQuant") == 2);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_before, check_after));
 }
 
 TEST_F(GraphTransformationTests, Conv1dReplacement_TakeEffect) {
@@ -1628,9 +1713,9 @@ INSTANTIATE_TEST_SUITE_P(
     QDQFusionTests,
     QDQFusionTestsParameterized,
     ::testing::Values(
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx"),
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx"),
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx")));
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx", -128, 127),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx", 0, 255),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx", 0, 255)));
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
@@ -1907,6 +1992,9 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
         TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
         TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
         TEST_RETURN_IF_NOT(1.0f == attrs.at("scale_2").f());
+        const Node* third_input_producer = graph.GetProducerNode(node.InputDefs()[2]->Name());
+        TEST_RETURN_IF_NOT(third_input_producer != nullptr);
+        TEST_RETURN_IF_NOT(third_input_producer->OpType() == "Sub");
       }
     }
 
@@ -1970,6 +2058,47 @@ Test graph as below.
                 graph out [1, 1, 256, 256] (float)
 
 */
+TEST_F(GraphTransformationTests, ScaledSumFusionWithGraphInputThirdTerm) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>({{2, 3}});
+    auto* input_b = builder.MakeInput<float>({{2, 3}});
+    auto* input_c = builder.MakeInput<float>({{2, 3}});
+    auto* scale_a = builder.MakeScalarInitializer<float>(0.5f);
+    auto* scale_b = builder.MakeScalarInitializer<float>(0.25f);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* scaled_b = builder.MakeIntermediate();
+    auto* sum_ab = builder.MakeIntermediate();
+    auto* sum_abc = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Div", {input_a, scale_a}, {scaled_a});
+    builder.AddNode("Div", {input_b, scale_b}, {scaled_b});
+    builder.AddNode("Add", {scaled_a, scaled_b}, {sum_ab});
+    builder.AddNode("Add", {sum_ab, input_c}, {sum_abc});
+    builder.AddNode("Identity", {sum_abc}, {output});
+  };
+
+  auto check_before = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("Div") == 2);
+    TEST_RETURN_IF_NOT(op_count.at("Add") == 2);
+    return Status::OK();
+  };
+  auto check_after = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.ScaledSum") == 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+        TEST_RETURN_IF(graph.GetProducerNode(node.InputDefs()[2]->Name()) != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<ScaledSumFusion>(),
+                                        TransformerLevel::Level1, 1, check_before, check_after));
+}
+
 TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
   auto pre_graph_checker = [](Graph& graph) -> Status {
     auto op_count_pre = CountOpsInGraph(graph);
