@@ -243,7 +243,7 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
 }
 
 void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes = {-1},
-                    std::vector<int64_t> reduce2_axes = {-1}) {
+                    std::vector<int64_t> reduce2_axes = {-1}, bool epsilon_input_first = false) {
   std::vector<int64_t> input_shape = {2, 3, 3, 3};
   auto* data_arg = builder.MakeInput<MLFloat16>(input_shape);
   auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
@@ -295,7 +295,11 @@ void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes
   } else {
     builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", reduce2_axes);
   }
-  builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+  if (epsilon_input_first) {
+    builder.AddNode("Add", {add_initializer, reduce_mean_out_2}, {add_out_1});
+  } else {
+    builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
+  }
   builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
   builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
   builder.AddNode("Cast", {div_out}, {cast_out_2})
@@ -342,6 +346,24 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
                                         TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionAddEpsilonInput0) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildLayerNorm(builder, {-1}, {-1}, true);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> compatible_execution_providers;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_execution_providers, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_6) {
@@ -554,10 +576,10 @@ TEST_F(GraphTransformationTests, LayerNormFusionsRejectLossyDoubleEpsilon) {
     return Status::OK();
   };
 
-  const InlinedHashSet<std::string_view> compatible_eps;
+  const InlinedHashSet<std::string_view> compatible_execution_providers;
   ASSERT_STATUS_OK(TestGraphTransformer(
       build_layer_norm, 14, *logger_,
-      std::make_unique<LayerNormFusion>(compatible_eps, TransformerLevel::Level2),
+      std::make_unique<LayerNormFusion>(compatible_execution_providers, TransformerLevel::Level2),
       TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
   ASSERT_STATUS_OK(TestGraphTransformer(
       build_simplified_layer_norm, 14, *logger_,
@@ -2665,26 +2687,16 @@ TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
   // Must handle zero-element epsilon gracefully.
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a LayerNormalization with the
-  // default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // A non-scalar epsilon cannot be represented by the fused float attribute,
+  // so the original graph must remain unchanged.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["LayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sub"], 0);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "LayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceMean"], 2);
+  EXPECT_EQ(op_to_count["Sub"], 1);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 // Test: SimplifiedLayerNormFusion gracefully handles a zero-element epsilon initializer.
@@ -2774,25 +2786,15 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  // Verify the fusion fired and produced a SimplifiedLayerNormalization with
-  // the default epsilon (1e-5f), per the zero-element fallback in
-  // layer_norm_fusion.cc.
+  // A non-scalar epsilon cannot be represented by the fused float attribute,
+  // so the original graph must remain unchanged.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 1);
-  EXPECT_EQ(op_to_count["Pow"], 0);
-  EXPECT_EQ(op_to_count["ReduceMean"], 0);
-  EXPECT_EQ(op_to_count["Sqrt"], 0);
-  EXPECT_EQ(op_to_count["Div"], 0);
-  EXPECT_EQ(op_to_count["Mul"], 0);
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "SimplifiedLayerNormalization") {
-      const auto& attrs = node.GetAttributes();
-      auto it = attrs.find("epsilon");
-      ASSERT_NE(it, attrs.end());
-      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
-    }
-  }
+  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["Pow"], 1);
+  EXPECT_EQ(op_to_count["ReduceMean"], 1);
+  EXPECT_EQ(op_to_count["Sqrt"], 1);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 #endif

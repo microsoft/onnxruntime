@@ -3,6 +3,7 @@
 
 #include "core/optimizer/matmul_scale_fusion.h"
 
+#include <limits>
 #include <type_traits>
 
 #include "onnx/defs/attr_proto_util.h"
@@ -18,16 +19,45 @@ namespace onnxruntime {
 
 namespace {
 template <typename T>
+bool IsExactlyRepresentableAsFloat(T value, float converted) {
+  if constexpr (std::is_integral_v<T>) {
+    using U = std::make_unsigned_t<T>;
+    const U unsigned_value = static_cast<U>(value);
+    const U magnitude = [&]() {
+      if constexpr (std::is_signed_v<T>) {
+        return value < 0 ? U{0} - unsigned_value : unsigned_value;
+      } else {
+        return unsigned_value;
+      }
+    }();
+
+    size_t significant_bits = 0;
+    for (U remaining = magnitude; remaining != 0; remaining >>= 1) {
+      ++significant_bits;
+    }
+
+    constexpr size_t float_digits = std::numeric_limits<float>::digits;
+    if (significant_bits <= float_digits) {
+      return true;
+    }
+
+    const size_t discarded_bits = significant_bits - float_digits;
+    return (magnitude & ((U{1} << discarded_bits) - 1)) == 0;
+  } else if constexpr (std::is_same_v<T, double>) {
+    return static_cast<double>(converted) == value;
+  } else {
+    return true;
+  }
+}
+
+template <typename T>
 struct ExtractScalarAsFloatDispatchTarget {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path,
                     float& scalar_float, bool& lossless) {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));
     scalar_float = static_cast<float>(scalar);
-    lossless = true;
-    if constexpr (std::is_same_v<T, double>) {
-      lossless = static_cast<double>(scalar_float) == scalar;
-    }
+    lossless = IsExactlyRepresentableAsFloat(scalar, scalar_float);
     return Status::OK();
   }
 };

@@ -562,8 +562,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    const NodeArg* epsilon_input = GetOtherAddInput(add2_node, *reduce_mean2_node.MutableOutputDefs()[0]);
     double epsilon = 0.0;
-    if (!TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon) ||
+    if (epsilon_input == nullptr ||
+        !TryGetScalarInitializerAsDouble(graph, *epsilon_input, epsilon) ||
         static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
       continue;
     }
