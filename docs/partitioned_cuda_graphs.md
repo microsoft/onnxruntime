@@ -7,10 +7,12 @@ the same session. Shape-only CPU nodes are a limited exception, not CPU offloadi
 The opt-in partitioned execution prototype retains the original ONNX model and
 uses its normal CPU/CUDA placement. At initialization, it selects the existing
 whole-session capture/replay path if placement satisfies the CUDA EP's normal
-capture policy. This includes all-CUDA graphs, eligible CPU shape nodes without
-device-copy nodes, and empty graphs. This path preserves the user's memory-pattern
+capture policy and every CPU node is an ONNX Shape or Size node. This includes
+all-CUDA graphs, eligible CPU shape nodes without device-copy nodes, and empty
+graphs. This path preserves the user's memory-pattern
 setting and normal capture/replay behavior; it does not allocate partition-specific
-retained frames or scratch.
+retained frames or scratch. Other CPU computation selects partitioned execution
+even if it forms an independent branch with no device copies.
 
 Otherwise, it walks the partitioned graph sequentially, runs CPU nodes, device
 copies, and CUDA nodes producing host outputs (such as Shape) eagerly, and captures
@@ -79,6 +81,8 @@ but replay the CUDA compute partitions instead of invoking their kernels.
 
 `gpu_graph_id=-1` uses the ordinary eager executor, allowing uncaptured prefill.
 Different nonnegative IDs can represent different fixed-shape decode buckets.
+IDs below `-1` are rejected before allocating partitioned capture state or executing
+any nodes, without invalidating existing buckets.
 Every captured bucket retains its own intermediates and scratch until session
 destruction. Captured GPU allocations are isolated from eager runs and other
 buckets.
@@ -142,26 +146,20 @@ This is not a claim that a particular 27B model fits in 12 or 24 GB. That requir
 measurement with its actual quantization, context length, KV cache, placement, and
 capture buckets. CPU offloading may also impose substantial decode latency.
 
-## Observability limitations
+## Observability
 
-The partition runner invokes kernels directly instead of using the standard
-sequential executor's kernel wrapper. This affects preparation/capture passes and
-the eager CPU, copy, and CUDA host-output nodes executed during partitioned replay:
-
-- Session-level and run-level profiling do not emit the standard per-node kernel
-  events or allocator-statistics fields for these invocations. Session/run timing
-  is still available, but is not a complete node-level profile.
-- Node allocation-statistics collection, memory-profiler hooks, executor-provided
-  NVTX ranges, and debug input/output dumps are bypassed.
-- Kernel failures do not receive the wrapper's standard node-name/type exception
-  attribution; diagnostics depend on the kernel's own error message.
+Preparation/capture passes and eager CPU, copy, and CUDA host-output nodes use the
+standard sequential executor's kernel wrapper without recycling frame values.
+Session-level and run-level profiling record per-node events and allocator
+statistics for these invocations. Node allocation statistics, memory-profiler
+hooks, NVTX ranges, debug input/output hooks, and node-specific error attribution
+are shared with ordinary execution.
 
 CUDA partition replay launches an existing graph without re-invoking its kernels.
-Use a CUDA trace to verify actual graph launches, and ordinary eager runs
-(`gpu_graph_id=-1`) for standard executor diagnostics. Eager allocation statistics
-do not describe the extra retained memory of partitioned capture.
-Sharing the kernel-execution wrapper is deferred; any new executor hooks must also
-be considered explicitly for this runner.
+It therefore produces no synthetic per-node kernel events. Use a CUDA trace to
+measure graph launches rather than interpreting preparation/capture host timings
+as replay timings. Eager allocation statistics do not describe the extra retained
+memory of partitioned capture.
 
 MoE statistics remain incompatible with graph capture, so this path must not be
 used to bypass that exclusion. Adaptive CPU/GPU MoE routing would violate fixed
@@ -191,6 +189,12 @@ invalidate every captured bucket while pre-execution validation remains recovera
 Graph-ID limit coverage checks the default and configured bounds, invalid settings,
 repeated rejection without new device allocations or changed outputs, and continued
 replay/eager execution at capacity. Whole-session routing remains exempt from the limit.
+Independent CPU-branch coverage verifies changing CPU data without device-copy
+nodes, session/run profiling during preparation and replay, and node-specific
+failure attribution. Invalid negative graph IDs are rejected before and after
+filling the bucket limit without allocating device memory or changing outputs.
+MoE counting/statistics remain rejected with capture enabled, with or without the
+partitioned option.
 
 Real-model evaluation must compare eager and captured output parity, confirm
 partition replay using a CUDA trace or replay logs, and measure peak VRAM and

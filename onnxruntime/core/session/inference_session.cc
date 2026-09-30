@@ -280,6 +280,16 @@ static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderTy
   return true;
 }
 
+static bool AreCpuNodesShapeOnly(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType() == kCpuExecutionProvider &&
+        (node.Domain() != kOnnxDomain || (node.OpType() != "Shape" && node.OpType() != "Size"))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool HasShapeSubgraphNodes(const Graph& graph) {
   bool has_shape_nodes = false;
   bool has_cpu_ep_nodes = false;
@@ -3124,7 +3134,8 @@ common::Status InferenceSession::Initialize() {
         if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnablePartitionedCudaGraph, "0") == "1") {
           ORT_RETURN_IF_NOT(ep->Type() == kCudaExecutionProvider,
                             "Partitioned CUDA capture requires the CUDA execution provider.");
-          if (!can_capture_whole_graph) {
+          // No Memcpy nodes does not rule out an independent, data-dependent CPU branch.
+          if (!can_capture_whole_graph || !AreCpuNodesShapeOnly(graph)) {
 #if !defined(ORT_ENABLE_STREAM) || defined(ENABLE_TRAINING)
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "Partitioned CUDA capture requires an inference build with stream support.");
@@ -3974,7 +3985,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #if !defined(ORT_MINIMAL_BUILD)
         if (partitioned_graph_execution_ && graph_annotation_id != -1) {
           retval = partitioned_graph_execution_->Run(run_options, graph_annotation_id, feeds_fetches_manager,
-                                                     feeds, *p_fetches, run_logger);
+                                                     feeds, *p_fetches, run_logger,
+                                                     run_profiler ? &*run_profiler : nullptr);
         } else
 #endif
         {

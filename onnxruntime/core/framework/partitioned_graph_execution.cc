@@ -14,7 +14,7 @@
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/sequential_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -117,21 +117,9 @@ struct PartitionedGraphExecution::Impl {
   }
 
   Status Compute(CapturedRun& state, const Partition& partition, const RunOptions& options,
-                 const logging::Logger& logger) {
-    const auto& plan = *session_state.GetExecutionPlan();
-    for (NodeIndex index : partition.nodes) {
-      ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
-      auto* kernel = session_state.GetKernel(index);
-      ORT_RETURN_IF(kernel->IsAsync(), "Partitioned CUDA capture does not support asynchronous host kernels.");
-      auto* stream = state.streams.p_->GetStream(plan.node_stream_map_[index]);
-      OpKernelContextInternal context(session_state, *state.frame, *kernel, logger, options.terminate, stream);
-      ORT_RETURN_IF_ERROR(kernel->Compute(&context));
-      if (!partition.capture && kernel->Node().GetExecutionProviderType() == provider.Type()) {
-        // Complete eager CUDA work before CPU consumers read host outputs or reuse copy sources.
-        ORT_RETURN_IF_ERROR(provider.Sync());
-      }
-    }
-    return Status::OK();
+                 const logging::Logger& logger, profiling::Profiler* run_profiler) {
+    return ExecuteNodesWithRetainedValues(session_state, *state.frame, partition.nodes, *state.streams.p_,
+                                          options.terminate, !partition.capture, logger, run_profiler);
   }
 
   Status SaveSignatures(CapturedRun& state, const Partition& partition, CapturedPartition& captured) {
@@ -158,7 +146,8 @@ struct PartitionedGraphExecution::Impl {
     return Status::OK();
   }
 
-  Status Execute(CapturedRun& state, const RunOptions& options, const logging::Logger& logger) {
+  Status Execute(CapturedRun& state, const RunOptions& options, const logging::Logger& logger,
+                 profiling::Profiler* run_profiler) {
     // Allocate outputs, then retain scratch before capture. Plugin warm-ups use graph ID -1
     // because the plugin may otherwise start capturing before either preparation pass finishes.
     // Its configurable warm-up count is subsequently honored with a bounded capture retry loop.
@@ -169,7 +158,7 @@ struct PartitionedGraphExecution::Impl {
         const auto& partition = partitions[i];
         ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
         if (!partition.capture) {
-          ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger));
+          ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger, run_profiler));
           continue;
         }
         auto& captured = *state.partitions[i];
@@ -209,7 +198,7 @@ struct PartitionedGraphExecution::Impl {
         if (pass != 0) {
           ORT_RETURN_IF_ERROR(captured.scratch.Begin(pass >= 2));
         }
-        ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger));
+        ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger, run_profiler));
         if (pass != 0) {
           ORT_RETURN_IF_ERROR(captured.scratch.End());
         }
@@ -235,7 +224,11 @@ struct PartitionedGraphExecution::Impl {
   }
 
   Status Run(const RunOptions& options, int graph_id, FeedsFetchesManager& manager,
-             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, const logging::Logger& logger) {
+             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches, const logging::Logger& logger,
+             profiling::Profiler* run_profiler) {
+    ORT_RETURN_IF(graph_id < 0,
+                  "Partitioned CUDA capture requires a nonnegative gpu_graph_id; "
+                  "use gpu_graph_id=-1 for eager execution.");
     ORT_RETURN_IF(failed, "A previous partitioned CUDA execution failed; recreate the session.");
     ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
     ORT_RETURN_IF(options.only_execute_path_to_fetches || options.sync_stream != nullptr,
@@ -311,7 +304,7 @@ struct PartitionedGraphExecution::Impl {
     owner_thread = std::this_thread::get_id();
     // Any failure after execution begins may leave partially updated outputs or in-place state.
     failed = true;
-    ORT_RETURN_IF_ERROR(Execute(state, options, logger));
+    ORT_RETURN_IF_ERROR(Execute(state, options, logger, run_profiler));
     ORT_RETURN_IF_ERROR(state.frame->GetOutputs(fetches));
     failed = false;
     return Status::OK();
@@ -348,9 +341,9 @@ PartitionedGraphExecution::~PartitionedGraphExecution() = default;
 
 Status PartitionedGraphExecution::Run(const RunOptions& options, int graph_id, FeedsFetchesManager& manager,
                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                      const logging::Logger& logger) {
+                                      const logging::Logger& logger, profiling::Profiler* run_profiler) {
 #ifdef ORT_ENABLE_STREAM
-  return impl_->Run(options, graph_id, manager, feeds, fetches, logger);
+  return impl_->Run(options, graph_id, manager, feeds, fetches, logger, run_profiler);
 #else
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(graph_id);
@@ -358,6 +351,7 @@ Status PartitionedGraphExecution::Run(const RunOptions& options, int graph_id, F
   ORT_UNUSED_PARAMETER(feeds);
   ORT_UNUSED_PARAMETER(fetches);
   ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(run_profiler);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Partitioned CUDA capture requires stream support.");
 #endif
 }

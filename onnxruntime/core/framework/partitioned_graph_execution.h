@@ -18,6 +18,9 @@ namespace onnxruntime {
 class FeedsFetchesManager;
 class IExecutionProvider;
 class SessionState;
+namespace profiling {
+class Profiler;
+}
 
 // Experimental, sequential CPU/CUDA execution with a captured graph per CUDA partition.
 class PartitionedGraphExecution {
@@ -29,7 +32,7 @@ class PartitionedGraphExecution {
   Status Run(const RunOptions& run_options, int graph_id,
              FeedsFetchesManager& feeds_fetches_manager,
              gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-             const logging::Logger& logger);
+             const logging::Logger& logger, profiling::Profiler* run_profiler);
 
  private:
   struct Impl;

@@ -457,7 +457,7 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// Experimental sequential CPU/CUDA partition capture. "1" enables it; "0" (default) disables it.
 /// Requires a non-minimal build and the built-in or plugin CUDA EP with enable_cuda_graph=1.
 /// Uses the existing whole-session replay path when
-/// placement satisfies its capture policy (including eligible CPU shape nodes and empty graphs), preserving
+/// placement satisfies its capture policy and CPU nodes are limited to ONNX Shape/Size (or the graph is empty), preserving
 /// its memory-pattern settings and capture behavior. Otherwise, CPU nodes and device copies execute on every run
 /// and contiguous CUDA compute partitions are captured separately. Placement uses the existing partitioning settings.
 /// In partitioned mode, each gpu_graph_id retains intermediate/scratch buffers and requires fixed addresses and shapes.
