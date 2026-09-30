@@ -575,6 +575,38 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
+  // Runtime geometry and feature facts shared by the XQA, Flash, memory-efficient, and unfused
+  // workspace recipes. Sizing every backend through these shared recipes keeps runtime allocation
+  // and the Level-1 workspace estimator in sync. present_kv_cache_capacity is captured here (after
+  // any windowed staging above) to match the value the XQA scratch sizing consumes below; the
+  // memory-efficient path passes its own capacity argument explicitly. The quantization fields are
+  // only consulted by the XQA recipe -- the memory-efficient and unfused fallbacks are reached only
+  // when the KV cache is unquantized, so those fields are None at their call sites.
+  GQAWorkspaceProblem workspace_problem;
+  workspace_problem.qkv_element_size = sizeof(T);
+  workspace_problem.cache_element_size = sizeof(U);
+  workspace_problem.batch_size = parameters.batch_size;
+  workspace_problem.sequence_length = parameters.sequence_length;
+  workspace_problem.num_heads = parameters.num_heads;
+  workspace_problem.kv_num_heads = parameters.kv_num_heads;
+  workspace_problem.head_size = parameters.head_size;
+  workspace_problem.present_kv_cache_capacity = parameters.seqlen_present_kv_cache;
+  workspace_problem.kv_cache_bit_width = parameters.kv_cache_bit_width;
+  workspace_problem.k_quantization =
+      k_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (k_quant_type_ == KVQuantizationType::PER_CHANNEL ? GQAKvQuantizationType::PerChannel
+                                                              : GQAKvQuantizationType::None);
+  workspace_problem.v_quantization =
+      v_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (v_quant_type_ == KVQuantizationType::PER_CHANNEL ? GQAKvQuantizationType::PerChannel
+                                                              : GQAKvQuantizationType::None);
+  workspace_problem.is_windowed_kv_cache = parameters.is_windowed_kv_cache;
+  workspace_problem.is_first_prompt = parameters.is_first_prompt;
+  workspace_problem.do_rotary = parameters.do_rotary;
+  workspace_problem.use_qk_norm = parameters.use_qk_norm;
+
   // Allocate XQA scratch if needed (only for Flash Decoding path)
   IAllocatorUniquePtr<void> xqa_scratch_buffer;
   // Check conditions to enable XQA (Extreme Query Attention) kernel for optimized decoding.
@@ -680,54 +712,44 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
 
     if (data.use_xqa) {
-      size_t xqa_internal_bytes = onnxruntime::contrib::cuda::GetXQAScratchSize(
-          GetDeviceProp(),
-          parameters.batch_size,
-          parameters.num_heads,
-          parameters.kv_num_heads,
-          parameters.head_size,
-          parameters.seqlen_present_kv_cache,
-          parameters.k_quant_type != KVQuantizationType::NONE ? (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8) : XqaQuantType::kNone,
-          std::is_same<T, BFloat16>::value);
-      assert(xqa_internal_bytes > 0);
-      // Calculate additional scratch needed for manual RoPE/Append in ExtremeDecoding
-      size_t xqa_total_bytes = xqa_internal_bytes;
-      size_t q_bytes = 0;
-      size_t k_bytes = 0;
-      if (parameters.do_rotary) {
-        // 1. Q_rotated buffer: B * N * H * sizeof(T) (if rotary)
-        // 2. K_rotated buffer: B * Nk * H * sizeof(T) (if rotary)
-        size_t element_size = sizeof(CudaT);
-        q_bytes = parameters.batch_size * parameters.num_heads * parameters.head_size * element_size;
-        k_bytes = parameters.batch_size * parameters.kv_num_heads * parameters.head_size * element_size;
-        q_bytes = (q_bytes + 255) / 256 * 256;
-        k_bytes = (k_bytes + 255) / 256 * 256;
-        xqa_total_bytes += q_bytes + k_bytes;
-      }
+      // Backend-internal XQA scratch (internal_scratch_bytes reproduces GetXQAScratchSize) plus the
+      // optional RoPE Q/K and dynamic head-sink regions come from the shared XQA workspace recipe.
+      // The recipe lays out those trailing regions in the same single allocation and byte order as
+      // the previous inline math (internal | rotary Q | rotary K | dynamic head sink).
+      GQAXqaConfig xqa_config;
+      xqa_config.device_major = device_prop.major;
+      xqa_config.device_minor = device_prop.minor;
+      xqa_config.multi_processor_count = device_prop.multiProcessorCount;
+      xqa_config.kv_type = parameters.k_quant_type != KVQuantizationType::NONE
+                               ? (is_fp8 ? GQAXqaKvType::Fp8 : GQAXqaKvType::Int8)
+                               : GQAXqaKvType::None;
       const bool use_prepacked_xqa_head_sink =
           use_xqa_attention_sinks && xqa_head_sink_ != nullptr && xqa_head_sink_count_ == parameters.num_heads;
       const bool convert_xqa_head_sink = use_xqa_attention_sinks && !use_prepacked_xqa_head_sink;
-      size_t xqa_head_sink_bytes = 0;
-      if (convert_xqa_head_sink) {
-        // No prepacked FP32 head_sink (dynamic input): reserve scratch for the per-launch conversion.
-        xqa_head_sink_bytes = parameters.num_heads * sizeof(float);
-        xqa_head_sink_bytes = (xqa_head_sink_bytes + 255) / 256 * 256;
-        xqa_total_bytes += xqa_head_sink_bytes;
-      }
+      xqa_config.head_sink_storage =
+          use_prepacked_xqa_head_sink
+              ? GQAXqaHeadSinkStorage::PrepackedFp32
+              : (convert_xqa_head_sink ? GQAXqaHeadSinkStorage::DynamicConversion
+                                       : GQAXqaHeadSinkStorage::None);
+      xqa_config.is_bf16 = std::is_same<T, BFloat16>::value;
 
-      xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, GetComputeStream(context));
+      const auto xqa = GetGQAXqaWorkspaceRecipe(workspace_problem, xqa_config);
+      ORT_RETURN_IF_NOT(xqa.status.IsOK(),
+                        "GQA XQA workspace sizing failed: ", xqa.status.message);
+      const GQAXqaWorkspaceRecipe& recipe = xqa.recipe;
+
+      xqa_scratch_buffer = this->GetScratchBuffer<void>(recipe.total_backend_bytes, GetComputeStream(context));
       data.xqa_buffer = xqa_scratch_buffer.get();
-      data.xqa_buffer_bytes = xqa_internal_bytes;
+      data.xqa_buffer_bytes = recipe.internal_scratch_bytes;
 
-      char* xqa_extra_buffer = reinterpret_cast<char*>(data.xqa_buffer) + xqa_internal_bytes;
+      char* xqa_base = reinterpret_cast<char*>(data.xqa_buffer);
       if (parameters.do_rotary) {
-        data.qkv_buffer = reinterpret_cast<CudaT*>(xqa_extra_buffer);
-        xqa_extra_buffer += q_bytes + k_bytes;
+        data.qkv_buffer = reinterpret_cast<CudaT*>(xqa_base + recipe.rotary_q_offset_bytes);
       }
       if (use_prepacked_xqa_head_sink) {
         data.xqa_head_sink = xqa_head_sink_.get();
       } else if (convert_xqa_head_sink) {
-        data.xqa_head_sink = reinterpret_cast<float*>(xqa_extra_buffer);
+        data.xqa_head_sink = reinterpret_cast<float*>(xqa_base + recipe.dynamic_head_sink_offset_bytes);
         data.xqa_head_sink_needs_conversion = true;
       }
     }
@@ -782,28 +804,27 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
 
   if (use_flash_attention) {
-    // Allocate Flash specific buffers (Softmax LSE, Accum)
-    size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
+    // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
+    // shared Flash workspace recipe. The recipe reproduces get_num_splits_and_buffer_sizes,
+    // including the fast-decode correction that sizes the accumulators with num_heads rather than
+    // the kv_num_heads used by the split heuristic, and the get_softmax_lse_* helpers.
+    GQAFlashConfig flash_config;
+    flash_config.total_sequence_length = effective_workspace_kv_length;
+    flash_config.local_window_size = parameters.local_window_size;
+    flash_config.multi_processor_count = device_prop.multiProcessorCount;
+    flash_config.fast_decode = data.use_flash_attention_fast_decode;
 
-    int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
-    size_t sequence_length_for_split = static_cast<size_t>(effective_workspace_kv_length);
-    if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
-      sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
-    }
+    const auto flash_result = GetGQAFlashWorkspaceRecipe(workspace_problem, flash_config);
+    ORT_RETURN_IF_NOT(flash_result.status.IsOK(),
+                      "GQA flash attention workspace sizing failed: ", flash_result.status.message);
+    const GQAFlashWorkspaceRecipe& recipe = flash_result.recipe;
 
-    auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, sequence_length_for_split, num_heads_for_split,
-        parameters.head_size, device_prop.multiProcessorCount);
+    // Preserve the num_splits side effect: it feeds the kernel launch and debug info below.
+    parameters.num_splits = static_cast<int>(recipe.runtime_num_splits);
 
-    parameters.num_splits = static_cast<int>(num_splits);
-
-    if (data.use_flash_attention_fast_decode && num_splits > 1) {
-      // The heuristic used kv_num_heads to maximize occupancy for the GQA-aware kernel.
-      // However, the LSE and Accum buffers must store results for ALL num_heads.
-      softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length);
-      auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
-      out_accum_bytes = onnxruntime::flash::get_out_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, round_multiple(parameters.head_size, 32));
-    }
+    const size_t softmax_lse_bytes = recipe.softmax_lse_bytes;
+    const size_t softmax_lse_accum_bytes = recipe.softmax_lse_accumulator_bytes;
+    const size_t out_accum_bytes = recipe.output_accumulator_bytes;
 
     softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
     softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
@@ -875,18 +896,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     compaction_buffer = GetScratchBuffer<void>(compaction_bytes, GetComputeStream(context));
     data.compaction_scratch = compaction_buffer.get();
   }
-
-  // Runtime geometry shared by the memory-efficient and unfused fallback workspace recipes.
-  // Both fallbacks are only reached when the KV cache is not quantized, so the recipe's
-  // quantization granularities stay at their default None. Sizing both fallbacks through
-  // these shared recipes keeps runtime allocation and the Level-1 workspace estimator in sync.
-  GQAWorkspaceProblem workspace_problem;
-  workspace_problem.qkv_element_size = sizeof(T);
-  workspace_problem.batch_size = parameters.batch_size;
-  workspace_problem.sequence_length = parameters.sequence_length;
-  workspace_problem.num_heads = parameters.num_heads;
-  workspace_problem.kv_num_heads = parameters.kv_num_heads;
-  workspace_problem.head_size = parameters.head_size;
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
