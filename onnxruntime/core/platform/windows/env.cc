@@ -269,6 +269,10 @@ int WindowsEnv::DefaultNumCores() {
 //   any other value      -> all cores, i.e. the pre-existing behaviour
 //
 // Only takes effect on heterogeneous parts; homogeneous parts and ARM64EC are unaffected.
+bool Arm64ParseUseAllCores(const std::string& value) {
+  return value.empty() || value == "0";
+}
+
 static bool Arm64ShouldUsePerformanceCoresOnly() {
   static const bool use_performance_cores_only = []() {
     size_t length = 0;
@@ -283,7 +287,7 @@ static bool Arm64ShouldUsePerformanceCoresOnly() {
     while (!value.empty() && value.back() == '\0') {
       value.pop_back();
     }
-    return value.empty() || value == "0";
+    return Arm64ParseUseAllCores(value);
   }();
   return use_performance_cores_only;
 }
@@ -330,11 +334,23 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
   }
 }
 
+bool WindowsEnv::ShouldPinDefaultThreadAffinities() const {
+#if defined(_M_ARM64) && !defined(_M_ARM64EC)
+  // True only when GetDefaultThreadAffinities below returns the performance-core
+  // selection. A homogeneous part, a part reporting a single performance core, or the
+  // ORT_ARM64_USE_ALL_CORES opt-out all fall through to the generic core list, which
+  // the client path leaves unpinned as before.
+  return performance_cores_.size() > 1 && Arm64ShouldUsePerformanceCoresOnly();
+#else
+  return false;
+#endif
+}
+
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
 #if defined(_M_ARM64) && !defined(_M_ARM64EC)
   // Pin workers to the performance cores on Windows ARM.
   // See Arm64ShouldUsePerformanceCoresOnly above for the rationale.
-  if (performance_cores_.size() > 1 && Arm64ShouldUsePerformanceCoresOnly()) {
+  if (ShouldPinDefaultThreadAffinities()) {
     std::vector<LogicalProcessors> affinities;
     affinities.reserve(performance_cores_.size());
     // The first entry is the caller's slot: ThreadPool erases it and then creates

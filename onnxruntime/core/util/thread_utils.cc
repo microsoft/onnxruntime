@@ -102,13 +102,12 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       // On client best to let OS scheduler handle.
       // On big (P-Core) / little (E-Core) CPU designs affinity overrides QoS and has high power usage
 
-      // On Windows ARM, use performance cores to avoid delays from slower cores.
-#if defined(_M_ARM64) && !defined(_M_ARM64EC)
-      constexpr bool enable_affinity_on_arm64_client = true;
-#else
-      constexpr bool enable_affinity_on_arm64_client = false;
-#endif
-      if (IsWindowsServer() || enable_affinity_on_arm64_client) {
+      // Exception: where the platform reports a topology-aware selection (Windows ARM64
+      // performance cores), pin to it so the pool does not spill onto the slower cores.
+      // Homogeneous parts and the ORT_ARM64_USE_ALL_CORES opt-out report false here and
+      // keep the unaffinitized client path.
+      const bool pin_default_affinities = Env::Default().ShouldPinDefaultThreadAffinities();
+      if (IsWindowsServer() || pin_default_affinities) {
         auto default_affinities = Env::Default().GetDefaultThreadAffinities();
         if (default_affinities.size() <= 1) {
           return nullptr;
