@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "source_pins": {
+    "genai": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+    "ort": "94e76459dc9a759888707aa430d51a95d878da8f"
+  },
+  "model_dir": "/absolute/external/model",
+  "ort_home": "/absolute/external/diagnostic-ort",
+  "cuda_toolkit": "/absolute/external/cuda",
+  "cudnn_library_dir": "/absolute/external/cudnn/lib",
+  "inputs": {
+    "2048": "/absolute/external/inputs/1801.i32le",
+    "32768": "/absolute/external/inputs/28747.i32le"
+  },
+  "output_dir": "/absolute/external/new-allocation-run",
+  "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000000",
+  "gpu_index": 0,
+  "resource_limits": {
+    "min_host_available_bytes": 17179869184,
+    "max_swap_used_bytes": 0,
+    "min_output_free_bytes": 1073741824,
+    "min_gpu_free_bytes": 75161927680
+  },
+  "phase_b": {
+    "path": "/absolute/external/apps/phi_phase_b",
+    "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+  },
+  "runtimes": {
+    "baseline": {
+      "genai_library_dir": "/absolute/external/baseline/build",
+      "test_models_dir": "/absolute/external/baseline/source/test/models",
+      "runtime_sha256": {
+        "libonnxruntime.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime_providers_cuda.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime_providers_shared.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime-genai.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime-genai-cuda.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "phase_a": {
+        "path": "/absolute/external/baseline/apps/phi_phase_a",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "allocation_tests": {
+        "path": "/absolute/external/baseline/build/logits_allocation_tests",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "existing_tests": {
+        "path": "/absolute/external/baseline/build/unit_tests",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      }
+    },
+    "patched": {
+      "genai_library_dir": "/absolute/external/patched/build",
+      "test_models_dir": "/absolute/external/patched/source/test/models",
+      "runtime_sha256": {
+        "libonnxruntime.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime_providers_cuda.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime_providers_shared.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime-genai.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS",
+        "libonnxruntime-genai-cuda.so": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "phase_a": {
+        "path": "/absolute/external/patched/apps/phi_phase_a",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "allocation_tests": {
+        "path": "/absolute/external/patched/build/logits_allocation_tests",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      },
+      "existing_tests": {
+        "path": "/absolute/external/patched/build/unit_tests",
+        "sha256": "REQUIRED_64_LOWERCASE_HEX_DIGITS"
+      }
+    }
+  }
+}

@@ -5,6 +5,35 @@ This is a historical evidence contribution for the ORT `benchmark` branch,
 not a production code change or a new benchmark of current upstream releases.
 No measurements were rerun to prepare it.
 
+## Start here
+
+The September 29 reproduction addition separates three workflows:
+
+1. **Offline review (no model, GPU or network):**
+   `python -B repro/review_results.py --check-integrity`
+   recomputes both published median tables and checks the compact evidence.
+2. **Exploratory ORT GenAI/llama.cpp comparison:**
+   [portable comparison runners](repro/comparison/README.md), including the
+   optional setup shell script and the Python benchmark runner.
+   This is not the custom allocation A/B experiment.
+3. **Historical GenAI allocation A/B:**
+   [historical workflow](repro/allocation/README.md), with separate
+   correctness and measurement phases. Approved saved inputs and matching
+   external native runtime/model artifacts are required.
+
+See [REPRODUCING.md](REPRODUCING.md) for commands, prerequisites, output
+definitions, actual host-only validation and untested/blocked GPU portions.
+Code being included is not evidence that a fresh GPU replay has passed.
+Historical evidence CSV/JSON files remain unchanged; their provenance
+describes the original compact package, not this later tooling addition.
+
+The correction phase passed **73 host tests and 26 integration checks**.
+The packaged Phase A and Phase B applications subsequently compiled and linked
+against both recorded historical GenAI variants using GCC 13.2, CMake 4.1.2
+and CUDA 13.0.48. ORT/GenAI and native regression-test targets were not rebuilt.
+Application execution, actual runtime loading and fresh GPU replay were not
+demonstrated by that build-only check.
+
 ## Scope and reading guide
 
 The investigation started with an ORT GenAI versus llama.cpp comparison,
@@ -22,8 +51,8 @@ requests, live arena allocations, retained capacity and sampled GPU memory.
   effective configurations, saved input hashes and historical library hashes.
 - [Source provenance](evidence/source-provenance.json): input report hashes,
   transformations and limits of this compact bundle.
-- [Reproduction protocol](REPRODUCING.md): offline review versus fresh GPU
-  replay, required external inputs and measurement precautions.
+- [Reproduction workflows](REPRODUCING.md): runnable offline review,
+  comparison tooling, historical A/B prerequisites and measurement precautions.
 
 No model weights, prompt contents, raw logits/tokens, profiling traces,
 binaries or machine-specific paths are included.
@@ -112,7 +141,9 @@ Releasing the owning OrtValue does not imply returning backing memory to CUDA.
 commit `dd7ada04695e424029c0ba7328e6434e751c5905`, which changes the
 allocation shape from `shape_` to `shape_last`. This report does not
 claim the historical oversized allocation is still missing a fix there.
-No GenAI production patch is included in this ORT contribution.
+The historical GenAI allocation patch is included solely as reproduction
+material for the historical A/B experiment. This benchmark PR proposes
+neither a current GenAI production fix nor the separate ORT rotary fix.
 
 ## 3. Controlled historical allocation-fix results
 

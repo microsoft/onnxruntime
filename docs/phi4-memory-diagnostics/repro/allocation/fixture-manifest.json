@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "repository": "microsoft/onnxruntime-genai",
+  "source_revision": "ed5f4e87147731e5b07810f9f5c90103b3603cdf",
+  "relative_root": "test/models",
+  "scope": "Only the three tiny-model fixtures selected by the historical allocation and seven related existing tests; binaries remain external.",
+  "identity_source": "Historical Phase A preservation-before.json; only selected fixture paths, sizes and digests extracted; no machine inventory included.",
+  "identity_source_sha256": "4219ed11ae2dc7e5e192b454f515c6118b86f25cdcab1b482f133783529e3208",
+  "pinned_git_blob_sha256_verified": true,
+  "acquisition": "All nine file hashes were verified against existing local Git blobs at source_revision. Use a separately supplied local clone/checkout of that pinned public GenAI tree. No downloads occur here. Regenerated models, missing objects or hash mismatches block tests.",
+  "files": [
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp16-cuda/genai_config.json",
+      "bytes": 699,
+      "sha256": "b4fb331537f461dfb81a1c6db25912b2e15da99eb4131b559f3549128a2a321b"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp16-cuda/past.onnx",
+      "bytes": 295729,
+      "sha256": "e3f6ad10cbaef67b9547d32ffc114b014a0be70cc395e7624b23a64234bfaba8"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32-cuda/genai_config.json",
+      "bytes": 699,
+      "sha256": "b4fb331537f461dfb81a1c6db25912b2e15da99eb4131b559f3549128a2a321b"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32-cuda/past.onnx",
+      "bytes": 578141,
+      "sha256": "f618eca0cd9025bb2b834ffa21ba3755f1313e857ddd42601d8ab922016e791d"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32/genai_config.json",
+      "bytes": 643,
+      "sha256": "dab15252ce3cdd37d5967abe409ad782c2eb8316f2ddf9f07c6aeec7f38d5620"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32/past.onnx",
+      "bytes": 578141,
+      "sha256": "f618eca0cd9025bb2b834ffa21ba3755f1313e857ddd42601d8ab922016e791d"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32/tokenizer.json",
+      "bytes": 2114924,
+      "sha256": "337da36be7a71a6e88aa9148967a7bc8736f4b47c7de8e19ba92b89e80734cfc"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32/tokenizer_config.json",
+      "bytes": 7338,
+      "sha256": "514a6662da201b324a0c2abebb973a7f9515612a8328353d99c09d7ebcd2da2f"
+    },
+    {
+      "path": "hf-internal-testing/tiny-random-gpt2-fp32/vocab.json",
+      "bytes": 798156,
+      "sha256": "3ba3c3109ff33976c4bd966589c11ee14fcaa1f4c9e5e154c2ed7f99d80709e7"
+    }
+  ]
+}
