@@ -1,12 +1,11 @@
-huggingface_hub==0.25.2
+huggingface_hub>=1.5.0,<2.0
 diffusers==0.28.0
-transformers==5.5.0
+transformers==5.10.1
 numpy>=1.24.1
 accelerate
-onnx==1.18.0
+onnx==1.22.0
 packaging
-# Use newer version of protobuf might cause crash
-protobuf==4.25.8
+protobuf==6.33.6
 psutil
 sympy
 nvtx==0.2.5
