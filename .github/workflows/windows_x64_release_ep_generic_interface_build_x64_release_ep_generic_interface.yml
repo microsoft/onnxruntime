@@ -37,6 +37,12 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-ep-generic-interface-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Install python modules
         shell: cmd
         run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"

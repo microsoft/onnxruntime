@@ -41,6 +41,12 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-x64-cuda-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
         working-directory: ${{ github.workspace }}
