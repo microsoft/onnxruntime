@@ -973,9 +973,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);       \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);      \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);       \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);

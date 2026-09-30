@@ -196,7 +196,7 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 
 template <typename FLOAT6_TYPE>
 Status UnpackFloat6Tensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                         /*out*/ FLOAT6_TYPE* p_data, size_t expected_num_elems) {
+                          /*out*/ FLOAT6_TYPE* p_data, size_t expected_num_elems) {
   if (p_data == nullptr) {
     const size_t size = raw_data != nullptr ? raw_data_len : static_cast<size_t>(tensor.int32_data_size());
     return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
@@ -2056,7 +2056,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
     Tensor packed_tensor{DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(raw_data_safe_len)}),
                          CPUAllocator::DefaultInstance()};
     ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len,
-                                                    packed_tensor));
+                                                   packed_tensor));
     ONNX_NAMESPACE::TensorProto packed_proto = tensor_proto;
     packed_proto.clear_external_data();
     packed_proto.set_data_location(TensorProto_DataLocation_DEFAULT);
