@@ -285,6 +285,7 @@ struct MoeFCGemm {
 
   static Status can_implement(Arguments const& args) {
     if constexpr (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+                  platform::is_same<uint2b_t, ElementB>::value ||
                   platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
       if (args.weight_scales == nullptr) {
         CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t and uint4b_t");
