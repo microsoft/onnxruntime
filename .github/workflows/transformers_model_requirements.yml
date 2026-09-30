@@ -19,6 +19,13 @@ on:
       - 'onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/**'
       - 'onnxruntime/python/tools/transformers/models/whisper/requirements.txt'
       - '.github/workflows/transformers_model_requirements.yml'
+  workflow_dispatch:
+    inputs:
+      run_slow_tests:
+        description: 'Build ONNX Runtime and run the model slow tests'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,8 +33,8 @@ permissions:
 jobs:
   llama-requirements:
     name: Validate Llama requirements
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-llama-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -43,10 +50,38 @@ jobs:
           python -m pip install -r onnxruntime/python/tools/transformers/models/llama/requirements.txt
           python -m pip check
 
+      - name: Build ONNX Runtime
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python tools/ci_build/build.py \
+            --build_dir build/Linux \
+            --config Release \
+            --update \
+            --build \
+            --build_wheel \
+            --parallel \
+            --skip_tests \
+            --use_cuda \
+            --nvcc_threads 4 \
+            --flash_nvcc_threads 4 \
+            --cuda_version=13.0 \
+            --cuda_home=/usr/local/cuda-13.0 \
+            --cudnn_home=/usr/local/cuda-13.0 \
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+          python -m pip install pytest
+
+      - name: Run Llama tests
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python -m pytest --slow \
+            onnxruntime/test/python/transformers/test_parity_rotary_embedding.py \
+            onnxruntime/test/python/transformers/test_rotary_mha_fusion.py
+
   stable-diffusion-requirements:
     name: Validate Stable Diffusion requirements
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-stable-diffusion-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -63,10 +98,37 @@ jobs:
             -r onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/requirements.txt
           python -m pip check
 
+      - name: Build ONNX Runtime
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python tools/ci_build/build.py \
+            --build_dir build/Linux \
+            --config Release \
+            --update \
+            --build \
+            --build_wheel \
+            --parallel \
+            --skip_tests \
+            --use_cuda \
+            --nvcc_threads 4 \
+            --flash_nvcc_threads 4 \
+            --cuda_version=13.0 \
+            --cuda_home=/usr/local/cuda-13.0 \
+            --cudnn_home=/usr/local/cuda-13.0 \
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+          python -m pip install pytest
+
+      - name: Run Stable Diffusion slow tests
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python -m pytest --slow \
+            onnxruntime/test/python/transformers/test_optimizer_stable_diffusion.py
+
   whisper-requirements:
     name: Validate Whisper requirements
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.run_slow_tests && fromJSON(format('["self-hosted","1ES.Pool=onnxruntime-github-linux-a10","1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10","JobId=transformers-whisper-{0}-{1}-{2}"]', github.run_id, github.run_number, github.run_attempt)) || 'ubuntu-latest' }}
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -78,6 +140,35 @@ jobs:
 
       - name: Install Whisper requirements
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r onnxruntime/python/tools/transformers/models/whisper/requirements.txt
+          python -m pip install --upgrade pip 'setuptools<81' wheel
+          python -m pip install --no-build-isolation \
+            -r onnxruntime/python/tools/transformers/models/whisper/requirements.txt
           python -m pip check
+
+      - name: Build ONNX Runtime
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python tools/ci_build/build.py \
+            --build_dir build/Linux \
+            --config Release \
+            --update \
+            --build \
+            --build_wheel \
+            --parallel \
+            --skip_tests \
+            --use_cuda \
+            --nvcc_threads 4 \
+            --flash_nvcc_threads 4 \
+            --cuda_version=13.0 \
+            --cuda_home=/usr/local/cuda-13.0 \
+            --cudnn_home=/usr/local/cuda-13.0 \
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          python -m pip install --force-reinstall --no-deps build/Linux/Release/dist/*.whl
+          python -m pip install pytest
+
+      - name: Run Whisper slow tests
+        if: github.event_name == 'workflow_dispatch' && inputs.run_slow_tests
+        run: |
+          python -m pytest --slow \
+            onnxruntime/test/python/transformers/test_generation.py::TestBeamSearchWhisper \
+            onnxruntime/test/python/transformers/test_whisper_timestamp_processor.py
