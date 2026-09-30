@@ -6470,5 +6470,23 @@ TEST(TransposeOptimizerTests, TestContribFastGeluWithBiasIsNotPushed) {
                                  /*expect_pushed*/ false);
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+
+TEST(TransposeOptimizerTests, NhwcTransformerDoesNotAddAxisToOpset11DequantizeLinear) {
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::MaxLevel;
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/nhwc_opset11_dq_axis.onnx")));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  size_t dq_count = 0;
+  for (const auto& node : session.GetGraph().Nodes()) {
+    if (node.OpType() == "DequantizeLinear" && node.SinceVersion() == 11) {
+      ++dq_count;
+      EXPECT_EQ(node.GetAttributes().count("axis"), 0U);
+    }
+  }
+  EXPECT_GT(dq_count, 0U);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
