@@ -575,14 +575,14 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
 #if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
-#endif
+
 #if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
 #endif
+
   // Windows ETW needs these calls even without ORT_USE_TELEMETRY.
-#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
-#endif
+#endif  // defined(_WIN32) || defined(ORT_USE_TELEMETRY)
 
   auto status = Status::OK();
 
