@@ -13046,13 +13046,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
     bool add_produces_graph_output{false};
     bool use_cuda_ep{false};
     bool use_gpt_oss_router_shape{false};
+    int64_t weight_prepacked{0};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
                             ", add_produces_graph_output:", opts.add_produces_graph_output,
                             ", use_cuda_ep:", opts.use_cuda_ep,
-                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape,
+                            ", weight_prepacked:", opts.weight_prepacked));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
@@ -13093,6 +13095,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.weight_prepacked != 0) {
+        matmul.AddAttribute("weight_prepacked", opts.weight_prepacked);
+      }
       if (opts.use_cuda_ep) {
         matmul.SetExecutionProviderType(kCudaExecutionProvider);
       }
@@ -13127,9 +13132,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       return Status::OK();
     };
 
-    auto post_graph_checker = [](Graph& graph) {
+    auto post_graph_checker = [&opts](Graph& graph) {
       auto op_count = CountOpsInGraph(graph);
-      EXPECT_EQ(op_count["Add"], 0);
+      EXPECT_EQ(op_count["Add"], opts.weight_prepacked == 0 ? 0 : 1);
       return Status::OK();
     };
 
@@ -13152,6 +13157,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
+  }
+
+  for (int64_t weight_prepacked : {int64_t{1}, int64_t{2}}) {
+    TestOptions opts{};
+    opts.weight_prepacked = weight_prepacked;
+    run_test(opts);
+
+    opts.use_cuda_ep = true;
+    run_test(opts);
   }
 }
 
