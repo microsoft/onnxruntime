@@ -465,6 +465,15 @@ static const char* const kOrtSessionOptionsCudaFpAIntBGemm = "ep.cuda.fpa_intb_g
 /// Capacity-aware partitioning uses this same resolved value to estimate profiler scratch.
 static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 
+/// Maximum total KV sequence length (accumulated past + current tokens) that CUDA
+/// GroupQueryAttention Level-1 workspace estimation should assume. total_sequence_length is a
+/// runtime scalar input that cannot be recovered from graph shapes, so this hands the estimator
+/// the KV-length envelope directly for capacity-aware partitioning. A positive integer sets the
+/// bound; "0" or unset (default) leaves it unspecified and the estimator keeps its shape-derived
+/// behavior.
+static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
+    "ep.cuda.gqa_workspace_max_total_sequence_length";
+
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
 /// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.

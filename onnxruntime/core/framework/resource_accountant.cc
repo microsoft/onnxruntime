@@ -588,7 +588,8 @@ Status CreateAccountants(
   if (result.has_value()) {
     WorkspaceEstimatorConfig estimator_config{
         config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
-        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM),
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength)};
     for (auto& [ep_type, accountant] : *result) {
       ORT_UNUSED_PARAMETER(ep_type);
       accountant->SetWorkspaceEstimatorConfig(estimator_config);
