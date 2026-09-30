@@ -111,11 +111,11 @@ class SplitBase {
 
       bool has_split_input = false;
       if (info.GetInputCount() > 1) {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-        has_split_input = !info.GetKernelInfo().GetInputName(1).empty();
-#else
-        has_split_input = info.node().InputDefs()[1]->Exists();
-#endif
+        if constexpr (requires { info.GetKernelInfo(); }) {
+          has_split_input = !info.GetKernelInfo().GetInputName(1).empty();
+        } else {
+          has_split_input = info.node().InputDefs()[1]->Exists();
+        }
       }
       if (num_outputs_ != -1 && has_split_input) {
         ORT_THROW("If 'num_outputs' is specified, the 'split' input should not be provided.");
