@@ -111,7 +111,7 @@ $MAIN {
 #if use_packed_params
     var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
 #else
-    var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+    var gate = f32(decay.getByOffset(token * uniforms.num_heads_v + value_head));
 #if qwen_gate
     gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
@@ -145,7 +145,7 @@ $MAIN {
 #if use_packed_params
       beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
 #else
-      beta_value = beta.getByOffset(token * uniforms.num_heads_v + value_head);
+      beta_value = f32(beta.getByOffset(token * uniforms.num_heads_v + value_head));
 #if sigmoid_beta
       beta_value = gdn_sigmoid(beta_value);
 #endif
