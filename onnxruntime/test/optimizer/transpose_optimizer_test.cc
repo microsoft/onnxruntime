@@ -6480,8 +6480,9 @@ TEST(TransposeOptimizerTests, NhwcTransformerDoesNotAddAxisToOpset11DequantizeLi
 
   size_t dq_count = 0;
   for (const auto& node : session.GetGraph().Nodes()) {
-    if (node.OpType() == "DequantizeLinear" && node.SinceVersion() == 11) {
+    if (node.OpType() == "DequantizeLinear") {
       ++dq_count;
+      EXPECT_LT(node.SinceVersion(), 13);
       EXPECT_EQ(node.GetAttributes().count("axis"), 0U);
     }
   }
