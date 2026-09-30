@@ -321,9 +321,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                       (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                       fc1_expert_weight_bits_ <= 4 && fc2_expert_weight_bits_ <= 4 &&
                       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_GEMV", 1) != 0;
-  enable_int2_prefill_ = quant_type_ == "int" && is_fp16_ && sm_ == 80 && block_size_ == 64 &&
-                         fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 4 &&
-                         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 0) != 0;
   if (quant_type_ == "nvfp4") {
     constexpr int64_t kNvfp4BlockSize = 16;
     ORT_ENFORCE(block_size_ == -1 || block_size_ == kNvfp4BlockSize,
@@ -389,6 +386,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+  enable_int2_prefill_ = quant_type_ == "int" && sm_ == 80 && block_size_ == 64 &&
+                         fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 4 &&
+                         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 0) != 0;
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
@@ -1785,19 +1785,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
 #endif
     ck::Int2MoePrefillParams params;
-    params.input = reinterpret_cast<const half*>(input->DataRaw());
+    params.input = input->DataRaw();
+    params.is_bf16 = !is_fp16_;
     params.fc1_weights = static_cast<const uint8_t*>(packed_fc1_weights_.get());
     params.fc2_weights = static_cast<const uint8_t*>(packed_fc2_weights_.get());
-    params.fc1_scales = static_cast<const half*>(p_fc1_scales);
-    params.fc2_scales = static_cast<const half*>(p_fc2_scales);
-    params.fc1_bias = fc1_experts_bias_optional
-                          ? reinterpret_cast<const half*>(fc1_experts_bias_optional->DataRaw()) : nullptr;
-    params.fc2_bias = fc2_experts_bias_optional
-                          ? reinterpret_cast<const half*>(fc2_experts_bias_optional->DataRaw()) : nullptr;
+    params.fc1_scales = p_fc1_scales;
+    params.fc2_scales = p_fc2_scales;
+    params.fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
+    params.fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
     params.selected_experts = expert_indices;
     params.routing_weights = expert_scales;
     params.unpermuted_to_permuted = unpermuted_row_to_permuted_row;
-    params.output = reinterpret_cast<half*>(output->MutableDataRaw());
+    params.output = output->MutableDataRaw();
     params.num_rows = moe_params.num_rows;
     params.hidden_size = static_cast<int>(moe_params.hidden_size);
     params.inter_size = static_cast<int>(moe_params.inter_size);
@@ -2490,7 +2489,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     return Status::OK();
   }
 
-  const auto int_weight_supports_packed_gemv = [&](int64_t weight_bits) {
+  const auto int_weight_supports_packed_execution = [&](int64_t weight_bits) {
     if ((!enable_int2_gemv_ && !enable_int2_prefill_) ||
         activation_type_ != onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
         swiglu_fusion_ != 1 || (block_size_ != 64 && block_size_ != 128)) {
@@ -2503,7 +2502,14 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       return false;
     }
 
-    return onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
+    const int64_t reduction_size = shape[2] * pack_factor;
+    if (enable_int2_prefill_ && shape[0] > 0 && shape[0] <= 256 &&
+        shape[1] > 0 && shape[1] <= std::numeric_limits<int>::max() && shape[1] % 64 == 0 &&
+        reduction_size > 0 && reduction_size <= std::numeric_limits<int>::max() && reduction_size % 64 == 0) {
+      return true;
+    }
+
+    return enable_int2_gemv_ && onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
         sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
         static_cast<int>(weight_bits), static_cast<int>(block_size_));
   };
@@ -2650,7 +2656,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // satisfied without holding the original initializer alive, then
     // set ``is_packed = true`` to let ORT free it.
     if (is_mixed_width || expert_weight_bits_ == 2) {
-      if (int_weight_supports_packed_gemv(fc1_expert_weight_bits_)) {
+      if (int_weight_supports_packed_execution(fc1_expert_weight_bits_)) {
         bool local_packed = false;
         PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, local_packed,
                                 fc1_expert_weight_bits_);
@@ -2663,7 +2669,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
   } else if (input_idx == 5 && quant_type_ == "int" && !weights_prepacked_) {
     if (is_mixed_width || expert_weight_bits_ == 2) {
-      if (int_weight_supports_packed_gemv(fc2_expert_weight_bits_)) {
+      if (int_weight_supports_packed_execution(fc2_expert_weight_bits_)) {
         bool local_packed = false;
         PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, local_packed,
                                 fc2_expert_weight_bits_);

@@ -48,22 +48,17 @@ struct PrefillWorkspace {
   }
 };
 
-}
-
-size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params) {
-  return PrefillWorkspace(params).bytes;
-}
-
-void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace) {
+template <typename ElementType>
+void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) {
   const PrefillWorkspace layout(params);
   auto* storage = static_cast<char*>(workspace);
   auto* permuted_rows = reinterpret_cast<int*>(storage + layout.permuted_rows);
   auto* permuted_experts = reinterpret_cast<int*>(storage + layout.permuted_experts);
   auto* offsets = reinterpret_cast<int64_t*>(storage + layout.expert_offsets);
-  auto* expanded_input = reinterpret_cast<half*>(storage + layout.expanded_input);
-  auto* fc1_output = reinterpret_cast<half*>(storage + layout.fc1_output);
-  auto* activated_output = reinterpret_cast<half*>(storage + layout.activated_output);
-  auto* fc2_output = reinterpret_cast<half*>(storage + layout.fc2_output);
+  auto* expanded_input = reinterpret_cast<ElementType*>(storage + layout.expanded_input);
+  auto* fc1_output = reinterpret_cast<ElementType*>(storage + layout.fc1_output);
+  auto* activated_output = reinterpret_cast<ElementType*>(storage + layout.activated_output);
+  auto* fc2_output = reinterpret_cast<ElementType*>(storage + layout.fc2_output);
   const int64_t expanded = params.num_rows * params.top_k;
 
   threeStepBuildExpertMapsSortFirstToken(
@@ -72,14 +67,15 @@ void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace) {
       reinterpret_cast<int*>(storage + layout.blocked_rows), params.num_rows, params.num_experts, params.top_k,
       0, params.stream);
   const QuantParams quant_params{};
-  expandInputRowsKernelLauncher<half, half>(
-      params.input, expanded_input, nullptr, nullptr, permuted_rows, params.num_rows, params.hidden_size,
+  expandInputRowsKernelLauncher<ElementType, ElementType>(
+      static_cast<const ElementType*>(params.input), expanded_input, nullptr, nullptr, permuted_rows,
+      params.num_rows, params.hidden_size,
       params.top_k, params.num_experts, quant_params, false, offsets, nullptr, nullptr, nullptr, params.stream);
 
-  Int2GroupedGemmParams fc1;
+  Int2GroupedGemmParamsT<ElementType> fc1;
   fc1.activations = expanded_input;
   fc1.packed_weights = params.fc1_weights;
-  fc1.block_scales = params.fc1_scales;
+  fc1.block_scales = static_cast<const ElementType*>(params.fc1_scales);
   fc1.expert_row_ends = offsets + 1;
   fc1.output = fc1_output;
   fc1.num_rows = expanded;
@@ -96,23 +92,41 @@ void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace) {
   activation.beta = params.beta;
   activation.limit = params.limit;
   activation.swiglu_fusion = 1;
-  doActivation<half, half, half>(activated_output, fc1_output, nullptr, params.fc1_bias, true, offsets,
-                                params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
-                                quant_params, false, nullptr, params.stream, activation);
+  doActivation<ElementType, ElementType, ElementType>(
+      activated_output, fc1_output, nullptr, static_cast<const ElementType*>(params.fc1_bias), true, offsets,
+      params.num_experts, params.inter_size, expanded, ActivationType::Swiglu,
+      quant_params, false, nullptr, params.stream, activation);
 
-  GroupedGemmInput<half, cutlass::uint4b_t, half, half> fc2{
-      activated_output, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(params.fc2_weights),
-      params.fc2_scales, nullptr, nullptr, fc2_output, nullptr, nullptr, ActivationType::Identity,
-      expanded, params.hidden_size, params.inter_size, params.num_experts, 64, true, false, params.stream, {}, {}};
+  GroupedGemmInput<ElementType, cutlass::uint4b_t, ElementType, ElementType> fc2{
+      activated_output, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(params.fc2_weights), static_cast<const ElementType*>(params.fc2_scales), nullptr, nullptr, fc2_output, nullptr, nullptr, ActivationType::Identity, expanded, params.hidden_size, params.inter_size, params.num_experts, 64, true, false, params.stream, {}, {}};
   fc2.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
       cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
-  MoeGemmRunner<half, cutlass::uint4b_t, half> fc2_runner;
+  MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> fc2_runner;
   fc2_runner.moeGemm(fc2, {});
-  finalizeMoeRoutingKernelLauncher<half, half, half>(
-      fc2_output, params.output, params.fc2_bias, params.routing_weights, params.unpermuted_to_permuted,
+  finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
+      fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
+      params.routing_weights, params.unpermuted_to_permuted,
       permuted_rows, params.selected_experts, offsets, params.num_rows, params.hidden_size, params.top_k,
       params.num_experts, MOEParallelismConfig{}, false, params.stream);
 }
 
+}  // namespace
+
+size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params) {
+  return PrefillWorkspace(params).bytes;
 }
+
+void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace) {
+  if (params.is_bf16) {
+#ifdef ENABLE_BF16
+    RunInt2MoePrefillImpl<__nv_bfloat16>(params, workspace);
+#else
+    ORT_THROW("BF16 INT2 prefill requires ENABLE_BF16");
+#endif
+    return;
+  }
+  RunInt2MoePrefillImpl<half>(params, workspace);
+}
+
+}  // namespace onnxruntime::llm::kernels::cutlass_kernels
