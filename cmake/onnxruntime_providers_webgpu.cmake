@@ -17,16 +17,6 @@
     if(onnxruntime_USE_EP_API_ADAPTERS)
       message(FATAL_ERROR "WebGPU DirectStorage is not supported with EP API adapter/plugin builds.")
     endif()
-
-    set(_directstorage_native_root "${onnxruntime_DIRECT_STORAGE_ROOT}")
-    if(NOT _directstorage_native_root)
-      set(_directstorage_native_root "${directstorage_SOURCE_DIR}/native")
-    endif()
-
-    set(_directstorage_include_dir "${_directstorage_native_root}/include")
-    if(NOT EXISTS "${_directstorage_include_dir}/dstorage.h")
-      message(FATAL_ERROR "DirectStorage dependency not found: ${_directstorage_include_dir}/dstorage.h")
-    endif()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -167,7 +157,9 @@
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
-    target_include_directories(onnxruntime_providers_webgpu PRIVATE "${_directstorage_include_dir}")
+    target_include_directories(
+      onnxruntime_providers_webgpu
+      PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/windows/direct_storage")
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

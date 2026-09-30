@@ -186,8 +186,6 @@ option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OF
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
 option(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE
        "Enable experimental DirectStorage external weights for native Windows WebGPU/D3D12" OFF)
-set(onnxruntime_DIRECT_STORAGE_ROOT "" CACHE PATH
-    "Optional path to the DirectStorage NuGet native directory (containing include)")
 if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
   add_compile_definitions(ENABLE_WEBGPU_DIRECT_STORAGE=1)
 endif()

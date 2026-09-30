@@ -689,26 +689,6 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  if (onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE AND NOT onnxruntime_DIRECT_STORAGE_ROOT)
-    onnxruntime_fetchcontent_declare(
-      directstorage
-      URL ${DEP_URL_directstorage}
-      URL_HASH SHA1=${DEP_SHA1_directstorage}
-      EXCLUDE_FROM_ALL
-    )
-    FetchContent_GetProperties(directstorage)
-    if (NOT directstorage_POPULATED)
-      if (POLICY CMP0169)
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0169 OLD)
-        FetchContent_Populate(directstorage)
-        cmake_policy(POP)
-      else()
-        FetchContent_Populate(directstorage)
-      endif()
-    endif()
-  endif()
-
   if (DAWN_USE_AGILITY_SDK)
     if (NOT WIN32)
       message(FATAL_ERROR "DAWN_USE_AGILITY_SDK is only supported on Windows.")
