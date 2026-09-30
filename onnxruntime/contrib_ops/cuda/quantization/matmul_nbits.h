@@ -193,15 +193,22 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexBias = 5;
 
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
-    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
-    // truly exist at construction time. Instead, we check input count here
-    // and verify actual tensor presence in ComputeInternal.
-    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
-    has_bias_ = info.GetInputCount() > kInputIndexBias;
-    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
+    // Input count includes empty optional edges. Resolve presence before selecting or prepacking a kernel.
+    const auto kernel_info = info.GetKernelInfo();
+    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints &&
+                       !kernel_info.GetInputName(kInputIndexZeroPoints).empty();
+    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex &&
+                 !kernel_info.GetInputName(kInputIndexGroupIndex).empty();
+    has_bias_ = info.GetInputCount() > kInputIndexBias &&
+                !kernel_info.GetInputName(kInputIndexBias).empty();
+
+    if (has_zero_points_) {
+      const auto zero_point_type =
+          kernel_info.GetInputTypeInfo(kInputIndexZeroPoints).GetTensorTypeAndShapeInfo().GetElementType();
+      const auto scale_type =
+          kernel_info.GetInputTypeInfo(kInputIndexScale).GetTensorTypeAndShapeInfo().GetElementType();
+      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
+    }
 #else
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
