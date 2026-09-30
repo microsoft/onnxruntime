@@ -1,8 +1,9 @@
 #pragma once
 
-#include <cstdint>
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
+
+#include <cstdint>
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
 
