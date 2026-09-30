@@ -5,6 +5,7 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
@@ -191,6 +192,28 @@ TEST(CseTests, Random) {
   ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_2"), 1);
   ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_3"), 1);
   ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "random_uniform_4"), 1);
+}
+
+TEST(CseTests, BernoulliIsNotMerged) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("CseBernoulliTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 15}}, {}, logger);
+  auto& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input = builder.MakeInput<float>(std::vector<int64_t>{1024});
+  auto* sample_a = builder.MakeIntermediate();
+  auto* sample_b = builder.MakeIntermediate();
+  auto* output = builder.MakeOutput();
+  builder.AddNode("Bernoulli", {input}, {sample_a}).AddAttribute("dtype", int64_t{1});
+  builder.AddNode("Bernoulli", {input}, {sample_b}).AddAttribute("dtype", int64_t{1});
+  builder.AddNode("Sub", {sample_a, sample_b}, {output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ApplyCse(model);
+
+  EXPECT_EQ(CountOpsInGraph(graph)["Bernoulli"], 2);
 }
 
 TEST(CseTests, Subgraph) {
