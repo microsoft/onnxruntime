@@ -44,7 +44,7 @@ Status HyperConnectionPostMix<T>::ComputeInternal(OpKernelContext* context) cons
                         params.hidden <= std::numeric_limits<int>::max(),
                     "branch or hidden dimension is too large for CUDA");
   ORT_RETURN_IF_ERROR(hyper_connection::ValidateReduced(branch_output->Shape(), params));
-  hyper_connection::GateLayout layout;
+  hyper_connection::GateLayout layout = hyper_connection::GateLayout::Scalar;
   ORT_RETURN_IF_ERROR(
       hyper_connection::ResolveGateShape(post_mix->Shape(), streams->Shape(), params, false, layout));
   if (stream_mix != nullptr) {
