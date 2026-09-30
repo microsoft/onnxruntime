@@ -322,6 +322,53 @@ TEST(WebGpuContextTest, EmptyFlushRefreshesIdleCacheWithoutReleasingAnotherRecor
   manager.Release(after_submission);
 }
 
+TEST(WebGpuContextTest, IndependentClearPreservesPendingAndCapturedUniformBuffers) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Graph,
+                                webgpu::BufferCacheMode::GraphSimple, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState session_recording;
+  webgpu::CommandRecordingState independent_recording;
+  constexpr auto uniform_usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+  constexpr auto storage_usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
+                                 wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
+
+  std::vector<webgpu::CapturedCommandInfo> captured_commands;
+  context.CaptureBegin(&captured_commands, manager, session_recording);
+  auto uniform_buffer = manager.Create(session_recording, 64, uniform_usage);
+  wgpu::Buffer retained_uniform{uniform_buffer};
+  context.GetCommandEncoder(session_recording).ClearBuffer(uniform_buffer, 0, 64);
+  manager.Release(uniform_buffer, &session_recording);
+
+  const auto submit_independent_clear = [&]() {
+    // Exercise the cached clear and immediate submission used by plugin streamless allocations.
+    std::array<uint32_t, 16> dirty_data;
+    dirty_data.fill(0xffffffffu);
+    auto dirty_buffer = manager.Create(independent_recording, sizeof(dirty_data), storage_usage);
+    manager.Upload(independent_recording, dirty_data.data(), dirty_buffer, sizeof(dirty_data));
+    manager.Release(dirty_buffer, &independent_recording);
+    auto cleared_buffer = wgpu::Buffer::Acquire(
+        manager.Create(independent_recording, sizeof(dirty_data), storage_usage, true, true));
+    EXPECT_EQ(cleared_buffer.Get(), dirty_buffer);
+    const std::array<uint32_t, 16> zeros{};
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder(context, cleared_buffer.Get()), zeros);
+    manager.Release(cleared_buffer.MoveToCHandle(), &independent_recording);
+  };
+
+  submit_independent_clear();
+  auto before_submission = wgpu::Buffer::Acquire(manager.Create(independent_recording, 64, uniform_usage));
+  EXPECT_NE(before_submission.Get(), uniform_buffer);
+  EXPECT_TRUE(session_recording.has_unsubmitted_work.load(std::memory_order_relaxed));
+
+  ASSERT_STATUS_OK(context.Flush(manager, session_recording));
+  context.CaptureEnd(session_recording);
+  submit_independent_clear();
+  auto after_submission = wgpu::Buffer::Acquire(manager.Create(independent_recording, 64, uniform_usage));
+  EXPECT_NE(after_submission.Get(), uniform_buffer);
+}
+
 TEST(WebGpuContextTest, AbandonedRecordingDoesNotReturnBuffersToPool) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();

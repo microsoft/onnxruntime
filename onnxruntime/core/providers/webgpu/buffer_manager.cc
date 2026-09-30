@@ -610,6 +610,10 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   EnforceBufferUnmapped(context_, buffer);
   std::lock_guard<std::mutex> lock{mutex_};
   auto& cache = GetCacheManager(buffer);
+  // Relaxed ordering suffices: recording a buffer's use (and setting the flag) must happen-before
+  // its release, on the same thread or through a synchronized ownership handoff. Only independent
+  // buffer releases may race with recording. The flag publishes no command data, and mutex_ orders
+  // releases against clearing it after submission or abandonment.
   if (cache.SupportsBufferReuse() && recording != nullptr &&
       recording->has_unsubmitted_work.load(std::memory_order_relaxed)) {
     pending_buffers_[recording].emplace_back(wgpu::Buffer::Acquire(buffer));
