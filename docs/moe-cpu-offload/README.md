@@ -122,10 +122,12 @@ The file starts with a format-version line and contains one line per
 
 Experts omitted from the file start at zero. When the setting is absent, all counters start at zero.
 
-The first offload implementation does not use counters to choose its initial placement. It randomly selects the
-configured global number of experts to keep on CPU and keeps that placement fixed for the lifetime of the session.
-This separates hybrid CPU/CUDA inference correctness from the adaptive policy. Counter-based placement changes are
-added only in the second implementation step.
+The first offload implementation does not use counters to choose its initial placement. It visits participating
+`MoE` and `QMoE` kernels in graph order and fills the global CUDA expert budget from the first kernels. If the budget
+ends within one kernel, the lowest expert IDs of that boundary kernel remain on CUDA. All remaining experts, including
+those of the last kernels, execute on CPU. This placement remains fixed for the lifetime of the session and separates
+hybrid CPU/CUDA inference correctness from the adaptive policy. Counter-based placement changes are added only in the
+second implementation step.
 
 ## Per-node placement update
 
@@ -257,10 +259,12 @@ The session-global expert state and counters are already implemented. The remain
 steps so that hybrid inference is validated before placement starts changing at runtime. Each pull request includes
 the tests and documentation for its own scope.
 
-### Step 1: random offload placement and hybrid inference
+### Step 1: fixed kernel-order placement and hybrid inference
 
 - Parse and validate the count-or-proportion offload target.
-- Select exactly that global number of experts randomly for CPU offload during session initialization.
+- Fill the global CUDA expert budget from the first `MoE` and `QMoE` kernels in graph order, splitting only the
+  boundary kernel when the budget does not contain a whole number of kernels.
+- Keep the remaining experts, including all experts of the last kernels, on CPU.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
 - Retain canonical weights for every expert on CPU and copy only CUDA-resident experts to device slots.
 - Dispatch resident experts on CUDA and offloaded experts through the shared CPU expert-compute path.
