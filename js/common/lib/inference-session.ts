@@ -216,6 +216,11 @@ export declare namespace InferenceSession {
 
   export interface ExecutionProviderOption {
     readonly name: string;
+    /**
+     * Additional provider-specific options as key-value pairs.
+     * This allows passing custom configuration to execution providers.
+     */
+    [key: string]: unknown;
   }
   export interface CpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cpu';
@@ -224,6 +229,32 @@ export declare namespace InferenceSession {
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
     deviceId?: number;
+    /** GPU memory limit for CUDA (BFC Arena) */
+    gpuMemLimit?: number;
+    /** BFC Arena extension strategy */
+    arenaExtendStrategy?: 'kNextPowerOfTwo' | 'kSameAsRequested';
+    /** CUDNN convolution algorithm search */
+    cudnnConvAlgoSearch?: 'EXHAUSTIVE' | 'HEURISTIC' | 'DEFAULT';
+    /** Flag specifying if copying can use the default stream */
+    doCopyInDefaultStream?: boolean;
+    /** Flag specifying if maximum workspace can be used in CUDNN convolution algorithm search */
+    cudnnConvUseMaxWorkspace?: boolean;
+    /** Flag specifying if the CUDA graph is to be captured for the model */
+    enableCudaGraph?: boolean;
+    /** Flag specifying if TunableOp is enabled */
+    tunableOpEnable?: boolean;
+    /** Flag specifying if TunableOp tuning is enabled */
+    tunableOpTuningEnable?: boolean;
+    /** Max tuning duration time limit for TunableOp (milliseconds) */
+    tunableOpMaxTuningDurationMs?: number;
+    /** Flag specifying if SkipLayerNorm is in strict mode */
+    enableSkipLayerNormStrictMode?: boolean;
+    /** Make the CUDA EP NHWC preferred */
+    preferNhwc?: boolean;
+    /** Flag specifying if EP level unified stream is used */
+    useEpLevelUnifiedStream?: boolean;
+    /** Use TF32 */
+    useTf32?: boolean;
   }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';
@@ -232,6 +263,90 @@ export declare namespace InferenceSession {
   export interface TensorRtExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'tensorrt';
     deviceId?: number;
+    /** Maximum iterations for TensorRT parser to get capability */
+    trtMaxPartitionIterations?: number;
+    /** Minimum size of TensorRT subgraphs */
+    trtMinSubgraphSize?: number;
+    /** Maximum workspace size for TensorRT (0 means max device memory size) */
+    trtMaxWorkspaceSize?: number;
+    /** Enable TensorRT FP16 precision */
+    trtFp16Enable?: boolean;
+    /** Enable TensorRT BF16 precision */
+    trtBf16Enable?: boolean;
+    /** Enable TensorRT INT8 precision */
+    trtInt8Enable?: boolean;
+    /** TensorRT INT8 calibration table name */
+    trtInt8CalibrationTableName?: string;
+    /** Use native TensorRT generated calibration table */
+    trtInt8UseNativeCalibrationTable?: boolean;
+    /** Enable DLA */
+    trtDlaEnable?: boolean;
+    /** DLA core number */
+    trtDlaCore?: number;
+    /** Dump TRT subgraph */
+    trtDumpSubgraphs?: boolean;
+    /** Enable engine caching */
+    trtEngineCacheEnable?: boolean;
+    /** Specify engine cache path */
+    trtEngineCachePath?: string;
+    /** Enable engine decryption */
+    trtEngineDecryptionEnable?: boolean;
+    /** Specify engine decryption library path */
+    trtEngineDecryptionLibPath?: string;
+    /** Force building TensorRT engine sequentially */
+    trtForceSequentialEngineBuild?: boolean;
+    /** Enable context memory sharing between subgraphs */
+    trtContextMemorySharingEnable?: boolean;
+    /** Force Pow + Reduce ops in layer norm to FP32 */
+    trtLayerNormFp32Fallback?: boolean;
+    /** Enable TensorRT timing cache */
+    trtTimingCacheEnable?: boolean;
+    /** Specify timing cache path */
+    trtTimingCachePath?: string;
+    /** Force the TensorRT cache to be used even if device profile does not match */
+    trtForceTimingCache?: boolean;
+    /** Enable detailed build step logging on TensorRT EP with timing for each engine build */
+    trtDetailedBuildLog?: boolean;
+    /** Build engine using heuristics to reduce build time */
+    trtBuildHeuristicsEnable?: boolean;
+    /** Control if sparsity can be used by TRT */
+    trtSparsityEnable?: boolean;
+    /** Set the builder optimization level (0-5, default 3) */
+    trtBuilderOptimizationLevel?: number;
+    /** Set maximum number of auxiliary streams per inference stream (-1 = heuristics) */
+    trtAuxiliaryStreams?: number;
+    /** Specify the tactics to be used by adding (+) or removing (-) tactics from the default */
+    trtTacticSources?: string;
+    /** Specify extra TensorRT plugin library paths */
+    trtExtraPluginLibPaths?: string;
+    /** Specify the range of the input shapes to build the engine with (min shapes) */
+    trtProfileMinShapes?: string;
+    /** Specify the range of the input shapes to build the engine with (max shapes) */
+    trtProfileMaxShapes?: string;
+    /** Specify the range of the input shapes to build the engine with (optimal shapes) */
+    trtProfileOptShapes?: string;
+    /** Enable CUDA graph in ORT TRT */
+    trtCudaGraphEnable?: boolean;
+    /** Specify the preview features to be enabled */
+    trtPreviewFeatures?: string;
+    /** Dump EP context node model */
+    trtDumpEpContextModel?: boolean;
+    /** Specify file name to dump EP context node model */
+    trtEpContextFilePath?: string;
+    /** Specify EP context embed mode (0 = engine cache path, 1 = engine binary data) */
+    trtEpContextEmbedMode?: number;
+    /** Enable weight-stripped engine build */
+    trtWeightStrippedEngineEnable?: boolean;
+    /** Folder path for the ONNX model containing the weights (for weight-stripped engines) */
+    trtOnnxModelFolderPath?: string;
+    /** Specify engine cache prefix */
+    trtEngineCachePrefix?: string;
+    /** Enable hardware compatibility */
+    trtEngineHwCompatible?: boolean;
+    /** Exclude specific ops from running on TRT */
+    trtOpTypesToExclude?: string;
+    /** Save initializers locally instead of to disk */
+    trtLoadUserInitializer?: boolean;
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
