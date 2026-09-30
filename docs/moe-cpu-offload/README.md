@@ -22,6 +22,37 @@ The placement policy has two levels:
 
 Training, router changes, expert-weight quantization, and multiple CUDA devices are outside this implementation.
 
+## Implemented foundations
+
+- [#32261](https://github.com/microsoft/onnxruntime/pull/32261) added opt-in MoE/QMoE routing instrumentation,
+  reproducible prompt and analysis tools, and the first routing measurements.
+- [#32738](https://github.com/microsoft/onnxruntime/pull/32738) added the session-global expert state, CPU and CUDA
+  expert-selection collection, and exponentially decayed counters. It does not implement placement, CPU offload,
+  swaps, or redistribution.
+
+## Exploratory routing analysis
+
+An exploratory trace was collected from Qwen3.5-35B-A3B INT4 on CUDA using 10 prompts. It contains 59,880 valid routing
+records from 40 QMoE layers, with 256 experts per layer and top-k 8. The frequency ranks below are zero-based and
+learned from the complete trace. These preliminary results demonstrate the routing concentration but are not an
+end-to-end offload performance measurement.
+
+The first graph compares the fraction of routing decisions selecting an expert at or above a frequency-rank threshold
+with the fraction of expert-weight bytes that can be offloaded at that threshold. Keeping only the 64 most frequent
+experts of each layer on CUDA retains about 25.1% of expert bytes and covers about 68.9% of observed selections. Keeping
+the first 128 experts retains about 50.2% of expert bytes and covers about 90.3% of selections. Keeping the first 192
+retains about 75.3% of expert bytes and covers about 98.4% of selections. The curve therefore shows substantial routing
+concentration, but it also shows that an aggressive memory reduction sends a meaningful fraction of expert work to CPU.
+
+[![Normalized routing coverage and expert bytes](images/normalized-total-vs-expert-bytes.png)](images/normalized-total-vs-expert-bytes.png)
+
+The second graph compares the same rank-threshold distribution for representative early, middle, and late QMoE layers.
+The shapes differ substantially: for example, layer 20 concentrates its selections among fewer experts, while layer 0
+uses a broader portion of its expert set. A single fixed per-layer CUDA capacity is therefore unlikely to use the global
+budget efficiently. This motivates per-node counters and the second implementation step's redistribution across nodes.
+
+[![Selected QMoE layer expert-rank distributions](images/selected-layers-expert-ranks.png)](images/selected-layers-expert-ranks.png)
+
 ## Global offload configuration
 
 The four numerical policy parameters are exposed as session configuration entries:
@@ -254,50 +285,13 @@ the tests and documentation for its own scope.
 
 After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
 CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and
-policy parameters; and record the latency, throughput, memory, placement, and transfer metrics listed below. Commit
-the evaluation scripts, aggregate results, and documented commands while keeping oversized raw traces outside the
-repository.
-
-## Validation
-
-Tests cover:
-
-- count and proportion parsing, including exact rounding and invalid values;
-- random selection of exactly the configured global number of offloaded experts;
-- immutable placement across repeated inference in the first implementation step;
-- CPU-only, CUDA-only, and mixed expert execution with numerical agreement;
-- absent, complete, partial, malformed, and inconsistent initial state;
-- exponential updates for used and unused experts;
-- deterministic counter ties;
-- the strict `cpu_max > (1 + epsilon) * cuda_min` boundary;
-- no exchange when a node is entirely on CPU or entirely on CUDA;
-- at most one exchange per node invocation;
-- no copy before node completion;
-- safe slot reuse after CUDA completion;
-- asynchronous copy submission and required completion before the next invocation;
-- atomic mapping publication;
-- draining pending per-node exchanges before redistribution can reassign their slots;
-- global budget preservation during redistribution;
-- maximizing complete CUDA-resident nodes before retained counter mass;
-- immutable per-invocation snapshots and rejection of overlapping runs;
-- unchanged behavior when offloading is disabled;
-- numerical agreement for CPU-only, CUDA-only, and mixed expert execution;
-- bounded CPU and CUDA memory for partial and full offload targets.
+policy parameters; and record the metrics listed below. Commit the evaluation scripts, aggregate results, and documented
+commands while keeping oversized raw traces outside the repository.
 
 ## Performance evaluation
 
 Measure:
 
-- time to first token and inter-token latency;
 - token throughput;
-- peak CPU and CUDA memory;
-- CUDA hit rate per node and overall;
-- CPU fallback count;
-- exchanges and global redistributions;
-- host-to-device bytes and transfer count;
-- overlap between transfers and model execution;
-- time spent waiting for unfinished transfers;
-- number of `MoE`/`QMoE` nodes running entirely on CUDA;
-- output agreement with CPU-only and CUDA-only execution.
-
-Kernel-only timing is reported separately from end-to-end latency and throughput.
+- peak CUDA memory;
+- peak CPU memory.
