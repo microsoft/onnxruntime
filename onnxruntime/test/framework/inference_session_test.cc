@@ -3135,7 +3135,17 @@ TEST(InferenceSessionTests, PartitionedCudaGraphRetainsUnequalConcatStagingBuffe
   CreateMLValue<float>(allocator, {2}, {1.0f, 2.0f}, &input);
   CreateMLValue<float>(allocator, {4}, {3.0f, 4.0f, 5.0f, 6.0f}, &other_input);
   const std::array<std::string, 1> input_names{"X"}, output_names{"Y"};
-  for (int graph_id : {0, -1, 7, 0}) {
+  DeviceStreamCollection* pooled_collection = nullptr;
+  InlinedVector<Stream*> pooled_streams;
+  {
+    DeviceStreamCollectionHolder holder(&session.GetSessionState());
+    ASSERT_NE(holder.p_, nullptr);
+    pooled_collection = holder.p_.get();
+    for (size_t i = 0; i < holder.p_->NumStreams(); ++i) {
+      pooled_streams.push_back(holder.p_->GetStream(i));
+    }
+  }
+  for (int graph_id : {0, -1, 7, 0, -1, 7, -1, 0}) {
     SCOPED_TRACE(graph_id);
     std::array<OrtValue, 1> feeds{graph_id == 0 ? input : other_input};
     auto& tensor = *feeds[0].GetMutable<Tensor>();
@@ -3150,7 +3160,24 @@ TEST(InferenceSessionTests, PartitionedCudaGraphRetainsUnequalConcatStagingBuffe
         values[i] = static_cast<float>(i + iteration + graph_id);
       }
       std::vector<OrtValue> fetches;
-      ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+      if (iteration % 2 == 0) {
+        ASSERT_STATUS_OK(session.Run(run_options, input_names, feeds, output_names, &fetches));
+      } else {
+        IOBinding binding(session.GetSessionState());
+        ASSERT_STATUS_OK(binding.BindInput("X", feeds[0]));
+        ASSERT_STATUS_OK(binding.BindOutput("Y"));
+        ASSERT_STATUS_OK(session.Run(run_options, binding));
+        fetches = binding.GetOutputs();
+      }
+      {
+        // A second wrapper over the plugin's graph stream would give deferred pinned frees a different owner.
+        DeviceStreamCollectionHolder holder(&session.GetSessionState());
+        ASSERT_EQ(holder.p_.get(), pooled_collection);
+        ASSERT_EQ(holder.p_->NumStreams(), pooled_streams.size());
+        for (size_t i = 0; i < pooled_streams.size(); ++i) {
+          EXPECT_EQ(holder.p_->GetStream(i), pooled_streams[i]);
+        }
+      }
       ASSERT_TRUE(cuda_ep->IsGraphCaptured(0));
       ASSERT_TRUE(cuda_ep->IsGraphCaptured(1));
       const auto& output = fetches[0].Get<Tensor>();

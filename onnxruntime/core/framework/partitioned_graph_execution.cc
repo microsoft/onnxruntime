@@ -66,9 +66,7 @@ struct CapturedPartition {
 };
 
 struct CapturedRun {
-  explicit CapturedRun(const SessionState& session_state) : streams(&session_state) {}
-  // Scratch and streams outlive the execution frame.
-  DeviceStreamCollectionHolder streams;
+  // Scratch outlives the execution frame.
   InlinedVector<std::unique_ptr<CapturedPartition>> partitions;
   std::unique_ptr<ExecutionFrame> frame;
   InlinedVector<int> feed_indices;
@@ -116,9 +114,10 @@ struct PartitionedGraphExecution::Impl {
     ORT_ENFORCE(!allocators.empty(), "Partitioned CUDA capture requires a CUDA arena.");
   }
 
-  Status Compute(CapturedRun& state, const Partition& partition, const RunOptions& options,
+  Status Compute(CapturedRun& state, DeviceStreamCollection& streams,
+                 const Partition& partition, const RunOptions& options,
                  const logging::Logger& logger, profiling::Profiler* run_profiler) {
-    return ExecuteNodesWithRetainedValues(session_state, *state.frame, partition.nodes, *state.streams.p_,
+    return ExecuteNodesWithRetainedValues(session_state, *state.frame, partition.nodes, streams,
                                           options.terminate, !partition.capture, logger, run_profiler);
   }
 
@@ -146,7 +145,8 @@ struct PartitionedGraphExecution::Impl {
     return Status::OK();
   }
 
-  Status Execute(CapturedRun& state, const RunOptions& options, const logging::Logger& logger,
+  Status Execute(CapturedRun& state, DeviceStreamCollection& streams,
+                 const RunOptions& options, const logging::Logger& logger,
                  profiling::Profiler* run_profiler) {
     // Allocate outputs, then retain scratch before capture. Plugin warm-ups use graph ID -1
     // because the plugin may otherwise start capturing before either preparation pass finishes.
@@ -158,7 +158,7 @@ struct PartitionedGraphExecution::Impl {
         const auto& partition = partitions[i];
         ORT_RETURN_IF(options.terminate, "Partitioned CUDA graph execution was terminated.");
         if (!partition.capture) {
-          ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger, run_profiler));
+          ORT_RETURN_IF_ERROR(Compute(state, streams, partition, options, logger, run_profiler));
           continue;
         }
         auto& captured = *state.partitions[i];
@@ -198,7 +198,7 @@ struct PartitionedGraphExecution::Impl {
         if (pass != 0) {
           ORT_RETURN_IF_ERROR(captured.scratch.Begin(pass >= 2));
         }
-        ORT_RETURN_IF_ERROR(Compute(state, partition, options, logger, run_profiler));
+        ORT_RETURN_IF_ERROR(Compute(state, streams, partition, options, logger, run_profiler));
         if (pass != 0) {
           ORT_RETURN_IF_ERROR(captured.scratch.End());
         }
@@ -211,7 +211,7 @@ struct PartitionedGraphExecution::Impl {
           ORT_RETURN_IF_ERROR(SaveSignatures(state, partition, captured));
         }
       }
-      ORT_RETURN_IF_ERROR(state.streams.p_->CleanUp(true));
+      ORT_RETURN_IF_ERROR(streams.CleanUp(true));
       if (pass >= 2 &&
           std::all_of(state.partitions.begin(), state.partitions.end(),
                       [&](const auto& captured) { return !captured || provider.IsGraphCaptured(captured->graph_id); })) {
@@ -268,7 +268,12 @@ struct PartitionedGraphExecution::Impl {
         ORT_RETURN_IF(feeds[i].Get<Tensor>().Location().device != copies[i].target_device,
                       "Bind partitioned CUDA graph inputs on their consuming device using IOBinding.");
       }
-      auto state = std::make_unique<CapturedRun>(session_state);
+    }
+    // Reuse the same pooled wrappers for every bucket, eager run, and IOBinding copy.
+    // Retaining a holder per bucket creates competing cleanup owners for the plugin's graph stream.
+    DeviceStreamCollectionHolder streams(&session_state);
+    if (it == runs.end()) {
+      auto state = std::make_unique<CapturedRun>();
       state->feed_indices.assign(info.feeds_mlvalue_idxs.begin(), info.feeds_mlvalue_idxs.end());
       state->fetch_indices.assign(info.fetches_mlvalue_idxs.begin(), info.fetches_mlvalue_idxs.end());
       for (const auto& feed : feeds) {
@@ -276,7 +281,7 @@ struct PartitionedGraphExecution::Impl {
       }
       state->frame = std::make_unique<ExecutionFrame>(
           info.feeds_mlvalue_idxs, feeds, info.fetches_mlvalue_idxs, fetches,
-          std::unordered_map<size_t, IExecutor::CustomAllocator>{}, state->streams.p_.get(), session_state);
+          std::unordered_map<size_t, IExecutor::CustomAllocator>{}, streams.p_.get(), session_state);
       for (const auto& partition : partitions) {
         if (partition.capture) {
           ORT_RETURN_IF(next_graph_id == std::numeric_limits<int>::max(), "Too many CUDA partition graphs.");
@@ -288,6 +293,8 @@ struct PartitionedGraphExecution::Impl {
       it = runs.emplace(graph_id, std::move(state)).first;
     }
     auto& state = *it->second;
+    state.frame->SetDeviceStreamCollection(streams.p_.get());
+    auto detach_streams = gsl::finally([&]() { state.frame->SetDeviceStreamCollection(nullptr); });
     ORT_RETURN_IF(state.feed_indices != info.feeds_mlvalue_idxs || state.fetch_indices != info.fetches_mlvalue_idxs,
                   "Partitioned CUDA graph input/output names or order changed. Use a new gpu_graph_id.");
     for (size_t i = 0; i < feeds.size(); ++i) {
@@ -304,7 +311,7 @@ struct PartitionedGraphExecution::Impl {
     owner_thread = std::this_thread::get_id();
     // Any failure after execution begins may leave partially updated outputs or in-place state.
     failed = true;
-    ORT_RETURN_IF_ERROR(Execute(state, options, logger, run_profiler));
+    ORT_RETURN_IF_ERROR(Execute(state, *streams.p_, options, logger, run_profiler));
     ORT_RETURN_IF_ERROR(state.frame->GetOutputs(fetches));
     failed = false;
     return Status::OK();

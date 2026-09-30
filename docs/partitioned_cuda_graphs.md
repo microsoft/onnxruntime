@@ -76,6 +76,10 @@ allocations are intercepted in ORT's arena or plugin arena adapter and reused at
 same addresses during capture. Pinned host staging buffers are excluded from this
 interception: their release is deferred until stream cleanup during preparation,
 and the CUDA EP retains buffers referenced by captured copies for replay.
+Stream wrappers are borrowed from the session's per-thread pool for each invocation,
+so capture buckets, eager runs, and IOBinding input copies reuse the same cleanup
+owner for the CUDA plugin's graph stream. Retained frames detach from those wrappers
+before they return to the pool; no bucket reserves a separate stream collection.
 Later invocations execute CPU partitions, CUDA host-output nodes, and copies again,
 but replay the CUDA compute partitions instead of invoking their kernels.
 
@@ -175,6 +179,8 @@ report that both partition graphs were captured. Additional buckets and eager
 execution between replays must preserve the original capture.
 Unequal-length CUDA Concat coverage checks pinned host staging buffers across
 two CUDA partitions, changing CPU inputs, different-shape buckets, and eager runs.
+It also verifies reuse of the same pooled stream collection and wrappers after each
+run, including repeated IOBinding input rebinding between buckets and eager execution.
 CUDA Shape coverage checks that host outputs are recomputed between captured
 partitions rather than skipped during replay.
 Routing coverage also checks all-CUDA graphs, CPU shape nodes without device

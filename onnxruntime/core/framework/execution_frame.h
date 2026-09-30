@@ -151,6 +151,13 @@ class ExecutionFrame final : public IExecutionFrame {
                  const SessionState& session_state);
   ~ExecutionFrame() override;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_STREAM)
+  // Retained frames borrow pooled streams only while their current run is executing.
+  void SetDeviceStreamCollection(const DeviceStreamCollection* device_streams) {
+    device_streams_ = device_streams;
+  }
+#endif
+
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead

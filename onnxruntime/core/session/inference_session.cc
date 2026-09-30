@@ -3963,7 +3963,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
       std::optional<DeviceStreamCollectionHolder> device_stream_collection_holder;
 #if !defined(ORT_MINIMAL_BUILD)
-      // Partitioned execution validates thread affinity before acquiring its own retained streams.
+      // Partitioned execution validates thread affinity before borrowing pooled streams.
       if (!partitioned_graph_execution_ || graph_annotation_id == -1) {
 #endif
         device_stream_collection_holder.emplace(session_state_.get());
