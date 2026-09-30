@@ -1085,12 +1085,24 @@ Status WebGpuContext::PopErrorScope() {
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
+  // Graph runs and prepacking can release allocator/uniform buffers into the shared manager.
+  // Retire this recording in both managers, keeping graph cache policy local to the active one.
+  const auto refresh_pending_buffers = [&]() {
+    buffer_mgr.RefreshPendingBuffers(recording, recording.graph_capture_state);
+    if (&buffer_mgr != buffer_mgr_.get()) {
+      buffer_mgr_->RefreshPendingBuffers(recording, GraphCaptureState::Default);
+    }
+  };
+
   Status status = EncodeDeferredDispatches(recording);
   if (!recording.command_encoder) {
     if (status.IsOK()) {
-      buffer_mgr.RefreshPendingBuffers(recording);
+      refresh_pending_buffers();
     } else {
       buffer_mgr.DiscardPendingBuffers(recording);
+      if (&buffer_mgr != buffer_mgr_.get()) {
+        buffer_mgr_->DiscardPendingBuffers(recording);
+      }
     }
     return status;
   }
@@ -1134,7 +1146,7 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
   }
   auto command_buffer = recording.command_encoder.Finish();
   device_queue_.Submit(1, &command_buffer);
-  buffer_mgr.RefreshPendingBuffers(recording);
+  refresh_pending_buffers();
   recording.command_encoder = nullptr;
   recording.num_pending_dispatches = 0;
   return status;

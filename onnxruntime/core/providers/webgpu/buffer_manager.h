@@ -51,7 +51,6 @@ class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;
 
-  // Reusable buffers must stay out of the cache until their recording submits.
   virtual bool SupportsBufferReuse() const { return true; }
 
   // calculate actual buffer size to allocate based on the requested size.
@@ -103,7 +102,7 @@ class BufferManager {
   // A null recording releases directly to the cache (e.g., plugin Env allocations).
   void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(CommandRecordingState& recording) const;
+  void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
   void DiscardPendingBuffers(CommandRecordingState& recording) const;
 

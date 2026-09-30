@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -491,6 +492,58 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     EXPECT_EQ(copy_kernels, 1u);
   }
 
+  void RunGraphsConcurrently(bool separate_sessions, bool capture_before_workers) const {
+    InlinedVector<std::unique_ptr<Ort::Session>> sessions;
+    const int session_count = separate_sessions ? kThreads : 1;
+    for (int i = 0; i < session_count; ++i) {
+      sessions.emplace_back(CreateSession(true));
+    }
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    InlinedVector<Ort::Allocator> allocators;
+    for (const auto& session : sessions) {
+      allocators.emplace_back(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+    }
+    InlinedVector<Ort::Value> inputs;
+    InlinedVector<Ort::Value> outputs;
+    InlinedVector<Ort::IoBinding> bindings;
+    InlinedVector<Ort::RunOptions> options;
+    for (int thread_id = 0; thread_id < kThreads; ++thread_id) {
+      auto& session = *sessions[separate_sessions ? thread_id : 0];
+      auto& allocator = allocators[separate_sessions ? thread_id : 0];
+      inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()));
+      outputs.emplace_back(Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()));
+      std::array<float, kElements> input_data{};
+      input_data.fill(static_cast<float>(thread_id + 1));
+      auto cpu_input = Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+      ThrowOnError(ort_env->CopyTensor(cpu_input, inputs.back(), nullptr));
+      bindings.emplace_back(session);
+      bindings.back().BindInput("X", inputs.back());
+      bindings.back().BindOutput("Y", outputs.back());
+      options.emplace_back();
+      options.back().AddConfigEntry("gpu_graph_id", std::to_string(thread_id).c_str());
+      if (capture_before_workers) {
+        session.Run(options.back(), bindings.back());
+      }
+    }
+
+    FirstError error;
+    RunWorkers(error, [&](int thread_id) {
+      auto& session = *sessions[separate_sessions ? thread_id : 0];
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        // Without pre-capture, the first call includes warm-up and capture retries.
+        // Later calls replay using the same bound buffers and graph annotation ID.
+        session.Run(options[thread_id], bindings[thread_id]);
+        std::array<float, kElements> output_data{};
+        auto cpu_output = Ort::Value::CreateTensor<float>(
+            cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+        ThrowOnError(ort_env->CopyTensor(outputs[thread_id], cpu_output, nullptr));
+        VerifyOutput(output_data, static_cast<float>(thread_id + 1));
+      }
+    });
+    ASSERT_FALSE(error.Failed()) << error.Message();
+  }
+
  private:
   std::optional<ScopedWebGpuPluginRegistration> registration_;
   Ort::ConstEpDevice webgpu_ep_device_{nullptr};
@@ -800,6 +853,65 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesDuringGrap
     }
   });
   ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorReusesBuffersFreedDuringGraphReplay) {
+  auto session = CreateSession(true);
+  Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  Ort::IoBinding binding(*session);
+  binding.BindInput("X", gpu_input);
+  binding.BindOutput("Y", gpu_output);
+  session->Run(Ort::RunOptions{nullptr}, binding);
+
+  // Hold a full bucket so all available buffers of this size belong to this test.
+  // The model's tensors use the separate 64-byte bucket.
+  constexpr size_t kBufferSize = 4096;
+  constexpr size_t kBucketCapacity = 200;
+  InlinedVector<std::optional<Ort::MemoryAllocation>> buffers;
+  InlinedHashSet<void*> handles;
+  for (size_t i = 0; i < kBucketCapacity; ++i) {
+    buffers.emplace_back(allocator.GetAllocation(kBufferSize));
+    ASSERT_NE(buffers.back()->get(), nullptr);
+    handles.insert(buffers.back()->get());
+  }
+
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    if (thread_id == 0) {
+      for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+        session->Run(Ort::RunOptions{nullptr}, binding);
+      }
+    } else {
+      for (size_t i = static_cast<size_t>(thread_id - 1); i < buffers.size(); i += kThreads - 1) {
+        buffers[i].reset();
+        std::this_thread::yield();
+      }
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+  // Submit once after every Free has completed, including frees at the end of the replay loop.
+  session->Run(Ort::RunOptions{nullptr}, binding);
+
+  InlinedVector<Ort::MemoryAllocation> reacquired;
+  for (size_t i = 0; i < kBucketCapacity; ++i) {
+    reacquired.emplace_back(allocator.GetAllocation(kBufferSize));
+    EXPECT_EQ(handles.erase(reacquired.back().get()), 1u);
+  }
+  EXPECT_TRUE(handles.empty());
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionCapturedGraphsReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/false, /*capture_before_workers=*/true);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionGraphsCaptureAndReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/false, /*capture_before_workers=*/false);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsGraphsCaptureAndReplayConcurrently) {
+  RunGraphsConcurrently(/*separate_sessions=*/true, /*capture_before_workers=*/false);
 }
 
 TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessions) {
