@@ -218,6 +218,12 @@ class GemmPluginProfiler {
     return true;
   }
 
+  // Maps a measured tactic time to the value compared when choosing the best tactic. Subclasses
+  // can bias the choice toward tactics the synthetic profiling setup is known to under-rate.
+  virtual float getSelectionTime(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/, float time) const {
+    return time;
+  }
+
   virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
 
   virtual void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream);
@@ -507,7 +513,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         continue;
       }
       // Profile particular tactic for given M, N and K
-      time = profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime);
+      time = getSelectionTime(m, n, k, candidateConfig,
+                              profileTacticForProblem(m, n, k, candidateConfig, workspace, stream, bestTime));
 
 #if ORT_LLM_VERBOSE > 1
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
