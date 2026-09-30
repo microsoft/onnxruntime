@@ -1,11 +1,11 @@
 parameters:
-  AgentPool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+  AgentPool: ''
   StageSuffix: ''
+  NodeVersion: '24.x'
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
   - Setup
-  condition: succeeded()
   jobs:
   - job: Nodejs_Test_${{ parameters.StageSuffix }}
     workspace:
@@ -20,5 +20,5 @@ stages:
     steps:
     - task: UseNode@1
       inputs:
-        version: '24.x'
+        version: ${{ parameters.NodeVersion }}
     - template: test.yml
