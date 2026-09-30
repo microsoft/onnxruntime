@@ -1,0 +1,37 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <cuda_fp16.h>
+#include <cuda_runtime_api.h>
+
+namespace onnxruntime::llm::kernels::cutlass_kernels {
+
+struct Int2MoePrefillParams {
+  const half* input = nullptr;
+  const uint8_t* fc1_weights = nullptr;
+  const uint8_t* fc2_weights = nullptr;
+  const half* fc1_scales = nullptr;
+  const half* fc2_scales = nullptr;
+  const half* fc1_bias = nullptr;
+  const half* fc2_bias = nullptr;
+  const int* selected_experts = nullptr;
+  const float* routing_weights = nullptr;
+  int* unpermuted_to_permuted = nullptr;
+  half* output = nullptr;
+  int64_t num_rows = 0;
+  int hidden_size = 0;
+  int inter_size = 0;
+  int num_experts = 0;
+  int top_k = 0;
+  int multiprocessor_count = 0;
+  float alpha = 1.0f;
+  float beta = 0.0f;
+  float limit = 0.0f;
+  cudaStream_t stream = nullptr;
+};
+
+size_t GetInt2MoePrefillWorkspaceSize(const Int2MoePrefillParams& params);
+void RunInt2MoePrefill(const Int2MoePrefillParams& params, void* workspace);
+
+}

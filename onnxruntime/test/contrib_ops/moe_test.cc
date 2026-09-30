@@ -2460,6 +2460,15 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
 }
 #endif
 
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWithoutDecode) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true);
+}
+
 TEST(MoETest, QMoETest_MixedWidthCudaPackedDecode) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";

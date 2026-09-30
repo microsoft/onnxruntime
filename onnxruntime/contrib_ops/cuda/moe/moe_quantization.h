@@ -110,6 +110,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
+  bool enable_int2_prefill_ = false;
   int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
   int64_t int_dequant_max_scratch_bytes_ = int64_t{1} << 30;
 
