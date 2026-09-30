@@ -359,7 +359,7 @@ struct MoeFCGemm {
       }
     } else if (args.weight_scales != nullptr) {
       CUTLASS_TRACE_HOST(
-          "MoeFCGemm::can_implement() - weight scales are ignored for all types except uint8_t and uint4b_t");
+          "MoeFCGemm::can_implement() - weight scales are supported only for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
       return Status::kInvalid;
     } else if (args.group_size != args.gemm_k) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - scale shape should be (1, gemm_n)");
