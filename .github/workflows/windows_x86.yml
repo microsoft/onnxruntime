@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '20.x'
+          node-version: '24.x'
           architecture: x86 #Add architecture
 
       - name: Setup Java

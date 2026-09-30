@@ -106,9 +106,9 @@ jobs:
       WithCache: ${{parameters.WITH_CACHE}}
       Today: $(Today)
 
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
