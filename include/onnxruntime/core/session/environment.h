@@ -286,6 +286,9 @@ class Environment {
     EpInfo() = default;
   };
 
+  // removes the devices, shared allocators, data transfers and internal factories of an EP library from the env.
+  Status RemoveEpInfoRegistrations(const EpInfo& ep_info);
+
   // registration name to EpInfo for library
   std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
 

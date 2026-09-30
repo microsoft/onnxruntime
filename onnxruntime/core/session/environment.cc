@@ -4,6 +4,7 @@
 #include "core/session/environment.h"
 
 #include <array>
+#include <gsl/gsl>
 
 #include "core/common/basic_types.h"
 #include "core/framework/allocator.h"
@@ -597,6 +598,13 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       std::unique_ptr<EpInfo> ep_info = nullptr;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
 
+      // undo any partial registration if a later step fails. ep_info is null after it is moved into ep_libraries_.
+      auto rollback = gsl::finally([&]() {
+        if (ep_info) {
+          ORT_IGNORE_RETURN_VALUE(RemoveEpInfoRegistrations(*ep_info));
+        }
+      });
+
       // add the pointers to the OrtEpDevice instances to our global list
       execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
       for (const auto& ed : ep_info->execution_devices) {
@@ -724,32 +732,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
     // something goes wrong in any of the following steps..
     ep_libraries_.erase(registration_name);
 
-    for (auto* data_transfer : ep_info->data_transfers) {
-      ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
-    }
-
-    for (auto* internal_factory : ep_info->internal_factories) {
-      internal_ep_factories_.erase(internal_factory);
-    }
-
-    for (const auto& ed : ep_info->execution_devices) {
-      // remove from global list of OrtEpDevices
-      if (auto it = std::find(execution_devices_.begin(), execution_devices_.end(), ed.get());
-          it != execution_devices_.end()) {
-        execution_devices_.erase(it);
-      }
-
-      // unregister any shared allocators.
-      // match only the OrtEpDevice allocator in case the user registered a custom allocator with matching info.
-      const bool error_if_not_found = false;
-      if (ed->device_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->device_memory_info, error_if_not_found));
-      }
-
-      if (ed->host_accessible_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->host_accessible_memory_info, error_if_not_found));
-      }
-    }
+    ORT_RETURN_IF_ERROR(RemoveEpInfoRegistrations(*ep_info));
 
     ep_info.reset();
   }
@@ -761,6 +744,37 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
   }
 
   return status;
+}
+
+Status Environment::RemoveEpInfoRegistrations(const EpInfo& ep_info) {
+  for (auto* data_transfer : ep_info.data_transfers) {
+    ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
+  }
+
+  for (auto* internal_factory : ep_info.internal_factories) {
+    internal_ep_factories_.erase(internal_factory);
+  }
+
+  for (const auto& ed : ep_info.execution_devices) {
+    // remove from global list of OrtEpDevices
+    if (auto it = std::find(execution_devices_.begin(), execution_devices_.end(), ed.get());
+        it != execution_devices_.end()) {
+      execution_devices_.erase(it);
+    }
+
+    // unregister any shared allocators.
+    // match only the OrtEpDevice allocator in case the user registered a custom allocator with matching info.
+    const bool error_if_not_found = false;
+    if (ed->device_memory_info != nullptr) {
+      ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->device_memory_info, error_if_not_found));
+    }
+
+    if (ed->host_accessible_memory_info != nullptr) {
+      ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(*ed->host_accessible_memory_info, error_if_not_found));
+    }
+  }
+
+  return Status::OK();
 }
 
 Status Environment::GetHardwareDeviceEpIncompatibilityDetails(
