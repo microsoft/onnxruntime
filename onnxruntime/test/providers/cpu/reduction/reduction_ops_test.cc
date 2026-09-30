@@ -753,6 +753,90 @@ TEST(ReductionOpTest, ReduceLogSum) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceLogOps_Opset28_FloatAxesInput) {
+  const std::vector<std::pair<std::string, std::vector<float>>> cases{
+      {"ReduceLogSum", {1.38629436f, 1.79175949f}},
+      {"ReduceLogSumExp", {3.12692801f, 4.12692801f}},
+  };
+
+  for (const auto& [op, expected] : cases) {
+    OpTester test(op, 28);
+    test.SetAllowUnreleasedOnnxOpset();
+    test.AddInput<float>("data", {2, 2}, {1.0f, 3.0f, 2.0f, 4.0f});
+    test.AddInput<int64_t>("axes", {1}, {1});
+    test.AddAttribute<int64_t>("keepdims", 0);
+    test.AddOutput<float>("reduced", {2}, expected);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceLogOps_Opset28_Cuda) {
+  for (int opset : {27, 28}) {
+    for (const auto& [op, expected] :
+         std::vector<std::pair<std::string, std::vector<float>>>{
+             {"ReduceLogSum", {1.38629436f, 1.79175949f}},
+             {"ReduceLogSumExp", {3.12692801f, 4.12692801f}}}) {
+      auto provider = DefaultCudaExecutionProvider();
+      if (!provider) {
+        GTEST_SKIP() << "CUDA execution provider is not available.";
+      }
+      OpTester test(op, opset);
+      test.SetAllowUnreleasedOnnxOpset();
+      test.AddInput<float>("data", {2, 2}, {1.0f, 3.0f, 2.0f, 4.0f});
+      test.AddInput<int64_t>("axes", {1}, {1});
+      test.AddAttribute<int64_t>("keepdims", 0);
+      test.AddOutput<float>("reduced", {2}, expected);
+      SessionOptions options;
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
+    }
+  }
+}
+#endif
+
+TEST(ReductionOpTest, ReduceLogOps_Opset28_Scalar) {
+  for (const auto& [op, expected] :
+       std::vector<std::pair<std::string, float>>{{"ReduceLogSum", std::log(2.0f)}, {"ReduceLogSumExp", 2.0f}}) {
+    OpTester test(op, 28);
+    test.SetAllowUnreleasedOnnxOpset();
+    test.AddInput<float>("data", {}, {2.0f});
+    test.AddOptionalInputEdge<int64_t>();
+    test.AddOutput<float>("reduced", {}, {expected});
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(ReductionOpTest, ReduceLogOps_Opset28_RejectIntegerData) {
+  for (const char* op : {"ReduceLogSum", "ReduceLogSumExp"}) {
+    OpTester test(op, 28);
+    test.SetAllowUnreleasedOnnxOpset();
+    test.AddInput<int32_t>("data", {2, 2}, {1, 3, 2, 4});
+    test.AddInput<int64_t>("axes", {1}, {1});
+    test.AddAttribute<int64_t>("keepdims", 0);
+    test.AddOutput<int32_t>("reduced", {2}, {0, 0});
+    test.Config(OpTester::ExpectResult::kExpectFailure, "Type Error")
+        .ConfigEp(DefaultCpuExecutionProvider())
+        .RunWithConfig();
+  }
+}
+
+TEST(ReductionOpTest, ReduceLogOps_Opset27_AcceptsIntegerData) {
+  const std::vector<std::pair<std::string, std::vector<int32_t>>> cases{
+      {"ReduceLogSum", {1, 1}},
+      {"ReduceLogSumExp", {3, 4}},
+  };
+
+  for (const auto& [op, expected] : cases) {
+    OpTester test(op, 27);
+    test.AddInput<int32_t>("data", {2, 2}, {1, 3, 2, 4});
+    test.AddInput<int64_t>("axes", {1}, {1});
+    test.AddAttribute<int64_t>("keepdims", 0);
+    test.AddOutput<int32_t>("reduced", {2}, expected);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
 TEST(ReductionOpTest, ReduceLogSum_double) {
   OpTester test("ReduceLogSum");
   test.AddAttribute("axes", std::vector<int64_t>{1});
