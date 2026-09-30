@@ -313,6 +313,11 @@ class MlasLinearAttentionTest : public MlasTestBase {
         {13, 512},
         {14, 512},
         {15, 512},
+        // The RVV kernel's two-pass form carries its per-column accumulators
+        // across tokens in fixed buffers of 256 floats and takes the plain
+        // two-pass form above that; 256 is the inclusive boundary, the exact
+        // fit of those buffers, and also of the d_k staging buffers.
+        {256, 256},
     };
     static const MLAS_LINEAR_ATTENTION_RULE kRules[] = {
         MlasLinearAttentionRuleLinear,
@@ -373,6 +378,13 @@ class MlasLinearAttentionTest : public MlasTestBase {
            MlasLinearAttentionDecayNone, MlasLinearAttentionBetaShared,
            1.0f, 1, true);
     }
+
+    // Widest readout group at the exact fit of the RVV kernel's cross-token
+    // accumulators: NOUT=8 rows of d_v=256, indexed per head, on the rule that
+    // uses every one of them. Key sharing keeps the oracle's key work small.
+    Test(1, 5, 16, 2, 1, 32, 256, MlasLinearAttentionRuleGatedDelta,
+         MlasLinearAttentionDecayPerKeyDim, MlasLinearAttentionBetaPerHead,
+         0.125f, 1, true);
 
     // Long sequence. Decay multiplies the entire state on every token, so exp()
     // error compounds over T; the rest of this matrix tops out at T=17, which is

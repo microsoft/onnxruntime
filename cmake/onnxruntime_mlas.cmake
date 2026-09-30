@@ -847,7 +847,7 @@ else()
         set(mlas_platform_srcs_avx2
           ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
@@ -1167,7 +1167,9 @@ else()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/conv_activation_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/linear_attention_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -1181,7 +1183,9 @@ else()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/conv_activation_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/linear_attention_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 

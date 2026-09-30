@@ -253,6 +253,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       continue;
     }
+    const size_t first_node_to_remove = nodes_to_remove.size();
 
     // SkipLayerNormalization kernel requires gamma and beta to be 1D.
     // Skip fusion if gamma or beta have more than 1 dimension.
@@ -314,6 +315,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
+
+    InlinedVector<NodeIndex> source_node_indices;
+    source_node_indices.reserve(nodes_to_remove.size() - first_node_to_remove);
+    for (size_t i = first_node_to_remove; i < nodes_to_remove.size(); ++i) {
+      source_node_indices.push_back(nodes_to_remove[i].get().Index());
+    }
+    graph.NotifyNodeReplacement(source_node_indices, skip_layer_norm_node.Index());
   }
 
   for (const auto& node : nodes_to_remove) {
