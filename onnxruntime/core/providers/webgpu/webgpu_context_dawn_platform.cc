@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/webgpu/webgpu_context_dawn_platform.h"
 
 #include <algorithm>
