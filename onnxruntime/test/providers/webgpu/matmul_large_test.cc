@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include <algorithm>
+#include <cstdint>
+#include <numeric>
+#include <vector>
 
-#include "core/providers/cpu/math/matmul_helper.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -11,33 +14,62 @@
 namespace onnxruntime {
 namespace test {
 
-// Reference matmul using MatMulComputeHelper for shape/offset computation.
-// Supports arbitrary-rank batched matmul with broadcasting.
-static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::vector<float>& b_vals,
-                                  std::vector<float>& out_vals,
-                                  const MatMulComputeHelper& helper) {
-  const auto M = helper.M();
-  const auto K = helper.K();
-  const auto N = helper.N();
-  const auto& left_offsets = helper.LeftOffsets();
-  const auto& right_offsets = helper.RightOffsets();
-  const auto& output_offsets = helper.OutputOffsets();
-  const size_t num_batches = output_offsets.size();
-
-  for (size_t batch = 0; batch < num_batches; ++batch) {
-    const float* a = a_vals.data() + left_offsets[batch];
-    const float* b = b_vals.data() + right_offsets[batch];
-    float* out = out_vals.data() + output_offsets[batch];
-    for (ptrdiff_t m = 0; m < M; ++m) {
-      for (ptrdiff_t n = 0; n < N; ++n) {
+// Independent reference for ONNX MatMul, including vector promotion and
+// broadcasting of leading batch dimensions.
+static void ComputeExpectedResult(std::initializer_list<int64_t> a_dims,
+                                  std::initializer_list<int64_t> b_dims,
+                                  const std::vector<float>& a_vals, const std::vector<float>& b_vals,
+                                  TensorShapeVector& output_dims, std::vector<float>& out_vals) {
+  ASSERT_GT(a_dims.size(), 0u);
+  ASSERT_GT(b_dims.size(), 0u);
+  TensorShapeVector a_shape(a_dims), b_shape(b_dims);
+  const bool a_is_vector = a_shape.size() == 1;
+  const bool b_is_vector = b_shape.size() == 1;
+  if (a_is_vector) a_shape.insert(a_shape.begin(), 1);
+  if (b_is_vector) b_shape.push_back(1);
+  const size_t rank = std::max(a_shape.size(), b_shape.size());
+  a_shape.insert(a_shape.begin(), rank - a_shape.size(), 1);
+  b_shape.insert(b_shape.begin(), rank - b_shape.size(), 1);
+  const int64_t M = a_shape[rank - 2];
+  const int64_t K = a_shape.back();
+  const int64_t N = b_shape.back();
+  ASSERT_EQ(K, b_shape[rank - 2]);
+  output_dims.clear();
+  for (size_t axis = 0; axis + 2 < rank; ++axis) {
+    ASSERT_TRUE(a_shape[axis] == b_shape[axis] || a_shape[axis] == 1 || b_shape[axis] == 1);
+    output_dims.push_back(a_shape[axis] == 1 ? b_shape[axis] : a_shape[axis]);
+  }
+  const int64_t num_batches = std::accumulate(output_dims.begin(), output_dims.end(), int64_t{1},
+                                              std::multiplies<int64_t>());
+  out_vals.assign(static_cast<size_t>(num_batches * M * N), 0.0f);
+  for (int64_t batch = 0; batch < num_batches; ++batch) {
+    int64_t remaining = batch;
+    int64_t a_offset = 0, b_offset = 0;
+    int64_t a_stride = M * K, b_stride = K * N;
+    for (size_t i = output_dims.size(); i > 0; --i) {
+      const size_t axis = i - 1;
+      const int64_t coordinate = remaining % output_dims[axis];
+      remaining /= output_dims[axis];
+      if (a_shape[axis] != 1) a_offset += coordinate * a_stride;
+      if (b_shape[axis] != 1) b_offset += coordinate * b_stride;
+      a_stride *= a_shape[axis];
+      b_stride *= b_shape[axis];
+    }
+    const float* a = a_vals.data() + a_offset;
+    const float* b = b_vals.data() + b_offset;
+    float* out = out_vals.data() + batch * M * N;
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
         float sum = 0.0f;
-        for (ptrdiff_t k = 0; k < K; ++k) {
+        for (int64_t k = 0; k < K; ++k) {
           sum += a[m * K + k] * b[k * N + n];
         }
         out[m * N + n] = sum;
       }
     }
   }
+  if (!a_is_vector) output_dims.push_back(M);
+  if (!b_is_vector) output_dims.push_back(N);
 }
 
 template <typename T, int version = 13>
@@ -50,21 +82,13 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
 
-  TensorShape a_shape(a_dims);
-  TensorShape b_shape(b_dims);
-  MatMulComputeHelper helper;
-  ASSERT_STATUS_OK(helper.Compute(a_shape, b_shape));
-  const TensorShape& output_shape = helper.OutputShape();
-
   RandomValueGenerator random{1234};
   std::vector<float> a_vals(random.Gaussian<float>(AsSpan(a_dims), 0.0f, 0.25f));
   std::vector<float> b_vals(random.Gaussian<float>(AsSpan(b_dims), 0.0f, 0.25f));
 
-  std::vector<float> expected_vals(output_shape.Size());
-  ComputeExpectedResult(a_vals, b_vals, expected_vals, helper);
-
-  std::vector<int64_t> output_dims(output_shape.NumDimensions());
-  output_shape.CopyDims(output_dims.data(), output_shape.NumDimensions());
+  TensorShapeVector output_dims;
+  std::vector<float> expected_vals;
+  ASSERT_NO_FATAL_FAILURE(ComputeExpectedResult(a_dims, b_dims, a_vals, b_vals, output_dims, expected_vals));
 
   OpTester test("MatMul", version);
   if constexpr (std::is_same_v<T, float>) {

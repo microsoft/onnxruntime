@@ -165,24 +165,53 @@ TEST(OrtModelOnlyTests, PartitionedCudaGraphOptionInMinimalBuild) {
     } else {
       EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
       EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(kOrtSessionOptionsEnablePartitionedCudaGraph));
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
-                                             std::string_view(value) == "1" ? "is not supported in a minimal build"
-                                                                            : "must be set to either"));
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
     }
   }
 }
 
 TEST(OrtModelOnlyTests, RejectsMoeExpertStatisticsInMinimalBuild) {
-  SessionOptions options;
-  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  InferenceSessionWrapper session{options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
-  const Status status = session.Initialize();
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  for (const char* value : {"1", "true", ""}) {
+    SCOPED_TRACE(value);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  }
+}
+
+TEST(OrtModelOnlyTests, RejectsMoeExpertCountingInMinimalBuild) {
+  for (const auto& [key, value] : {
+           std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"},
+           std::pair{kOrtSessionOptionsConfigEnableMoeExpertCounting, "true"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "counters.txt"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
+           std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"}}) {
+    SCOPED_TRACE(key);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(key, value));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(key));
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("is not supported in a minimal build"));
+  }
 }
 #endif
+
+TEST(OrtModelOnlyTests, MoeExpertCountingDisabled) {
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0"));
+  InferenceSessionWrapper session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  ASSERT_STATUS_OK(session.Initialize());
+}
 
 TEST(OrtModelOnlyTests, RejectsStrictWorkspaceVerification) {
   SessionOptions options;

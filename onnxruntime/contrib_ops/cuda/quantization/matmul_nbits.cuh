@@ -8,6 +8,44 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+inline constexpr int kMatMul8BitsDefaultMaxRows = 5;
+inline constexpr int kMatMul8BitsSm121Fp16MaxRows = 8;
+
+constexpr bool IsMatMul8BitsSmallM(
+    int m,
+    int n,
+    int k,
+    int block_size,
+    int device_sm,
+    bool is_fp16) {
+  if (m >= 1 && m <= kMatMul8BitsDefaultMaxRows) {
+    return true;
+  }
+
+  return m > kMatMul8BitsDefaultMaxRows &&
+         m <= kMatMul8BitsSm121Fp16MaxRows &&
+         device_sm == 121 &&
+         is_fp16 &&
+         n == 200064 &&
+         k == 3584 &&
+         block_size == 64;
+}
+
+template <class T>
+bool TryMatMul2Bits(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    int device_sm,
+    size_t shared_mem_per_block,
+    cudaStream_t stream);
+
 template <class T>
 bool TryMatMul4Bits(
     T* output,
@@ -34,6 +72,7 @@ bool TryMatMul8Bits(
     int n,
     int k,
     int block_size,
+    int device_sm,
     size_t shared_mem_per_block,
     cudaStream_t stream);
 
@@ -51,18 +90,27 @@ bool TryMatMulNBits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int device_sm) {
   if (bits == 8) {
     if (bias_data != nullptr) {
       return false;
     }
     return TryMatMul8Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                             m, n, k, block_size, shared_mem_per_block, stream);
+                             m, n, k, block_size, device_sm, shared_mem_per_block, stream);
   }
 
   if (bits == 4) {
     return TryMatMul4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points, bias_data,
                              m, n, k, block_size, shared_mem_per_block, stream);
+  }
+
+  if (bits == 2) {
+    if (bias_data != nullptr) {
+      return false;
+    }
+    return TryMatMul2Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                             m, n, k, block_size, device_sm, shared_mem_per_block, stream);
   }
 
   return false;
