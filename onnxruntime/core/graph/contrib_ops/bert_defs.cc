@@ -3859,7 +3859,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output to floating-point tensors.")
-         .TypeConstraint("M",
+        .TypeConstraint("M",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain scale to floating-point tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -3886,7 +3886,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output to floating-point tensors.")
-         .TypeConstraint("M",
+        .TypeConstraint("M",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain the optional scale to floating-point tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -3917,7 +3917,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain streams and output to floating-point tensors.")
-         .TypeConstraint("M",
+        .TypeConstraint("M",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain mixing weights to floating-point tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -3958,7 +3958,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* HyperConnectionPostMix_ver1_doc = R"DOC(
 Mixes existing streams and injects one branch output:
 Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
-               + post_mix[..., k, h] * branch_output[..., h].
+               + post_mix[..., k, h] * block_output[..., h].
 stream_mix is optional and defaults to the identity. post_mix has shape
 (..., C), (..., C, 1), or (..., C, H). No activation is applied.
 )DOC";
@@ -3979,7 +3979,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain streams, block output, and output to floating-point tensors.")
-         .TypeConstraint("M",
+        .TypeConstraint("M",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain mixing weights to floating-point tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
