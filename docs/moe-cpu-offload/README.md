@@ -1,6 +1,6 @@
 # Adaptive CUDA expert offloading for Qwen 3.6 MoE
 
-**Status:** Implementation planned
+**Status:** Implementation in progress
 
 **Date:** 2026-09
 
@@ -91,8 +91,10 @@ The file starts with a format-version line and contains one line per
 
 Experts omitted from the file start at zero. When the setting is absent, all counters start at zero.
 
-If all counters are zero, the global CUDA budget is distributed as uniformly as possible across `MoE` and `QMoE`
-nodes. Any remainder is assigned in node-index order. Within each node, the lowest expert IDs are selected first.
+The first offload implementation does not use counters to choose its initial placement. It randomly selects the
+configured global number of experts to keep on CPU and keeps that placement fixed for the lifetime of the session.
+This separates hybrid CPU/CUDA inference correctness from the adaptive policy. Counter-based placement changes are
+added only in the second implementation step.
 
 ## Per-node placement update
 
@@ -174,7 +176,7 @@ The graph node remains assigned to the CUDA execution provider. Its CUDA kernel:
 - keeps canonical expert weights in CPU memory;
 - dispatches resident experts to CUDA;
 - invokes shared CPU expert-compute helpers for non-resident experts;
-- submits counter updates and placement changes to the cache manager.
+- submits counter updates and, once adaptive swaps are enabled, placement changes to the cache manager.
 
 The implementation must verify that initializer prepacking and memory planning can retain canonical weights on CPU
 without materializing every expert on CUDA. If the existing input-memory contract cannot support this without
@@ -220,125 +222,51 @@ failures fail session initialization or execution rather than silently disabling
 
 ## Pull request plan
 
-Each PR includes the tests and documentation for its own scope.
+The session-global expert state and counters are already implemented. The remaining implementation is split into two
+steps so that hybrid inference is validated before placement starts changing at runtime. Each pull request includes
+the tests and documentation for its own scope.
 
-### PR 1: runtime cache manager
-
-Provide independently tested cache and policy components without activating offload in the model's kernels.
+### Step 1: random offload placement and hybrid inference
 
 - Parse and validate the count-or-proportion offload target.
-- Parse and validate `alpha`, `beta`, and `epsilon`.
-- Load the optional counter-state text file and initialize missing counters to zero.
-- Build deterministic all-zero placement.
-- Implement counter-update helpers and immutable per-invocation mappings.
-- Implement threshold-based per-node exchanges.
-- Implement end-of-inference global redistribution.
-- Manage CUDA slots, streams, events, and atomic mapping publication.
-- Add unit tests for configuration, initial state, ranking, counter updates, exchanges, and redistribution.
+- Select exactly that global number of experts randomly for CPU offload during session initialization.
+- Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
+- Retain canonical weights for every expert on CPU and copy only CUDA-resident experts to device slots.
+- Dispatch resident experts on CUDA and offloaded experts through the shared CPU expert-compute path.
+- Combine CPU and CUDA expert results without changing the exported `MoE` or `QMoE` model contract.
+- Preserve the existing CUDA implementation when offloading is disabled.
+- Test CPU-only, CUDA-only, and mixed expert execution, the global offload count, numerical agreement, bounded memory,
+  repeated inference with a fixed placement, and unchanged disabled-path behavior.
 
-### PR 2: session-global expert state and counters
+### Step 2: adaptive expert swaps
 
-Depends on PR 1.
+- Use the session-global counters and optional initial counter state to rank experts.
+- Apply the strict `cpu_max > (1 + epsilon) * cuda_min` rule and schedule at most one local exchange per node
+  invocation.
+- Manage CUDA slots, transfer streams, completion events, immutable per-invocation mappings, and atomic publication of
+  completed swaps.
+- Submit copies asynchronously after the current node finishes, overlap them with later model work, and require
+  completion before that node executes again.
+- Redistribute the global CUDA expert budget after inference, first draining pending local exchanges and then
+  maximizing the number of completely CUDA-resident nodes.
+- Test the epsilon boundary, safe slot reuse, asynchronous publication, global budget preservation, delayed exchanges
+  followed by redistribution, counter-based placement, and explicit transfer failures.
 
-- Add `KernelPilotMoeExpertState` owned by the root `SessionState` and shared with subgraph session states.
-- Register one counter for each expert of each `MoE` and `QMoE`, with graph-scoped node identity.
-- Build the immutable kernel-pointer/expert-ID dictionary after kernel creation and before any run.
-- Own one `KernelPilot` per registered kernel in the session state and expose it through the
-  kernel-context getter, forwarded through the internal C++ provider bridge. Keep CUDA transfers and events in a
-  provider adapter, and keep the pilot's `KernelPilotMoeExpertSelection` member as the only MoE-specific piloting data.
-- Keep counter updates and reads in `KernelPilotMoeExpertState`, keyed by kernel pointer. Commit collected usage after each
-  successful kernel invocation, without extending the public C API.
-- Load optional initial values from `session.moe_expert_counter_state_file`; initialize unspecified counters to zero.
-- Wire CPU and CUDA MoE/QMoE routing results into per-invocation updates:
-
-  ```text
-  c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
-  ```
-
-- Apply decay to every expert and add `beta` once per selected expert, even if several rows select it.
-- For CUDA, enqueue a pinned routing snapshot and completion event before expert computation, then process usage
-  on the CPU after launching the expert kernels. Wait only for the snapshot, not the entire compute stream.
-- Preserve counters across `Run()` calls, isolate sessions, and reject overlapping runs. Use ordinary counters with
-  no mutex in `RecordUsage()`, and read global snapshots only between runs.
-- Keep counting opt-in and preserve model outputs and execution placement. Do not enable ranking, placement
-  strategy, offload, swaps, or redistribution in this PR.
-- Test zero and file initialization, used/unused experts, repeated selection within one invocation, persistence across
-  runs, session isolation, subgraph identity, disjoint kernel updates, rejected overlapping runs, and CPU/CUDA agreement.
-
-### PR 3: adaptive placement and MoE/QMoE offload
-
-Depends on PRs 1 and 2.
-
-Connect the session-global expert state and CUDA cache manager to every participating CUDA `MoE` and `QMoE` node using
-the following strategy.
-
-**Configuration and initial placement**
-
-- Wire the four session options `session.moe_cpu_offload_experts`, `session.moe_expert_counter_alpha`,
-  `session.moe_expert_counter_beta`, and `session.moe_expert_swap_epsilon` to the cache manager.
-- Apply `session.moe_cpu_offload_experts` globally across all participating nodes, not separately to each node. Values
-  greater than `1` specify an integer expert count; values strictly between `0` and `1` specify a proportion. The value
-  `1` specifies one expert. Derive the global CUDA budget from the complementary expert count.
-- Use the session-global per-expert counters, initialized from the optional text file or to zero.
-- Rank experts by descending counter and select the highest-ranked experts up to the global CUDA budget. Count the
-  selected experts belonging to each node to determine that node's initial CUDA allocation. Resolve ties
-  deterministically. If all counters are zero, distribute CUDA slots uniformly across nodes instead.
-- Retain canonical weights for every expert on CPU and copy only the selected experts to CUDA.
-
-**Each MoE/QMoE invocation**
-
-- Complete any pending exchange or redistribution for the node before it executes, then capture its immutable
-  placement mapping.
-- Dispatch resident experts on CUDA and non-resident experts on CPU, sharing routing validation and CPU expert
-  computation with the regular kernels.
-- After execution, update every expert counter for that node, including unused experts:
-
-  ```text
-  c(t+1) = alpha * c(t) + beta * (1 if used otherwise 0)
-  ```
-
-- Find the highest counter among the node's CPU experts and the lowest counter among its CUDA experts. If
-  `cpu_max > (1 + epsilon) * cuda_min`, exchange those two experts. Nodes entirely on one device have no local exchange.
-- Enqueue the exchange asynchronously immediately after node execution completes, so the weight copy can overlap
-  subsequent model computation. Publish the new mapping only when the copy completes. The exchange must finish before
-  that node's next invocation; wait for its completion event if necessary.
-
-**After the complete model inference**
-
-- Reevaluate the number of experts kept on CUDA for each `MoE` and `QMoE` while preserving the global offload target.
-- Prioritize the largest possible number of nodes whose experts all reside on CUDA, then maximize retained counter
-  mass. Within each node, select experts by descending counter.
-- First wait for every pending per-node exchange and publish its completed mapping. Then compute redistribution from
-  that stable placement and schedule its transfers. Every affected node must finish its redistribution before its next
-  execution.
-
-**Integration tests**
-
-- Exercise global count/proportion settings, text-file initialization, all-zero uniform placement, and counter-based
-  allocation across multiple MoE/QMoE nodes.
-- Verify the exponential update for used and unused experts, the strict epsilon threshold, asynchronous exchange
-  timing, and required completion before the next invocation.
-- Verify global budget preservation and redistribution toward complete CUDA-resident nodes after inference.
-- Delay a per-node exchange until redistribution begins, then verify redistribution waits for that exchange and no
-  slot is ever published with conflicting owners.
-- Cover rejected overlapping runs, numerical agreement, bounded memory, and unchanged behavior when offloading is disabled.
-
-### PR 4: end-to-end evaluation
-
-Depends on PR 3.
-
-- Run reproducible CPU-only, CUDA-only, and hybrid evaluations with the same model, prompts, and generation settings.
-- Sweep offload targets and policy parameters, including zero-initialized and file-initialized counters.
-- Record the latency, throughput, memory, placement, and transfer metrics listed below.
-- Commit evaluation scripts, aggregate results, and documented commands; keep oversized raw traces outside the repository.
+After these two implementation steps, the remaining work is end-to-end measurement. Run reproducible CPU-only,
+CUDA-only, and hybrid evaluations with identical models, prompts, and generation settings; sweep offload targets and
+policy parameters; and record the latency, throughput, memory, placement, and transfer metrics listed below. Commit
+the evaluation scripts, aggregate results, and documented commands while keeping oversized raw traces outside the
+repository.
 
 ## Validation
 
 Tests cover:
 
 - count and proportion parsing, including exact rounding and invalid values;
+- random selection of exactly the configured global number of offloaded experts;
+- immutable placement across repeated inference in the first implementation step;
+- CPU-only, CUDA-only, and mixed expert execution with numerical agreement;
 - absent, complete, partial, malformed, and inconsistent initial state;
-- all-zero uniform placement and deterministic remainder assignment;
 - exponential updates for used and unused experts;
 - deterministic counter ties;
 - the strict `cpu_max > (1 + epsilon) * cuda_min` boundary;
