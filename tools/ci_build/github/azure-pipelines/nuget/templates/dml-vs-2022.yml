@@ -81,12 +81,6 @@ stages:
          @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
         displayName: 'Set Configuration variable'
 
-
-      - task: NuGetToolInstaller@0
-        displayName: Use Nuget 6.10.x
-        inputs:
-          versionSpec: 6.10.x
-
       # Nuget packaging if needed
       - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
         # Esrp signing. Requires older .net SDK currently (ESRP v5.1.1)
