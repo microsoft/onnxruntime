@@ -116,6 +116,21 @@ std::pair<bool, Node*> CheckForQDQPatternMatch(Graph& graph, Node& quantize_node
               "Actual: QuantizeLinear (", quantize_node.Name(), ") is followed by ", dequantize_node_ptr->OpType(), "(",
               dequantize_node_ptr->Name(), ").");
 
+  const auto& quantize_inputs = quantize_node.InputDefs();
+  const auto& dequantize_inputs = dequantize_node_ptr->InputDefs();
+  const auto* quantize_axis = graph_utils::GetNodeAttribute(quantize_node, "axis");
+  const auto* dequantize_axis = graph_utils::GetNodeAttribute(*dequantize_node_ptr, "axis");
+  if (quantize_inputs.size() != dequantize_inputs.size() ||
+      (quantize_axis ? quantize_axis->i() : 1) != (dequantize_axis ? dequantize_axis->i() : 1)) {
+    return {false, nullptr};
+  }
+
+  for (size_t i = 1; i < quantize_inputs.size(); ++i) {
+    if (quantize_inputs[i]->Name() != dequantize_inputs[i]->Name()) {
+      return {false, nullptr};
+    }
+  }
+
   return {true, dequantize_node_ptr};
 }
 

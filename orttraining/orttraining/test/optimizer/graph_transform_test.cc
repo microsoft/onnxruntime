@@ -1564,6 +1564,30 @@ TEST_F(GraphTransformationTests, QDQFusionPreservesSharedZeroPoint) {
                                         TransformerLevel::Level1, 1, check_before, check_after));
 }
 
+TEST_F(GraphTransformationTests, QDQFusionRequiresMatchingQuantizationParameters) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* quantize_scale = builder.MakeScalarInitializer<float>(0.1f);
+    auto* dequantize_scale = builder.MakeScalarInitializer<float>(0.2f);
+    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* quantized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    builder.AddNode("QuantizeLinear", {input, quantize_scale, zero_point}, {quantized});
+    builder.AddNode("DequantizeLinear", {quantized, dequantize_scale, zero_point}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
+}
+
 TEST_F(GraphTransformationTests, Conv1dReplacement_TakeEffect) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_map = CountOpsInGraph(graph);
