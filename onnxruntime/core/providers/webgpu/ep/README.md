@@ -86,8 +86,11 @@ copies, mixed feed copies, CPU outputs bound to GPU, concurrent independent Sess
 same-Session Runs, same-Session and dedicated-Session allocator concurrency, and shared Env allocation/transfers
 are covered by the tests in
 `onnxruntime/test/providers/webgpu/plugin`, built into `onnxruntime_provider_test`.
-Concurrent graph capture and concurrent profiling are unsupported. Cross-device transfer and
-arbitrary foreign stream overrides are not established by these tests. Performance must be measured separately.
+The tests also cover initial graph capture and replay across independent Sessions, and concurrent
+Run calls for different graph IDs within one Session, serialized by ORT. Initial-capture tests use
+preallocated bindings; they do not cover external Session allocator calls overlapping capture.
+Concurrent profiling, cross-device transfer, and arbitrary foreign stream overrides are not
+established by these tests. Performance must be measured separately.
 
 ### Missing parts
 

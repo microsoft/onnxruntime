@@ -610,6 +610,8 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   EnforceBufferUnmapped(context_, buffer);
   std::lock_guard<std::mutex> lock{mutex_};
   auto& cache = GetCacheManager(buffer);
+  // Keep reusable buffers out of the cache while this recording has unsubmitted work.
+  // Graph caches also need this protection from streamless allocations.
   // Relaxed ordering suffices: recording a buffer's use (and setting the flag) must happen-before
   // its release, on the same thread or through a synchronized ownership handoff. Only independent
   // buffer releases may race with recording. The flag publishes no command data, and mutex_ orders
@@ -671,7 +673,7 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) const {
+void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const {
   std::lock_guard<std::mutex> lock{mutex_};
   // Serialize the transition to idle with Free, so a concurrent release cannot miss this refresh.
   recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
@@ -682,14 +684,14 @@ void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) cons
     pending_buffers_.erase(it);
   }
 
-  if (recording.graph_capture_state == GraphCaptureState::Replaying) {
+  if (graph_capture_state == GraphCaptureState::Replaying) {
     return;
   }
 
-  storage_cache_->OnRefresh(recording.graph_capture_state);
-  uniform_cache_->OnRefresh(recording.graph_capture_state);
-  query_resolve_cache_->OnRefresh(recording.graph_capture_state);
-  default_cache_->OnRefresh(recording.graph_capture_state);
+  storage_cache_->OnRefresh(graph_capture_state);
+  uniform_cache_->OnRefresh(graph_capture_state);
+  query_resolve_cache_->OnRefresh(graph_capture_state);
+  default_cache_->OnRefresh(graph_capture_state);
 }
 
 void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) const {
