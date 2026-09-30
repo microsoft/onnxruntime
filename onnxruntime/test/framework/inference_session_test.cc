@@ -28,7 +28,13 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -131,6 +137,32 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
+class DisableCpuFallbackKernel : public OpKernel {
+ public:
+  explicit DisableCpuFallbackKernel(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* /*context*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Test kernel should not be executed");
+  }
+};
+
+constexpr const char* kDisableCpuFallbackExecutionProvider = "DisableCpuFallbackExecutionProvider";
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, Abs);
+ONNX_OPERATOR_KERNEL_EX(If,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+ONNX_OPERATOR_KERNEL_EX(Abs,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
   return kernel_registry.Register(
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
@@ -139,6 +171,26 @@ Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
 KernelRegistryAndStatus GetFusedKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = RegisterOperatorKernels(*ret.kernel_registry);
+  return ret;
+}
+
+Status RegisterDisableCpuFallbackTestKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(
+      kernel_registry.Register(BuildKernelCreateInfo<
+                               ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                               kOnnxDomain,
+                                                               13,
+                                                               If)>()));
+  return kernel_registry.Register(BuildKernelCreateInfo<
+                                  ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                                  kOnnxDomain,
+                                                                  13,
+                                                                  Abs)>());
+}
+
+KernelRegistryAndStatus GetDisableCpuFallbackTestKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterDisableCpuFallbackTestKernels(*ret.kernel_registry);
   return ret;
 }
 
@@ -194,6 +246,45 @@ class FuseExecutionProvider : public IExecutionProvider {
   }
 };
 
+class DisableCpuFallbackTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit DisableCpuFallbackTestExecutionProvider(bool claim_leaf_ops)
+      : IExecutionProvider{kDisableCpuFallbackExecutionProvider},
+        claim_leaf_ops_{claim_leaf_ops} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const IKernelLookup& /*kernel_lookup*/,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* /* resource_accountant */) const override {
+    std::vector<std::unique_ptr<ComputeCapability>> result;
+
+    for (const auto& node : graph.Nodes()) {
+      const bool should_claim = node.OpType() == "If" ||
+                                (claim_leaf_ops_ && node.OpType() == "Abs");
+      if (!should_claim) {
+        continue;
+      }
+
+      auto sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+
+    return result;
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    static KernelRegistryAndStatus k = GetDisableCpuFallbackTestKernelRegistry();
+    ORT_THROW_IF_ERROR(k.st);
+    return k.kernel_registry;
+  }
+
+ private:
+  bool claim_leaf_ops_;
+};
+
 namespace test {
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
@@ -235,6 +326,40 @@ void RunModel(InferenceSession& session_object,
   ASSERT_TRUE(st.IsOK());
   VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
 }
+
+Status RunModelWithValues(InferenceSession& session_object,
+                          const RunOptions& run_options,
+                          const std::vector<float>& values,
+                          const std::vector<int64_t>& dims = {3, 2}) {
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &input);
+  NameMLValMap feeds{{"X", input}};
+  const std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  return session_object.Run(run_options, feeds, output_names, &fetches);
+}
+
+class ProfileEventCapturingSink final : public logging::ISink {
+ public:
+  void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
+
+  void SendProfileEvent(profiling::EventRecord& event) const override {
+    event_ = event;
+    events_.push_back(event);
+  }
+
+  const std::optional<profiling::EventRecord>& Event() const noexcept {
+    return event_;
+  }
+
+  const std::vector<profiling::EventRecord>& Events() const noexcept {
+    return events_;
+  }
+
+ private:
+  mutable std::optional<profiling::EventRecord> event_;
+  mutable std::vector<profiling::EventRecord> events_;
+};
 
 TEST(InferenceSessionTests, NoTimeout) {
   SessionOptions so;
@@ -635,6 +760,8 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
 TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   // Intentionally do NOT call Initialize().
@@ -805,6 +932,55 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
 
+TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "invalid"));
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("failed_load_and_initialize_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  EXPECT_EQ(session.Load(MODEL_URI).Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "must be set to either");
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  const auto has_event = [&events](const char* name) {
+    return std::any_of(events.begin(), events.end(),
+                       [name](const auto& event) { return event.name == name; });
+  };
+  EXPECT_TRUE(has_event("model_loading_uri"));
+  EXPECT_TRUE(has_event("session_initialization"));
+  EXPECT_GE(std::count_if(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "model_loading_uri"; }),
+            2);
+}
+
+TEST(InferenceSessionTests, InitializeBeforeLoadRecordsProfilingEvent) {
+  SessionOptions so;
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("initialize_before_load_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Model was not loaded");
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  EXPECT_TRUE(std::any_of(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "session_initialization"; }));
+}
+
 TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
   // Build a model whose only node consumes an input that is never defined (not a graph
   // input, initializer, or another node's output), so graph Resolve must reject it gracefully.
@@ -883,6 +1059,202 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))
+
+TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesStringArguments) {
+  const std::string profile_file = "profiler_json_escaping_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.StartProfiling(profile_file);
+  InlinedHashMap<std::string, std::string> args;
+  args["key\"\n"] = "value\"\n";
+  args["quoted_string"] = "\"quoted\"";
+  args["raw_array"] = "[1,2]";
+  args["json_null"] = "null";
+  const TimePoint start_time = profiler.Start();
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event\"\n", start_time, std::move(args));
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 1U);
+  EXPECT_EQ(profile_json[0]["name"], "event\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["key\"\n"], "value\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["quoted_string"], "\"quoted\"");
+  EXPECT_EQ(profile_json[0]["args"]["raw_array"], nlohmann::json({1, 2}));
+  EXPECT_EQ(profile_json[0]["args"]["json_null"], "null");
+}
+
+TEST(InferenceSessionTests, ProfilerStringIsPreservedForCustomLogger) {
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("profile_event_test");
+
+  profiling::Profiler profiler;
+  profiler.Initialize(logger.get());
+  profiler.StartProfiling(logger.get());
+  InlinedHashMap<std::string, std::string> args;
+  args["request_id"] = "{request}";
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event", profiler.Start(), std::move(args));
+  profiler.EndProfiling();
+
+  ASSERT_TRUE(capturing_sink_ptr->Event().has_value());
+  EXPECT_EQ(capturing_sink_ptr->Event()->args.at("request_id"), "{request}");
+}
+
+TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
+  const std::string profile_file = "profiler_overflow_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.SetMaxNumEventsForTest(1);
+  profiler.StartProfiling(profile_file);
+  const TimePoint start_time = std::chrono::high_resolution_clock::now();
+  profiler.RecordEvent(profiling::SESSION_EVENT, "kept", start_time, start_time);
+  profiler.RecordEvent(profiling::SESSION_EVENT, "dropped", start_time, start_time);
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 2U);
+  EXPECT_EQ(profile_json[0]["name"], "kept");
+  EXPECT_EQ(profile_json[1]["name"], "profile_truncated");
+  EXPECT_EQ(profile_json[1]["args"]["dropped_event_count"], "1");
+  EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
+}
+
+TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_logging_concurrency");
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginRun("first", logger.get()));
+  const Status concurrent_status = state.BeginRun("second", logger.get());
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("second", logger.get()));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
+TEST(InferenceSessionTests, MoeCountingRejectsConcurrentRuns) {
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const Status concurrent_status = state.BeginRun("", nullptr);
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
+#ifdef ENABLE_TRAINING
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+
+  RunOptions run_options;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  PartialGraphExecutionState state;
+  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
+  const Status status = session.PartialRun(
+      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
+                                         "MoE expert counting and statistics are not supported by the deprecated "
+                                         "PartialRun path."));
+}
+#endif
+
+class CudaPluginTestExecutionProvider final : public IExecutionProvider {
+ public:
+  CudaPluginTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&,
+      const IKernelLookup&,
+      const GraphOptimizerRegistry&,
+      IResourceAccountant*) const override {
+    return {};
+  }
+
+  const OrtEp* GetOrtEp() const override {
+    return reinterpret_cast<const OrtEp*>(this);
+  }
+};
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "true"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
+}
+
+TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+}
 
 // See issue #27732 for details on why this is disabled.
 TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithSessionOptions) {
@@ -1697,6 +2069,123 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(false, true, false, version, sess_env),
                                         (version == 3 ? "Invalid input name" : "Missing Input:"));
   }
+}
+
+static void CreateNestedIfModel(const PathString& model_file_name) {
+  ONNX_NAMESPACE::TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::GraphProto leaf_graph;
+  {
+    onnxruntime::Model model("nested_if_leaf_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    graph.AddOuterScopeNodeArg("branch_data");
+    auto& branch_output = graph.GetOrCreateNodeArg("branch_output", &float_tensor);
+
+    graph.AddNode("branch_abs", "Abs", "Abs node in nested branch", {&branch_data}, {&branch_output});
+    graph.SetOutputs({&branch_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    leaf_graph = graph.ToGraphProto();
+  }
+
+  ONNX_NAMESPACE::GraphProto middle_graph;
+  {
+    onnxruntime::Model model("nested_if_middle_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    ORT_UNUSED_PARAMETER(inner_cond);
+    ORT_UNUSED_PARAMETER(branch_data);
+    graph.AddOuterScopeNodeArg("inner_cond");
+    graph.AddOuterScopeNodeArg("branch_data");
+
+    auto& middle_output = graph.GetOrCreateNodeArg("middle_output", &float_tensor);
+    auto& inner_if = graph.AddNode("middle_if", "If", "Inner If node", {&inner_cond}, {&middle_output});
+    inner_if.AddAttribute("then_branch", leaf_graph);
+    inner_if.AddAttribute("else_branch", leaf_graph);
+
+    graph.SetOutputs({&middle_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    middle_graph = graph.ToGraphProto();
+  }
+
+  onnxruntime::Model model("nested_if_main_graph", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto& outer_cond = graph.GetOrCreateNodeArg("outer_cond", &bool_tensor);
+  auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+  auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+  ORT_UNUSED_PARAMETER(inner_cond);
+  ORT_UNUSED_PARAMETER(branch_data);
+  auto& output = graph.GetOrCreateNodeArg("output", &float_tensor);
+
+  auto& outer_if = graph.AddNode("outer_if", "If", "Outer If node", {&outer_cond}, {&output});
+  outer_if.AddAttribute("then_branch", middle_graph);
+  outer_if.AddAttribute("else_branch", middle_graph);
+
+  graph.SetInputs({&outer_cond, &inner_cond, &branch_data});
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<DisableCpuFallbackTestExecutionProvider>(false)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(),
+                                      "fallback to CPU EP has been explicitly disabled");
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if_fully_assigned.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+
+  std::function<void(Graph&)> assign_to_test_ep = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kDisableCpuFallbackExecutionProvider);
+      for (const auto& [attribute_name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+        ORT_UNUSED_PARAMETER(attribute_name);
+        assign_to_test_ep(*subgraph);
+      }
+    }
+  };
+  auto& graph = session_object.GetMutableGraph();
+  assign_to_test_ep(graph);
+
+  EXPECT_FALSE(inference_session_utils::AreAnyNodesAssignedToCpuEp(graph));
 }
 
 static void CreateFuseOpModel(const PathString& model_file_name) {
@@ -4196,6 +4685,109 @@ TEST(InferenceSessionTests, CompileApiOutputHonorsOptimizationLevel) {
   // Default level (no optimizations): the Level2-only fusion must be absent.
   const std::map<std::string, int> default_counts = compile_to_buffer_counts(/*enable_all=*/false);
   EXPECT_EQ(default_counts.count("com.microsoft.BiasGelu") ? default_counts.at("com.microsoft.BiasGelu") : 0, 0);
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// SessionState::FinalizeSessionStateImpl unconditionally static_casts any node that carries
+// a subgraph to controlflow::IControlFlowKernel and calls the control-flow-only virtual
+// SetupSubgraphExecutionInfo on it. The "only control flow nodes have subgraphs" invariant it
+// relies on is enforced nowhere: Node::Init builds a subgraph for ANY attribute of GRAPH type,
+// with no schema gate. So a model whose ordinary node carries a GRAPH attribute reaches an
+// out-of-bounds vtable slot read (IControlFlowKernel appends a vtable slot that a plain kernel
+// does not have).
+//
+// SimplifiedLayerNormalization is a usable carrier: its schema (kOnnxDomain, since v1) sets
+// AllowUncheckedAttributes(), ONNX defines no competing op of that name, and it has a plain
+// (non-control-flow) CPU kernel. The CPU EP assigns it as a single node and keeps its GRAPH
+// attribute, so finalize hits the bad cast.
+TEST(InferenceSessionTests, SubgraphAttributeOnNonControlFlowNodeIsRejected) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Minimal, self-contained subgraph body: a single Constant producing one output and taking
+  // no inputs, so it needs no outer-scope wiring. Its contents are irrelevant to the defect.
+  ONNX_NAMESPACE::GraphProto forged_subgraph;
+  {
+    onnxruntime::Model sub_model("forged_subgraph", false, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+    Graph& sub_graph = sub_model.MainGraph();
+
+    ONNX_NAMESPACE::TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    auto& sub_out = sub_graph.GetOrCreateNodeArg("forged_sub_out", &float_tensor);
+    std::vector<onnxruntime::NodeArg*> const_inputs;
+    std::vector<onnxruntime::NodeArg*> const_outputs = {&sub_out};
+    auto& const_node = sub_graph.AddNode("forged_const", "Constant", "", const_inputs, const_outputs);
+
+    ONNX_NAMESPACE::TensorProto value;
+    value.set_name("forged_value");
+    value.add_dims(1);
+    value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    value.add_float_data(0.0f);
+    const_node.AddAttribute("value", value);
+
+    std::vector<const onnxruntime::NodeArg*> sub_graph_outputs = {&sub_out};
+    sub_graph.SetOutputs(sub_graph_outputs);
+    ASSERT_STATUS_OK(sub_graph.Resolve());
+    forged_subgraph = sub_graph.ToGraphProto();
+  }
+
+  // Main graph: SimplifiedLayerNormalization(X, scale) -> Y, plus a forged GRAPH attribute that
+  // no schema forbids because the op allows unchecked attributes.
+  onnxruntime::Model model("subgraph_type_confusion", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto vec_type;
+  vec_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  vec_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& scale = graph.GetOrCreateNodeArg("scale", &vec_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &x_type);
+
+  std::vector<onnxruntime::NodeArg*> inputs = {&x, &scale};
+  std::vector<onnxruntime::NodeArg*> outputs = {&y};
+  auto& node = graph.AddNode("sln", "SimplifiedLayerNormalization", "carrier", inputs, outputs);
+  node.AddAttribute("axis", int64_t{-1});
+  // The forged, non-control-flow subgraph. Node::Init materializes a Graph for it with no schema
+  // gate, and finalize then treats this ordinary node as a control flow kernel.
+  node.AddAttribute("forged_subgraph", forged_subgraph);
+
+  std::vector<const onnxruntime::NodeArg*> graph_inputs = {&x, &scale};
+  std::vector<const onnxruntime::NodeArg*> graph_outputs = {&y};
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+  // Resolving OK proves the model is otherwise well-formed, so a later Initialize failure can
+  // only come from the type-confusion guard, not from a malformed graph.
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.SubgraphAttributeOnNonControlFlowNodeIsRejected";
+  // Keep optimizers out so the carrier node reaches finalize unchanged, mirroring the WebNN
+  // dispatch session which also runs with ORT_DISABLE_ALL.
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+
+  // Mirrors the attacker's entry point (CreateSessionFromArray on attacker-controlled bytes).
+  ASSERT_STATUS_OK(session_object.Load(serialized.data(), static_cast<int>(serialized.size())));
+
+  const auto status = session_object.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("has a subgraph but is not a control flow node"),
+            std::string::npos)
+      << "actual error: " << status.ErrorMessage();
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -556,6 +556,48 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
+
+# An installed ONNX package ships pre-generated protobuf headers/sources that ONNX Runtime compiles into its own
+# objects, so both must resolve to a single protobuf runtime with a single message representation. If they do not,
+# the mismatch is not caught by the linker: it shows up as heap corruption while copying onnx::AttributeProto (see
+# https://github.com/microsoft/onnxruntime/issues/28664). Validate the two ways this can happen.
+if(onnx_FOUND OR ONNX_FOUND)
+  if(NOT Protobuf_FOUND)
+    message(FATAL_ERROR
+            "ONNX was resolved to an installed package but protobuf is being built from source by ONNX Runtime. "
+            "The installed ONNX links a different protobuf runtime than the one ONNX Runtime would use. "
+            "Install a protobuf CMake config package and make it discoverable via CMAKE_PREFIX_PATH, or force ONNX "
+            "to be built from source with -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER.")
+  endif()
+
+  if(TARGET ONNX::onnx_proto)
+    get_target_property(onnx_package_definitions ONNX::onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  else()
+    get_target_property(onnx_package_definitions onnx_proto INTERFACE_COMPILE_DEFINITIONS)
+  endif()
+  if(onnx_package_definitions)
+    if("ONNX_USE_LITE_PROTO=1" IN_LIST onnx_package_definitions)
+      set(onnx_package_protobuf_flavor "lite")
+    else()
+      set(onnx_package_protobuf_flavor "full")
+    endif()
+    if(onnxruntime_USE_FULL_PROTOBUF)
+      set(onnxruntime_protobuf_flavor "full")
+    else()
+      set(onnxruntime_protobuf_flavor "lite")
+    endif()
+    if(NOT onnx_package_protobuf_flavor STREQUAL onnxruntime_protobuf_flavor)
+      message(FATAL_ERROR
+              "The installed ONNX package links the ${onnx_package_protobuf_flavor} protobuf runtime but ONNX "
+              "Runtime is configured for the ${onnxruntime_protobuf_flavor} one "
+              "(onnxruntime_USE_FULL_PROTOBUF=${onnxruntime_USE_FULL_PROTOBUF}). Rebuild ONNX with a matching "
+              "ONNX_USE_LITE_PROTO, or reconfigure ONNX Runtime to use the ${onnx_package_protobuf_flavor} runtime.")
+    endif()
+  endif()
+  message(STATUS "Using ONNX from find_package(or vcpkg). ONNX version: ${ONNX_VERSION}, "
+                 "protobuf version: ${Protobuf_VERSION}")
+endif()
+
 if(onnxruntime_USE_VCPKG)
   find_package(Eigen3 CONFIG REQUIRED)
 else()
@@ -825,8 +867,7 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
           #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
           #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
-          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
-          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>.
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
@@ -1040,6 +1081,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
     set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
     set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_DISABLE_LOGGING ON CACHE BOOL "Compile internal 1DS logging out" FORCE)
     if(APPLE)
       set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
@@ -1058,22 +1100,13 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-        ${Patch_EXECUTABLE} --ignore-whitespace -p1 <
-        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    target_compile_definitions(mat PRIVATE MATSDK_DISABLE_LOGGING)
     if(ANDROID)
       target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
     endif()

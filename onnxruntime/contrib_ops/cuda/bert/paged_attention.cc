@@ -460,6 +460,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool kIsNativeSpecXqaCache =
       (std::is_same<T, MLFloat16>::value && std::is_same<TCACHE, MLFloat16>::value) ||
       (std::is_same<T, BFloat16>::value && std::is_same<TCACHE, BFloat16>::value);
+  constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
   const bool fp16_xqa_eligible =
       enable_native_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
@@ -495,8 +496,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                             (parameters.block_size % kXqaTokensPerPage) == 0 &&
                             is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
                             (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));
-  // Speculative verification steps (2..8 new tokens per sequence) run on the paged XQA kernel with
-  // a packed lower-triangular mask built by PagedXqaSpecDecCausalMaskKernel. The gate is the
+  // Speculative verification steps (2..8 new tokens per sequence) run on a compiled paged XQA
+  // specialization (H256, plus causal FP16-query/INT8-cache H128) with a packed mask built by
+  // PagedXqaSpecDecMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
   // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
   // attention sinks stay eligible: the kernel's rows are flattened (query token, query head) pairs,
@@ -504,12 +506,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
-      parameters.head_size == 256 && group_size == 6 &&
+      ((parameters.head_size == 256) ||
+       (parameters.head_size == 128 && parameters.is_causal &&
+        kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
+      group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
       (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
-
   // cuDNN paged SDPA (decode-only, unquantized cache). Preferred over FlashAttention when eligible;
   // XQA still wins its target case (fp16, group_size 6, head_size 256, native page size). The
   // eligibility is intentionally metadata-gated so the selection never triggers a new D->H readback
@@ -574,23 +578,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
-  // both hard-code a bottom-right causal mask.
+  // cuDNN paged SDPA is causal-only. FlashAttention, paged decode, and CUTLASS all consume the
+  // causality flag directly.
   bool use_paged_decode =
       !use_cudnn_paged &&
-      decode_eligible && parameters.is_causal &&
+      decode_eligible &&
       ((decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible)) ||
        xqa_spec_dec_candidate || portable_spec_dec_candidate);
   bool use_flash_attention = flash_eligible && !use_paged_decode && !use_cudnn_paged;
   const bool use_memory_efficient_attention =
-      mea_eligible && !use_paged_decode && !use_cudnn_paged && parameters.is_causal;
-
-  if (!parameters.is_causal && !use_flash_attention) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "PagedAttention: is_causal=0 requires the FlashAttention backend (sm>=80, fp16/bf16, "
-                           "head_size ",
-                           parameters.head_size, ", block_size ", parameters.block_size, ").");
-  }
+      mea_eligible && !use_paged_decode && !use_cudnn_paged;
 
   // Both gather-based backends need a dense KV staging buffer when the cache is quantized
   // (FlashAttention cannot read a quantized page, and the CUTLASS kernel is not paged at all).
@@ -688,7 +685,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     if (xqa_smem_ok < 0) {
       if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
         const size_t required_smem = use_xqa_spec_dec
-                                         ? GetXQAPagedSpecDecRequiredSharedMemoryBytes(xqa_kv_quant_type)
+                                         ? GetXQAPagedSpecDecRequiredSharedMemoryBytes(
+                                               parameters.head_size, xqa_kv_quant_type)
                                          : GetXQAPagedRequiredSharedMemoryBytes(
                                                device_prop, parameters.head_size, parameters.num_heads,
                                                parameters.kv_num_heads, xqa_kv_quant_type,
@@ -860,6 +858,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_workspace_bytes = use_xqa_spec_dec
                               ? GetXQAPagedSpecDecWorkspaceSize(
                                     device_prop, parameters.batch_size, parameters.kv_num_heads,
+                                    parameters.head_size,
                                     xqa_max_pages_per_seq, max_query_len, xqa_kv_quant_type)
                               : GetXQAScratchSize(
                                     device_prop, parameters.batch_size, parameters.num_heads,
