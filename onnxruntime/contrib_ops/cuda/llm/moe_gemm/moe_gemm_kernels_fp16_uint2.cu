@@ -20,7 +20,26 @@ void RunInt2GroupedGemm(const Int2GroupedGemmParams& params) {
                   params.expert_row_ends && params.output,
               "INT2 grouped GEMM requires non-null device buffers");
   GroupedGemmInput<half, cutlass::uint2b_t, half, half> inputs{
-      params.activations, params.expert_row_ends, reinterpret_cast<const cutlass::uint2b_t*>(params.packed_weights), params.block_scales, nullptr, nullptr, params.output, nullptr, nullptr, ActivationType::Identity, params.num_rows, params.num_columns, params.reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
+      params.activations,
+      params.expert_row_ends,
+      reinterpret_cast<const cutlass::uint2b_t*>(params.packed_weights),
+      params.block_scales,
+      nullptr,
+      nullptr,
+      params.output,
+      nullptr,
+      nullptr,
+      ActivationType::Identity,
+      params.num_rows,
+      params.num_columns,
+      params.reduction_size,
+      params.num_experts,
+      params.block_size,
+      true,
+      false,
+      params.stream,
+      {},
+      {}};
   if (params.tile_rows == 64) {
     genericMoeGemmKernelLauncher<half, cutlass::uint2b_t, half, cutlass::arch::Sm80,
                                  cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY,
