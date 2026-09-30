@@ -187,7 +187,7 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   // create a WGSL statement for setting data at the given offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   // \param value: the value ({varname}_value_t) to set.
-  // \param use_storage_type: for int64, if true expects vec2<u32> (storage type) instead of i32.
+  // \param use_storage_type: if true, store the value in its packed storage representation.
   template <typename TOffset, typename TValue>
   inline std::string SetByOffset(TOffset&& offset, TValue&& value, bool use_storage_type = false) const;
 
@@ -201,10 +201,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   inline std::string GetByIndices(std::string_view indices_var) const;
 
   // create a WGSL expression for getting data at the given offset.
-  // Normally returns a {varname}_value_t expression; for int64/uint64 with use_storage_type=true,
-  // returns the storage type (vec2<u32>) instead.
+  // Normally returns a {varname}_value_t expression; use_storage_type preserves packed storage bits.
   // \param offset: a WGSL expression (u32) representing the offset.
-  // \param use_storage_type: for int64/uint64, if true returns vec2<u32> (storage type).
+  // \param use_storage_type: if true, return the storage type without unpacking or conversion.
   template <typename TOffset>
   inline std::string GetByOffset(TOffset&& offset, bool use_storage_type = false) const;
 

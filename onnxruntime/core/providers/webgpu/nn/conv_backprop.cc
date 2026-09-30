@@ -13,8 +13,9 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& dy = shader.AddInput("dy", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const ShaderVariableHelper* bias = nullptr;
   if (has_bias_) {
-    shader.AddInput("bias");
+    bias = &shader.AddInput("bias");
   }
   auto row_dim = is_channels_last_ ? 1 : 2;
   auto col_dim = is_channels_last_ ? 2 : 3;
@@ -144,7 +145,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "  wR = wR + uniforms.strides.x - 1;\n"
                             << "}\n"
-                            << "let value = dotProd" << (has_bias_ ? " + bias[d1 / " + std::to_string(components_) + "]" : "") << ";\n"
+                            << "let value = dotProd" << (has_bias_ ? " + " + bias->GetByOffset("d1 / " + std::to_string(components_)) : "") << ";\n"
                             << output.SetByOffset("global_idx", "value") << "\n";
   return Status::OK();
 }

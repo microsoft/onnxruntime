@@ -171,7 +171,7 @@ Status ScatterElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "  " << output.SetByOffset("output_offset", "update_value") << ";\n";
   } else {
     // Reduction path: use atomic operations
-    shader.MainFunctionBody() << atomic_reduction_snippet(reduction_, "output", "output_offset", "update_value", data_type_str);
+    shader.MainFunctionBody() << atomic_reduction_snippet(reduction_, "storage_output", "output_offset", "update_value", data_type_str);
   }
 
   return Status::OK();

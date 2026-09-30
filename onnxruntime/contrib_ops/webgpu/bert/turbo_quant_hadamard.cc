@@ -14,6 +14,9 @@ namespace contrib {
 namespace webgpu {
 
 Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* indirect_buffer = nullptr;
+  const ShaderVariableHelper* seqlen_k = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
@@ -22,12 +25,12 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::None);
+    seqlen_k = &shader.AddInput("seqlen_k", ShaderUsage::None);
   }
   // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
   if (prepare_indirect_dispatch_) {
-    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
-    shader.AddOutput("indirect_buffer", ShaderUsage::None);
+    total_sequence_length_input = &shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+    indirect_buffer = &shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   // Past KV cache is already u32-packed — add as uniform only (no type aliases needed).
@@ -47,11 +50,14 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(indirect_buffer, indirect_buffer),
                              WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
                              WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlen_k, seqlen_k),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input),
                              WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
@@ -150,17 +156,20 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 }
 
 Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* indirect_buffer = nullptr;
+  const ShaderVariableHelper* seqlen_k = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput(
       "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::None);
+    seqlen_k = &shader.AddInput("seqlen_k", ShaderUsage::None);
   }
   // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
   if (prepare_indirect_dispatch_) {
-    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+    total_sequence_length_input = &shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
   const auto& query = shader.AddOutput("query", ShaderUsage::UseUniform);
@@ -169,7 +178,7 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
   if (prepare_indirect_dispatch_) {
-    shader.AddOutput("indirect_buffer", ShaderUsage::None);
+    indirect_buffer = &shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/turbo_quant_fused_rotary_hadamard.wgsl.template",
@@ -182,11 +191,14 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(indirect_buffer, indirect_buffer),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
                              WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlen_k, seqlen_k),
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input));
 }
 
 Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,

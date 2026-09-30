@@ -20,18 +20,21 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
 }
 
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias = nullptr;
+  const ShaderVariableHelper* weight_index_indirect = nullptr;
+  const ShaderVariableHelper* zero_points = nullptr;
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    zero_points = &shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   if (has_weight_idx_indirect_) {
-    shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
+    weight_index_indirect = &shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   return WGSL_TEMPLATE_APPLY(shader, "quantization/dp4a_matmul.wgsl.template",
@@ -46,25 +49,31 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(weight_index_indirect, weight_index_indirect),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 // scale_A components = 1, b components = 4, output components = 1
 Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias = nullptr;
+  const ShaderVariableHelper* weight_index_indirect = nullptr;
+  const ShaderVariableHelper* zero_points = nullptr;
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform);
   const auto& scales_a = shader.AddInput("scales_a", ShaderUsage::UseUniform);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform);
   const auto& scales_b = shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    zero_points = &shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
   if (has_weight_idx_indirect_) {
-    shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
+    weight_index_indirect = &shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
@@ -87,9 +96,12 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec_),
                              WGSL_TEMPLATE_VARIABLE(a, a),
                              WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(scales_a, scales_a),
-                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(weight_index_indirect, weight_index_indirect),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(zero_points, zero_points));
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,

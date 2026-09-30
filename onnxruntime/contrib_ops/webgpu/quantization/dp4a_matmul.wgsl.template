@@ -81,7 +81,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         }
 #if has_weight_idx
 #if has_weight_idx_indirect
-        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+        let actual_weight_idx = weight_index_indirect.getByOffset(uniforms.weight_idx);
 #else
         let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -114,7 +114,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 
 #if has_weight_idx
 #if has_weight_idx_indirect
-        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+        let actual_weight_idx = weight_index_indirect.getByOffset(uniforms.weight_idx);
 #else
         let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -149,7 +149,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         }
 #if has_weight_idx
 #if has_weight_idx_indirect
-        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+        let actual_weight_idx = weight_index_indirect.getByOffset(uniforms.weight_idx);
 #else
         let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -427,7 +427,7 @@ $MAIN {
 #if has_bias
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx_bias = weight_index_indirect[uniforms.weight_idx];
+    let actual_weight_idx_bias = weight_index_indirect.getByOffset(uniforms.weight_idx);
 #else
     let actual_weight_idx_bias = uniforms.weight_idx;
 #endif
@@ -444,28 +444,28 @@ $MAIN {
         // Bias is added in acc_element_t and only downcast to output_element_t at the store,
         // so an f32 accumulator (acc_f32) stays in range through the bias add too.
         let bias_vec1 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 0 + b_bias_offset]),
-            acc_element_t(bias[b_global + 1 + b_bias_offset]),
-            acc_element_t(bias[b_global + 2 + b_bias_offset]),
-            acc_element_t(bias[b_global + 3 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 0 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 1 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 2 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 3 + b_bias_offset))
         );
         let bias_vec2 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 4 + b_bias_offset]),
-            acc_element_t(bias[b_global + 5 + b_bias_offset]),
-            acc_element_t(bias[b_global + 6 + b_bias_offset]),
-            acc_element_t(bias[b_global + 7 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 4 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 5 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 6 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 7 + b_bias_offset))
         );
         let bias_vec3 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 8 + b_bias_offset]),
-            acc_element_t(bias[b_global + 9 + b_bias_offset]),
-            acc_element_t(bias[b_global + 10 + b_bias_offset]),
-            acc_element_t(bias[b_global + 11 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 8 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 9 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 10 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 11 + b_bias_offset))
         );
         let bias_vec4 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 12 + b_bias_offset]),
-            acc_element_t(bias[b_global + 13 + b_bias_offset]),
-            acc_element_t(bias[b_global + 14 + b_bias_offset]),
-            acc_element_t(bias[b_global + 15 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 12 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 13 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 14 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 15 + b_bias_offset))
         );
         output.setByOffset(output_idx, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1));
         output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<acc_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2));
@@ -483,28 +483,28 @@ $MAIN {
         // Bias is added in acc_element_t and only downcast to output_element_t at the store,
         // so an f32 accumulator (acc_f32) stays in range through the bias add too.
         let bias_vec1 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 0 + b_bias_offset]),
-            acc_element_t(bias[b_global + 1 + b_bias_offset]),
-            acc_element_t(bias[b_global + 2 + b_bias_offset]),
-            acc_element_t(bias[b_global + 3 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 0 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 1 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 2 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 3 + b_bias_offset))
         );
         let bias_vec2 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 4 + b_bias_offset]),
-            acc_element_t(bias[b_global + 5 + b_bias_offset]),
-            acc_element_t(bias[b_global + 6 + b_bias_offset]),
-            acc_element_t(bias[b_global + 7 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 4 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 5 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 6 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 7 + b_bias_offset))
         );
         let bias_vec3 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 8 + b_bias_offset]),
-            acc_element_t(bias[b_global + 9 + b_bias_offset]),
-            acc_element_t(bias[b_global + 10 + b_bias_offset]),
-            acc_element_t(bias[b_global + 11 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 8 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 9 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 10 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 11 + b_bias_offset))
         );
         let bias_vec4 = vec4<acc_element_t>(
-            acc_element_t(bias[b_global + 12 + b_bias_offset]),
-            acc_element_t(bias[b_global + 13 + b_bias_offset]),
-            acc_element_t(bias[b_global + 14 + b_bias_offset]),
-            acc_element_t(bias[b_global + 15 + b_bias_offset])
+            acc_element_t(bias.getByOffset(b_global + 12 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 13 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 14 + b_bias_offset)),
+            acc_element_t(bias.getByOffset(b_global + 15 + b_bias_offset))
         );
         output.setByOffset(output_idx, vec4<output_element_t>(lane_output1 + bias_vec1));
         output.setByOffset(output_idx+1, vec4<output_element_t>(lane_output2 + bias_vec2));

@@ -69,7 +69,7 @@ fn load_weight(n : u32, k_packed_idx : u32) -> weight_value_t {
 fn load_bias(n : u32) -> output_element_t {
 #if has_bias
   if (n < uniforms.im2col_n) {
-    return output_element_t(bias[n]);
+    return output_element_t(bias.getByOffset(n));
   }
 #endif
   return output_element_t();

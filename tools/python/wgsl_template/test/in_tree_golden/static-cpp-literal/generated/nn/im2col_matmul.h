@@ -19,6 +19,7 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
   auto& __param_vec_size = params.param_vec_size;
 
   // Extract variables
+  auto* __var_bias = params.var_bias;
   auto* __var_output = params.var_output;
   auto* __var_src = params.var_src;
   auto* __var_weight = params.var_weight;
@@ -151,8 +152,10 @@ ss << "fn load_bias(n : u32) -> output_element_t {\n";
 if (__param_has_bias) {
 //  71 |   if (n < uniforms.im2col_n) {
 ss << "  if (n < uniforms.im2col_n) {\n";
-//  72 |     return output_element_t(bias[n]);
-ss << "    return output_element_t(bias[n]);\n";
+//  72 |     return output_element_t(bias.getByOffset(n));
+ss << "    return output_element_t(";
+ss << __var_bias->GetByOffset("n");
+ss << ");\n";
 //  73 |   }
 ss << "  }\n";
 //  74 | #endif

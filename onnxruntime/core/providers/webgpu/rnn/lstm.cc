@@ -62,9 +62,10 @@ Lstm::Lstm(const OpKernelInfo& info) : WebGpuKernel(info) {
 // LstmStateCopyProgram
 // ===========================================================================
 Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* seq_lens_var = nullptr;
+  const auto& src_var = shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) seq_lens_var = &shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  const auto& dst_var = shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
   auto& body = shader.MainFunctionBody();
   body << "  let H = uniforms.hidden_size;\n"
        << "  let B = uniforms.batch_size;\n"
@@ -81,14 +82,14 @@ Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   if (to_state_) {
     if (has_seq_lens_) {
-      body << "  if (u32(seq_lens[batch_idx]) == 0u) {\n"
-           << "    dst[state_idx] = dst_element_t(0.0);\n"
+      body << "  if (u32(" << seq_lens_var->GetByOffset("batch_idx", true) << ") == 0u) {\n"
+           << "    " << dst_var.SetByOffset("state_idx", "dst_element_t(0.0)", true) << "\n"
            << "    return;\n"
            << "  }\n";
     }
-    body << "  dst[state_idx] = src[flat_idx];\n";
+    body << "  " << dst_var.SetByOffset("state_idx", src_var.GetByOffset("flat_idx", true), true) << "\n";
   } else {
-    body << "  dst[flat_idx] = src[state_idx];\n";
+    body << "  " << dst_var.SetByOffset("flat_idx", src_var.GetByOffset("state_idx", true), true) << "\n";
   }
   return Status::OK();
 }
@@ -97,18 +98,22 @@ Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // LstmCellProgram - one cell step, always flat [batch, H] for h_prev/c_prev
 // ===========================================================================
 Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("c_prev", ShaderUsage::UseElementTypeAlias);
-  if (has_bias_) shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
-  if (has_peephole_) shader.AddInput("p", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* b_var = nullptr;
+  const ShaderVariableHelper* p_var = nullptr;
+  const ShaderVariableHelper* seq_lens_var = nullptr;
+  const ShaderVariableHelper* y_out_var = nullptr;
+  const auto& x_var = shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
+  const auto& w_var = shader.AddInput("w", ShaderUsage::UseElementTypeAlias);
+  const auto& r_var = shader.AddInput("r", ShaderUsage::UseElementTypeAlias);
+  const auto& h_prev_var = shader.AddInput("h_prev", ShaderUsage::UseElementTypeAlias);
+  const auto& c_prev_var = shader.AddInput("c_prev", ShaderUsage::UseElementTypeAlias);
+  if (has_bias_) b_var = &shader.AddInput("b", ShaderUsage::UseElementTypeAlias);
+  if (has_peephole_) p_var = &shader.AddInput("p", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) seq_lens_var = &shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
 
-  shader.AddOutput("h_new", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("c_new", ShaderUsage::UseElementTypeAlias);
-  if (has_Y_) shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
+  const auto& h_new_var = shader.AddOutput("h_new", ShaderUsage::UseElementTypeAlias);
+  const auto& c_new_var = shader.AddOutput("c_new", ShaderUsage::UseElementTypeAlias);
+  if (has_Y_) y_out_var = &shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
       << "fn sigmoid_f(v: f32) -> f32 {\n"
@@ -136,16 +141,16 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Use timestep (not processing_step) so that reverse direction masks correctly:
   // for forward, timestep == processing_step; for reverse, timestep counts down.
   if (has_seq_lens_) {
-    body << "  let batch_seq_len = u32(seq_lens[batch_idx]);\n"
+    body << "  let batch_seq_len = u32(" << seq_lens_var->GetByOffset("batch_idx", true) << ");\n"
          << "  if (uniforms.timestep >= batch_seq_len) {\n"
          << "    let flat_idx = batch_idx * H + j;\n"
-         << "    h_new[flat_idx] = h_prev[flat_idx];\n"
-         << "    c_new[flat_idx] = c_prev[flat_idx];\n";
+         << "    " << h_new_var.SetByOffset("flat_idx", h_prev_var.GetByOffset("flat_idx", true), true) << "\n"
+         << "    " << c_new_var.SetByOffset("flat_idx", c_prev_var.GetByOffset("flat_idx", true), true) << "\n";
     if (has_Y_) {
       if (layout_ == 0) {
-        body << "    y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(0.0);\n";
+        body << "    " << y_out_var->SetByOffset("((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j", "y_out_element_t(0.0)", true) << "\n";
       } else {
-        body << "    y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(0.0);\n";
+        body << "    " << y_out_var->SetByOffset("((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j", "y_out_element_t(0.0)", true) << "\n";
       }
     }
     body << "    return;\n"
@@ -166,42 +171,42 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  let x_base = (batch_idx * uniforms.seq_length + uniforms.timestep) * I;\n";
   }
   body << "  for (var k: u32 = 0u; k < I; k++) {\n"
-       << "    let xv = f32(x[x_base + k]);\n"
-       << "    gate_i += xv * f32(w[w_base + j * I + k]);\n"
-       << "    gate_o += xv * f32(w[w_base + (H + j) * I + k]);\n"
-       << "    gate_f += xv * f32(w[w_base + (2u * H + j) * I + k]);\n"
-       << "    gate_c += xv * f32(w[w_base + (3u * H + j) * I + k]);\n"
+       << "    let xv = f32(" << x_var.GetByOffset("x_base + k", true) << ");\n"
+       << "    gate_i += xv * f32(" << w_var.GetByOffset("w_base + j * I + k", true) << ");\n"
+       << "    gate_o += xv * f32(" << w_var.GetByOffset("w_base + (H + j) * I + k", true) << ");\n"
+       << "    gate_f += xv * f32(" << w_var.GetByOffset("w_base + (2u * H + j) * I + k", true) << ");\n"
+       << "    gate_c += xv * f32(" << w_var.GetByOffset("w_base + (3u * H + j) * I + k", true) << ");\n"
        << "  }\n\n";
 
   // H_prev * R^T  (h_prev always [batch, H] - flat indexing)
   body << "  let r_base = dir * 4u * H * H;\n"
        << "  let h_base = batch_idx * H;\n"
        << "  for (var k: u32 = 0u; k < H; k++) {\n"
-       << "    let hv = f32(h_prev[h_base + k]);\n"
-       << "    gate_i += hv * f32(r[r_base + j * H + k]);\n"
-       << "    gate_o += hv * f32(r[r_base + (H + j) * H + k]);\n"
-       << "    gate_f += hv * f32(r[r_base + (2u * H + j) * H + k]);\n"
-       << "    gate_c += hv * f32(r[r_base + (3u * H + j) * H + k]);\n"
+       << "    let hv = f32(" << h_prev_var.GetByOffset("h_base + k", true) << ");\n"
+       << "    gate_i += hv * f32(" << r_var.GetByOffset("r_base + j * H + k", true) << ");\n"
+       << "    gate_o += hv * f32(" << r_var.GetByOffset("r_base + (H + j) * H + k", true) << ");\n"
+       << "    gate_f += hv * f32(" << r_var.GetByOffset("r_base + (2u * H + j) * H + k", true) << ");\n"
+       << "    gate_c += hv * f32(" << r_var.GetByOffset("r_base + (3u * H + j) * H + k", true) << ");\n"
        << "  }\n\n";
 
   // Bias
   if (has_bias_) {
     body << "  let bb = dir * 8u * H;\n"
-         << "  gate_i += f32(b[bb + j]) + f32(b[bb + 4u * H + j]);\n"
-         << "  gate_o += f32(b[bb + H + j]) + f32(b[bb + 5u * H + j]);\n"
-         << "  gate_f += f32(b[bb + 2u * H + j]) + f32(b[bb + 6u * H + j]);\n"
-         << "  gate_c += f32(b[bb + 3u * H + j]) + f32(b[bb + 7u * H + j]);\n\n";
+         << "  gate_i += f32(" << b_var->GetByOffset("bb + j", true) << ") + f32(" << b_var->GetByOffset("bb + 4u * H + j", true) << ");\n"
+         << "  gate_o += f32(" << b_var->GetByOffset("bb + H + j", true) << ") + f32(" << b_var->GetByOffset("bb + 5u * H + j", true) << ");\n"
+         << "  gate_f += f32(" << b_var->GetByOffset("bb + 2u * H + j", true) << ") + f32(" << b_var->GetByOffset("bb + 6u * H + j", true) << ");\n"
+         << "  gate_c += f32(" << b_var->GetByOffset("bb + 3u * H + j", true) << ") + f32(" << b_var->GetByOffset("bb + 7u * H + j", true) << ");\n\n";
   }
 
   // c_prev (flat [batch, H])
   body << "  let c_base = batch_idx * H;\n"
-       << "  let cpv = f32(c_prev[c_base + j]);\n\n";
+       << "  let cpv = f32(" << c_prev_var.GetByOffset("c_base + j", true) << ");\n\n";
 
   // Peephole for i, f gates
   if (has_peephole_) {
     body << "  let pb = dir * 3u * H;\n"
-         << "  gate_i += f32(p[pb + j]) * cpv;\n"
-         << "  gate_f += f32(p[pb + 2u * H + j]) * cpv;\n\n";
+         << "  gate_i += f32(" << p_var->GetByOffset("pb + j", true) << ") * cpv;\n"
+         << "  gate_f += f32(" << p_var->GetByOffset("pb + 2u * H + j", true) << ") * cpv;\n\n";
   }
 
   // Clip
@@ -226,7 +231,7 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Peephole for output gate (uses C_t, not C_{t-1})
   if (has_peephole_) {
-    body << "  gate_o += f32(p[pb + H + j]) * cu;\n";
+    body << "  gate_o += f32(" << p_var->GetByOffset("pb + H + j", true) << ") * cu;\n";
     if (has_clip_) {
       body << "  gate_o = clamp(gate_o, -uniforms.clip_value, uniforms.clip_value);\n";
     }
@@ -239,15 +244,15 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Write h_new, c_new to temp buffers [batch, H]
   body << "  let oi = batch_idx * H + j;\n"
-       << "  h_new[oi] = h_new_element_t(hu);\n"
-       << "  c_new[oi] = c_new_element_t(cu);\n\n";
+       << "  " << h_new_var.SetByOffset("oi", "h_new_element_t(hu)", true) << "\n"
+       << "  " << c_new_var.SetByOffset("oi", "c_new_element_t(cu)", true) << "\n\n";
 
   // Write Y output
   if (has_Y_) {
     if (layout_ == 0) {
-      body << "  y_out[((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j] = y_out_element_t(hu);\n";
+      body << "  " << y_out_var->SetByOffset("((uniforms.timestep * num_dir + dir) * B + batch_idx) * H + j", "y_out_element_t(hu)", true) << "\n";
     } else {
-      body << "  y_out[((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j] = y_out_element_t(hu);\n";
+      body << "  " << y_out_var->SetByOffset("((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j", "y_out_element_t(hu)", true) << "\n";
     }
   }
 
@@ -259,9 +264,10 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
 // Used when the cell program cannot include Y output due to storage buffer limits.
 // ===========================================================================
 Status LstmWriteYProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("h_new", ShaderUsage::UseElementTypeAlias);
-  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* seq_lens_var = nullptr;
+  const auto& h_new_var = shader.AddInput("h_new", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) seq_lens_var = &shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
+  const auto& y_out_var = shader.AddOutput("y_out", ShaderUsage::UseElementTypeAlias);
   auto& body = shader.MainFunctionBody();
   body << "  let H = uniforms.hidden_size;\n"
        << "  let B = uniforms.batch_size;\n"
@@ -277,13 +283,13 @@ Status LstmWriteYProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  let y_offset = ((batch_idx * uniforms.seq_length + uniforms.timestep) * num_dir + dir) * H + j;\n";
   }
   if (has_seq_lens_) {
-    body << "  if (uniforms.timestep >= u32(seq_lens[batch_idx])) {\n"
-         << "    y_out[y_offset] = y_out_element_t(0.0);\n"
+    body << "  if (uniforms.timestep >= u32(" << seq_lens_var->GetByOffset("batch_idx", true) << ")) {\n"
+         << "    " << y_out_var.SetByOffset("y_offset", "y_out_element_t(0.0)", true) << "\n"
          << "  } else {\n"
-         << "    y_out[y_offset] = y_out_element_t(h_new[flat_idx]);\n"
+         << "    " << y_out_var.SetByOffset("y_offset", MakeStringWithClassicLocale("y_out_element_t(", h_new_var.GetByOffset("flat_idx", true), ")"), true) << "\n"
          << "  }\n";
   } else {
-    body << "  y_out[y_offset] = y_out_element_t(h_new[flat_idx]);\n";
+    body << "  " << y_out_var.SetByOffset("y_offset", MakeStringWithClassicLocale("y_out_element_t(", h_new_var.GetByOffset("flat_idx", true), ")"), true) << "\n";
   }
   return Status::OK();
 }

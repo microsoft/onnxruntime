@@ -56,7 +56,7 @@ $MAIN {
   let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M;
 #if has_weight_idx
 #if has_weight_idx_indirect
-  let actual_weight_idx = weight_index_indirect[a_global];
+  let actual_weight_idx = weight_index_indirect.getByOffset(a_global);
 #else
   let actual_weight_idx = uniforms.weight_idx;
 #endif
@@ -261,7 +261,7 @@ $MAIN {
     let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_bias
-      output_value += acc_element_t(bias[b_global + b_bias_offset]);
+      output_value += acc_element_t(bias.getByOffset(b_global + b_bias_offset));
 #endif
       // Downcast to the output type only at the final write.
       output.setByOffset(output_idx, output_element_t(output_value));

@@ -163,6 +163,7 @@ _INDICES_HELPER_PATTERNS: list[tuple[str, CodePattern]] = [
             type="method",
             pattern=re.compile(r"\b([_a-zA-Z][_a-zA-Z0-9]*)\s*\.\s*(setByOffset)\s*\("),
             replace=[None, "SetByOffset"],
+            arg_types=["auto", "auto", "expression"],
         ),
     ),
     (
@@ -188,6 +189,7 @@ _INDICES_HELPER_PATTERNS: list[tuple[str, CodePattern]] = [
             type="method",
             pattern=re.compile(r"\b([_a-zA-Z][_a-zA-Z0-9]*)\s*\.\s*(getByOffset)\s*\("),
             replace=[None, "GetByOffset"],
+            arg_types=["auto", "expression"],
         ),
     ),
     (

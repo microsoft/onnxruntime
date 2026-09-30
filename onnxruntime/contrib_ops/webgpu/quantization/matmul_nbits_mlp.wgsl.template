@@ -259,10 +259,10 @@ $MAIN {
     let output_idx = batch * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_gate_bias
-      gate_output_value += acc_element_t(gate_bias[b_global]);
+      gate_output_value += acc_element_t(gate_bias.getByOffset(b_global));
 #endif
 #if has_up_bias
-      up_output_value += acc_element_t(up_bias[b_global]);
+      up_output_value += acc_element_t(up_bias.getByOffset(b_global));
 #endif
       let one = acc_element_t(1.0);
 #if activation_kind == 0

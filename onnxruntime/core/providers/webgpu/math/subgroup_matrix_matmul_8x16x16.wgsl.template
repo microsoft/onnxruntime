@@ -201,21 +201,21 @@ $MAIN {
         let b_base = b_batch_offset + kb * kSgMatK * uniforms.N_b + global_base_n;
         var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                &input_b, b_base + 0 * kSgMatN, uniforms.N_b);
+                &storage_input_b, b_base + 0 * kSgMatN, uniforms.N_b);
 #if sg_mat_count_n >= 2
         var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                &input_b, b_base + 1 * kSgMatN, uniforms.N_b);
+                &storage_input_b, b_base + 1 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 3
         var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                &input_b, b_base + 2 * kSgMatN, uniforms.N_b);
+                &storage_input_b, b_base + 2 * kSgMatN, uniforms.N_b);
 #endif
 #if sg_mat_count_n >= 4
         var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
             subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, row_major>(
-                &input_b, b_base + 3 * kSgMatN, uniforms.N_b);
+                &storage_input_b, b_base + 3 * kSgMatN, uniforms.N_b);
 #endif
 //
         // Load the A left tiles (one per M block), row-major with stride K.
@@ -224,41 +224,41 @@ $MAIN {
         let a_col = a_batch_offset + kb * kSgMatK;
         var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 0 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #if sg_mat_count_m >= 2
         var sg_mat_a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 1 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 3
         var sg_mat_a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 2 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 4
         var sg_mat_a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 3 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 5
         var sg_mat_a4: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 4 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 6
         var sg_mat_a5: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 5 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 7
         var sg_mat_a6: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 6 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 #if sg_mat_count_m >= 8
         var sg_mat_a7: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                &input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
+                &storage_input_a, (m_base + 7 * kSgMatM) * uniforms.K + a_col, uniforms.K);
 #endif
 //
         // Accumulate every (M block, N block) pair.

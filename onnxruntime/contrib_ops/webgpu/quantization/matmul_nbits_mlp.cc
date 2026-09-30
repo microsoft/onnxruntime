@@ -76,6 +76,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
         acc_f32_(acc_f32) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const ShaderVariableHelper* gate_bias = nullptr;
+    const ShaderVariableHelper* up_bias = nullptr;
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto* skip = has_skip_input_ ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
     const auto* norm_scale = has_norm_input_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
@@ -84,10 +86,10 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     const auto& up_b = shader.AddInput("up_b");
     const auto& up_scales_b = shader.AddInput("up_scales_b");
     if (has_gate_bias_) {
-      shader.AddInput("gate_bias", ShaderUsage::UseUniform);
+      gate_bias = &shader.AddInput("gate_bias", ShaderUsage::UseUniform);
     }
     if (has_up_bias_) {
-      shader.AddInput("up_bias", ShaderUsage::UseUniform);
+      up_bias = &shader.AddInput("up_bias", ShaderUsage::UseUniform);
     }
     const auto& output = shader.AddOutput("output",
                                           ShaderUsage::UseElementTypeAlias);
@@ -127,12 +129,14 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(gate_bias, gate_bias),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
                                WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
                                WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(output, output),
                                WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(up_bias, up_bias),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
 

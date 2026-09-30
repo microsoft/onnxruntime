@@ -70,7 +70,7 @@ $MAIN {
         // found the top K experts for token, write to output
         let expert_idx = shared_idxs[local_idx];
         let expert_base = expert_idx * uniforms.rows;
-        let target_idx = atomicAdd(&tokencount_for_expert[expert_idx], 1u);
+        let target_idx = atomicAdd(&storage_tokencount_for_expert[expert_idx], 1u);
         hiddenstate_for_expert.setByOffset(expert_base + target_idx, row + uniforms.token_offset);
     }
     if (local_idx == 0u) {

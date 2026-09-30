@@ -75,7 +75,7 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
   // Q row index = cumulative_seqlens_q[batch_idx] + q_idx_global.
   // Cast the i32 storage buffer element to u32 before arithmetic; WGSL
   // forbids mixed-signedness in a single expression.
-  let q_row = u32(cumulative_seqlens_q[batch_idx]) + q_idx_global;
+  let q_row = u32(cumulative_seqlens_q.getByOffset(batch_idx)) + q_idx_global;
   let offset = q_row * head_size_vec * num_heads + head_idx * head_size_vec;
 #else
   // BSNH: [batch_size, sequence_length, num_heads, head_size]
@@ -126,7 +126,7 @@ fn loadv(v_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_
 fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
 #if q_varlen
   // Varlen output: raw packed layout [token_count, num_heads, head_size].
-  let q_row = u32(cumulative_seqlens_q[batch_idx]) + o_idx_global;
+  let q_row = u32(cumulative_seqlens_q.getByOffset(batch_idx)) + o_idx_global;
   let offset = q_row * num_heads * head_size_vec + head_idx * head_size_vec;
 #else
   // Output layout matches dense FA: BSNH [batch_size, sequence_length, num_heads, head_size]
@@ -153,7 +153,7 @@ $MAIN {
   // Varlen mode: q_idx_global is dispatch-clamped to max_seqlen_q, but the
   // real per-batch Q length may be shorter. Gate on seqlens_q[batch_idx] to
   // avoid stomping into the next batch's Q / output row.
-  let valid_q = q_idx_global < u32(seqlens_q[batch_idx]);
+  let valid_q = q_idx_global < u32(seqlens_q.getByOffset(batch_idx));
 #else
   let valid_q = q_idx_global < uniforms.new_sequence_length;
 #endif
@@ -164,12 +164,12 @@ $MAIN {
   var previous_max : q_element_t = min_value;
   var previous_denom : q_element_t = 0;
   // Per-batch total KV length (past + new).
-  let total_sequence_length = u32(seqlens_k[batch_idx]) + 1u;
+  let total_sequence_length = u32(seqlens_k.getByOffset(batch_idx)) + 1u;
 
 #if is_unidirectional
   // Causal masking loop bound.
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
-  let q_len_b = u32(seqlens_q[batch_idx]);
+  let q_len_b = u32(seqlens_q.getByOffset(batch_idx));
   let past_sequence_length = total_sequence_length - q_len_b;
   let max_causal_len_for_workgroup = past_sequence_length +
                                      (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;

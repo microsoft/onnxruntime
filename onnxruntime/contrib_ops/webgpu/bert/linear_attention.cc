@@ -41,6 +41,9 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str) {
 //
 
 Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* beta = nullptr;
+  const ShaderVariableHelper* decay = nullptr;
+  const ShaderVariableHelper* initial_state = nullptr;
   const bool use_vec4 = (components_ == 4);
 
   // Map update rule to integer for template conditionals
@@ -63,22 +66,22 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Add inputs
-  shader.AddInput("query", ShaderUsage::UseUniform);
-  shader.AddInput("key", ShaderUsage::UseUniform);
-  shader.AddInput("value", ShaderUsage::UseUniform);
+  const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+  const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
+  const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
   if (has_initial_state_ && !initial_state_in_present_state_) {
-    shader.AddInput("initial_state", ShaderUsage::UseUniform);
+    initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
   if (has_decay_) {
-    shader.AddInput("decay", ShaderUsage::UseUniform);
+    decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
   }
   if (has_beta_) {
-    shader.AddInput("beta", ShaderUsage::UseUniform);
+    beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   }
 
   // Add outputs - UseValueTypeAlias for vec4 writes, UseElementTypeAlias for scalar writes
-  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("present_state", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_state = shader.AddOutput("present_state", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
@@ -87,7 +90,15 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
-                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
+                             WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(beta, beta),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(decay, decay),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(initial_state, initial_state),
+                             WGSL_TEMPLATE_VARIABLE(key, key),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_state, present_state),
+                             WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
 // =============================================================================

@@ -129,6 +129,13 @@ class GeneratorPropertyTest(unittest.TestCase):
 
 
 class GeneratorFunctionTest(unittest.TestCase):
+    def test_storage_access_flags_are_cpp_booleans(self) -> None:
+        out = _gen(
+            "#use .getByOffset .setByOffset\nlet x = input.getByOffset(i, true);\noutput.setByOffset(i, x, false);\n"
+        )
+        self.assertIn('GetByOffset("i", true)', out)
+        self.assertIn('SetByOffset("i", "x", false)', out)
+
     def test_get_element_at(self) -> None:
         out = _gen("#use getElementAt\nlet x = getElementAt(a, b, c);\n")
         self.assertIn("GetElementAt", out)

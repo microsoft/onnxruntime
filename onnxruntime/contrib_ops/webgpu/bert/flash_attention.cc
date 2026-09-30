@@ -20,40 +20,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-// WGSL helper function for normalizing on-device indirect dispatch dims.
-// Shared by CopyKVCacheProgram and SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram.
-// Mirrors ProgramManager::NormalizeDispatchGroupSize three tiers:
-//   1) direct (x, y, z) write when every dim is within the spec limit (65535);
-//   2) 2D sqrt collapse when the product fits a square layout;
-//   3) 3D cbrt collapse otherwise.
-// Consumers are unaffected by the chosen layout: ShaderHelper flattens
-// workgroup_id (x, y, z) into a single linear workgroup_idx.
-// Caller contract: must register a storage output named exactly
-// `indirect_buffer` of array<u32> with at least 3 elements.
-constexpr const char kPopulateIndirectDispatchBufferFn[] = R"(
-fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
-  let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
-  if (x <= limit && y <= limit && z <= limit) {
-    indirect_buffer[0] = x;
-    indirect_buffer[1] = y;
-    indirect_buffer[2] = z;
-    return;
-  }
-  let size = f32(x) * f32(y) * f32(z);
-  let dispatch_avg_2d = u32(ceil(sqrt(size)));
-  if (dispatch_avg_2d <= limit) {
-    indirect_buffer[0] = dispatch_avg_2d;
-    indirect_buffer[1] = dispatch_avg_2d;
-    indirect_buffer[2] = 1u;
-    return;
-  }
-  let dispatch_avg_3d = u32(ceil(pow(size, 1.0 / 3.0)));
-  indirect_buffer[0] = dispatch_avg_3d;
-  indirect_buffer[1] = dispatch_avg_3d;
-  indirect_buffer[2] = dispatch_avg_3d;
-}
-)";
-
 constexpr int SelectDensePrefillMaxKStep(bool use_shm_path, bool is_fp16, int head_size) {
   if (!use_shm_path) {
     return 16;
@@ -192,12 +158,14 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
 }
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const ShaderVariableHelper* indirect_buffer = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
   if (prepare_indirect_dispatch_) {
-    sh.AddInput("total_sequence_length_input", ShaderUsage::None);
+    total_sequence_length_input = &sh.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
   const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
@@ -205,7 +173,7 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
   const auto& present_value = sh.AddOutput("present_value", ShaderUsage::UseUniform);
 
   if (prepare_indirect_dispatch_) {
-    sh.AddOutput("indirect_buffer", ShaderUsage::None);
+    indirect_buffer = &sh.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
@@ -214,15 +182,20 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(indirect_buffer, indirect_buffer),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
                              WGSL_TEMPLATE_VARIABLE(query, query),
                              WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
-                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
+                             WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input));
 }
 
 Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* indirect_buffer = nullptr;
+  const ShaderVariableHelper* seqlen_k_var = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input_var = nullptr;
   // Expectations are
   //    qkv have same number of heads and hidden dimension (head size).
   //    qkv are in BSNH format.
@@ -233,20 +206,20 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  KV cache is stored as BN(total_sequence_length)H
   //  Attention bias is in BN(total_sequence_length)
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
-  shader.AddInput("value", ShaderUsage::UseUniform);
+  const auto& value_var = shader.AddInput("value", ShaderUsage::UseUniform);
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
   const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
   if (use_seqlen_k_) {
-    shader.AddInput("seqlen_k", ShaderUsage::None);
+    seqlen_k_var = &shader.AddInput("seqlen_k", ShaderUsage::None);
   }
   // If prepare_indirect_dispatch is enabled, add total_sequence_length_input
   // and indirect_buffer output. total_sequence_length_input is the global max
   // total sequence length across the batch (from GQA input #6); using it for
   // dispatch sizing covers right-padded batches where batch 0 is not the max.
   if (prepare_indirect_dispatch_) {
-    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
-    shader.AddOutput("indirect_buffer", ShaderUsage::None);
+    total_sequence_length_input_var = &shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+    indirect_buffer = &shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.copy_size")
@@ -256,7 +229,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let num_head_id = output_indices[1];\n"
                                "  let batch = output_indices[0];\n";
   if (use_seqlen_k_) {
-    shader.MainFunctionBody() << "  let raw_total_seq_length = u32(max(seqlen_k[batch], 0)) + 1u;\n"
+    shader.MainFunctionBody() << "  let raw_total_seq_length = u32(max(" << seqlen_k_var->GetByOffset("batch", true) << ", 0)) + 1u;\n"
                               << "  let total_seq_length = min(raw_total_seq_length, uniforms.present_sequence_length);\n";
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
@@ -266,9 +239,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
-    shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
+    ORT_RETURN_IF_ERROR(WGSL_TEMPLATE_APPLY(shader, "bert/indirect_dispatch_common.wgsl.template",
+                                            WGSL_TEMPLATE_OPTIONAL_VARIABLE(indirect_buffer, indirect_buffer)));
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
-                              << "    let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+                              << "    let raw_global_total_seq_length = " << total_sequence_length_input_var->GetByOffset("0", true) << ";\n"
                               << "    let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
                               << "    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
                               << "    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
@@ -286,30 +260,31 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_past_) {
     const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
-    shader.AddInput("past_value", ShaderUsage::UseUniform);
+    const auto& past_value_var = shader.AddInput("past_value", ShaderUsage::UseUniform);
     shader.MainFunctionBody() << "if (sequence_id < past_sequence_length) {\n"
                               << "  let pastOffset = " << past_key.IndicesToOffset("past_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n"
-                              << "  " << present_key.SetByOffset("present_offset", "past_key[pastOffset]") << ";\n"
-                              << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", past_key.GetByOffset("pastOffset", true)) << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", past_value_var.GetByOffset("pastOffset", true)) << ";\n"
                               << "} else {\n"
                               << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", key.GetByOffset("offset", true)) << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", value_var.GetByOffset("offset", true)) << ";\n"
                               << "}";
   } else {
     shader.MainFunctionBody() << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
+                              << "  " << present_key.SetByOffset("present_offset", key.GetByOffset("offset", true)) << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", value_var.GetByOffset("offset", true)) << ";\n";
   }
   return Status::OK();
 }
 
 Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("total_sequence_length_input", ShaderUsage::None);
-  shader.AddOutput("indirect_buffer", ShaderUsage::None);
-  shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
+  const auto& total_sequence_length_input_var = shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+  const auto& indirect_buffer = shader.AddOutput("indirect_buffer", ShaderUsage::None);
+  ORT_RETURN_IF_ERROR(WGSL_TEMPLATE_APPLY(shader, "bert/indirect_dispatch_common.wgsl.template",
+                                          WGSL_TEMPLATE_VARIABLE(indirect_buffer, indirect_buffer)));
   shader.MainFunctionBody()
-      << "  let raw_global_total_seq_length = total_sequence_length_input[0];\n"
+      << "  let raw_global_total_seq_length = " << total_sequence_length_input_var.GetByOffset("0", true) << ";\n"
       << "  let global_total_seq_length = min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);\n"
       << "  let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
       << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
@@ -388,6 +363,10 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
 }
 
 Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* attention_bias = nullptr;
+  const ShaderVariableHelper* head_sink = nullptr;
+  const ShaderVariableHelper* seqlens_k = nullptr;
+  const ShaderVariableHelper* seqlens_q = nullptr;
   // Expectations are
   //    qkv have same number of heads and hidden dimension (head size).
   //    qkv are in BSNH format.
@@ -401,22 +380,22 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Expectation is that present_key, and present_value contain past key and values since
   //  we are out of storage buffers a shader can have and both past/present cant be passed.
   // The hidden size of each q head should be a multiple of 4 because shader uses vectorized loads.
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("present_key", ShaderUsage::UseUniform);
-  shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
+  const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform);
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (use_seqlens_q_) {
-    shader.AddInput("seqlens_q", ShaderUsage::None);
+    seqlens_q = &shader.AddInput("seqlens_q", ShaderUsage::None);
   }
   if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(bit_width, kv_cache_quantization_bits_),
@@ -434,10 +413,19 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
-                             WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_));
+                             WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(head_sink, head_sink),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_q, seqlens_q));
 }
 
 Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* cumulative_seqlens_q = nullptr;
   // q / key_cache / value_cache / output are addressed via getByOffset /
   // setByOffset so tensors larger than maxStorageBufferBindingSize (128 MiB
   // on most adapters) transparently work when the framework splits them
@@ -446,13 +434,13 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
   const auto& key_cache = shader.AddInput("key_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& value_cache = shader.AddInput("value_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& block_table = shader.AddInput("block_table", ShaderUsage::UseUniform);
-  shader.AddInput("seqlens_k", ShaderUsage::None);
-  shader.AddInput("seqlens_q", ShaderUsage::None);
+  const auto& seqlens_k = shader.AddInput("seqlens_k", ShaderUsage::None);
+  const auto& seqlens_q = shader.AddInput("seqlens_q", ShaderUsage::None);
   if (q_varlen_) {
     // Optional per-batch running Q-token offsets (size batch_size + 1). Used
     // by the shader to compute q_row = cumulative_seqlens_q[batch] + q_idx
     // when Q arrives already-packed (no BSNH padding).
-    shader.AddInput("cumulative_seqlens_q", ShaderUsage::None);
+    cumulative_seqlens_q = &shader.AddInput("cumulative_seqlens_q", ShaderUsage::None);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
@@ -464,9 +452,12 @@ Status FlashAttentionPagedPrefillProgram::GenerateShaderCode(ShaderHelper& shade
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                              WGSL_TEMPLATE_VARIABLE(block_table, block_table),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(cumulative_seqlens_q, cumulative_seqlens_q),
                              WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_VARIABLE(seqlens_k, seqlens_k),
+                             WGSL_TEMPLATE_VARIABLE(seqlens_q, seqlens_q),
                              WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
 
@@ -539,23 +530,27 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
 }
 
 Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* attention_bias = nullptr;
+  const ShaderVariableHelper* seqlens_k = nullptr;
+  const ShaderVariableHelper* seqlens_q = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (use_seqlens_q_) {
-    shader.AddInput("seqlens_q", ShaderUsage::None);
+    seqlens_q = &shader.AddInput("seqlens_q", ShaderUsage::None);
   }
   if (use_indirect_dispatch_) {
     // Global max total sequence length across batches (from GQA input #6).
     // Used in indirect-dispatch mode for the workgroup_idx slicing so that
     // batch 0's per-batch length cannot undersize the dispatch grid.
-    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+    total_sequence_length_input = &shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
   const auto& out_split_vx = shader.AddOutput("out_split_vx", ShaderUsage::UseUniform);
   const auto& metadata = shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -581,29 +576,37 @@ Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) 
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
                              WGSL_TEMPLATE_PARAMETER(v_head_size_vec, head_size_vec_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
                              WGSL_TEMPLATE_VARIABLE(metadata, metadata),
                              WGSL_TEMPLATE_VARIABLE(out_split_vx, out_split_vx),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-                             WGSL_TEMPLATE_VARIABLE(q, q));
+                             WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_q, seqlens_q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input));
 }
 
 Status FlashAttentionPagedDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* attention_bias = nullptr;
+  const ShaderVariableHelper* seqlens_k = nullptr;
+  const ShaderVariableHelper* seqlens_q = nullptr;
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& block_table = shader.AddInput("block_table", ShaderUsage::UseUniform);
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (use_seqlens_q_) {
-    shader.AddInput("seqlens_q", ShaderUsage::None);
+    seqlens_q = &shader.AddInput("seqlens_q", ShaderUsage::None);
   }
   if (use_indirect_dispatch_) {
-    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+    total_sequence_length_input = &shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
   const auto& out_split_vx = shader.AddOutput("out_split_vx", ShaderUsage::UseUniform);
   const auto& metadata = shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -625,12 +628,16 @@ Status FlashAttentionPagedDecodeQKVProgram::GenerateShaderCode(ShaderHelper& sha
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
                              WGSL_TEMPLATE_PARAMETER(v_head_size_vec, head_size_vec_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
                              WGSL_TEMPLATE_VARIABLE(block_table, block_table),
                              WGSL_TEMPLATE_VARIABLE(metadata, metadata),
                              WGSL_TEMPLATE_VARIABLE(out_split_vx, out_split_vx),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
-                             WGSL_TEMPLATE_VARIABLE(q, q));
+                             WGSL_TEMPLATE_VARIABLE(q, q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_q, seqlens_q),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input));
 }
 
 Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
@@ -802,13 +809,15 @@ Status ComputeFlashAttentionPagedDecodeQKV(onnxruntime::webgpu::ComputeContext& 
 }
 
 Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* head_sink = nullptr;
+  const ShaderVariableHelper* seqlens_k = nullptr;
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const auto& metadata = shader.AddInput("metadata", ShaderUsage::UseUniform);
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -818,19 +827,23 @@ Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& sha
                              WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(head_sink, head_sink),
                              WGSL_TEMPLATE_VARIABLE(input, input),
                              WGSL_TEMPLATE_VARIABLE(metadata, metadata),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k));
 }
 
 Status FlashAttentionPagedDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* head_sink = nullptr;
+  const ShaderVariableHelper* seqlens_k = nullptr;
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const auto& metadata = shader.AddInput("metadata", ShaderUsage::UseUniform);
   if (use_seqlen_k_) {
-    shader.AddInput("seqlens_k", ShaderUsage::None);
+    seqlens_k = &shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -840,9 +853,11 @@ Status FlashAttentionPagedDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper
                              WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(head_sink, head_sink),
                              WGSL_TEMPLATE_VARIABLE(input, input),
                              WGSL_TEMPLATE_VARIABLE(metadata, metadata),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(seqlens_k, seqlens_k));
 }
 
 Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& context,

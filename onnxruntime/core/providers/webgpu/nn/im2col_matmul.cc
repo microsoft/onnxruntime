@@ -103,10 +103,11 @@ static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.t
 static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const ShaderVariableHelper* bias = nullptr;
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& weight = shader.AddInput("weight", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    bias = &shader.AddInput("bias", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
@@ -117,12 +118,12 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_.activation_kind_)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
                              WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, activation_.HasUnitQuickGeluAlpha()),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
                              WGSL_TEMPLATE_PARAMETER(vec_size, vec_size_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(bias, bias),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(src, src),
                              WGSL_TEMPLATE_VARIABLE(weight, weight));

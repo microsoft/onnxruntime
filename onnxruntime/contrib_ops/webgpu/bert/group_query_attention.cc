@@ -24,12 +24,13 @@ namespace contrib {
 namespace webgpu {
 
 Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const ShaderVariableHelper* total_sequence_length_input = nullptr;
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
   if (use_total_sequence_length_input_) {
-    sh.AddInput("total_sequence_length_input", ShaderUsage::None);
+    total_sequence_length_input = &sh.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
   const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
@@ -47,6 +48,7 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
                              WGSL_TEMPLATE_VARIABLE(query, query),
                              WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
                              WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(total_sequence_length_input, total_sequence_length_input),
                              WGSL_TEMPLATE_VARIABLE(val, val));
 }
 

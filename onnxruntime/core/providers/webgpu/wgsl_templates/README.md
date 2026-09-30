@@ -74,6 +74,47 @@ This section describes how to use the template system during development.
 
 ## Python tool reference
 
+### Storage buffer access
+
+Use `ShaderVariableHelper` for scalar/vector storage reads and writes, including
+reads from writable outputs. The helpers select the backing storage, add a
+buffer view's offset, and route accesses across storage segments. This applies
+to both C++ shader generators and WGSL templates. Local variables and workgroup
+arrays may be indexed directly.
+
+`AddInput` and `AddOutput` register logical names; physical storage bindings use
+internal `storage_<logical_name>` names. Raw expressions such as `input[i]`,
+`output[i] = value`, or `&input` therefore fail WGSL compilation. Use the helpers
+instead of constructing or referring to internal names. Uniforms may still be
+accessed directly.
+
+Existing atomic and subgroup-matrix paths temporarily use the internal names
+directly, retaining their existing pointer calculations and view limitations.
+The source-policy test records the exact files, names, and occurrence counts for
+these exceptions. New direct references or operator storage declarations fail
+that check. Pointer-aware helpers replace these exceptions in a separate change.
+
+Buffer-access tests verify that raw logical reads, writes, and pointers fail
+shader compilation while helper access and local/workgroup indexing still work.
+
+```wgsl
+#use .getByOffset .setByOffset
+
+let value = input.getByOffset(index);
+output.setByOffset(index, value);
+```
+
+Pass `true` as the final argument when the operation must preserve the packed
+storage representation, such as both words of an int64 value. Otherwise the
+helpers perform their normal logical-value conversion.
+
+Retain the helpers returned by `AddInput` and `AddOutput` and pass them to the
+template explicitly. Use `WGSL_TEMPLATE_VARIABLE` for required bindings and
+`WGSL_TEMPLATE_OPTIONAL_VARIABLE` for nullable pointers to conditional bindings.
+A corresponding template condition must guard every use of an optional variable.
+
+### Generator CLI
+
 The build invokes [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py)
 directly from CMake; you should not normally need to run it by hand. The CLI
 surface is:
