@@ -11,8 +11,9 @@ adds three things on top**:
 
 1. The `executor_info["ort"]` payload schema (this is ORT's slot in the
    variant body).
-2. The variant selection algorithm, which queries each execution provider
-   factory and picks the highest-scoring variant.
+2. The variant selection algorithm considers execution providers in priority
+   order. For the first EP with matching variants, it selects the variant
+   with the highest compatibility score.
 3. The stable `OrtModelPackageApi` C API table that wraps the library and
    exposes session creation through `OrtApi::GetModelPackageApi`.
 
@@ -25,7 +26,7 @@ itself never links against ORT.
 
 | File                                  | Responsibility |
 | ------------------------------------- | -------------- |
-| `model_package_context.h/.cc`         | Translates the `model_package` library's C info tree into ORT-internal C++ structs (`ModelPackageInfo`, `ComponentInfo`, `VariantInfo`, `VariantModelInfo`). Parses the `executor_info["ort"]` payload. Owns `ModelPackageContext` (package-level) and `ModelPackageComponentContext` (per-component, with selected variant and captured provider factory). |
+| `model_package_context.h/.cc`         | Translates the `model_package` library's C info tree into ORT-internal C++ structs (`ModelPackageInfo`, `ComponentInfo`, `VariantInfo`, `VariantModelInfo`). Parses the `executor_info["ort"]` payload. Owns `ModelPackageContext` (package-level) and `ModelPackageComponentContext` (per-component, with the selected variant, the captured EPs, and their provider factories saved for session creation). |
 | `model_package_options.h/.cc`         | `ModelPackageOptions` snapshots EP intent (factories, devices, EP-name list) from an `OrtSessionOptions` when `OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions` is called. Drives variant selection and provider construction. |
 | `model_package_variant_selector.h/.cc`| `VariantSelector::SelectVariant` picks the best variant from a component given the EP list. Uses `OrtEpFactory::ValidateCompiledModelCompatibilityInfo`. |
 
@@ -78,40 +79,74 @@ variant can carry per-consumer payloads side by side.
 
 ## Variant selection
 
-`ModelPackageOptions(env, session_options)` captures the **EP intent**: the
-first execution provider selected from the session options or EP policy, plus
-its associated `OrtEpDevice` / `OrtHardwareDevice` metadata. Explicit provider
-factories are retained so legacy providers can also be recreated after the
-original options are released.
+`ModelPackageOptions(env, session_options)` records the EPs in priority
+order and saves their device information and metadata. When a policy
+selects the EPs, ORT records the selected devices and the factory used
+to create each EP. For explicitly added EPs, device information comes
+from the provider's `GetEpDevices()`, which currently returns devices
+only for plugin EPs. ORT saves the provider factories from the session
+options so it can create legacy EPs again. Some saved factories depend on
+the original session options. For example, the XNNPACK factory reads those
+options when creating an EP. Do not release those session options until all
+sessions using the saved factories have been created.
 
-`VariantSelector::SelectVariant(component, ep_infos, &selected)` then walks
-the component's variants and picks the best match:
+When EPs are added explicitly, only EPs created by the provider factories
+in the session options are recorded. Adding the built-in CPU EP as "CPU"
+through SessionOptionsAppendExecutionProvider does not add a factory.
+To make the built-in CPU EP a candidate after other EPs, append it using
+SessionOptionsAppendExecutionProvider_V2 or
+OrtSessionOptionsAppendExecutionProvider_CPU. If the session options
+contain no provider factories and no selection policy is enabled, only the
+built-in CPU EP is recorded. Built-in selection policies include the
+built-in CPU EP as the last candidate unless CPU EP fallback is disabled.
 
-1. Use only the **first** EP. A policy may rank several EPs; callers that
-   need a specific EP should put it first. Selection does not fall through
-   to other EPs when that EP has no matching variant.
+`VariantSelector::SelectVariant` selects the best matching variant for
+the component and identifies its target EP:
+
+1. Consider the captured EPs in priority order, as determined by the
+   selection policy or the order in which they were added to the session
+   options. Select the first EP with a matching variant.
 2. For each variant, require `variant.ep == ep_info.ep_name`.
 3. If `variant.device` is set (`"cpu"` / `"gpu"` / `"npu"`), require it to
-   match at least one of the EP's `OrtHardwareDevice` entries. The built-in
-   CPU EP also matches `"device": "cpu"` without device metadata. Other EPs
-   without hardware metadata can only match variants with no device constraint;
-   a default memory-device type is not sufficient to infer the target hardware.
-4. If both pass, call `OrtEpFactory::ValidateCompiledModelCompatibilityInfo`
-   with `variant.compatibility_string`. The EP returns an
-   `OrtCompiledModelCompatibility` enum which maps to a score:
+   match at least one of the EP's `OrtHardwareDevice` entries.
+   The built-in CPU EP matches `"device": "cpu"` even without captured
+   devices, but does not match other device types.
+   If captured devices exist but none has the required type, the variant
+   does not match.
+   If no devices were captured for an EP other than the built-in CPU EP,
+   ORT cannot check the requirement. If no other variant matches that EP,
+   selection returns an error instead of considering EPs with lower priority.
+   A default memory device type is not enough to determine the target
+   hardware.
+4. If both pass, call OrtEpFactory::ValidateCompiledModelCompatibilityInfo
+   with variant.compatibility_string and the EP's captured hardware devices
+   matching the variant's declared device type, or all captured hardware
+   devices if no type is declared. The EP returns an
+   OrtCompiledModelCompatibility enum which maps to a score:
 
-   | Enum                                         | Score |
-   | -------------------------------------------- | ----- |
-   | `EP_SUPPORTED_OPTIMAL`                       | 100   |
-   | `EP_SUPPORTED_PREFER_RECOMPILATION`          |  50   |
-   | `EP_NOT_APPLICABLE` (or EP too old / no ABI) |   0   |
-   | `EP_UNSUPPORTED`                             | rejected |
+   | Enum                                                                    | Score |
+   | ----------------------------------------------------------------------- | ----- |
+   | `EP_SUPPORTED_OPTIMAL`                                                  | 100   |
+   | `EP_SUPPORTED_PREFER_RECOMPILATION`                                     |  50   |
+   | `EP_NOT_APPLICABLE` (or EP too old / no ABI / no `OrtEpFactory` captured) |   0   |
+   | `EP_UNSUPPORTED`                                                        | rejected |
 
-5. Pick the highest-scoring matching variant. Manifest declaration order
-   breaks ties.
+   If no OrtEpFactory was captured for the EP (for example, for an EP added
+   by name), ORT does not check the compatibility string. The compatibility
+   result is EP_NOT_APPLICABLE.
+
+   `EP_UNSUPPORTED` means the check succeeded but the variant is not
+   compatible. If the callback itself returns an error, compatibility
+   remains unknown. If no other variant matches that EP, selection returns
+   an error instead of considering EPs with lower priority.
+
+5. Select the matching variant with the highest compatibility score for
+   that EP. If several variants have the same score, select the first one
+   in the manifest.
 
 If no variant matches, `SelectComponent` fails with "No suitable model
-variant found for the configured execution providers."
+variant found for the configured execution providers." If selection stops at
+an EP as described in steps 3 and 4, the error also names that EP.
 
 ORT does **not** parse `compatibility_string`. The EP owns the format and
 may encode multiple sub-targets (SoC ids, ISA flags, etc.) into the single
@@ -147,11 +182,55 @@ EP was selected. Two paths:
   selection / EP discovery; its non-EP session configuration is not
   implicitly inherited.
 
-When no explicit provider factories are supplied, either path uses the captured
-EP, fills missing device-default options, and registers its custom-op domains.
-The selection policy is not re-run. When explicit factories are supplied, the
-caller must keep them compatible with the selected variant. Failure to recreate
-the selected EP is an error, not an implicit switch to CPU.
+When the effective session options contain no EP factories, ORT adds
+only the EP targeted by the selected variant, as in
+`SessionOptionsAppendExecutionProvider_V2`. ORT uses the devices captured
+for that EP. If the variant specifies a device type, ORT uses only
+devices of that type. Otherwise, it uses all captured devices for that EP.
+
+Device defaults are used only for EP options that have not already been
+set, including options from the variant's `session_options`. Custom
+operator domains provided by the EP's OrtEpDevice instances are
+registered before loading the model. On the default path, the variant's
+provider_options are passed to the selected EP as in
+SessionOptionsAppendExecutionProvider_V2. For example, the CoreML EP rejects
+an MLComputeUnits value that enables an unselected accelerator.
+
+If no `OrtEpDevice` instances were captured for the EP, ORT uses the
+provider factory saved from the session options used to create the
+model package options. The built-in CPU EP does not require a saved
+factory. Custom operator domain registrations from the original session
+options are not copied on the default path. To use TensorRT plugin
+domains, for example, pass session options containing those domains. On
+the default path, non-empty package provider_options cause an error if no
+OrtEpDevice instances were captured for the selected EP. Devices are
+captured for the built-in CPU EP only when it is selected by a policy.
+
+When the caller supplies no EP factories, ORT adds only the EP selected for
+the variant, apart from the usual built-in CPU EP fallback. CreateSession
+does not run the EP selection policy in the session options.
+
+If the caller supplies EP factories, ORT registers the EPs they create in
+factory order. Factories that return no EP are skipped. The caller must
+ensure that the EP configuration is compatible with the selected variant.
+EPs registered earlier are considered first when assigning model nodes.
+If the caller passes the same session options used for variant selection,
+ORT can assign nodes from the selected variant's model to an EP even if
+no variant matches that EP. To let ORT configure the selected EP, pass NULL
+or session options without EP factories. If the selected EP is not the
+built-in CPU EP, at least one factory in the list must create it.
+The CPU registration APIs behave differently:
+
+- Adding the built-in ORT CPU EP as "CPU" through
+  `SessionOptionsAppendExecutionProvider` does not add a provider factory
+  to the options.
+- `OrtSessionOptionsAppendExecutionProvider_CPU` adds a CPU EP factory.
+
+ORT automatically adds the built-in CPU EP if it has not already
+been registered. If the selected EP is not the built-in CPU EP and
+cannot be created or registered, session creation fails. Nodes that
+other EPs do not handle may still run on the built-in CPU EP unless
+CPU EP fallback is disabled.
 
 Each session creates its own EP instances through the normal ORT factory
 registration path. A component context can create multiple sessions sequentially;
@@ -205,7 +284,7 @@ const OrtModelPackageApi* package_api = ort->GetModelPackageApi();
 
 OrtSessionOptions* so = nullptr;
 ort->CreateSessionOptions(&so);
-ort->SessionOptionsAppendExecutionProvider(so, "CUDAExecutionProvider", nullptr, nullptr, 0);
+ort->SessionOptionsSetEpSelectionPolicy(so, OrtExecutionProviderDevicePolicy_PREFER_GPU);
 
 OrtModelPackageOptions* mp_opts = nullptr;
 package_api->CreateModelPackageOptionsFromSessionOptions(env, so, &mp_opts);
@@ -238,8 +317,14 @@ other platforms. The integration performs explicit conversions at the standalone
 library boundary.
 
 The environment and registered EP libraries must outlive the model package
-options, component contexts, and sessions that use them. A selected component
-does not depend on the lifetime of its original package or options handles.
+options, component contexts, and sessions that use them. The options and
+the component contexts created from them keep pointers to OrtEpDevice and
+OrtEpFactory instances. When a selection policy is used, the options and
+component contexts keep pointers to every OrtEpDevice instance available
+in the environment. EP libraries registered when the options are created
+must stay registered until the options and all those component contexts
+are released. A selected component does not depend on the lifetime of its
+original package or options handles.
 Calls sharing a package or component context require external synchronization.
 
 ---

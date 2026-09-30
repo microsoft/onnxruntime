@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"  // For OrtExecutionProviderDevicePolicy
@@ -43,12 +44,14 @@ class ProviderPolicyContext {
   Status SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices, const OrtSessionOptions& options,
                          OrtKeyValuePairs& model_metadata, std::vector<const OrtEpDevice*>& devices_selected);
   Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options, InferenceSession& sess);
+  // provider_selections[i] holds the selected devices that providers[i] was created for.
   Status SelectEpsForModelPackage(const Environment& env,
                                   OrtSessionOptions& options,
                                   OrtKeyValuePairs& model_metadata,
                                   std::vector<const OrtEpDevice*>& execution_devices,
                                   std::vector<const OrtEpDevice*>& devices_selected,
-                                  std::vector<std::unique_ptr<IExecutionProvider>>& providers);
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& providers,
+                                  InlinedVector<SelectionInfo>& provider_selections);
   Status AddEpDefaultOptionsToSession(SessionOptions& sess_options, std::vector<const OrtEpDevice*> devices);
   void RemoveOrtCpuDevice(std::vector<const OrtEpDevice*>& devices);
   Status CreateExecutionProvider(const Environment& env, OrtSessionOptions& options, const OrtLogger& logger,
@@ -59,7 +62,7 @@ class ProviderPolicyContext {
   std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice*>& devices);
 
   Status LogTelemetry(InferenceSession& sess,
-                      const OrtSessionOptions& options,
+                      const EpSelectionPolicy& policy,
                       const std::vector<const OrtEpDevice*>& execution_devices,
                       const std::vector<const OrtEpDevice*>& devices_selected);
 
