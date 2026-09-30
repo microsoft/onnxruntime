@@ -3,6 +3,8 @@
 
 #include "core/optimizer/matmul_scale_fusion.h"
 
+#include <type_traits>
+
 #include "onnx/defs/attr_proto_util.h"
 
 #include "core/common/optional.h"
@@ -18,10 +20,14 @@ namespace {
 template <typename T>
 struct ExtractScalarAsFloatDispatchTarget {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path,
-                    float& scalar_float) {
+                    float& scalar_float, bool& lossless) {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));
     scalar_float = static_cast<float>(scalar);
+    lossless = true;
+    if constexpr (std::is_same_v<T, double>) {
+      lossless = static_cast<double>(scalar_float) == scalar;
+    }
     return Status::OK();
   }
 };
@@ -60,13 +66,15 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
   }
 
   float scalar{};
+  bool lossless = false;
   utils::MLTypeCallDispatcher<
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
   ORT_THROW_IF_ERROR(
-      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(*initializer, graph.ModelPath(), scalar)));
+      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(
+          *initializer, graph.ModelPath(), scalar, lossless)));
 
-  return {scalar};
+  return lossless ? std::optional<float>{scalar} : std::nullopt;
 }
 
 // gets the scale value and its input index if node is a fusable scale (Mul or Div by scalar constant)

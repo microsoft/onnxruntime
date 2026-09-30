@@ -562,20 +562,19 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    double epsilon = 0.0;
+    if (!TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon) ||
+        static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/LayerNormFusion/"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
                                           {}, mul_node, nullptr, kOnnxDomain);
-
-    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    double epsilon = 0.0;
-    if (TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon)) {
-      layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // The axis definition of layer_norm is ranging from axis to the last dim
     layer_norm_node.AddAttribute("axis", static_cast<int64_t>(axes_values[0]));
@@ -814,25 +813,17 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
+    double epsilon = 0.0;
+    if (!TryGetScalarInitializerAsDouble(graph, *epsilon_input, epsilon) ||
+        static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
         graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
                       "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, mul_node, nullptr, kOnnxDomain);
-
-    // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto =
-        graph_utils::GetConstantInitializer(graph, epsilon_input->Name());
-    if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
-      if (initializer.size() == 1) {
-        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
-      } else {
-        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-      }
-    } else {
-      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
-    }
+    layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
 
     // Set stash_type to double if any input is double, default value if float.
     if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||

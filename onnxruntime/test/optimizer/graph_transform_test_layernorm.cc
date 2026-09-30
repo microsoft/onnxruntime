@@ -498,6 +498,73 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, LayerNormFusionsRejectLossyDoubleEpsilon) {
+  auto build_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* bias = builder.MakeInitializer<double>({4}, {0.0, 0.0, 0.0, 0.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-50);
+    auto* mean1 = builder.MakeIntermediate();
+    auto* sub = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* mean2 = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* scaled = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1}, {sub});
+    builder.AddNode("Pow", {sub, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {sub, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {scaled});
+    builder.AddNode("Add", {scaled, bias}, {output});
+  };
+
+  auto build_simplified_layer_norm = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+    auto* exponent = builder.MakeScalarInitializer<double>(2.0);
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-50);
+    auto* squared = builder.MakeIntermediate();
+    auto* mean = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {input, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_to_count.count("LayerNormalization") != 0);
+    TEST_RETURN_IF(op_to_count.count("SimplifiedLayerNormalization") != 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("Pow") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> compatible_eps;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_layer_norm, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_eps, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_simplified_layer_norm, 14, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent) {
   for (const bool has_leading_cast : {false, true}) {
     auto build_test_case = [has_leading_cast](ModelTestBuilder& builder) {
