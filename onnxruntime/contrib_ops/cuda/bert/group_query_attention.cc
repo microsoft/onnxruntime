@@ -517,6 +517,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
+  const int original_present_kv_cache_capacity = parameters.seqlen_present_kv_cache;
+
   // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
   // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
   // the step still have to see keys that the last ones have already pushed out. Redirect such a
@@ -575,13 +577,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
-  // Runtime geometry and feature facts shared by the XQA, Flash, memory-efficient, and unfused
-  // workspace recipes. Sizing every backend through these shared recipes keeps runtime allocation
-  // and the Level-1 workspace estimator in sync. present_kv_cache_capacity is captured here (after
-  // any windowed staging above) to match the value the XQA scratch sizing consumes below; the
-  // memory-efficient path passes its own capacity argument explicitly. The quantization fields are
-  // only consulted by the XQA recipe -- the memory-efficient and unfused fallbacks are reached only
-  // when the KV cache is unquantized, so those fields are None at their call sites.
+  // Keep the original cache capacity in the shared workspace problem. Flash, MEA, and unfused
+  // recipes receive their effective post-staging extents separately; XQA only handles single-token
+  // steps, which do not stage the cache.
   GQAWorkspaceProblem workspace_problem;
   workspace_problem.qkv_element_size = sizeof(T);
   workspace_problem.cache_element_size = sizeof(U);
@@ -590,7 +588,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   workspace_problem.num_heads = parameters.num_heads;
   workspace_problem.kv_num_heads = parameters.kv_num_heads;
   workspace_problem.head_size = parameters.head_size;
-  workspace_problem.present_kv_cache_capacity = parameters.seqlen_present_kv_cache;
+  workspace_problem.present_kv_cache_capacity = original_present_kv_cache_capacity;
   workspace_problem.kv_cache_bit_width = parameters.kv_cache_bit_width;
   workspace_problem.k_quantization =
       k_quant_type_ == KVQuantizationType::PER_TENSOR
