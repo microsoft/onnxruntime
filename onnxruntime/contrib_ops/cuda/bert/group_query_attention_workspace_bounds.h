@@ -52,6 +52,13 @@ struct GQAWorkspaceBounds {
   GQAKvQuantizationType k_quantization = GQAKvQuantizationType::None;
   GQAKvQuantizationType v_quantization = GQAKvQuantizationType::None;
   bool is_windowed_kv_cache = false;
+  // Non-windowed GQA permits exactly one past/present K/V pair to alias, which
+  // makes the runtime copy the full past cache into preservation scratch that
+  // coexists with the selected backend workspace. Windowed GQA rejects
+  // non-shared buffers, so both pairs always alias and no copy occurs. When
+  // true, the aggregate adds the worst-case preservation copy on top of the
+  // per-route maximum. See group_query_attention.cc (separate_past_buffer).
+  bool account_partial_alias_preservation = false;
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;

@@ -487,16 +487,65 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   }
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedTotalKvAndAliasingAreUnavailable) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedWithoutEnvelopeIsUnavailable) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   auto config = Config();
   config.sliding_window_cache = false;
   config.local_window_size = -1;
+  // total_sequence_length is a runtime scalar. Without the declared KV-length
+  // envelope the non-windowed estimate cannot bound the present length, so it
+  // declines -- the behavior before the envelope knob existed.
   EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
                    config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/128),
                    Device(), options)
                    .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedEnvelopeBoundsWorkspace) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 512;
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/256),
+      Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_GT(estimate->total_workspace_bytes, 0u);
+
+  // The envelope is the KV length the estimate is taken over, so raising it
+  // cannot lower the bound.
+  auto larger = config;
+  larger.max_total_sequence_length = 1024;
+  const auto larger_estimate = EstimateGroupQueryAttentionWorkspace(
+      larger, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/256),
+      Device(), options);
+  ASSERT_TRUE(larger_estimate.has_value());
+  EXPECT_GE(larger_estimate->total_workspace_bytes, estimate->total_workspace_bytes);
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPastCopy) {
+  auto bounds = Bounds();
+  bounds.reachable_backends = GQAReachableBackend::Unfused;
+  const auto without = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(without.status.IsOK());
+  EXPECT_GT(without.total_workspace_bytes, 0u);
+
+  // Non-windowed partial aliasing copies the full past cache, which stacks on
+  // top of the selected route's workspace rather than replacing it.
+  bounds.account_partial_alias_preservation = true;
+  const auto with_copy = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(with_copy.status.IsOK());
+
+  const size_t expected_copy =
+      static_cast<size_t>(bounds.batch_size_bound) *
+      static_cast<size_t>(bounds.kv_num_heads) *
+      static_cast<size_t>(bounds.present_kv_cache_capacity_bound) *
+      static_cast<size_t>(bounds.head_size_bound) * bounds.cache_element_size;
+  EXPECT_EQ(with_copy.total_workspace_bytes,
+            without.total_workspace_bytes + expected_copy);
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {
