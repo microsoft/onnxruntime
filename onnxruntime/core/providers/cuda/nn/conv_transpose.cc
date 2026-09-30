@@ -229,10 +229,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
 template <typename T, bool Layout>
 Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dynamic_padding) const {
   constexpr bool channels_last = Layout == LAYOUT_NHWC;
-  size_t num_inputs = static_cast<size_t>(Info().GetInputCount());
   // Standard ONNX ConvTranspose has inputs X, W, optional B.
   // ConvTransposeWithDynamicPads inserts Pads at input 2, so bias becomes input 3.
-  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   // set X
   const Tensor* X = context->Input<Tensor>(0);
@@ -261,13 +259,9 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   // set B
   // Always in NCHW format
-  const Tensor* B = nullptr;
-  if (has_bias) {
-    B = context->Input<Tensor>(dynamic_padding ? 3 : 2);
-    s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
-  } else {
-    s_.b_data = nullptr;
-  }
+  const size_t bias_index = dynamic_padding ? 3 : 2;
+  const Tensor* B = context->InputCount() > bias_index ? context->Input<Tensor>(bias_index) : nullptr;
+  s_.b_data = B ? reinterpret_cast<const CudaT*>(B->Data<T>()) : nullptr;
 
   const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
 
