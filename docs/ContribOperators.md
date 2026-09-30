@@ -220,6 +220,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain mask index to integer types</dd>
 </dl>
 
+
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
@@ -7525,6 +7526,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     subsequent calls to preserve boundaries across chunked prefill and decode calls.
   - head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
     in the input id type on overflow.
+  - capture_count enables compact prefix state capture when state_update_capacity is positive. For
+    each request, state_update contains the trailing state after each captured prefix token.
 
 #### Version
 
@@ -7541,9 +7544,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a request's sequence.</dd>
 <dt><tt>reset_on_eos</tt> : int</dt>
 <dd>When non-zero and eos_token_id is provided, reset causal n-gram history at EOS boundaries. Default is 0.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Static number of compact contiguous-prefix states to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (4 - 9)
+#### Inputs (4 - 10)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
@@ -7564,9 +7569,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional token-major segment ids with shape (total_tokens), used to reset causal history at segment boundaries within each packed request.</dd>
 <dt><tt>past_segment_ids</tt> (optional) : S</dt>
 <dd>Optional segment ids corresponding to past_ids, with shape (batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call into this input to preserve segment boundaries across calls.</dd>
+<dt><tt>capture_count</tt> (optional) : S</dt>
+<dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local prefix states, clamped to the request length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
 </dl>
 
-#### Outputs (1 - 3)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
@@ -7575,6 +7582,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
 <dt><tt>present_segment_ids</tt> (optional) : S</dt>
 <dd>Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.</dd>
+<dt><tt>state_update</tt> (optional) : M</dt>
+<dd>Optional trailing id states after each captured prefix token, with shape (batch_size, state_update_capacity, max_ngram_size - 1). Unused slots are pad_id.</dd>
 </dl>
 
 #### Type Constraints
@@ -7869,3 +7878,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
