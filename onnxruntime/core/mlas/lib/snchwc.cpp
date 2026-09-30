@@ -31,7 +31,7 @@ namespace {
 bool
 MlasNchwcGetEnvironmentVariable(const char* Name, char* Buffer, size_t BufferSize)
 {
-ORT_ENFORCE(BufferSize > 0);
+    assert(BufferSize > 0);
 #if defined(_MSC_VER)
     size_t Length = 0;
 
@@ -670,7 +670,6 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         //
 
         assert(BlockSize > 0);
-        ORT_ENFORCE(BlockSize > 0);
 
         return MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, MlasNchwcFilterSetTarget(),
                                             WorkBlock->tids, BlockSize, OutputChannels,
