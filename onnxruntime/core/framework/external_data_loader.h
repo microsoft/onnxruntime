@@ -38,6 +38,12 @@ class IExternalDataLoader {
                                     [[maybe_unused]] Tensor& tensor) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
+
+  // Native loaders consume the file opened by the framework and must not reopen its pathname.
+  virtual common::Status LoadTensorFromFile(const RandomAccessFile& /*file*/, FileOffsetType /*data_offset*/,
+                                            size_t /*data_length*/, Tensor& /*tensor*/) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This external loader does not support open files.");
+  }
 };
 
 #if defined(__wasm__)

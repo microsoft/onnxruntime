@@ -373,7 +373,7 @@ Status InferMaxShapes(const Graph& graph,
   std::unique_ptr<Model> shadow_model;
   ORT_RETURN_IF_ERROR(ConvertShadowInferenceExceptionsToStatus([&]() -> Status {
     shadow_model = std::make_unique<Model>(
-        std::move(model_proto), graph.ModelPath().native(), &registries, graph.GetLogger(), model_options);
+        std::move(model_proto), graph.ModelPath(), &registries, graph.GetLogger(), model_options);
     return Status::OK();
   }));
   Graph& shadow_graph = shadow_model->MainGraph();

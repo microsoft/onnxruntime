@@ -22,6 +22,7 @@
 namespace onnxruntime {
 
 class PrepackedShareableWeightsContainer;
+class RandomAccessFile;
 
 namespace fbs {
 struct Model;
@@ -73,7 +74,7 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const ModelMetaData& model_metadata,
-                 const PathString& model_path,
+                 const onnxruntime::ModelPath& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
@@ -90,7 +91,7 @@ class Model {
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
-                 const PathString& model_path,
+                 const onnxruntime::ModelPath& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger, const ModelOptions& options = {});
 
@@ -104,7 +105,7 @@ class Model {
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
-                 const PathString& model_path,
+                 const onnxruntime::ModelPath& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger,
                  const ModelOptions& options = {});
@@ -192,7 +193,7 @@ class Model {
   ModelMetaData& MetaData() noexcept;
 
   // Gets the path from which the model was loaded, if any.
-  const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
+  const onnxruntime::ModelPath& ModelPath() const noexcept { return model_path_; }
 
   // Get model's main graph.
   Graph& MainGraph() noexcept;
@@ -241,8 +242,10 @@ class Model {
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
+  // Optionally return the directory context captured with the opened model file.
   static common::Status Load(const PathString& file_path,
-                             /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
+                             /*out*/ ONNX_NAMESPACE::ModelProto& model_proto,
+                             onnxruntime::ModelPath* model_path = nullptr);
 
   // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
   static common::Status Load(const PathString& file_path,
@@ -255,7 +258,7 @@ class Model {
   // graph_model_path is used as the base directory for resolving external initializers, so this
   // overload lets callers load a model file while resolving its external data from a different folder.
   static common::Status Load(const PathString& file_path,
-                             const PathString& graph_model_path,
+                             const onnxruntime::ModelPath& graph_model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
@@ -263,13 +266,15 @@ class Model {
 
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
+  static common::Status Load(const RandomAccessFile& file, ONNX_NAMESPACE::ModelProto& model_proto);
+
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
                              const ModelOptions& options = {});
 
   static common::Status Load(int fd,
-                             const PathString& model_path,
+                             const onnxruntime::ModelPath& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
@@ -287,7 +292,7 @@ class Model {
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes,
-                                      const PathString& model_path,
+                                      const onnxruntime::ModelPath& model_path,
                                       /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger,
@@ -299,7 +304,7 @@ class Model {
                              const ModelOptions& options = {});
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto,
-                             const PathString& model_path,
+                             const onnxruntime::ModelPath& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
@@ -312,7 +317,7 @@ class Model {
                              const ModelOptions& options = {});
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
-                             const PathString& model_path,
+                             const onnxruntime::ModelPath& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
@@ -377,7 +382,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  std::filesystem::path model_path_;
+  onnxruntime::ModelPath model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

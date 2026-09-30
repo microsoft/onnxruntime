@@ -1141,7 +1141,7 @@ bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
 bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
-                                      const std::filesystem::path& model_path,
+                                      const onnxruntime::ModelPath& model_path,
                                       bool is_quant_matmul,
                                       bool is_conv_matmul_u8s8_weight) {
   // zero point is optional here

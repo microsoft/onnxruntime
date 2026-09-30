@@ -357,7 +357,7 @@ struct ProviderHostImpl : ProviderHost {
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
-  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const onnxruntime::ModelPath& model_path,
                                /*out*/ std::vector<uint8_t>& unpacked_tensor) override {
     return utils::UnpackInitializerData(tensor, model_path, unpacked_tensor);
   }
@@ -1228,7 +1228,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& NodeUnit__Name(const NodeUnit* p) noexcept override { return p->Name(); }
   int NodeUnit__SinceVersion(const NodeUnit* p) noexcept override { return p->SinceVersion(); }
   NodeIndex NodeUnit__Index(const NodeUnit* p) noexcept override { return p->Index(); }
-  const std::filesystem::path& NodeUnit__ModelPath(const NodeUnit* p) noexcept override { return p->ModelPath(); }
+  const onnxruntime::ModelPath& NodeUnit__ModelPath(const NodeUnit* p) noexcept override { return p->ModelPath(); }
   ProviderType NodeUnit__GetExecutionProviderType(const NodeUnit* p) noexcept override {
     return p->GetExecutionProviderType();
   }
@@ -1298,7 +1298,7 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
-  Status Utils__ValidateExternalDataPath(const std::filesystem::path& model_path,
+  Status Utils__ValidateExternalDataPath(const onnxruntime::ModelPath& model_path,
                                          const std::filesystem::path& external_data_path) override {
     return onnxruntime::utils::ValidateExternalDataPath(model_path, external_data_path);
   }
@@ -1309,7 +1309,8 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   // Model (wrapped)
-  std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+  std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto,
+                                          const onnxruntime::ModelPath& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger);
@@ -1376,7 +1377,7 @@ struct ProviderHostImpl : ProviderHost {
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
   void Graph__SetName(Graph* p, const std::string& name) const noexcept override { return p->SetName(name); }
-  const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
+  const onnxruntime::ModelPath& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
   const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
@@ -1433,7 +1434,9 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
-  const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); }
+  const onnxruntime::ModelPath& GraphViewer__ModelPath(const GraphViewer* p) noexcept override {
+    return p->ModelPath();
+  }
 
   const ConstGraphNodes& GraphViewer__Nodes(const GraphViewer* p) noexcept override { return p->Nodes(); }
   const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
@@ -1541,7 +1544,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   Initializer* Initializer__constructor(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                        const std::filesystem::path& model_path,
+                                        const onnxruntime::ModelPath& model_path,
                                         bool check_outer_scope) override {
     return new Initializer(graph, tensor_proto, model_path, check_outer_scope);
   }

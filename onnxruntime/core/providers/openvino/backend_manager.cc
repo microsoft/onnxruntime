@@ -474,7 +474,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   }
 #endif
 
-  const auto& onnx_model_path_name = subgraph.ModelPath();
+  const auto& onnx_model_path_name = subgraph.ModelPath().Path();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
   if ((session_context_.device_type.find("NPU") != std::string::npos) &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {

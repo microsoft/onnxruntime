@@ -593,7 +593,7 @@ void Node::SetPriority(int priority) noexcept {
   priority_ = priority;
 }
 
-const std::filesystem::path& Node::ModelPath() const noexcept {
+const onnxruntime::ModelPath& Node::ModelPath() const noexcept {
   return graph_->ModelPath();
 }
 
@@ -3552,7 +3552,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   // ONNX expects a UTF-8 string here.
-  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
+  const auto* directories = ModelPath().GetExternalDataDirectories();
+  ctx.set_model_dir(ToUTF8String(directories != nullptr ? directories->apparent.native()
+                                                        : ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -4202,7 +4204,7 @@ const std::string& Graph::Description() const noexcept {
   return graph_proto_->doc_string();
 }
 
-const std::filesystem::path& Graph::ModelPath() const {
+const onnxruntime::ModelPath& Graph::ModelPath() const {
   return owning_model_.ModelPath();
 }
 
@@ -5253,7 +5255,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 }
 
 Status Graph::AddExternalInitializersToGraphProtoImpl(
-    const std::filesystem::path& model_path,
+    const onnxruntime::ModelPath& model_path,
     const std::filesystem::path& external_file_path,
     const std::filesystem::path& model_external_file_path,
     const ModelSavingOptions& model_saving_options,

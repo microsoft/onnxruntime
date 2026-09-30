@@ -85,7 +85,7 @@ class NodeUnit {
   const std::string& Name() const noexcept;
   int SinceVersion() const noexcept;
   NodeIndex Index() const noexcept;
-  const std::filesystem::path& ModelPath() const noexcept;
+  const onnxruntime::ModelPath& ModelPath() const noexcept;
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }

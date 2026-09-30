@@ -993,7 +993,7 @@ struct NodeUnit final {
   const std::string& Name() const noexcept { return g_host->NodeUnit__Name(this); }
   int SinceVersion() const noexcept { return g_host->NodeUnit__SinceVersion(this); }
   NodeIndex Index() const noexcept { return g_host->NodeUnit__Index(this); }
-  const std::filesystem::path& ModelPath() const noexcept { return g_host->NodeUnit__ModelPath(this); }
+  const onnxruntime::ModelPath& ModelPath() const noexcept { return g_host->NodeUnit__ModelPath(this); }
   ProviderType GetExecutionProviderType() const noexcept { return g_host->NodeUnit__GetExecutionProviderType(this); }
 
   const Node& GetNode() const noexcept { return g_host->NodeUnit__GetNode(this); }
@@ -1014,7 +1014,8 @@ struct NodeUnit final {
 struct ModelSavingOptions;
 
 struct Model final {
-  static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
+  static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto,
+                                       const onnxruntime::ModelPath& model_path,
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
     return g_host->Model__construct(std::move(model_proto), model_path, local_registries, logger);
   }
@@ -1075,7 +1076,7 @@ struct Graph final {
   Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
   void SetName(const std::string& name) noexcept { return g_host->Graph__SetName(this, name); }
-  const std::filesystem::path& ModelPath() const { return g_host->Graph__ModelPath(this); }
+  const onnxruntime::ModelPath& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->Graph__GetProducerNode(this, node_arg_name); }
@@ -1128,7 +1129,7 @@ class GraphViewer final {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger, const ModelMetaData& metadata = ModelMetaData()) const { return g_host->GraphViewer__CreateModel(this, logger, metadata); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
-  const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
+  const onnxruntime::ModelPath& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
   const ConstGraphNodes& Nodes() const noexcept { return g_host->GraphViewer__Nodes(this); }
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
@@ -1243,7 +1244,7 @@ class Initializer {
   }
 
   Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const std::filesystem::path& model_path = {},
+              const onnxruntime::ModelPath& model_path = {},
               bool check_outer_scope = false) {
     this_ptr_ = g_host->Initializer__constructor(graph, tensor_proto, model_path, check_outer_scope);
   }

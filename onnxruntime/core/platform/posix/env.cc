@@ -163,6 +163,31 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     return common::Status::OK();
   }
 
+  common::Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_ERROR(ValidateRange(offset, length));
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    const auto page_size = sysconf(_SC_PAGESIZE);
+    ORT_RETURN_IF(page_size <= 0, "Cannot determine the mapping page size.");
+    const auto offset_to_page = offset % page_size;
+    ORT_RETURN_IF(static_cast<uintmax_t>(offset_to_page) > std::numeric_limits<size_t>::max() - length,
+                  "Mapped file range is not representable.");
+    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
+    void* const mapped_base = mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+                                   descriptor_.Get(), offset - offset_to_page);
+    if (mapped_base == MAP_FAILED) {
+      return ReportSystemError("mmap", path_);
+    }
+    auto unmap = [mapped_base, mapped_length](void*) { UnmapFile(mapped_base, mapped_length); };
+    std::unique_ptr<void, decltype(unmap)> owner(mapped_base, unmap);
+    mapped_memory = MappedMemoryPtr{static_cast<char*>(mapped_base) + offset_to_page, unmap};
+    owner.release();
+    return Status::OK();
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PosixRandomAccessFile);
   ScopedFileDescriptor descriptor_;
@@ -464,6 +489,57 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  common::Status OpenCanonicalFile(const ORTCHAR_T* file_path,
+                                   std::unique_ptr<RandomAccessFile>& file) const override {
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    const std::filesystem::path path{file_path};
+    ORT_RETURN_IF_NOT(path.is_absolute() && path == path.lexically_normal(),
+                      "Expected a normalized absolute file path.");
+#if defined(O_NOFOLLOW) && defined(O_DIRECTORY)
+    int flags = O_RDONLY | O_NONBLOCK | O_NOFOLLOW;
+    int directory_flags = O_DIRECTORY | O_NOFOLLOW;
+#ifdef O_PATH
+    directory_flags |= O_PATH;
+#elif defined(O_SEARCH)
+    directory_flags |= O_SEARCH;
+#else
+    directory_flags |= O_RDONLY | O_NONBLOCK;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+    directory_flags |= O_CLOEXEC;
+#endif
+    ScopedFileDescriptor descriptor{
+        static_cast<int>(TempFailureRetry([&] { return open("/", directory_flags); }))};
+    if (!descriptor.IsValid()) {
+      return ReportSystemError("open", "/");
+    }
+    const auto relative_path = path.relative_path();
+    for (auto component = relative_path.begin(); component != relative_path.end(); ++component) {
+      ORT_RETURN_IF(component->empty() || *component == "." || *component == "..",
+                    "Expected a normalized file path.");
+      const bool is_last = std::next(component) == relative_path.end();
+      const int component_flags = is_last ? flags : directory_flags;
+      ScopedFileDescriptor next{static_cast<int>(TempFailureRetry([&] {
+        return openat(descriptor.Get(), component->c_str(), component_flags);
+      }))};
+      if (!next.IsValid()) {
+        return ReportSystemError("openat", path.native());
+      }
+      descriptor = std::move(next);
+    }
+    struct stat info{};
+    if (TempFailureRetry(fstat, descriptor.Get(), &info) < 0) {
+      return ReportSystemError("fstat", path.native());
+    }
+    ORT_RETURN_IF_NOT(S_ISREG(info.st_mode), "Canonical reads require a regular file: ", path.native());
+    file = std::make_unique<PosixRandomAccessFile>(std::move(descriptor), path.native());
+    return Status::OK();
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This platform does not support canonical file opens.");
+#endif
+  }
+
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
@@ -511,49 +587,9 @@ class PosixEnv : public Env {
 
   Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                            MappedMemoryPtr& mapped_memory) const override {
-    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
-    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
-
-    ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-    if (!file_descriptor.IsValid()) {
-      return ReportSystemError("open", file_path);
-    }
-
-    if (length == 0) {
-      mapped_memory = MappedMemoryPtr{};
-      return Status::OK();
-    }
-
-    // Validate that the file is large enough for the requested mapping.
-    struct stat file_stat;
-    if (fstat(file_descriptor.Get(), &file_stat) != 0) {
-      return ReportSystemError("fstat", file_path);
-    }
-    const size_t requested_end = SafeInt<size_t>(offset) + length;
-    ORT_RETURN_IF(static_cast<size_t>(file_stat.st_size) < requested_end,
-                  "File \"", file_path,
-                  "\" is too small for the requested mapping (file size: ",
-                  file_stat.st_size, " bytes, requested offset + length: ",
-                  requested_end, " bytes).");
-
-    static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
-    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
-    const FileOffsetType mapped_offset = offset - offset_to_page;
-    void* const mapped_base =
-        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
-
-    if (mapped_base == MAP_FAILED) {
-      return ReportSystemError("mmap", file_path);
-    }
-
-    mapped_memory =
-        MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                        [mapped_base, mapped_length](void*) {
-                          UnmapFile(mapped_base, mapped_length);
-                        }};
-
-    return Status::OK();
+    std::unique_ptr<RandomAccessFile> file;
+    ORT_RETURN_IF_ERROR(OpenRandomAccessFile(file_path, file));
+    return file->Map(offset, length, mapped_memory);
   }
 
   bool FolderExists(const std::string& path) const override {

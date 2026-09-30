@@ -200,7 +200,8 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 // This function does not unpack string_data of an initializer tensor
 Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const std::filesystem::path& tensor_proto_dir,
-                                 std::vector<uint8_t>& unpacked_tensor) {
+                                 std::vector<uint8_t>& unpacked_tensor,
+                                 [[maybe_unused]] const onnxruntime::ModelPath* model_path = nullptr) {
   ORT_RETURN_IF(utils::HasString(tensor_proto), "This function does not support string data");
   PathString external_file_path;
   onnxruntime::FileOffsetType file_offset;
@@ -227,8 +228,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
     return onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span);
   }
 
-  // Validate that the external file is large enough before allocating.
-  // This protects against a model with a huge declared shape but a missing/short external file.
+#if defined(__wasm__)
   std::error_code fs_error_code{};
   std::uintmax_t file_length = std::filesystem::file_size(external_file_path, fs_error_code);
   ORT_RETURN_IF(fs_error_code, "Failed to get file size for external initializer ", tensor_proto.name(),
@@ -247,6 +247,21 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       file_offset,
       tensor_byte_size,
       gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+#else
+  std::unique_ptr<ExternalDataInfo> info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), info));
+  const auto& env = Env::Default();
+  std::unique_ptr<RandomAccessFile> file;
+  if (model_path != nullptr) {
+    ORT_RETURN_IF_ERROR(utils::OpenExternalDataFile(env, *model_path, info->GetRelPath(), file));
+  } else {
+    ORT_RETURN_IF_ERROR(utils::OpenExternalDataFileFromDir(env, tensor_proto_dir, info->GetRelPath(), file));
+  }
+  ORT_RETURN_IF_ERROR(file->ValidateRange(file_offset, tensor_byte_size));
+  unpacked_tensor.resize(tensor_byte_size);
+  ORT_RETURN_IF_ERROR(file->Read(file_offset,
+                                 gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+#endif
 
   if constexpr (endian::native != endian::little) {
     size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
@@ -261,7 +276,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   return Status::OK();
 }
 
-Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& model_path,
+Status TensorProtoToOrtValueImpl(const Env& env, const onnxruntime::ModelPath& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                  AllocatorPtr alloc, OrtValue& value) {
   if (m && m->GetBuffer() == nullptr) {
@@ -332,7 +347,7 @@ bool HasExternalDataInFile(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
 
 Status TensorProtoWithExternalDataToTensorProto(
     const ONNX_NAMESPACE::TensorProto& ten_proto,
-    const std::filesystem::path& model_path,
+    const onnxruntime::ModelPath& model_path,
     ONNX_NAMESPACE::TensorProto& new_tensor_proto) {
   // Check if the input tensor has external data
   ORT_RETURN_IF_NOT(HasExternalData(ten_proto), "Input tensor does not have external data.");
@@ -364,15 +379,18 @@ Status TensorProtoWithExternalDataToTensorProto(
     std::vector<uint8_t> unpacked_data;
     // ReadExternalDataForTensor expects a directory. Preserve existing behavior for callers that
     // already pass a directory, and only use parent_path() when model_path is a confirmed file.
-    std::filesystem::path external_data_path = model_path;
+    std::filesystem::path external_data_path = model_path.Path();
     std::error_code ec;
-    if (std::filesystem::is_regular_file(model_path, ec)) {
+    const bool is_model_file = model_path.GetExternalDataDirectories() != nullptr ||
+                               std::filesystem::is_regular_file(model_path.Path(), ec);
+    if (is_model_file) {
       external_data_path = model_path.parent_path();
     } else if (ec) {
       ec.clear();
     }
 
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, external_data_path, unpacked_data));
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(ten_proto, external_data_path, unpacked_data,
+                                                  is_model_file ? &model_path : nullptr));
     // Set the raw data in the new tensor
     onnxruntime::utils::SetRawDataInTensorProto(result, unpacked_data.data(), unpacked_data.size());
   }
@@ -418,10 +436,14 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
 ///
 /// This function does NOT handle the symlinked-model fallback — that is the responsibility of
 /// ValidateExternalDataPath(), which calls this function as a first pass.
-Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
-                                       const std::filesystem::path& external_data_path) {
+static Status ResolveExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                             const std::filesystem::path& external_data_path,
+                                             std::filesystem::path& resolved_path,
+                                             bool directory_is_canonical = false) {
   // Step 1: Reject empty external data paths.
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
+  ORT_RETURN_IF(external_data_path.native().find(ORTCHAR_T{}) != PathString::npos,
+                "External data path contains a null character");
 
   // Step 2: Reject internal in-memory reference tags.
   ORT_RETURN_IF(external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
@@ -450,7 +472,11 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
 
   std::filesystem::path model_dir_canonical;
   std::filesystem::path external_data_path_canonical;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(resolved_dir, model_dir_canonical));
+  if (directory_is_canonical) {
+    model_dir_canonical = resolved_dir;
+  } else {
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(resolved_dir, model_dir_canonical));
+  }
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir_canonical / external_data_path, external_data_path_canonical));
 
   // Step 6: Containment check — verify the resolved external data path starts with the model directory.
@@ -459,6 +485,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
     ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
+    resolved_path = std::move(external_data_path_canonical);
     return Status::OK();
   }
 
@@ -468,104 +495,83 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
                          external_data_path_canonical, " ", "allowed directory: ", resolved_dir);
 }
 
-/// Validates that `external_data_path` is a safe relative path under the model's directory.
-/// This is the primary entry point for validating external data locations when loading ONNX models.
-///
-/// Validation flow:
-///   1. Try ValidateExternalDataPathFromDir against the model file's parent directory.
-///      If it passes, return success.
-///   2. If it fails due to an empty/absolute path or an in-memory reference tag, return the error immediately
-///      (these are input errors unrelated to the model location).
-///   3. If model_path is empty (model loaded from bytes), wrap the error with context.
-///   4. If model_path is a symlink, try the symlink fallback:
-///      - Resolve the external data path from the *symlink* model directory to its canonical form.
-///      - Check if that canonical target is under the *real* (resolved) model directory.
-///      This supports Hugging Face Hub local cache layouts where both the model file and
-///      external data files are symlinks into a shared blob store:
-///        snapshots/v1/model.onnx -> ../../blobs/sha256-abc  (model symlink)
-///        snapshots/v1/data.bin   -> ../../blobs/sha256-def  (data symlink)
-///      Both symlink targets live under blobs/, which is the real model directory.
-///   5. If none of the above succeed, return an error indicating directory escape.
-Status ValidateExternalDataPath(const std::filesystem::path& model_path,
-                                const std::filesystem::path& external_data_path) {
-  // Derive the model directory from the model file path.
-  // If model_path is empty (loaded from bytes) or has no directory component (bare filename),
-  // fall back to "." (current working directory).
-  std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
-                                        ? std::filesystem::path{"."}
-                                        : model_path.parent_path();
-
-  // --- Pass 1: Validate against the model file's parent directory ---
-  Status status = ValidateExternalDataPathFromDir(model_dir, external_data_path);
+// Resolve from the apparent directory, allowing targets in the originally opened model's directory
+// for layouts where model and data symlinks point into a shared blob store.
+static Status ResolveExternalDataPath(const onnxruntime::ModelPath& model_path,
+                                      const std::filesystem::path& external_data_path,
+                                      std::filesystem::path& resolved_path) {
+  onnxruntime::ModelPath captured_path = model_path;
+  if (captured_path.GetExternalDataDirectories() == nullptr) {
+    ORT_RETURN_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), captured_path));
+  }
+  const auto* directories = captured_path.GetExternalDataDirectories();
+  if (directories == nullptr) {
+    // WASM without a filesystem keeps its existing mounted-data loading path.
+    return ResolveExternalDataPathFromDir(model_path.parent_path(), external_data_path, resolved_path);
+  }
+  Status status = ResolveExternalDataPathFromDir(directories->apparent, external_data_path, resolved_path, true);
   if (status.IsOK()) {
     return status;
   }
 
-  // --- Guard: Don't retry for input-validation errors ---
-  // Empty paths, absolute paths, and in-memory reference tags are always invalid regardless of model directory.
-  // Return the error directly without misleading "escapes directory" context.
   if (external_data_path.empty() || !external_data_path.root_path().empty() ||
+      external_data_path.native().find(ORTCHAR_T{}) != PathString::npos ||
       external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
       external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag) {
     return status;
   }
 
-  // --- Empty model_path: model loaded from bytes ---
-  // When there's no model file path, the working directory is used as the base.
-  // Provide a specific error message indicating this context.
   if (model_path.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "External data path for model loaded from bytes escapes working directory. ",
                            status.ErrorMessage());
   }
 
-  // --- Pass 2: Symlink fallback for symlinked model files ---
-  //
-  // When model_path is a symlink, the model's *apparent* parent directory (where the symlink lives)
-  // differs from its *real* parent directory (where the symlink target lives). External data files
-  // may also be symlinks in the apparent directory that resolve to the real directory tree.
-  //
-  // Example (Hugging Face Hub cache):
-  //   apparent dir:  ~/.cache/huggingface/hub/models--foo/snapshots/abc123/
-  //   real dir:      ~/.cache/huggingface/hub/models--foo/blobs/
-  //   model.onnx -> ../../blobs/sha256-111  (symlink)
-  //   weights.bin -> ../../blobs/sha256-222  (symlink)
-  //
-  // Pass 1 fails because "weights.bin" resolved from apparent_dir points to blobs/sha256-222,
-  // which is not under apparent_dir. This fallback checks if it's under real_dir instead.
-  std::error_code ec;
-  if (!std::filesystem::is_symlink(model_path, ec)) {
-    // model_path is not a symlink (or doesn't exist, or we lack permissions).
-    // No fallback possible — return the original containment error.
+  if (directories->model_target.empty() || directories->model_target == directories->apparent) {
     return status;
   }
 
-  // Resolve the model symlink to get the real model directory.
-  std::filesystem::path real_model_path;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
-  auto real_model_dir = real_model_path.parent_path();
-
-  // Resolve the external data path from the *apparent* (symlink) model directory.
-  // This follows any symlinks in the external data file itself.
-  std::filesystem::path external_data_full_path = model_dir / external_data_path;
   std::filesystem::path external_data_canonical;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(external_data_full_path, external_data_canonical));
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(directories->apparent / external_data_path, external_data_canonical));
 
-  // Check if the resolved external data target is under the real model directory.
-  std::filesystem::path real_model_dir_canonical;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_dir, real_model_dir_canonical));
-
-  if (HasPathComponentPrefix(real_model_dir_canonical, external_data_canonical)) {
+  if (HasPathComponentPrefix(directories->model_target, external_data_canonical)) {
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_canonical, path_exists));
     ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_canonical);
+    resolved_path = std::move(external_data_canonical);
     return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "External data path escapes model directory. ",
                          "External data path: ", external_data_path, " resolved path: ",
-                         external_data_canonical, " ", "allowed directory: ", real_model_dir);
+                         external_data_canonical, " ", "allowed directory: ", directories->model_target);
+}
+
+Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                       const std::filesystem::path& external_data_path) {
+  std::filesystem::path resolved_path;
+  return ResolveExternalDataPathFromDir(model_dir, external_data_path, resolved_path);
+}
+
+Status ValidateExternalDataPath(const onnxruntime::ModelPath& model_path,
+                                const std::filesystem::path& external_data_path) {
+  std::filesystem::path resolved_path;
+  return ResolveExternalDataPath(model_path, external_data_path, resolved_path);
+}
+
+Status OpenExternalDataFile(const Env& env, const onnxruntime::ModelPath& model_path,
+                            const std::filesystem::path& location, std::unique_ptr<RandomAccessFile>& file) {
+  std::filesystem::path resolved_path;
+  ORT_RETURN_IF_ERROR(ResolveExternalDataPath(model_path, location, resolved_path));
+  return env.OpenCanonicalFile(resolved_path.c_str(), file);
+}
+
+Status OpenExternalDataFileFromDir(const Env& env, const std::filesystem::path& model_dir,
+                                   const std::filesystem::path& location, std::unique_ptr<RandomAccessFile>& file) {
+  std::filesystem::path resolved_path;
+  ORT_RETURN_IF_ERROR(ResolveExternalDataPathFromDir(model_dir, location, resolved_path));
+  return env.OpenCanonicalFile(resolved_path.c_str(), file);
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -712,14 +718,17 @@ static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
-                                               const std::filesystem::path& tensor_proto_dir,
+                                               const ModelPath& model_path,
                                                size_t expected_num_elements, size_t element_size,
                                                /*out*/ unsigned char* p_data) {
   ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");
   std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));
+  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, model_path.parent_path(), unpacked_tensor, &model_path));
 
-  ORT_RETURN_IF_NOT(expected_num_elements * element_size == unpacked_tensor.size(), "Unexpected amount of data");
+  ORT_RETURN_IF(expected_num_elements > std::numeric_limits<size_t>::max() / element_size,
+                "Tensor size is not representable.");
+  ORT_RETURN_IF_NOT(SafeInt<size_t>(expected_num_elements) * element_size == unpacked_tensor.size(),
+                    "Unexpected amount of data");
   // ReadExternalDataForTensor returns data in native endian, no need to byteswap here
   memcpy(p_data, unpacked_tensor.data(), unpacked_tensor.size());
 
@@ -728,11 +737,11 @@ static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto
 
 template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    const ModelPath& model_path, size_t expected_num_elements,
                                     /*out*/ T* p_data) {
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
 
-  return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
+  return UnpackTensorWithExternalDataImpl(tensor, model_path, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
 }
 
@@ -741,9 +750,9 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 // normalize them (see NormalizeBoolBytes).
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    const ModelPath& model_path, size_t expected_num_elements,
                                     /*out*/ bool* p_data) {
-  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
+  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, model_path, expected_num_elements, sizeof(bool),
                                                        reinterpret_cast<unsigned char*>(p_data)));
   NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_num_elements);
   return Status::OK();
@@ -752,13 +761,13 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 #define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
   template <>                                                                                                       \
   Status UnpackTensorWithExternalData<FOUR_BIT_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                     \
-                                                     const std::filesystem::path& tensor_proto_dir,                 \
+                                                     const ModelPath& model_path,                                   \
                                                      size_t expected_num_elements, /*out*/ FOUR_BIT_TYPE* p_data) { \
     static_assert(std::is_trivially_copyable<FOUR_BIT_TYPE>::value, "T must be trivially copyable");                \
                                                                                                                     \
     ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");                                                          \
     std::vector<uint8_t> unpacked_tensor;                                                                           \
-    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));                      \
+    ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, model_path.parent_path(), unpacked_tensor, &model_path)); \
                                                                                                                     \
     size_t num_packed_pairs = FOUR_BIT_TYPE::CalcPairFun(expected_num_elements);                                    \
     ORT_RETURN_IF_NOT(num_packed_pairs == unpacked_tensor.size(), "Unexpected number of packed int4 pairs");        \
@@ -783,8 +792,8 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 #endif
 
-#define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type)                                                                 \
-  template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, \
+#define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type)                                                     \
+  template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const ModelPath&, \
                                                size_t, type*);
 
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(float)
@@ -813,7 +822,7 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E8M0)
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
-                                    const std::filesystem::path& /*tensor_proto_dir*/, size_t /*expected_num_elements*/,
+                                    const ModelPath& /*model_path*/, size_t /*expected_num_elements*/,
                                     /*out*/ std::string* /*p_data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data type cannot be STRING.");
 }
@@ -1281,11 +1290,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const onnxruntime::ModelPath& model_path,
                     /*out*/ T* p_data, size_t expected_num_elements) {
 #if !defined(ORT_MINIMAL_BUILD)
   if (HasExternalData(tensor)) {
-    return UnpackTensorWithExternalData(tensor, model_path.parent_path(),
+    return UnpackTensorWithExternalData(tensor, model_path,
                                         expected_num_elements, p_data);
   }
 #else
@@ -1300,7 +1309,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesy
 
 // instantiate the UnpackTensor variant that supports external data
 #define INSTANTIATE_UNPACK_TENSOR(type) \
-  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, type* p_data, size_t);
+  template Status UnpackTensor(const ONNX_NAMESPACE::TensorProto&, const ModelPath&, type* p_data, size_t);
 
 INSTANTIATE_UNPACK_TENSOR(float)
 INSTANTIATE_UNPACK_TENSOR(double)
@@ -1624,32 +1633,27 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #endif
 
 #if !defined(__wasm__)
-static Status GetFileContent(const Env& env, const std::filesystem::path& file_path, FileOffsetType offset,
+static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
-  // query length if it is 0
-  if (length == 0) {
-    // The return type of std::filesystem::file_size is uintmax_t which could be bigger than size_t
-    length = narrow<size_t>(std::filesystem::file_size(file_path));
-  }
-
-  // first, try to map into memory
+  ORT_RETURN_IF_ERROR(file.ValidateRange(offset, length));
   {
     Env::MappedMemoryPtr mapped_memory{};
-    auto status = env.MapFileIntoMemory(file_path.native().c_str(), offset, length, mapped_memory);
+    auto status = file.Map(offset, length, mapped_memory);
     if (status.IsOK()) {
-      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.release(),
-                                           mapped_memory.get_deleter());
+      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.get(),
+                                           std::move(mapped_memory.get_deleter()));
+      mapped_memory.release();
       external_data.swap(raw_buffer);
       return Status::OK();
     }
+    LOGS_DEFAULT(VERBOSE) << "Reading external data without a mapping: " << status.ErrorMessage();
   }
 
-  // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
-  ORT_RETURN_IF_ERROR(
-      env.ReadFileIntoBuffer(file_path.native().c_str(), offset, length, gsl::make_span(buffer.get(), length)));
+  ORT_RETURN_IF_ERROR(file.Read(offset, gsl::make_span(buffer.get(), length)));
 
-  IAllocatorUniquePtr<void> raw_buffer(buffer.release(), [](void* p) { delete[] reinterpret_cast<char*>(p); });
+  IAllocatorUniquePtr<void> raw_buffer(buffer.get(), [](void* p) { delete[] reinterpret_cast<char*>(p); });
+  buffer.release();
   external_data.swap(raw_buffer);
   return Status::OK();
 }
@@ -1662,7 +1666,7 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 // defers to ValidateExternalDataPath, which rejects absolute paths and paths that escape the model
 // directory. Callers must have already verified the tensor has external data.
 static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                const std::filesystem::path& model_path) {
+                                                const onnxruntime::ModelPath& model_path) {
   if (HasExternalDataInMemory(tensor_proto)) {
     return Status::OK();
   }
@@ -1673,9 +1677,15 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
 }
 
 #if !defined(__wasm__)
-static Status LoadPrepackedWeightsFromFile(const Env& env,
-                                           const std::filesystem::path& external_data_file_path,
-                                           std::uintmax_t file_length,
+static Status OpenExternalFileForTensor(const Env& env, const onnxruntime::ModelPath& model_path,
+                                        const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                        std::unique_ptr<RandomAccessFile>& file) {
+  std::unique_ptr<ExternalDataInfo> info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), info));
+  return OpenExternalDataFile(env, model_path, info->GetRelPath(), file);
+}
+
+static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
                                            const ExternalDataInfo::PrepackedInfos& prepacked_infos,
                                            PrepackedWeightsForGraph& prepacked_info) {
   for (const auto& [key, blobs] : prepacked_infos) {
@@ -1685,15 +1695,8 @@ static Status LoadPrepackedWeightsFromFile(const Env& env,
     for (const auto& blob : blobs) {
       const auto blob_offset = std::get<0>(blob);
       const auto blob_length = std::get<1>(blob);
-      SafeInt<FileOffsetType> end_of_blob{blob_offset};
-      end_of_blob += blob_length;
-      ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
-                    "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
-                    " is out of bounds and can not read in full");
-
       IAllocatorUniquePtr<void> data_ptr;
-      ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
-                                         data_ptr));
+      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr));
       prepacked_weights.buffers_.push_back(std::move(data_ptr));
       prepacked_weights.buffer_sizes_.push_back(blob_length);
     }
@@ -1707,7 +1710,7 @@ static Status LoadPrepackedWeightsFromFile(const Env& env,
 #endif
 
 Status GetExtDataFromTensorProto(const Env& env,
-                                 const std::filesystem::path& model_path,
+                                 const onnxruntime::ModelPath& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
@@ -1720,7 +1723,7 @@ Status GetExtDataFromTensorProto(const Env& env,
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path.Path(), tensor_proto_dir));
   }
 
   std::basic_string<ORTCHAR_T> external_data_file_path;
@@ -1801,24 +1804,14 @@ Status GetExtDataFromTensorProto(const Env& env,
       delete[] ext_data;
     };
 
-    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
     buffer.release();
+    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
 
 #else
-    //  The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
-    //  manually check file size first.
-    std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
-
-    SafeInt<FileOffsetType> end_of_read(file_offset);
-    end_of_read += raw_data_safe_len;
-    ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
-                  "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
-                  " size to read: ", static_cast<size_t>(raw_data_safe_len), " given file_length: ", file_length,
-                  " are out of bounds or can not be read in full.");
-
+    std::unique_ptr<RandomAccessFile> file;
+    ORT_RETURN_IF_ERROR(OpenExternalFileForTensor(env, model_path, tensor_proto, file));
     IAllocatorUniquePtr<void> ext_data_buf;
-    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, file_offset, raw_data_safe_len,
-                                       ext_data_buf));
+    ORT_RETURN_IF_ERROR(GetFileContent(*file, file_offset, raw_data_safe_len, ext_data_buf));
 
     // Data on disk is little endian
     if constexpr (endian::native != endian::little) {
@@ -1839,15 +1832,18 @@ Status GetExtDataFromTensorProto(const Env& env,
     std::function<void(void*)> deleter = [ext_data = ext_data_buf.get(),
                                           d = ext_data_buf.get_deleter()](void* t) {
       delete reinterpret_cast<Tensor*>(t);
-      d(ext_data);
+      if (ext_data != nullptr) {
+        d(ext_data);
+      }
     };
 
-    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
+    // OrtValue invokes the deleter if allocating its shared ownership fails.
     ext_data_buf.release();
+    ort_value.Init(p_tensor.release(), ml_tensor_type, std::move(deleter));
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
       ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
-          env, external_data_file_path, file_length, *prepacked_infos, *prepacked_info));
+          *file, *prepacked_infos, *prepacked_info));
     }
 #endif
   }
@@ -1856,7 +1852,7 @@ Status GetExtDataFromTensorProto(const Env& env,
 }
 
 Status LoadPrepackedWeightsFromExternalData(const Env& env,
-                                            const std::filesystem::path& model_path,
+                                            const onnxruntime::ModelPath& model_path,
                                             const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                             PrepackedWeightsForGraph& prepacked_info) {
   ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
@@ -1865,7 +1861,7 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path.Path(), tensor_proto_dir));
   }
 
   std::basic_string<ORTCHAR_T> external_data_file_path;
@@ -1885,13 +1881,13 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
   ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
                     external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
                 "Pre-packed blobs cannot be restored from an in-memory external tensor.");
-  const std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
-  return LoadPrepackedWeightsFromFile(
-      env, external_data_file_path, file_length, prepacked_infos, prepacked_info);
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(OpenExternalFileForTensor(env, model_path, tensor_proto, file));
+  return LoadPrepackedWeightsFromFile(*file, prepacked_infos, prepacked_info);
 #endif
 }
 
-Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+Status LoadExtDataToTensorFromTensorProto(const Env& env, const onnxruntime::ModelPath& model_path,
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
                                           Tensor& tensor) {
@@ -1901,7 +1897,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path.Path(), tensor_proto_dir));
   }
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
@@ -1916,7 +1912,14 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(__wasm__)
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
+#else
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(OpenExternalFileForTensor(env, model_path, tensor_proto, file));
+  ORT_RETURN_IF_ERROR(file->ValidateRange(file_offset, raw_data_safe_len));
+  return ext_data_loader.LoadTensorFromFile(*file, file_offset, raw_data_safe_len, tensor);
+#endif
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \
@@ -1933,7 +1936,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
  * @param tensor        pre-allocated tensor object, where we store the data
  * @return
  */
-Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_path,
+Status TensorProtoToTensor(const Env& env, const onnxruntime::ModelPath& model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
   // Validate tensor compatibility
   TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
@@ -2041,7 +2044,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   return Status::OK();
 }
 
-common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+common::Status CreateTensorFromTensorProto(const Env& env, const onnxruntime::ModelPath& model_path,
                                            const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
   ORT_RETURN_IF_NOT(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
 
@@ -2072,12 +2075,12 @@ Status GetTensorProtoWithDataIfInMemory(
   return Status::OK();
 }
 
-Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
+Status TensorProtoToOrtValue(const Env& env, const onnxruntime::ModelPath& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);
 }
 
-Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
+Status TensorProtoToOrtValue(const Env& env, const onnxruntime::ModelPath& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto, AllocatorPtr alloc, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, nullptr, alloc, value);
 }
@@ -2189,7 +2192,7 @@ ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorP
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const std::filesystem::path& model_path,
+                                              const onnxruntime::ModelPath& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
   ORT_RETURN_IF_NOT(node.attribute_size() > 0, "Constant node: ", node.name(), " has no data attributes");
 
@@ -2257,7 +2260,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const std::filesystem::path& model_path,
+                                              const onnxruntime::ModelPath& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
   ORT_ENFORCE(node.output_size() == 1, "NodeProto for Constant should have 1 output. Got:", node.output_size());
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
@@ -2295,7 +2298,7 @@ void NormalizeBoolTensorIfNeeded(Tensor& tensor) {
 // SparseTensorProtoToDenseTensorProto re-asserts the invariant before this function is reached.
 // The HasExternalDataInMemory early-return below is a paranoid backstop.
 static Status ValidateSparseSubTensorExternalDataPath(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                      const std::filesystem::path& model_path) {
+                                                      const onnxruntime::ModelPath& model_path) {
   if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
       HasExternalDataInMemory(tensor_proto)) {
     return Status::OK();
@@ -2309,7 +2312,7 @@ static Status ValidateSparseSubTensorExternalDataPath(const ONNX_NAMESPACE::Tens
 static Status CopySparseData(const std::string& name,
                              int64_t nnz_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
-                             const std::filesystem::path& model_path,
+                             const onnxruntime::ModelPath& model_path,
                              gsl::span<const int64_t> dense_dims,
                              int64_t dense_elements,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
@@ -2484,7 +2487,7 @@ static Status CopySparseData(const std::string& name,
 }
 
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
-                                                   const std::filesystem::path& model_path,
+                                                   const onnxruntime::ModelPath& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
   Status status;
 
@@ -2794,7 +2797,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
-                                              const std::filesystem::path& model_path,
+                                              const onnxruntime::ModelPath& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
@@ -2931,7 +2934,7 @@ Status UnpackComplexInitializerData(const ONNX_NAMESPACE::TensorProto& initializ
   }
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
-                             const std::filesystem::path& model_path,
+                             const onnxruntime::ModelPath& model_path,
                              std::vector<uint8_t>& unpacked_tensor) {
   // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // allocation the memory aligned to std::max_align_t, need look into allocating
@@ -2940,7 +2943,8 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
         model_path.parent_path(),
-        unpacked_tensor));
+        unpacked_tensor,
+        &model_path));
     return Status::OK();
   }
 
