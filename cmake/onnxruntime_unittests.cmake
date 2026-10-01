@@ -1314,6 +1314,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     onnxruntime_add_shared_library(onnxruntime_provider_bridge_${fixture}_fixture
       "${TEST_SRC_DIR}/shared_lib/provider_bridge_test_library.cc")
     set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES FOLDER "ONNXRuntimeTest")
+    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_target_properties(onnxruntime_provider_bridge_${fixture}_fixture PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+    endif()
   endforeach()
   target_compile_definitions(onnxruntime_provider_bridge_valid_fixture PRIVATE ORT_TEST_PROVIDER_SET_HOST)
 
