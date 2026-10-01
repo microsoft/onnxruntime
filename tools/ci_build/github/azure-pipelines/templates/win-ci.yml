@@ -148,9 +148,7 @@ stages:
       timeoutInMinutes: 360
 
     steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: jobs/checkout-and-git-redirect.yml
 
       - template: setup-build-tools.yml
         parameters:

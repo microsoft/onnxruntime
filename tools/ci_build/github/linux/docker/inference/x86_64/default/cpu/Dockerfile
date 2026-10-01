@@ -8,6 +8,8 @@ FROM $BASEIMAGE
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
+RUN dnf install -y perl-core && dnf clean all
+
 ADD scripts /tmp/scripts
 RUN --mount=type=secret,id=PIP_INDEX_URL,required=false \
     if [ -f /run/secrets/PIP_INDEX_URL ]; then export PIP_INDEX_URL=$(cat /run/secrets/PIP_INDEX_URL); fi && \

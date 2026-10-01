@@ -12,5 +12,10 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  ${PYTHON_EXE} -m pip install -r requirements.txt
+  PIP_REQUIREMENTS=(-r requirements.txt)
+  if [[ "${PYTHON_EXE}" == */cp313-cp313t/* ]]; then
+    # mypy 1.19+ dependencies do not support free-threaded CPython 3.13.
+    PIP_REQUIREMENTS+=("mypy<1.19")
+  fi
+  "${PYTHON_EXE}" -m pip install "${PIP_REQUIREMENTS[@]}"
 done

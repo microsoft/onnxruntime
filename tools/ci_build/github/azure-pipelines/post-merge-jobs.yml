@@ -395,8 +395,7 @@ stages:
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:
-    - checkout: self
-      submodules: false
+    - template: templates/jobs/checkout-and-git-redirect.yml
 
     - template: templates/setup-feeds-and-python-steps.yml
       parameters:

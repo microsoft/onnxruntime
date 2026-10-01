@@ -149,9 +149,7 @@ stages:
             targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
             artifactName: onnxruntime_gpu
         steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: ../templates/jobs/checkout-and-git-redirect.yml
 
         - ${{ each config in parameters.LinuxPythonConfigurations }}:
           - task: DownloadPipelineArtifact@2
