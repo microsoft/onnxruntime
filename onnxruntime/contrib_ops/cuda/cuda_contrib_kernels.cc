@@ -177,6 +177,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, VarlenNGramHashMapping);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, VarlenNGramHashMapping);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd);
@@ -227,6 +229,9 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulBnb4);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulBnb4);
 class CUDA_MS_OP_CLASS_NAME(1, Trilu);
 class CUDA_MS_OP_CLASS_NAME(1, UnfoldTensor);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DynamicSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DynamicSparseAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DynamicSparseAttention);
 class CUDA_MS_OP_CLASS_NAME(1, DynamicTimeWarping);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, int8_t_MLFloat16, QuantizeLinear);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, uint8_t_MLFloat16, QuantizeLinear);
@@ -519,6 +524,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, VarlenNGramHashMapping)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, VarlenNGramHashMapping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd)>,
@@ -579,6 +586,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float_int8_t, QAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, QAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, UnfoldTensor)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DynamicSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DynamicSparseAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, DynamicSparseAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, DynamicTimeWarping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Trilu)>,
       // TransposedMatMul is still here for backward compatibility

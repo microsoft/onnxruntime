@@ -38,8 +38,7 @@ Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* ker
   ORT_RETURN_IF(bytes > static_cast<size_t>(max_bytes),
                 "SparseAttentionIndexer: ", kernel_name, " requires ", bytes,
                 " bytes of dynamic shared memory, but the device supports at most ", max_bytes);
-  return CUDA_CALL(
-      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(bytes)));
+  return CUDA_CALL(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_bytes));
 }
 
 __device__ __forceinline__ float NegativeInfinity() { return SaiNegativeInfinity(); }
@@ -416,7 +415,7 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
         accumulator +=
             weight * ExtendedValue<T>(past_kv_buffer, key, batch, current_base + slot, params.head_size + d, params);
       }
-      pooled[d] = denominator > 0.0f ? accumulator / denominator : 0.0f;
+      pooled[d] = denominator > 0.0f && isfinite(denominator) ? accumulator / denominator : 0.0f;
     }
     __syncthreads();
 
