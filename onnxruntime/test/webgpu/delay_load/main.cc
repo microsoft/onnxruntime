@@ -66,6 +66,7 @@ int prepare_main() {
   if (fs::exists(L"webgpu_dawn.dll")) {
     fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
   }
+
   // copy the test binary to the root folder
   fs::copy_file(exe_full_path, root_folder / L"test.exe");
 
@@ -113,11 +114,7 @@ int run() {
 }
 
 int test_main() {
-  const auto onnxruntime_dll_path =
-      std::filesystem::absolute(L"dlls\\onnxruntime.dll");
-  HMODULE hModule = LoadLibraryExW(
-      onnxruntime_dll_path.c_str(), nullptr,
-      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  HMODULE hModule = LoadLibraryA("dlls\\onnxruntime.dll");
   if (hModule == NULL) {
     std::cout << "Failed to load dlls\\onnxruntime.dll" << std::endl;
     std::cout << "Error code: " << GetLastError() << std::endl;
