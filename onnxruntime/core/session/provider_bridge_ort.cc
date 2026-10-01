@@ -1940,7 +1940,11 @@ struct ProviderSharedLibrary {
     ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
+    auto status = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!status.IsOK()) {
+      Unload();
+      return status;
+    }
 
     PProvider_SetHost(&g_provider_host);
 
@@ -1972,8 +1976,7 @@ static ProviderSharedLibrary s_library_shared;
 
 bool InitProvidersSharedLibrary() {
   ORT_TRY {
-    ORT_THROW_IF_ERROR(s_library_shared.Initialize());
-    return true;
+    return s_library_shared.Initialize().IsOK();
   }
   ORT_CATCH(const std::exception&) {
   }
