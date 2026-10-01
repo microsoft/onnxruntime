@@ -144,7 +144,7 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) 
     if (kernel_params.gridDim.x == kNumHeads && kernel_params.sharedMemBytes == query_prepare_shared_bytes) {
       ++query_prepare_nodes;
     }
-    if (kernel_params.gridDim.x == params.max_block_count &&
+    if (kernel_params.gridDim.x == static_cast<unsigned int>(params.max_block_count) &&
         kernel_params.sharedMemBytes == block_score_shared_bytes) {
       ++block_score_nodes;
     }
