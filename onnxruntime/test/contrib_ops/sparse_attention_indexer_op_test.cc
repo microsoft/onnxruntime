@@ -1220,6 +1220,16 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
   RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaInt64HighWordMask) {
+  QsaProblem problem = MakeQsaProblem();
+  for (int64_t& mask_value : problem.mask) {
+    if (mask_value != 0) {
+      mask_value = int64_t{1} << 32;
+    }
+  }
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
 }
