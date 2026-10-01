@@ -481,6 +481,14 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 /// "0" or unset (default) disables chunking. Overrides ORT_MATMULNBITS_M_CHUNK_SIZE.
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
+/// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
+/// When enabled, the first run of each eligible shape times the available kernels (cuBLAS and a small-N
+/// GEMV for small M) on the current device and caches the fastest for the process. Tuning is skipped
+/// while a CUDA graph is being captured, so run at least one warm-up inference before capture.
+/// When disabled, cuBLAS is used. Overrides the ORT_CUDA_GEMM_AUTO_TUNE environment variable;
+/// ORT_ENABLE_SMALL_N_GEMV=1/0, when set, forces the small-N GEMV on/off and bypasses tuning.
+static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.enable_gemm_auto_tune";
+
 /// <summary>
 /// This is a setting that contains string annotations or annotation prefixes to be matched
 /// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.

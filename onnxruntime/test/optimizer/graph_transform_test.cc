@@ -13380,13 +13380,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
     bool add_produces_graph_output{false};
     bool use_cuda_ep{false};
     bool use_gpt_oss_router_shape{false};
+    int64_t weight_prepacked{0};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
                             ", add_produces_graph_output:", opts.add_produces_graph_output,
                             ", use_cuda_ep:", opts.use_cuda_ep,
-                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape,
+                            ", weight_prepacked:", opts.weight_prepacked));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
@@ -13427,6 +13429,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.weight_prepacked != 0) {
+        matmul.AddAttribute("weight_prepacked", opts.weight_prepacked);
+      }
       if (opts.use_cuda_ep) {
         matmul.SetExecutionProviderType(kCudaExecutionProvider);
       }
@@ -13461,9 +13466,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       return Status::OK();
     };
 
-    auto post_graph_checker = [](Graph& graph) {
+    auto post_graph_checker = [&opts](Graph& graph) {
       auto op_count = CountOpsInGraph(graph);
-      EXPECT_EQ(op_count["Add"], 0);
+      EXPECT_EQ(op_count["Add"], opts.weight_prepacked == 0 ? 0 : 1);
       return Status::OK();
     };
 
@@ -13486,6 +13491,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
+  }
+
+  for (int64_t weight_prepacked : {int64_t{1}, int64_t{2}}) {
+    TestOptions opts{};
+    opts.weight_prepacked = weight_prepacked;
+    run_test(opts);
+
+    opts.use_cuda_ep = true;
+    run_test(opts);
   }
 }
 
@@ -13824,6 +13838,30 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
   // Valid windowless STFT should be successfully decomposed
   op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["STFT"], 0);
+}
+
+TEST_F(GraphTransformationTests, FusionPreservesPublicAndSharedValues) {
+  const std::vector<std::pair<std::basic_string<ORTCHAR_T>, bool>> models = {
+      {ORT_TSTR("fusion/matmul_transpose_public_cast.onnx"), false},
+      {ORT_TSTR("fusion/gather_to_slice_public_range.onnx"), false},
+      {ORT_TSTR("fusion/fast_gelu_public_entry.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_past_key_transpose.onnx"), false},
+      {ORT_TSTR("fusion/attention_public_qk_intermediate.onnx"), false},
+      {ORT_TSTR("fusion/qdq_public_first_node.onnx"), true},
+      {ORT_TSTR("fusion/qdq_shared_source_value.onnx"), true},
+  };
+
+  for (const auto& [model, enable_qdq_cleanup] : models) {
+    SessionOptions so;
+    so.graph_optimization_level = TransformerLevel::MaxLevel;
+    if (enable_qdq_cleanup) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    }
+
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(PathString(MODEL_FOLDER) + model));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
 }
 
 }  // namespace test
