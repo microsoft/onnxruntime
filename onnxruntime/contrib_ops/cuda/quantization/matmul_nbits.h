@@ -192,27 +192,10 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexGroupIndex = 4;
     constexpr int kInputIndexBias = 5;
 
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
-    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
-    // truly exist at construction time. Instead, we check input count here
-    // and verify actual tensor presence in ComputeInternal.
-    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
-    has_bias_ = info.GetInputCount() > kInputIndexBias;
-    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
-#else
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
-
-    if (has_zero_points_) {
-      int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
-      int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
-      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
-    }
-#endif
+    has_zero_points_ = InputExists(info, kInputIndexZeroPoints);
+    has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
+    has_bias_ = InputExists(info, kInputIndexBias);
+    is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;
     group_index_is_initializer_ = has_g_idx_ &&

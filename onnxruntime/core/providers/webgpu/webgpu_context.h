@@ -168,6 +168,7 @@ struct WebGpuContextConfig {
   uint64_t max_storage_buffer_binding_size{0};
   // Internal test hook. Provider-option parsing never populates this field.
   uint64_t test_only_max_storage_buffer_binding_size{0};
+  uint32_t max_storage_buffers_per_shader_stage{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   std::optional<uint32_t> adapter_index;
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -384,7 +385,8 @@ class WebGpuContext final {
                 bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size,
-                uint64_t test_only_max_storage_buffer_binding_size)
+                uint64_t test_only_max_storage_buffer_binding_size,
+                uint32_t max_storage_buffers_per_shader_stage)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
@@ -392,7 +394,8 @@ class WebGpuContext final {
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{ResolveMaxStorageBufferBindingSize(
-            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
+            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)},
+        max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
@@ -477,6 +480,11 @@ class WebGpuContext final {
   profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
+  uint32_t max_storage_buffers_per_shader_stage_;
+  GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
+
+  // External vector to store captured commands, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
 };
 
 #if !defined(__wasm__)
