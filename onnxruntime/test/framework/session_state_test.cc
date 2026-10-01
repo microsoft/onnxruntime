@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -13,6 +15,7 @@
 
 #include "asserts.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
@@ -132,6 +135,122 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
 
 #endif  // __wasm__
 #endif  // ENABLE_TRAINING_CORE
+
+#if defined(ORT_ENABLE_STREAM) && !defined(__wasm__)
+class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  explicit StreamPoolTestExecutionProvider(bool enable_graph_capture)
+      : CPUExecutionProvider(CPUExecutionProviderInfo(false)),
+        enable_graph_capture_(enable_graph_capture) {}
+
+  bool IsGraphCaptureEnabled() const override { return enable_graph_capture_; }
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& registry, AllocatorMap&) const override {
+    registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
+      ++num_streams_created_;
+      return std::make_unique<Stream>(nullptr, device);
+    });
+  }
+
+  size_t NumStreamsCreated() const { return num_streams_created_.load(); }
+
+ private:
+  const bool enable_graph_capture_;
+  mutable std::atomic<size_t> num_streams_created_{0};
+};
+
+static void TestDeviceStreamPool(bool enable_graph_capture) {
+  Model model("stream_pool_test", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_type);
+  auto& output = graph.GetOrCreateNodeArg("output", &tensor_type);
+  graph.AddNode("identity", "Identity", "", {&input}, {&output}).SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  auto ep = std::make_unique<StreamPoolTestExecutionProvider>(enable_graph_capture);
+  const auto* ep_ptr = ep.get();
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(ep)));
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
+
+  auto collection = session_state.AcquireDeviceStreamCollection();
+  ASSERT_NE(collection, nullptr);
+  const auto* main_collection = collection.get();
+  ASSERT_EQ(ep_ptr->NumStreamsCreated(), 1U);
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+
+  // Keep callers alive after sequential acquisitions, as in a host thread pool.
+  std::promise<void> release_threads;
+  auto released = release_threads.get_future().share();
+  constexpr size_t num_threads = 4;
+  InlinedVector<std::thread> threads;
+  threads.reserve(num_threads);
+  for (size_t i = 0; i < num_threads; ++i) {
+    std::promise<void> ran;
+    auto completed = ran.get_future();
+    threads.emplace_back([&session_state, main_collection, enable_graph_capture, ran = std::move(ran), released]() mutable {
+      auto first = session_state.AcquireDeviceStreamCollection();
+      EXPECT_NE(first, nullptr);
+      if (enable_graph_capture) {
+        EXPECT_NE(first.get(), main_collection);
+      } else {
+        EXPECT_EQ(first.get(), main_collection);
+      }
+      const auto* first_collection = first.get();
+      session_state.RecycleDeviceStreamCollection(std::move(first));
+      auto second = session_state.AcquireDeviceStreamCollection();
+      EXPECT_EQ(second.get(), first_collection);
+      session_state.RecycleDeviceStreamCollection(std::move(second));
+      ran.set_value();
+      released.wait();
+    });
+    completed.wait();
+  }
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 1 : 1);
+
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), main_collection);
+  // An in-use collection must never be handed out to another caller.
+  std::thread overlapping_caller([&session_state, main_collection]() {
+    auto other = session_state.AcquireDeviceStreamCollection();
+    EXPECT_NE(other, nullptr);
+    EXPECT_NE(other.get(), main_collection);
+    session_state.RecycleDeviceStreamCollection(std::move(other));
+  });
+  overlapping_caller.join();
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 2 : 2);
+
+  release_threads.set_value();
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+  collection = session_state.AcquireDeviceStreamCollection();
+  EXPECT_EQ(collection.get(), main_collection);
+  EXPECT_EQ(ep_ptr->NumStreamsCreated(), enable_graph_capture ? num_threads + 2 : 2);
+  session_state.RecycleDeviceStreamCollection(std::move(collection));
+}
+
+TEST(SessionStateTest, DeviceStreamPoolSharedAcrossThreads) {
+  TestDeviceStreamPool(false);
+}
+
+TEST(SessionStateTest, DeviceStreamPoolGraphCaptureThreadAffinity) {
+  TestDeviceStreamPool(true);
+}
+#endif
 
 class TestOpKernel : public OpKernel {
  public:
