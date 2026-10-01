@@ -7085,7 +7085,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>compress_ratio</tt> : int (required)</dt>
 <dd>Number of consecutive tokens folded into one compressed block. Must be > 0.</dd>
 <dt><tt>epsilon</tt> : float</dt>
-<dd>Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.</dd>
+<dd>Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.</dd>
 <dt><tt>head_weight_scale</tt> : float</dt>
 <dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
 <dt><tt>index_topk</tt> : int</dt>
@@ -7098,13 +7098,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (7 - 13)
+#### Inputs (8 - 14)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Indexer queries with shape (batch_size, sequence_length, num_heads, head_size), already normalized but not yet rotated.</dd>
-<dt><tt>key</tt> : T</dt>
-<dd>Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dd>Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, this input instead packs query followed by key along the last dimension and has shape (batch_size, sequence_length, (num_heads + 1) * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series. May be omitted for policy_mode 'qsa' when query contains packed QK.</dd>
+<dt><tt>query_norm_weight</tt> : T</dt>
+<dd>Effective RMSNorm multiplier of the queries, with shape (head_size).</dd>
 <dt><tt>key_norm_weight</tt> : T</dt>
 <dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
 <dt><tt>cos_cache</tt> : T</dt>

@@ -2032,6 +2032,12 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
                          expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
   }
+  for (size_t index = 0; index < expected_outputs; ++index) {
+    if (ctx.getOutputType(index) == nullptr) {
+      fail_shape_inference("SparseAttentionIndexer: output ", index, " is required for policy_mode '",
+                           policy_mode, "'");
+    }
+  }
 
   updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
 
@@ -2094,7 +2100,12 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
       } else {
         auto* total_dim = present_shape.add_dim();
         if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
-          total_dim->set_dim_value(past_key_shape->dim(1).dim_value() + sequence_dim.dim_value());
+          const int64_t past_length = past_key_shape->dim(1).dim_value();
+          const int64_t sequence_length = sequence_dim.dim_value();
+          if (past_length > std::numeric_limits<int64_t>::max() - sequence_length) {
+            fail_shape_inference("SparseAttentionIndexer: present key sequence length exceeds INT64_MAX");
+          }
+          total_dim->set_dim_value(past_length + sequence_length);
         }
       }
       SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
@@ -2149,7 +2160,11 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength)) {
       *entry_dim = past_compressed_shape->dim(1);
     } else if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
-      entry_dim->set_dim_value(past_compressed_shape->dim(1).dim_value() + plan.new_window_count);
+      const int64_t past_length = past_compressed_shape->dim(1).dim_value();
+      if (past_length > std::numeric_limits<int64_t>::max() - plan.new_window_count) {
+        fail_shape_inference("SparseAttentionIndexer: present compressed-key length exceeds INT64_MAX");
+      }
+      entry_dim->set_dim_value(past_length + plan.new_window_count);
     }
     SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
     updateOutputShape(ctx, sai::kPresentKey, present_shape);
@@ -2250,18 +2265,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "query",
                "Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before "
-           "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
-           "this input instead packs query followed by key along the last dimension and has shape "
-           "(batch_size, sequence_length, (num_heads + 1) * head_size).",
+               "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
+               "this input instead packs query followed by key along the last dimension and has shape "
+               "(batch_size, sequence_length, (num_heads + 1) * head_size).",
                "T")
         .Input(1,
                "key",
                "Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) "
                "for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', "
-                 "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
-                 "May be omitted for policy_mode 'qsa' when query contains packed QK.",
-                 "T",
-                 OpSchema::Optional)
+               "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
+               "May be omitted for policy_mode 'qsa' when query contains packed QK.",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "query_norm_weight",
                "Effective RMSNorm multiplier of the queries, with shape (head_size).",
