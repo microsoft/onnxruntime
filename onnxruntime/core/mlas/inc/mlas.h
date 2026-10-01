@@ -1743,6 +1743,25 @@ MlasLayerNormF32(
 );
 
 /**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of IEEE FP16 data.
+ *        Scale and bias are supplied as float32 to match the CPU LayerNorm
+ *        prepacking path. Returns false when no optimized kernel is available.
+ */
+bool
+MLASCALL
+MlasLayerNormF16(
+    const uint16_t* Input,
+    const float* Scale,
+    const float* Bias,
+    uint16_t* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {

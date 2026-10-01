@@ -7,11 +7,13 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/level1_memory_estimate.h"
@@ -48,6 +50,11 @@ using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutla
 // Environment variable to enable/disable the fpA_intB path: unset/0/off to disable, other value to enable.
 // This only affects nodes whose weights are NOT prepacked (see the constructor).
 constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+
+// Env fallback for kOrtSessionOptionsCudaMatMulNBitsMChunkSize (max rows of A per fpA_intB launch).
+constexpr const char* kMChunkSizeEnvVar = "ORT_MATMULNBITS_M_CHUNK_SIZE";
+// M chunking applies only when the M x (N + K) profiler buffers (A and C) would exceed this size.
+constexpr int64_t kMChunkMinBytes = 256 * 1024 * 1024;
 
 constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
@@ -110,6 +117,35 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
     return false;
   }
   return true;
+}
+
+// Parses the fpA_intB M chunk size. Empty -> 0 (chunking disabled); otherwise a non-negative integer.
+inline int ParseMatMulNBitsMChunkSize(const std::string& value) {
+  const std::string trimmed = onnxruntime::utils::TrimString(value);
+  if (trimmed.empty()) {
+    return 0;
+  }
+  int chunk_size = 0;
+  ORT_ENFORCE(TryParseStringWithClassicLocale(trimmed, chunk_size) && chunk_size >= 0,
+              "Invalid MatMulNBits M chunk size '", value, "': expected a non-negative integer.");
+  return chunk_size;
+}
+
+// The tactic profiler rounds M up to a power-of-two bucket, capped at kMaxProfileM. Keep limits below
+// that cap on a bucket boundary so initial and lazy profiling cannot allocate scratch above the limit.
+inline int64_t FpAIntBProfileSafeMCap(int64_t max_m) {
+  if (max_m <= 0) {
+    return 0;
+  }
+  constexpr int64_t kMaxProfileM = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+  if (max_m >= kMaxProfileM) {
+    return max_m;
+  }
+  int64_t profile_m = 1;
+  while (profile_m <= max_m / 2) {
+    profile_m *= 2;
+  }
+  return profile_m;
 }
 
 // Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
@@ -196,6 +232,13 @@ class MatMulNBits final : public CudaKernel {
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
                 "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
+    m_chunk_size_ = ParseMatMulNBitsMChunkSize(ResolveFpAIntBConfigOrEnv(
+        info, kOrtSessionOptionsCudaMatMulNBitsMChunkSize, kMChunkSizeEnvVar));
+    m_chunk_size_ = static_cast<int>(FpAIntBProfileSafeMCap(m_chunk_size_));
+    const int64_t profile_elements_per_row = SafeInt<int64_t>(N_) + SafeInt<int64_t>(K_);
+    const int64_t scratch_elements_limit = kMChunkMinBytes / static_cast<int64_t>(sizeof(T));
+    const int64_t memory_gate_rows = scratch_elements_limit / std::max<int64_t>(1, profile_elements_per_row);
+    m_chunk_min_rows_ = FpAIntBProfileSafeMCap(memory_gate_rows);
     if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
       // See matmul_nbits_sm90_validation.h / matmul_nbits.cc for the validation logic (extracted
       // into a pure function of (sm, block_size) so it can be unit-tested without a Hopper GPU).
@@ -249,6 +292,12 @@ class MatMulNBits final : public CudaKernel {
 
         int max_m = profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                                       : profile_m.back();
+        // Unchunked launches never exceed this many rows, so larger buckets are never looked up.
+        if (m_chunk_size_ > 0) {
+          const int64_t max_unchunked_m =
+              force_chunked_ ? m_chunk_size_ : std::max<int64_t>(m_chunk_size_, m_chunk_min_rows_);
+          max_m = static_cast<int>(std::min<int64_t>(max_m, max_unchunked_m));
+        }
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
@@ -324,6 +373,11 @@ class MatMulNBits final : public CudaKernel {
   int FpAIntBPackingSmForKernel() const;
   int64_t RequiredWeightPrepackedFormat() const;
 
+  int64_t FpAIntBRowsPerLaunch(int64_t m) const {
+    const bool chunk = m_chunk_size_ > 0 && m > m_chunk_size_ && (force_chunked_ || m > m_chunk_min_rows_);
+    return chunk ? m_chunk_size_ : m;
+  }
+
   void InitGemmProfiler(int sm);
   void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
 
@@ -353,6 +407,10 @@ class MatMulNBits final : public CudaKernel {
   bool has_fpA_intB_gemv_{false};
   bool has_fpA_intB_gemm_{false};
   int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
+  // Max rows of A per fpA_intB launch; 0 disables M chunking.
+  int m_chunk_size_{0};
+  // M above this is large enough for chunking to pay off (see kMChunkMinBytes).
+  int64_t m_chunk_min_rows_{0};
 
   bool is_prepacked_weight_{false};
   bool is_prepacked_scale_{false};
