@@ -40,6 +40,8 @@ class WindowsTelemetry : public Telemetry {
   // static HRESULT Status();
 
   void LogProcessInfo() const override;
+  static void LogLocalProcessInfo(const std::string& device_id,
+                                  const std::string& device_id_status);
 
   void LogSessionCreationStart(uint32_t session_id) const override;
 

@@ -72,5 +72,12 @@ TEST(TelemetryContextTest, SharedDeviceIdUsesUnsaltedSha256) {
             "6225BD190D6CCF87766A49C9986D174DEF3391FE175A61525E49A1D2334D6A43");
 }
 
+TEST(TelemetryContextTest, FormatsCallerSuppliedDeviceId) {
+  EXPECT_EQ(telemetry_internal::FormatDeviceIdForTelemetry(""), "");
+  EXPECT_EQ(telemetry_internal::FormatDeviceIdForTelemetry(
+                "01234567-89ab-4def-8123-456789abcdef"),
+            "c:6225BD190D6CCF87766A49C9986D174DEF3391FE175A61525E49A1D2334D6A43");
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
