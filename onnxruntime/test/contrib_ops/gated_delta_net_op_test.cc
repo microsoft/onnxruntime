@@ -1530,6 +1530,30 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
   }
 }
 
+TEST(GatedDeltaNetTest, RejectsNonDivisiblePackedQkvUniformBatch) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  Geometry g{5, 2, 1, 2, kDim, kDim};
+  Inputs in = MakeInputs(g, 46);
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  Options o;
+  o.update_rule = "linear";
+  AddCommonAttrs(test, o);
+  const int packed_size = 2 * g.hq * g.dk + g.hv * g.dv;
+  test.AddInput<MLFloat16>("query", {g.total_tokens, packed_size},
+                          ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * packed_size, 0.0f)));
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("initial_state", {g.batch, g.hv, g.dv, g.dk}, in.state0);
+  test.AddOutput<MLFloat16>("output", {g.total_tokens, g.hv, g.dv},
+                           ToFloat16(std::vector<float>(static_cast<size_t>(g.total_tokens) * g.hv * g.dv, 0.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be divisible by batch", {}, nullptr, &eps);
+}
+
 TEST(GatedDeltaNetTest, RejectsMismatchedHeadCounts) {
   if (NeedSkipGatedDeltaNetTest()) return;
   Geometry g{4, 1, 2, 5, 64, 64};  // hv=5 is not a multiple of hq=2

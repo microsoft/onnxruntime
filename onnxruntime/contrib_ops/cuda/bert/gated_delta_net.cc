@@ -220,7 +220,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(batch_dim > 0 && batch_dim <= max_int,
                     "batch size must be positive and fit in int32");
   const int batch = static_cast<int>(batch_dim);
-  if (cu_seqlens == nullptr && qkv_rank == 3) {
+  if (cu_seqlens == nullptr && token_dims == 1) {
     ORT_RETURN_IF_NOT(batch > 0 && total_tokens % batch == 0,
                       "total_tokens (", total_tokens, ") must be divisible by batch (", batch, ")");
   }
