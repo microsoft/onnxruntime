@@ -148,9 +148,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
                     opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
                 )
                 with self.assertRaisesRegex(AssertionError, error):
-                    SymbolicShapeInference.infer_shapes(
-                        model, auto_merge=True, int_max=100000, guess_output_rank=False
-                    )
+                    SymbolicShapeInference.infer_shapes(model, auto_merge=True, int_max=100000, guess_output_rank=False)
 
     def test_symbolic_shape_infer(self):
         from pathlib import Path  # noqa: PLC0415
