@@ -192,34 +192,14 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexGroupIndex = 4;
     constexpr int kInputIndexBias = 5;
 
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-    // Input count includes empty optional edges. Resolve presence before selecting or prepacking a kernel.
-    const auto kernel_info = info.GetKernelInfo();
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints &&
-                       !kernel_info.GetInputName(kInputIndexZeroPoints).empty();
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex &&
-                 !kernel_info.GetInputName(kInputIndexGroupIndex).empty();
-    has_bias_ = info.GetInputCount() > kInputIndexBias &&
-                !kernel_info.GetInputName(kInputIndexBias).empty();
-
-    if (has_zero_points_) {
-      const auto zero_point_type =
-          kernel_info.GetInputTypeInfo(kInputIndexZeroPoints).GetTensorTypeAndShapeInfo().GetElementType();
-      const auto scale_type =
-          kernel_info.GetInputTypeInfo(kInputIndexScale).GetTensorTypeAndShapeInfo().GetElementType();
-      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
-    }
-#else
-    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
-    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
-
-    if (has_zero_points_) {
-      int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
-      int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
-      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
-    }
-#endif
+    const int32_t scale_type = GetInputElementType(info, kInputIndexScale);
+    const int32_t zero_point_type = GetInputElementType(info, kInputIndexZeroPoints);
+    has_zero_points_ = zero_point_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    has_g_idx_ = GetInputElementType(info, kInputIndexGroupIndex) !=
+                 ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    has_bias_ = GetInputElementType(info, kInputIndexBias) !=
+                ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    is_zero_points_scale_same_type_ = has_zero_points_ && zero_point_type == scale_type;
 
     const Tensor* group_index_initializer = nullptr;
     group_index_is_initializer_ = has_g_idx_ &&

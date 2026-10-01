@@ -328,3 +328,31 @@ class CudaKernel : public OpKernel {
 #else
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #endif
+
+namespace onnxruntime {
+namespace cuda {
+
+// Returns the tensor element type of the input at input_index. Out-of-range inputs and omitted
+// optional inputs both return TensorProto_DataType_UNDEFINED, allowing callers to query optional
+// input metadata without build-specific bounds or existence checks.
+inline int32_t GetInputElementType(const OpKernelInfo& info, size_t input_index) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  const auto node = info.node();
+  if (!node.InputExists(input_index)) {
+    return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  }
+
+  return static_cast<int32_t>(
+      info.GetKernelInfo().GetInputTypeInfo(input_index).GetTensorTypeAndShapeInfo().GetElementType());
+#else
+  const auto& input_defs = info.node().InputDefs();
+  if (input_index >= input_defs.size() || !input_defs[input_index]->Exists()) {
+    return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  }
+
+  return input_defs[input_index]->TypeAsProto()->tensor_type().elem_type();
+#endif
+}
+
+}  // namespace cuda
+}  // namespace onnxruntime
