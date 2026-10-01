@@ -162,7 +162,6 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
           if (strings[i] != NULL) {
             (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaStrings[i], strings[i]);
           }
-          (*jniEnv)->DeleteLocalRef(jniEnv, javaStrings[i]);
         }
       }
       free(javaStrings);

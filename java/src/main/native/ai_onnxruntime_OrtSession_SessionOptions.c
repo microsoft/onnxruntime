@@ -732,8 +732,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   for (int i = 0; i < keyCount; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
-    (*jniEnv)->DeleteLocalRef(jniEnv, jkeyArray[i]);
-    (*jniEnv)->DeleteLocalRef(jniEnv, jvalueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
   free((void*)keyArray);
@@ -781,8 +779,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
     for (jsize i = 0; i < keyCount; i++) {
         (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
         (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
-        (*jniEnv)->DeleteLocalRef(jniEnv, jkeyArray[i]);
-        (*jniEnv)->DeleteLocalRef(jniEnv, jvalueArray[i]);
     }
     free((void*)devicePtrs);
     free((void*)keyArray);
