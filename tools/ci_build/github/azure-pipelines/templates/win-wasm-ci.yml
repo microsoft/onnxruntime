@@ -52,7 +52,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -74,9 +75,9 @@ jobs:
   - template: setup-feeds-and-python-steps.yml
     parameters:
       architecture: $(buildArch)
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'

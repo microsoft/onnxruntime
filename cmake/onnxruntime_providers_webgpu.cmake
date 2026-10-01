@@ -15,6 +15,10 @@
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
   )
+  if(onnxruntime_USE_EXTERNAL_DAWN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(REMOVE_ITEM onnxruntime_providers_webgpu_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/webgpu_context_dawn_platform.cc")
+  endif()
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
@@ -57,7 +61,7 @@
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
         onnxruntime_optimizer
-        onnxruntime_providers
+        ${onnxruntime_providers_target}
         onnxruntime_lora
         onnxruntime_framework
         onnxruntime_graph
@@ -241,7 +245,7 @@
     endif()
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-      # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
+      # Ensure dxcompiler.dll exists in the output directory $<TARGET_FILE_DIR:dxcompiler>
       # TODO: the following code is used to disable building Dawn using vcpkg temporarily
       # until we figure out how to resolve the packaging pipeline failures
       #
@@ -249,14 +253,10 @@
       if (FALSE)
         find_package(directx-dxc CONFIG REQUIRED)
         target_link_libraries(onnxruntime_providers_webgpu Microsoft::DirectXShaderCompiler)
-        target_link_libraries(onnxruntime_providers_webgpu Microsoft::DXIL)
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DXIL>")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:Microsoft::DirectXShaderCompiler>")
       else()
-        add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
         add_dependencies(onnxruntime_providers_webgpu dxcompiler)
 
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
       endif()
     endif()

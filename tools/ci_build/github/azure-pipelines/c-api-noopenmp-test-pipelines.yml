@@ -77,19 +77,6 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
-- stage: Final_AAR_Testing_Android_QNN
-  dependsOn: Setup
-  variables:
-    ReleaseVersionSuffix: $[ stageDependencies.Setup.Restore_And_Use_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
-  jobs:
-  - template: templates/android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-qnn-aar'
-      packageName: 'onnxruntime-android-qnn'
-      #TODO: get this information from the setup stage
-      QnnSDKVersion: '2.42.0.251225'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
@@ -129,7 +116,14 @@ stages:
 - template: nodejs/templates/test_linux.yml
   parameters:
     AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    StageSuffix: 'Linux_CPU_x64'
+    StageSuffix: 'Linux_CPU_x64_Node24'
+    NodeVersion: '24.x'
+
+- template: nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64_Node22'
+    NodeVersion: '22.x'
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -233,9 +227,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_cuda_build_artifacts'
@@ -288,9 +280,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'

@@ -28,8 +28,7 @@ MANDATORY correctness guards (run before any generation):
   * ``onnx.__version__ == --expected-onnx-version`` -- HARD FAIL. The model
     opset/IR is stamped from the *compiled* schema registry
     (``get_schema().since_version``), so a mismatched wheel silently bakes the
-    wrong opset into ``model.onnx``. Compared on the release base so a pre-release
-    (``rcN`` / ``.dev``) wheel of the pinned tag does not false-FATAL.
+    wrong opset into ``model.onnx``. The source and wheel pins must match exactly.
   * ``numpy.__version__`` vs ``--expected-numpy-version`` -- SOFT WARNING only,
     never a hard gate. ONNX's own corpus-gen numpy is uncontrollable/unknowable,
     so a fixed pin cannot guarantee byte-identity and a FATAL would false-red on
@@ -52,7 +51,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import shutil
 import sys
 import warnings
@@ -93,19 +91,6 @@ _IMAGE_DECODER_CASE_PREFIX = "test_image_decoder_"
 # --------------------------------------------------------------------------- #
 # Version / count guards
 # --------------------------------------------------------------------------- #
-def _release_base(version: str) -> str:
-    """Return the release base (major.minor.micro) of a possibly-prerelease version.
-
-    The ONNX opset-bump workflow ships release-candidate / dev wheels like
-    ``1.23.0rc1`` or ``1.23.0.dev20240101`` whose COMPILED opset registry already
-    matches the formal ``1.23.0`` tag. Comparing on the release base lets an RC
-    wheel of the pinned tag pass, while a genuine major/minor/micro mismatch
-    (e.g. ``1.22.0`` vs ``1.23.0``) still fails loud.
-    """
-    m = re.match(r"^\s*(\d+)\.(\d+)\.(\d+)", version)
-    return ".".join(m.groups()) if m else version.strip()
-
-
 def _check_versions(expected_onnx: str, expected_numpy: str | None) -> None:
     """Assert wheel parity BEFORE importing/collecting cases.
 
@@ -124,17 +109,14 @@ def _check_versions(expected_onnx: str, expected_numpy: str | None) -> None:
     import numpy  # noqa: PLC0415
     import onnx  # noqa: PLC0415
 
-    # onnx: HARD FAIL, RC/pre-release aware (compare release base, not the raw
-    # string) so an rcN/dev wheel of the pinned tag isn't a false FATAL.
-    if expected_onnx and _release_base(onnx.__version__) != _release_base(expected_onnx):
+    # onnx: HARD FAIL on any source/wheel version mismatch.
+    if expected_onnx and onnx.__version__ != expected_onnx:
         raise MaterializeError(
             f"onnx version mismatch: installed onnx=={onnx.__version__} but "
-            f"--expected-onnx-version=={expected_onnx} (release base "
-            f"{_release_base(onnx.__version__)} != {_release_base(expected_onnx)}). "
+            f"--expected-onnx-version=={expected_onnx}. "
             f"The node-test corpus opset/IR is baked from the COMPILED onnx schema "
             f"registry, so a mismatched wheel produces a silently-drifted corpus. "
-            f"Install onnx=={expected_onnx} (the cmake/deps.txt pin) before materializing. "
-            f"A pre-release (rcN/.dev) of the SAME release base is accepted."
+            f"Install onnx=={expected_onnx} (the cmake/deps.txt pin) before materializing."
         )
     # numpy: SOFT WARNING, never a hard gate. ONNX's OWN corpus-gen numpy is
     # uncontrollable and unknowable, so a fixed pin can neither guarantee
