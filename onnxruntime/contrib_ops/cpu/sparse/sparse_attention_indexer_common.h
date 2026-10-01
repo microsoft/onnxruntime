@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 // nvcc recognizes __host__/__device__ as built-in qualifiers in any translation unit it compiles
@@ -105,6 +106,9 @@ SAI_HOST_DEVICE inline bool TryComputeCsaWindowPlan(int64_t past_buffer_length, 
 
   plan.overlap_length = past_buffer_length >= compress_ratio ? compress_ratio : 0;
   plan.leftover_length = past_buffer_length - plan.overlap_length;
+  if (sequence_length > std::numeric_limits<int64_t>::max() - plan.leftover_length) {
+    return false;
+  }
 
   const int64_t pending = plan.leftover_length + sequence_length;
   plan.new_window_count = pending / compress_ratio;

@@ -40,6 +40,12 @@ onnxruntime::Model& OpTester::BuildModel(const std::unordered_map<std::string, i
   // Create a simple model
   std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version);
   const auto& domain = Domain();
+  if (domain != kOnnxDomain && domain_to_version.count(kOnnxDomain) == 0) {
+    const auto& last_released_versions =
+        ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+    domain_to_version.insert({kOnnxDomain, last_released_versions.at(kOnnxDomain)});
+  }
+
   if (domain_to_version.count(domain) == 0) {
     domain_to_version.insert({domain, Opset()});
   } else {
