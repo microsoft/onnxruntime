@@ -37,7 +37,7 @@ INSTANTIATE_TEST_SUITE_P(
         HardwareDeviceCase{"IntelGpu", OrtHardwareDeviceType_GPU, 0x8086, true},
         HardwareDeviceCase{"IntelNpu", OrtHardwareDeviceType_NPU, 0x8086, true},
         HardwareDeviceCase{"AmdGpu", OrtHardwareDeviceType_GPU, 0x1022, false},
-        HardwareDeviceCase{"AmdNpu", OrtHardwareDeviceType_NPU, 0x1022, false)),
+        HardwareDeviceCase{"AmdNpu", OrtHardwareDeviceType_NPU, 0x1022, false}),
     [](const ::testing::TestParamInfo<HardwareDeviceCase>& info) { return info.param.name; });
 
 class OpenVINOGetSupportedDevicesTest : public ::testing::TestWithParam<HardwareDeviceCase> {};
@@ -88,7 +88,7 @@ INSTANTIATE_TEST_SUITE_P(
         HardwareDeviceCase{"AmdCpu", OrtHardwareDeviceType_CPU, 0x1022, true},
         HardwareDeviceCase{"AmdGpu", OrtHardwareDeviceType_GPU, 0x1022, false},
         HardwareDeviceCase{"AmdNpu", OrtHardwareDeviceType_NPU, 0x1022, false},
-        HardwareDeviceCase{"UnsupportedDevice", static_cast<OrtHardwareDeviceType>(42), 0x1022, false)),
+        HardwareDeviceCase{"UnsupportedDevice", static_cast<OrtHardwareDeviceType>(42), 0x1022, false}),
     [](const ::testing::TestParamInfo<HardwareDeviceCase>& info) { return info.param.name; });
 
 }  // namespace
