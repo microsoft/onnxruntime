@@ -60,6 +60,13 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
 
+  if(onnxruntime_MINIMAL_BUILD)
+    list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.cc"
+    )
+  endif()
+
   file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"

@@ -7,8 +7,12 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "moe_helper.h"
 #include <limits>
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/kernel_pilot.h"
+#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,6 +28,12 @@ enum class ActivationType {
 class MoEBaseCPU {
  protected:
   MoEBaseCPU(const OpKernelInfo& op_kernel_info) {
+#if !defined(ORT_MINIMAL_BUILD)
+    const auto& options = op_kernel_info.GetConfigOptions();
+    enable_moe_expert_tracking_ =
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
+        options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+#endif
     ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_).IsOK());
     // Defense-in-depth: k must be at least 1. The upper bound (k <= num_experts)
     // cannot be checked here because num_experts is derived from a runtime input
@@ -70,6 +80,9 @@ class MoEBaseCPU {
   float activation_beta_;
   float swiglu_limit_;
   int64_t swiglu_fusion_;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool enable_moe_expert_tracking_{false};
+#endif
 };
 
 }  // namespace contrib

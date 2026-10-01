@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <cfloat>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -16,6 +17,7 @@
 #include <random>
 #include <set>
 #include <thread>
+#include <tuple>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -29,8 +31,13 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -133,6 +140,32 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
+class DisableCpuFallbackKernel : public OpKernel {
+ public:
+  explicit DisableCpuFallbackKernel(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* /*context*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Test kernel should not be executed");
+  }
+};
+
+constexpr const char* kDisableCpuFallbackExecutionProvider = "DisableCpuFallbackExecutionProvider";
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, If);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider, kOnnxDomain, 13, Abs);
+ONNX_OPERATOR_KERNEL_EX(If,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+ONNX_OPERATOR_KERNEL_EX(Abs,
+                        kOnnxDomain,
+                        13,
+                        kDisableCpuFallbackExecutionProvider,
+                        KernelDefBuilder(),
+                        DisableCpuFallbackKernel);
+
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
   return kernel_registry.Register(
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kFuseExecutionProvider, kFuseTest, 1, FuseAdd)>());
@@ -141,6 +174,26 @@ Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
 KernelRegistryAndStatus GetFusedKernelRegistry() {
   KernelRegistryAndStatus ret;
   ret.st = RegisterOperatorKernels(*ret.kernel_registry);
+  return ret;
+}
+
+Status RegisterDisableCpuFallbackTestKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(
+      kernel_registry.Register(BuildKernelCreateInfo<
+                               ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                               kOnnxDomain,
+                                                               13,
+                                                               If)>()));
+  return kernel_registry.Register(BuildKernelCreateInfo<
+                                  ONNX_OPERATOR_KERNEL_CLASS_NAME(kDisableCpuFallbackExecutionProvider,
+                                                                  kOnnxDomain,
+                                                                  13,
+                                                                  Abs)>());
+}
+
+KernelRegistryAndStatus GetDisableCpuFallbackTestKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterDisableCpuFallbackTestKernels(*ret.kernel_registry);
   return ret;
 }
 
@@ -194,6 +247,45 @@ class FuseExecutionProvider : public IExecutionProvider {
     ORT_THROW_IF_ERROR(k.st);
     return k.kernel_registry;
   }
+};
+
+class DisableCpuFallbackTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit DisableCpuFallbackTestExecutionProvider(bool claim_leaf_ops)
+      : IExecutionProvider{kDisableCpuFallbackExecutionProvider},
+        claim_leaf_ops_{claim_leaf_ops} {
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const IKernelLookup& /*kernel_lookup*/,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* /* resource_accountant */) const override {
+    std::vector<std::unique_ptr<ComputeCapability>> result;
+
+    for (const auto& node : graph.Nodes()) {
+      const bool should_claim = node.OpType() == "If" ||
+                                (claim_leaf_ops_ && node.OpType() == "Abs");
+      if (!should_claim) {
+        continue;
+      }
+
+      auto sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+
+    return result;
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    static KernelRegistryAndStatus k = GetDisableCpuFallbackTestKernelRegistry();
+    ORT_THROW_IF_ERROR(k.st);
+    return k.kernel_registry;
+  }
+
+ private:
+  bool claim_leaf_ops_;
 };
 
 namespace test {
@@ -250,20 +342,208 @@ Status RunModelWithValues(InferenceSession& session_object,
   return session_object.Run(run_options, feeds, output_names, &fetches);
 }
 
+namespace {
+enum class GraphCaptureOperation {
+  Check,
+  Run,
+  Replay,
+  Release
+};
+
+// Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
+class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+
+  bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
+  bool IsGraphCaptureEnabled() const override { return true; }
+
+  bool IsGraphCaptured(int graph_annotation_id) const override {
+    Notify(GraphCaptureOperation::Check);
+    return graph_annotation_id != -1 && captured_.load();
+  }
+
+  Status OnRunStart(const RunOptions&) override {
+    Notify(GraphCaptureOperation::Run);
+    ++run_count;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
+        ++capture_run_count_ == 2) {
+      captured_ = true;
+    }
+    return Status::OK();
+  }
+
+  Status ReplayGraph(int, bool) override {
+    Notify(GraphCaptureOperation::Replay);
+    ++replay_count;
+    return fail_replay ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Replay failed for testing") : Status::OK();
+  }
+
+  Status ReleaseCapturedGraph(int) override {
+    Notify(GraphCaptureOperation::Release);
+    captured_ = false;
+    capture_run_count_ = 0;
+    return Status::OK();
+  }
+
+  std::function<void(GraphCaptureOperation)> on_operation;
+  std::atomic<int> run_count{0};
+  std::atomic<int> replay_count{0};
+  bool fail_replay = false;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphCaptureTestExecutionProvider);
+
+  void Notify(GraphCaptureOperation operation) const {
+    if (on_operation) {
+      on_operation(operation);
+    }
+  }
+
+  const bool concurrent_run_supported_;
+  std::atomic<bool> captured_{false};
+  std::atomic<int> capture_run_count_{0};
+};
+
+class GraphCaptureSessionTest : public ::testing::Test {
+ protected:
+  void CreateSession(bool concurrent_run_supported = false) {
+    SessionOptions options;
+    options.intra_op_param.thread_pool_size = 1;
+    options.inter_op_param.thread_pool_size = 1;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
+    session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    ep_ = ep.get();
+    ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
+    ASSERT_STATUS_OK(session_->Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_->Initialize());
+  }
+
+  Status Execute(GraphCaptureOperation operation) {
+    if (operation == GraphCaptureOperation::Release) {
+      return session_->ReleaseCapturedGraph(0);
+    }
+    RunOptions options;
+    if (operation == GraphCaptureOperation::Run) {
+      ORT_RETURN_IF_ERROR(options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+    }
+    return RunModelWithValues(*session_, options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  }
+
+  std::unique_ptr<InferenceSession> session_;
+  GraphCaptureTestExecutionProvider* ep_ = nullptr;
+};
+}  // namespace
+
+TEST_F(GraphCaptureSessionTest, CaptureRetriesAndRecapture) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 2);
+  EXPECT_EQ(ep_->replay_count.load(), 0);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 1);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->replay_count.load(), 2);
+}
+
+TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  ep_->fail_replay = true;
+  EXPECT_THAT(Execute(GraphCaptureOperation::Replay).ErrorMessage(), testing::HasSubstr("Replay failed for testing"));
+  ep_->fail_replay = false;
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Release));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+  EXPECT_EQ(ep_->run_count.load(), 4);
+}
+
+class GraphCaptureRunSerializationTest
+    : public GraphCaptureSessionTest,
+      public ::testing::WithParamInterface<std::tuple<GraphCaptureOperation, GraphCaptureOperation, bool>> {};
+
+TEST_P(GraphCaptureRunSerializationTest, RespectsConcurrentRunSupport) {
+  const auto [first_operation, second_operation, concurrent_run_supported] = GetParam();
+  ASSERT_NO_FATAL_FAILURE(CreateSession(concurrent_run_supported));
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
+
+  std::promise<void> entered, resume, second_started;
+  auto entered_future = entered.get_future();
+  auto resume_future = resume.get_future().share();
+  auto second_started_future = second_started.get_future();
+  std::atomic<bool> block_claimed{false}, blocked{false}, overlapped{false};
+  ep_->on_operation = [&](GraphCaptureOperation operation) {
+    if (operation == first_operation && !block_claimed.exchange(true)) {
+      blocked = true;
+      entered.set_value();
+      EXPECT_EQ(resume_future.wait_for(std::chrono::seconds(10)), std::future_status::ready);
+      blocked = false;
+    } else if (blocked.load()) {
+      // This also detects graph-state queries that bypass Run's serialization.
+      overlapped = true;
+    }
+  };
+
+  auto first = std::async(std::launch::async, [&]() { return Execute(first_operation); });
+  EXPECT_EQ(entered_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  auto second = std::async(std::launch::async, [&]() {
+    second_started.set_value();
+    return Execute(second_operation);
+  });
+  EXPECT_EQ(second_started_future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  const auto second_status = second.wait_for(concurrent_run_supported ? std::chrono::milliseconds(5000)
+                                                                      : std::chrono::milliseconds(200));
+  resume.set_value();
+  const auto first_result = first.get();
+  const auto second_result = second.get();
+  ep_->on_operation = {};
+
+  ASSERT_STATUS_OK(first_result);
+  ASSERT_STATUS_OK(second_result);
+  EXPECT_EQ(second_status, concurrent_run_supported ? std::future_status::ready : std::future_status::timeout);
+  EXPECT_EQ(overlapped.load(), concurrent_run_supported);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InferenceSession, GraphCaptureRunSerializationTest,
+    ::testing::Values(
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Run, false),
+        std::make_tuple(GraphCaptureOperation::Run, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Release, GraphCaptureOperation::Replay, false),
+        std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
+        std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
+
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
   void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
 
   void SendProfileEvent(profiling::EventRecord& event) const override {
     event_ = event;
+    events_.push_back(event);
   }
 
   const std::optional<profiling::EventRecord>& Event() const noexcept {
     return event_;
   }
 
+  const std::vector<profiling::EventRecord>& Events() const noexcept {
+    return events_;
+  }
+
  private:
   mutable std::optional<profiling::EventRecord> event_;
+  mutable std::vector<profiling::EventRecord> events_;
 };
 
 TEST(InferenceSessionTests, NoTimeout) {
@@ -665,6 +945,8 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
 TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   InferenceSession session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   // Intentionally do NOT call Initialize().
@@ -835,6 +1117,55 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
 
+TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "invalid"));
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("failed_load_and_initialize_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  EXPECT_EQ(session.Load(MODEL_URI).Code(), common::StatusCode::MODEL_LOADED);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "must be set to either");
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  const auto has_event = [&events](const char* name) {
+    return std::any_of(events.begin(), events.end(),
+                       [name](const auto& event) { return event.name == name; });
+  };
+  EXPECT_TRUE(has_event("model_loading_uri"));
+  EXPECT_TRUE(has_event("session_initialization"));
+  EXPECT_GE(std::count_if(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "model_loading_uri"; }),
+            2);
+}
+
+TEST(InferenceSessionTests, InitializeBeforeLoadRecordsProfilingEvent) {
+  SessionOptions so;
+
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("initialize_before_load_profile");
+  InferenceSession session{so, GetEnvironment()};
+  session.StartProfiling(logger.get());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Model was not loaded");
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+
+  session.EndProfiling();
+  const auto& events = capturing_sink_ptr->Events();
+  EXPECT_TRUE(std::any_of(events.begin(), events.end(),
+                          [](const auto& event) { return event.name == "session_initialization"; }));
+}
+
 TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
   // Build a model whose only node consumes an input that is never defined (not a graph
   // input, initializer, or another node's output), so graph Resolve must reject it gracefully.
@@ -984,24 +1315,35 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
   EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
 }
 
-TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
+TEST(InferenceSessionTests, MoeLoggingRejectsConcurrentRuns) {
   auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
   logging::LoggingManager logging_manager(
       std::move(capturing_sink), logging::Severity::kINFO, false,
       logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
-  RunInstrumentationContext instrumentation{"request", *logger};
+  auto logger = logging_manager.CreateLogger("moe_logging_concurrency");
+  KernelPilotMoeExpertState state;
 
-  EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
-      RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
-  EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
+  ASSERT_STATUS_OK(state.BeginRun("first", logger.get()));
+  const Status concurrent_status = state.BeginRun("second", logger.get());
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
 
-  instrumentation.LogMoeStatisticsTruncation();
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
-  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("second", logger.get()));
+  ASSERT_STATUS_OK(state.EndRun());
+}
+
+TEST(InferenceSessionTests, MoeCountingRejectsConcurrentRuns) {
+  KernelPilotMoeExpertState state;
+
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  const Status concurrent_status = state.BeginRun("", nullptr);
+  ASSERT_FALSE(concurrent_status.IsOK());
+  EXPECT_THAT(concurrent_status.ErrorMessage(), testing::HasSubstr("Concurrent Runs are not supported"));
+
+  ASSERT_STATUS_OK(state.EndRun());
+  ASSERT_STATUS_OK(state.BeginRun("", nullptr));
+  ASSERT_STATUS_OK(state.EndRun());
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
@@ -1013,6 +1355,32 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
 }
+
+#ifdef ENABLE_TRAINING
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
+
+  RunOptions run_options;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  PartialGraphExecutionState state;
+  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
+  const Status status = session.PartialRun(
+      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
+                                         "MoE expert counting and statistics are not supported by the deprecated "
+                                         "PartialRun path."));
+}
+#endif
 
 class CudaPluginTestExecutionProvider final : public IExecutionProvider {
  public:
@@ -1058,33 +1426,19 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
 }
 
-TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
-  auto capturing_sink = std::make_unique<CapturingSink>();
-  auto* capturing_sink_ptr = capturing_sink.get();
-  logging::LoggingManager logging_manager(
-      std::move(capturing_sink), logging::Severity::kINFO, false,
-      logging::LoggingManager::InstanceType::Temporal);
-  auto logger = logging_manager.CreateLogger("moe_routing_json");
-  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
-  const TimePoint now = std::chrono::high_resolution_clock::now();
+TEST(InferenceSessionTests, MoeExpertCountingRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertCounting, "1"));
 
-  instrumentation.RecordMoeRoutingEvent(
-      now, now, "layer/0/QMoE", 42, "QMoE", "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
-
-  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
-  const std::string& message = capturing_sink_ptr->Messages()[0];
-  const size_t marker = message.find("moe_routing ");
-  ASSERT_NE(marker, std::string::npos);
-  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
-  EXPECT_EQ(event["request_id"], "request \"one\"");
-  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
-  EXPECT_EQ(event["node_index"], 42);
-  EXPECT_EQ(event["node_type"], "QMoE");
-  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
-  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
-  EXPECT_EQ(event["num_rows"], 1);
-  EXPECT_EQ(event["top_k"], 2);
-  EXPECT_EQ(event["execution_device_id"], 0);
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
 }
 
 // See issue #27732 for details on why this is disabled.
@@ -1972,6 +2326,123 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(false, true, false, version, sess_env),
                                         (version == 3 ? "Invalid input name" : "Missing Input:"));
   }
+}
+
+static void CreateNestedIfModel(const PathString& model_file_name) {
+  ONNX_NAMESPACE::TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  ONNX_NAMESPACE::GraphProto leaf_graph;
+  {
+    onnxruntime::Model model("nested_if_leaf_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    graph.AddOuterScopeNodeArg("branch_data");
+    auto& branch_output = graph.GetOrCreateNodeArg("branch_output", &float_tensor);
+
+    graph.AddNode("branch_abs", "Abs", "Abs node in nested branch", {&branch_data}, {&branch_output});
+    graph.SetOutputs({&branch_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    leaf_graph = graph.ToGraphProto();
+  }
+
+  ONNX_NAMESPACE::GraphProto middle_graph;
+  {
+    onnxruntime::Model model("nested_if_middle_graph", false, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                             DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+    auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+    ORT_UNUSED_PARAMETER(inner_cond);
+    ORT_UNUSED_PARAMETER(branch_data);
+    graph.AddOuterScopeNodeArg("inner_cond");
+    graph.AddOuterScopeNodeArg("branch_data");
+
+    auto& middle_output = graph.GetOrCreateNodeArg("middle_output", &float_tensor);
+    auto& inner_if = graph.AddNode("middle_if", "If", "Inner If node", {&inner_cond}, {&middle_output});
+    inner_if.AddAttribute("then_branch", leaf_graph);
+    inner_if.AddAttribute("else_branch", leaf_graph);
+
+    graph.SetOutputs({&middle_output});
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    middle_graph = graph.ToGraphProto();
+  }
+
+  onnxruntime::Model model("nested_if_main_graph", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto& outer_cond = graph.GetOrCreateNodeArg("outer_cond", &bool_tensor);
+  auto& inner_cond = graph.GetOrCreateNodeArg("inner_cond", &bool_tensor);
+  auto& branch_data = graph.GetOrCreateNodeArg("branch_data", &float_tensor);
+  ORT_UNUSED_PARAMETER(inner_cond);
+  ORT_UNUSED_PARAMETER(branch_data);
+  auto& output = graph.GetOrCreateNodeArg("output", &float_tensor);
+
+  auto& outer_if = graph.AddNode("outer_if", "If", "Outer If node", {&outer_cond}, {&output});
+  outer_if.AddAttribute("then_branch", middle_graph);
+  outer_if.AddAttribute("else_branch", middle_graph);
+
+  graph.SetInputs({&outer_cond, &inner_cond, &branch_data});
+  graph.SetOutputs({&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackRejectsCpuNodesInNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<DisableCpuFallbackTestExecutionProvider>(false)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(),
+                                      "fallback to CPU EP has been explicitly disabled");
+}
+
+TEST(InferenceSessionTests, DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs) {
+  const PathString model_file_name = ORT_TSTR("disable_cpu_ep_fallback_nested_if_fully_assigned.onnx");
+  CreateNestedIfModel(model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.DisableCpuEpFallbackAllowsFullyAssignedNestedSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+
+  std::function<void(Graph&)> assign_to_test_ep = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kDisableCpuFallbackExecutionProvider);
+      for (const auto& [attribute_name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+        ORT_UNUSED_PARAMETER(attribute_name);
+        assign_to_test_ep(*subgraph);
+      }
+    }
+  };
+  auto& graph = session_object.GetMutableGraph();
+  assign_to_test_ep(graph);
+
+  EXPECT_FALSE(inference_session_utils::AreAnyNodesAssignedToCpuEp(graph));
 }
 
 static void CreateFuseOpModel(const PathString& model_file_name) {
