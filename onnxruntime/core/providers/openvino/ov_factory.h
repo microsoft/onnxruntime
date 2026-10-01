@@ -3,12 +3,17 @@
 
 #pragma once
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 #include <set>
 
-#include "core/providers/shared_library/provider_api.h"
+#include "onnxruntime_config.h"
+#include "onnxruntime_cxx_api.h"
 #include "openvino/openvino.hpp"
 
 namespace onnxruntime {

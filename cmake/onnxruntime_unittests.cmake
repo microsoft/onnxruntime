@@ -1499,7 +1499,8 @@ block()
   )
 
   if (onnxruntime_USE_OPENVINO)
-    target_link_libraries(onnxruntime_provider_test PRIVATE openvino::runtime)
+    target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE ONNXRUNTIME_OPENVINO_TEST)
+    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE openvino::runtime)
   endif()
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
