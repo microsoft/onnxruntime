@@ -2366,6 +2366,10 @@ This version of the operator has been available since version 1 of the 'com.micr
     key   [total_tokens, num_heads_k, head_size_qk]
     value [total_tokens, num_heads_v, head_size_v]
   
+  Alternatively, key and value may be omitted and query contains packed QKV with shape
+  `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+  `initial_state` is required for packed QKV to determine the head counts and head sizes.
+  
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
   is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
@@ -2449,14 +2453,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
 
-#### Inputs (3 - 11)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query, shape (total_tokens, num_heads_q, head_size_qk)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query or packed QKV, shaped as described above.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key, shape (total_tokens, num_heads_k, head_size_qk)</dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value, shape (total_tokens, num_heads_v, head_size_v)</dd>
 <dt><tt>cu_seqlens</tt> (optional) : TI</dt>
 <dd>Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). Absent means uniform packing.</dd>
@@ -2465,7 +2469,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta</tt> (optional) : TS</dt>
 <dd>Update rate, shape (total_tokens, num_heads_v)</dd>
 <dt><tt>initial_state</tt> (optional) : TS</dt>
-<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. May alias final_state.</dd>
+<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
 <dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>

@@ -3850,6 +3850,10 @@ rather than from attributes:
   key   [total_tokens, num_heads_k, head_size_qk]
   value [total_tokens, num_heads_v, head_size_v]
 
+Alternatively, key and value may be omitted and query contains packed QKV with shape
+`[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+`initial_state` is required for packed QKV to determine the head counts and head sizes.
+
 The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
 pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
 is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
@@ -3942,9 +3946,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
               "0 (default) disables compact state-update outputs.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "query", "Query, shape (total_tokens, num_heads_q, head_size_qk)", "T")
-        .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T")
-        .Input(2, "value", "Value, shape (total_tokens, num_heads_v, head_size_v)", "T")
+        .Input(0, "query", "Query or packed QKV, shaped as described above.", "T")
+        .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T",
+               OpSchema::Optional)
+        .Input(2, "value", "Value, shape (total_tokens, num_heads_v, head_size_v)", "T",
+               OpSchema::Optional)
         .Input(3, "cu_seqlens",
                "Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). "
                "Absent means uniform packing.",
@@ -3957,7 +3963,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
-               "V-major. May alias final_state.",
+               "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
                "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
@@ -4000,40 +4006,116 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
-          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 2)) {
+          const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
+          const bool has_value = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (has_key != has_value) {
+            fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
+          }
+          const bool packed_qkv = !has_key;
+          const bool has_state = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          if (packed_qkv && !has_state) {
+            fail_shape_inference("GatedDeltaNet: initial_state is required for packed QKV");
+          }
+          if (!hasInputShape(ctx, 0)) {
             return;
           }
           const auto& query_shape = getInputShape(ctx, 0);
-          const auto& value_shape = getInputShape(ctx, 2);
           const int rank = query_shape.dim_size();
-          if ((rank != 3 && rank != 4) || value_shape.dim_size() != rank) {
+          const int token_dims = rank - (packed_qkv ? 1 : 2);
+          if ((packed_qkv && rank != 2 && rank != 3) ||
+              (!packed_qkv && rank != 3 && rank != 4)) {
             fail_shape_inference(
-                "GatedDeltaNet: query and value must both have rank 3 or both have rank 4");
+                "GatedDeltaNet: packed QKV must have rank 2 or 3, and separate "
+                "query, key and value inputs must have rank 3 or 4");
           }
-          const int token_dims = rank - 2;
+
+          const ONNX_NAMESPACE::TensorShapeProto* value_shape = nullptr;
+          if (!packed_qkv) {
+            if (!hasInputShape(ctx, 2)) {
+              return;
+            }
+            value_shape = &getInputShape(ctx, 2);
+            if (value_shape->dim_size() != rank) {
+              fail_shape_inference("GatedDeltaNet: query and value must have the same rank");
+            }
+          }
+
+          const ONNX_NAMESPACE::TensorShapeProto* state_shape = nullptr;
+          if (ctx.getNumInputs() > 6 && hasInputShape(ctx, 6)) {
+            state_shape = &getInputShape(ctx, 6);
+            if (state_shape->dim_size() != 4) {
+              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
+            }
+          }
+
+          if (packed_qkv) {
+            if (state_shape == nullptr) {
+              return;
+            }
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                state_shape->dim(1).has_dim_value() && state_shape->dim(2).has_dim_value() &&
+                state_shape->dim(3).has_dim_value()) {
+              const int64_t packed_size = query_shape.dim(token_dims).dim_value();
+              const int64_t num_heads_v = state_shape->dim(1).dim_value();
+              const int64_t head_size_v = state_shape->dim(2).dim_value();
+              const int64_t head_size_qk = state_shape->dim(3).dim_value();
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_v <= 0 || head_size_v <= 0 || head_size_qk <= 0) {
+                fail_shape_inference("GatedDeltaNet: packed QKV head counts and head sizes must be positive");
+              }
+              if (num_heads_v > max_dimension / head_size_v || head_size_qk > max_dimension / 2) {
+                fail_shape_inference("GatedDeltaNet: packed QKV dimensions overflow int64");
+              }
+              const int64_t value_size = num_heads_v * head_size_v;
+              const int64_t query_key_size = 2 * head_size_qk;
+              if (packed_size <= value_size || (packed_size - value_size) % query_key_size != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                    "num_heads_v * head_size_v");
+              }
+              const int64_t num_heads_q = (packed_size - value_size) / query_key_size;
+              if (num_heads_v % num_heads_q != 0) {
+                fail_shape_inference("GatedDeltaNet: num_heads_v must be a positive multiple of num_heads_q");
+              }
+            }
+            const bool has_cu_seqlens = ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr;
+            if (!has_cu_seqlens && token_dims == 1 && query_shape.dim(0).has_dim_value() &&
+                state_shape->dim(0).has_dim_value()) {
+              const int64_t total_tokens = query_shape.dim(0).dim_value();
+              const int64_t batch = state_shape->dim(0).dim_value();
+              if (batch <= 0 || total_tokens <= 0 || total_tokens % batch != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: total_tokens must be divisible by batch, with positive token count and batch size");
+              }
+            }
+          }
 
           ONNX_NAMESPACE::TensorShapeProto out_shape;
           for (int i = 0; i < token_dims; ++i) {
             *out_shape.add_dim() = query_shape.dim(i);
           }
-          if (query_shape.dim(token_dims).has_dim_value() &&
-              value_shape.dim(token_dims).has_dim_value()) {
-            out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
-                                                        value_shape.dim(token_dims).dim_value()));
+          if (packed_qkv) {
+            *out_shape.add_dim() = state_shape->dim(1);
+            *out_shape.add_dim() = state_shape->dim(2);
           } else {
-            out_shape.add_dim();
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                value_shape->dim(token_dims).has_dim_value()) {
+              out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
+                                                          value_shape->dim(token_dims).dim_value()));
+            } else {
+              out_shape.add_dim();
+            }
+            *out_shape.add_dim() = value_shape->dim(token_dims + 1);
           }
-          *out_shape.add_dim() = value_shape.dim(token_dims + 1);
           updateOutputShape(ctx, 0, out_shape);
 
           auto add_batch_dim = [&](ONNX_NAMESPACE::TensorShapeProto& shape) {
-            if (hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
+            if (ctx.getNumInputs() > 9 && hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
               *shape.add_dim() = getInputShape(ctx, 9).dim(0);
-            } else if (rank == 4) {
+            } else if (rank == (packed_qkv ? 3 : 4)) {
               *shape.add_dim() = query_shape.dim(0);
-            } else if (hasInputShape(ctx, 6) && getInputShape(ctx, 6).dim_size() >= 4) {
-              const auto& state_shape = getInputShape(ctx, 6);
-              *shape.add_dim() = state_shape.dim(state_shape.dim_size() - 4);
+            } else if (state_shape != nullptr) {
+              *shape.add_dim() = state_shape->dim(0);
             } else {
               shape.add_dim();
             }
@@ -4049,15 +4131,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             ONNX_NAMESPACE::TensorShapeProto capsule_shape;
             add_batch_dim(capsule_shape);
             auto* width = capsule_shape.add_dim();
-            if (query_shape.dim(token_dims).has_dim_value() &&
+            if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
                 query_shape.dim(token_dims + 1).has_dim_value() &&
-                value_shape.dim(token_dims).has_dim_value() &&
-                value_shape.dim(token_dims + 1).has_dim_value()) {
+                value_shape->dim(token_dims).has_dim_value() &&
+                value_shape->dim(token_dims + 1).has_dim_value()) {
               // num_heads_k is constrained to equal num_heads_q, so query supplies it.
               const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
               const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
-              const int64_t num_heads_v = value_shape.dim(token_dims).dim_value();
-              const int64_t head_size_v = value_shape.dim(token_dims + 1).dim_value();
+              const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
+              const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
               if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
                 fail_shape_inference(
                     "GatedDeltaNet: head counts and head sizes must be positive");
@@ -4087,13 +4169,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 2, capsule_shape);
           }
 
-          if (hasInputShape(ctx, 6)) {
-            const auto& in_state = getInputShape(ctx, 6);
-            if (in_state.dim_size() != 4) {
-              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
-            }
+          if (state_shape != nullptr) {
             if (ctx.getNumOutputs() > 1) {
-              updateOutputShape(ctx, 1, in_state);
+              updateOutputShape(ctx, 1, *state_shape);
             }
           }
         }));
