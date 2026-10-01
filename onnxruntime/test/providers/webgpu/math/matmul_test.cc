@@ -28,6 +28,21 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
+TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
+  constexpr int64_t M = 3;
+  constexpr int64_t K = 896;
+  constexpr int64_t N = 4;
+  const MLFloat16 value{0.1f};
+  const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(K)};
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, value));
+  test.AddInput<MLFloat16>("B", {K, N}, std::vector<MLFloat16>(K * N, value), /*is_initializer=*/true);
+  test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, expected));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+}
+
 // f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
 // The host picks the tile shape adaptively (TileM in {8,16,32,64}, TileN in
 // {16,32,64}); M and N may be any size and K must be a multiple of 16. When the

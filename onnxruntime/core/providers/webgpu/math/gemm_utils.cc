@@ -230,8 +230,9 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   int output_components,
                                   uint32_t tile_inner,
                                   bool split_k,
-                                  uint32_t split_dim_inner) {
-  const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
+                                  uint32_t split_dim_inner,
+                                  bool use_f32_accumulation) {
+  const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
 
   std::string write_data_to_sub_a_vec4_snippet =
       transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
@@ -281,7 +282,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       << "  let globalCol = i32(logical_global_id.x);\n"
       << "  let globalRowStart = i32(logical_workgroup_id.y) * " << tile_a_outer << ";\n"
       << "  let globalColStart = i32(logical_workgroup_id.x) * " << tile_b_outer << ";\n"
-      << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+      << "  var acc: array<vec4<" << accumulation_type << ">, rowPerThread>;\n";
 
   if (split_k) {
     // With Split-K, the original "workgroup" (with dispatch_z == 1 in API side) is split into
@@ -365,17 +366,17 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     if (transpose_a && transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
-          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
-          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize][k]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 1][k]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 2][k]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 3][k]);\n";
       }
       shader.MainFunctionBody()
-          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
-          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
-          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
-          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      let ACached0 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize][localRow]);\n"
+          << "      let ACached1 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 1][localRow]);\n"
+          << "      let ACached2 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 2][localRow]);\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = vec4<" + accumulation_type + ">(mm_Asub[k * innerElementSize + 3][localRow]);\n")
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
           << "             acc[i].x += ACached0[i] * BCached0.x + ACached1[i] * BCached0.y + ACached2[i] * BCached0.z + ACached3[i] * BCached0.w;\n"
           << "             acc[i].y += ACached0[i] * BCached1.x + ACached1[i] * BCached1.y + ACached2[i] * BCached1.z + ACached3[i] * BCached1.w;\n"
@@ -385,17 +386,17 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     } else if (transpose_a && !transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
-          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
-          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize][tileCol]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 1][tileCol]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 2][tileCol]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 3][tileCol]);\n";
       }
       shader.MainFunctionBody()
-          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
-          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
-          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
-          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      let ACached0 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize][localRow]);\n"
+          << "      let ACached1 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 1][localRow]);\n"
+          << "      let ACached2 = vec4<" << accumulation_type << ">(mm_Asub[k * innerElementSize + 2][localRow]);\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = vec4<" + accumulation_type + ">(mm_Asub[k * innerElementSize + 3][localRow]);\n")
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
           << "        let ACached = mm_Asub[tileCol][i];\n"
           << "        acc[i] = BCached0 * ACached0[i] + acc[i];\n"
@@ -406,15 +407,15 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     } else if (!transpose_a && transpose_b) {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
-          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
-          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize][k]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 1][k]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 2][k]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[tileCol * innerElementSize + 3][k]);\n";
       }
       shader.MainFunctionBody()
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
-          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        let ACached = vec" << inner_elements_size << "<" << accumulation_type << ">(mm_Asub[tileRow + i][k]);\n"
           << "        acc[i].x += dot(ACached, BCached0);\n"
           << "        acc[i].y += dot(ACached, BCached1);\n"
           << "        acc[i].z += dot(ACached, BCached2);\n"
@@ -423,15 +424,15 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     } else {
       shader.MainFunctionBody()
           << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
-          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
-          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
-          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+          << "      let BCached0 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize][tileCol]);\n"
+          << "      let BCached1 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 1][tileCol]);\n"
+          << "      let BCached2 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 2][tileCol]);\n";
       if (inner_elements_size != 3) {
-        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+        shader.MainFunctionBody() << "      let BCached3 = vec4<" << accumulation_type << ">(mm_Bsub[k * innerElementSize + 3][tileCol]);\n";
       }
       shader.MainFunctionBody()
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
-          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        let ACached = vec" << inner_elements_size << "<" << accumulation_type << ">(mm_Asub[tileRow + i][k]);\n"
           << "        acc[i] = BCached0 * ACached.x + acc[i];\n"
           << "        acc[i] = BCached1 * ACached.y + acc[i];\n"
           << "        acc[i] = BCached2 * ACached.z + acc[i];\n"
@@ -446,7 +447,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     // Calculate alpha * acc
     if (alpha != 1.0f) {
       shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-                                << "    acc[innerRow] = output_element_t(uniforms.alpha) * acc[innerRow];\n"
+                                << "    acc[innerRow] = " << accumulation_type << "(uniforms.alpha) * acc[innerRow];\n"
                                 << "  }\n";
     }
   }
@@ -455,10 +456,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
   shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n";
   if (output_components == 1) {
     shader.MainFunctionBody() << " for (var i = 0; i < innerElementSize; i = i + 1) {\n"
-                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, acc[innerRow][i]);\n"
+                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, output_value_t(acc[innerRow][i]));\n"
                               << "  }\n";
   } else {
-    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n";
+    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, output_value_t(acc[innerRow]));\n";
   }
 
   shader.MainFunctionBody() << "  }\n";
