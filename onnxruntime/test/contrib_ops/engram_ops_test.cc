@@ -1492,7 +1492,7 @@ void RunVarlenNGramHashMappingStateUpdateTest() {
                     VarlenNGramHashMappingReference<T>({{10, 11, 12, 13}, {20, 21}},
                                                        {{1, 2}, {3, 4}}, {11, 13, 17},
                                                        {101, 103, 107, 109}));
-  test.AddOptionalOutputEdge<T>();
+  test.AddOutput<T>("present_ids", {2, state_length}, {12, 13, 20, 21});
   test.AddOptionalOutputEdge<int32_t>();
   test.AddOutput<T>("state_update", {2, capacity, state_length},
                     {2, 10, 10, 11, kPadId, kPadId,
