@@ -298,10 +298,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
       // we have static registrations for NHWC versions of ONNX operators so this domain needs to extend to the
       // latest ONNX version
-      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
-                              .find(ONNX_NAMESPACE::ONNX_DOMAIN)
-                              ->second;
-      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version);
+      const auto onnx_version = domainToVersionRangeInstance.Map()
+                                    .find(ONNX_NAMESPACE::ONNX_DOMAIN)
+                                    ->second.second;
+      const auto last_released_onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
+                                                  .find(ONNX_NAMESPACE::ONNX_DOMAIN)
+                                                  ->second;
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version,
+                                                      last_released_onnx_version);
 
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML

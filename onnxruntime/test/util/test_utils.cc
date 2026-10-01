@@ -164,6 +164,10 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   const auto load_model = [&](InferenceSessionWrapper& session) {
+#if defined(ORT_MINIMAL_BUILD)
+    ORT_ENFORCE(allow_released_opsets_only, "Unreleased ONNX opsets require a non-minimal build.");
+    return session.Load(model_data.data(), static_cast<int>(model_data.size()));
+#else
     if (allow_released_opsets_only) {
       return session.Load(model_data.data(), static_cast<int>(model_data.size()));
     }
@@ -171,6 +175,7 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
     const std::string model_data_string(reinterpret_cast<const char*>(model_data.data()), model_data.size());
     std::istringstream model_stream(model_data_string);
     return session.Load(model_stream, false);
+#endif
   };
   ASSERT_STATUS_OK(load_model(session_object));
   ASSERT_STATUS_OK(session_object.Initialize());

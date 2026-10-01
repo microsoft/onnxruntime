@@ -90,8 +90,8 @@ TEST(TensorOpTest, SpaceToDepthOpset28BlocksizeThree) {
                        {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
                         9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f});
   test.AddOutput<float>("output", {1, 9, 1, 2},
-                        {0.f, 3.f, 6.f, 9.f, 12.f, 15.f, 1.f, 4.f, 7.f,
-                         10.f, 13.f, 16.f, 2.f, 5.f, 8.f, 11.f, 14.f, 17.f});
+                        {0.f, 3.f, 1.f, 4.f, 2.f, 5.f, 6.f, 9.f, 7.f,
+                         10.f, 8.f, 11.f, 12.f, 15.f, 13.f, 16.f, 14.f, 17.f});
   test.Run();
 }
 
@@ -143,8 +143,8 @@ TEST(TensorOpTest, DepthToSpaceOpset28BlocksizeThree) {
   test.AddAttribute("blocksize", int64_t{3});
   test.AddAttribute("mode", "CRD");
   test.AddInput<float>("input", {1, 9, 1, 2},
-                       {0.f, 3.f, 6.f, 9.f, 12.f, 15.f, 1.f, 4.f, 7.f,
-                        10.f, 13.f, 16.f, 2.f, 5.f, 8.f, 11.f, 14.f, 17.f});
+                       {0.f, 3.f, 1.f, 4.f, 2.f, 5.f, 6.f, 9.f, 7.f,
+                        10.f, 8.f, 11.f, 12.f, 15.f, 13.f, 16.f, 14.f, 17.f});
   test.AddOutput<float>("output", {1, 1, 3, 6},
                         {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
                          9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f});
@@ -152,6 +152,12 @@ TEST(TensorOpTest, DepthToSpaceOpset28BlocksizeThree) {
 }
 
 TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
+  const auto run_on_cpu = [](OpTester& test, const char* expected_failure) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, expected_failure, {}, nullptr, &execution_providers);
+  };
+
   {
     OpTester test("SpaceToDepth", 28);
     test.SetAllowUnreleasedOnnxOpset();
@@ -159,7 +165,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
     test.AddAttribute("mode", "invalid");
     test.AddInput<float>("input", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
     test.AddOutput<float>("output", {1, 4, 1, 1}, {0.f, 1.f, 2.f, 3.f});
-    test.Run(OpTester::ExpectResult::kExpectFailure, "only 'DCR' and 'CRD' modes are supported");
+    run_on_cpu(test, "only 'DCR' and 'CRD' modes are supported");
   }
 
   {
@@ -169,7 +175,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
     test.AddAttribute("mode", "invalid");
     test.AddInput<float>("input", {1, 4, 1, 1}, {0.f, 1.f, 2.f, 3.f});
     test.AddOutput<float>("output", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
-    test.Run(OpTester::ExpectResult::kExpectFailure, "only 'DCR' and 'CRD' modes are supported");
+    run_on_cpu(test, "only 'DCR' and 'CRD' modes are supported");
   }
 
   {
@@ -178,7 +184,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
     test.AddAttribute("blocksize", int64_t{2});
     test.AddInput<float>("input", {1, 1, 3, 4}, std::vector<float>(12));
     test.AddOutput<float>("output", {1, 4, 1, 2}, std::vector<float>(8));
-    test.Run(OpTester::ExpectResult::kExpectFailure, "input height to be a multiple");
+    run_on_cpu(test, "input height to be a multiple");
   }
 
   {
@@ -187,7 +193,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
     test.AddAttribute("blocksize", int64_t{2});
     test.AddInput<float>("input", {1, 3, 1, 1}, std::vector<float>(3));
     test.AddOutput<float>("output", {1, 1, 2, 2}, std::vector<float>(4));
-    test.Run(OpTester::ExpectResult::kExpectFailure, "input depth to be a multiple");
+    run_on_cpu(test, "Can't merge shape info");
   }
 }
 

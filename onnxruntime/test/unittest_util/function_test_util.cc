@@ -130,7 +130,7 @@ onnxruntime::Node& FunctionTestCase::AddCallNodeTo(onnxruntime::Graph& graph) {
   return graph.AddNode("fncallnode", opname, "function call node", input_arg_ptrs, output_arg_ptrs, &attributes, domain);
 }
 
-std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
+std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call, bool allow_released_opsets_only) {
   if (opsets.size() == 0) {
     // Default opsets
     opsets[kOnnxDomain] = 13;
@@ -138,7 +138,8 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
   }
 
   std::unique_ptr<Model> model(new Model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                                         opsets, {}, DefaultLoggingManager().DefaultLogger()));
+                                         opsets, {}, DefaultLoggingManager().DefaultLogger(),
+                                         ModelOptions{allow_released_opsets_only, false}));
 
   onnxruntime::Graph& graph = model->MainGraph();
   auto& call_node = AddCallNodeTo(graph);
@@ -157,10 +158,10 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
 }
 
 void FunctionTestCase::RunTest(bool allow_released_opsets_only) {
-  auto model1 = CreateModel(false);
+  auto model1 = CreateModel(false, allow_released_opsets_only);
   auto results1 = Run(*model1, input_value_map, output_names, allow_released_opsets_only);
 
-  auto model2 = CreateModel(true);
+  auto model2 = CreateModel(true, allow_released_opsets_only);
   auto results2 = Run(*model2, input_value_map, output_names, allow_released_opsets_only);
 
   AssertEqual(results1, results2);

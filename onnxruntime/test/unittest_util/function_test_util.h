@@ -130,7 +130,7 @@ struct FunctionTestCase {
 
   onnxruntime::Node& AddCallNodeTo(onnxruntime::Graph& graph);
 
-  std::unique_ptr<Model> CreateModel(bool inline_call = false);
+  std::unique_ptr<Model> CreateModel(bool inline_call = false, bool allow_released_opsets_only = true);
 
   static std::vector<OrtValue> Run(onnxruntime::Model& model, NameMLValMap& feeds,
                                    std::vector<std::string> output_names,
