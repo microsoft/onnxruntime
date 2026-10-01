@@ -75,7 +75,9 @@ TEST(TensorOpTest, SpaceToDepthOpset28Modes) {
     test.AddAttribute("mode", mode.c_str());
     test.AddInput<float>("input", {1, 2, 2, 4}, input);
     test.AddOutput<float>("output", {1, 8, 1, 2}, expected);
-    test.Run();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

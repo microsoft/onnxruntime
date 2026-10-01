@@ -125,7 +125,8 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
 
   onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           logging_manager.DefaultLogger());
+                           logging_manager.DefaultLogger(),
+                           ModelOptions{allow_released_opsets_only, false});
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);
