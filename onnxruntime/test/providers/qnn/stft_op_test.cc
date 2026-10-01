@@ -18,7 +18,6 @@ namespace test {
 // Runs a non-QDQ model on HTP and compares output to CPU EP.
 template <typename SignalType = float, typename StepType = int64_t>
 static void RunStftOpTest(const std::string backend_type,
-                          "htp",
                           const TestInputDef<SignalType>& signal_def,
                           const TestInputDef<StepType>& frame_step_def,
                           const std::optional<TestInputDef<SignalType>>& window_def = std::nullopt,
