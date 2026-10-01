@@ -544,7 +544,8 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
           denominator += weight;
           accumulator += weight * values[slot];
         }
-        pooled[static_cast<size_t>(d)] = accumulator / denominator;
+        pooled[static_cast<size_t>(d)] =
+            denominator > 0.0f && std::isfinite(denominator) ? accumulator / denominator : 0.0f;
       }
 
       pooled = RmsNormalize(pooled, problem.key_norm_weight, problem.epsilon);
@@ -1040,6 +1041,14 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaCapacity) {
                        "selected capacity no greater than INT_MAX");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaQueryWidth) {
+  QsaGraphOptions options;
+  options.num_heads = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+  options.head_size = 2;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "query width must be no greater than INT_MAX");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
   QsaGraphOptions options;
   options.add_csa_inputs = true;
@@ -1052,6 +1061,15 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithQsaAttribute) {
   options.add_token_budget = true;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
                        "token_budget must not be set when policy_mode is 'csa'");
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaQueryWidth) {
+  CsaGraphOptions options;
+  options.num_heads = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+  options.head_size = 2;
+  options.rotary_width = 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
+                       "query width must be no greater than INT_MAX");
 }
 
 // A "csa" node must declare every state output. Rejecting the node before any output is written
@@ -1139,6 +1157,30 @@ TEST(SparseAttentionIndexerTest, CsaFloat) { RunCsaTest<float>(MakeCsaProblem(),
 TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProblem(), 4.0e-3f); }
 
 TEST(SparseAttentionIndexerTest, CsaBFloat16) { RunCsaTest<BFloat16>(MakeCsaProblem(), 3.0e-2f); }
+
+template <typename T>
+void RunCsaNonFiniteSoftmaxTest(float tolerance) {
+  for (const float non_finite : {-std::numeric_limits<float>::infinity(),
+                                 std::numeric_limits<float>::infinity()}) {
+    CsaProblem problem = MakeCsaProblem();
+    problem.gate.assign(problem.gate.size(), non_finite);
+    problem.past_gate_buffer.assign(problem.past_gate_buffer.size(), non_finite);
+    problem.position_bias.assign(problem.position_bias.size(), 0.0f);
+    RunCsaTest<T>(problem, tolerance);
+  }
+}
+
+TEST(SparseAttentionIndexerTest, CsaFloatNonFiniteSoftmaxFallsBackToZero) {
+  RunCsaNonFiniteSoftmaxTest<float>(1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaFloat16NonFiniteSoftmaxFallsBackToZero) {
+  RunCsaNonFiniteSoftmaxTest<MLFloat16>(4.0e-3f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaBFloat16NonFiniteSoftmaxFallsBackToZero) {
+  RunCsaNonFiniteSoftmaxTest<BFloat16>(3.0e-2f);
+}
 
 TEST(SparseAttentionIndexerTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
   CsaProblem problem;
