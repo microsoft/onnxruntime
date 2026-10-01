@@ -79,7 +79,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
 
   void RunCase(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
                int weight_bits = 2, bool sample_reference = false, bool benchmark = false,
-               int dense_mode = 0, int tile_rows = 32) {
+               int dense_mode = 0, int tile_rows = 32, size_t packed_offset_bytes = 0) {
     std::vector<int64_t> row_ends;
     int64_t num_rows = 0;
     for (const auto rows : expert_rows) {
@@ -118,7 +118,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
       }
     }
     DeviceBuffer device_raw(raw_weights.size());
-    DeviceBuffer device_packed(raw_weights.size());
+    DeviceBuffer device_packed(raw_weights.size() + packed_offset_bytes);
+    auto* packed_weights = device_packed.Data<uint8_t>() + packed_offset_bytes;
     DeviceBuffer device_transposed(expert_bytes);
     DeviceBuffer device_permutation(64 * sizeof(int32_t));
     DeviceBuffer device_scales(scales.size() * sizeof(half));
@@ -150,7 +151,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
             num_columns, reduction_size);
       }
       llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
-          stream_, 80, device_packed.Data<int8_t>() + expert * expert_bytes, device_transposed.Data<int8_t>(),
+          stream_, 80, reinterpret_cast<int8_t*>(packed_weights) + expert * expert_bytes, device_transposed.Data<int8_t>(),
           device_permutation.Data<int32_t>(), {static_cast<size_t>(reduction_size), static_cast<size_t>(num_columns)},
           weight_bits == 2 ? llm::kernels::weight_only::QuantType::W2_A16
                            : (weight_bits == 4 ? llm::kernels::weight_only::QuantType::W4_A16
@@ -165,7 +166,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     }
     Int2GroupedGemmParams params;
     params.activations = device_activations.Data<half>();
-    params.packed_weights = device_packed.Data<uint8_t>();
+    params.packed_weights = packed_weights;
     params.block_scales = device_scales.Data<half>();
     params.expert_row_ends = device_row_ends.Data<int64_t>();
     params.output = device_output.Data<half>();
@@ -305,7 +306,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
 
 #if defined(ENABLE_BF16)
   void RunBf16Case(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
-                   int tile_rows = 32, bool sample_reference = false) {
+                   int tile_rows = 32, bool sample_reference = false, size_t packed_offset_bytes = 0) {
     std::vector<int64_t> row_ends;
     int64_t num_rows = 0;
     for (const auto rows : expert_rows) {
@@ -343,7 +344,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
     }
 
     DeviceBuffer device_raw(raw_weights.size());
-    DeviceBuffer device_packed(raw_weights.size());
+    DeviceBuffer device_packed(raw_weights.size() + packed_offset_bytes);
+    auto* packed_weights = device_packed.Data<uint8_t>() + packed_offset_bytes;
     DeviceBuffer device_transposed(expert_bytes);
     DeviceBuffer device_permutation(64 * sizeof(int32_t));
     DeviceBuffer device_scales(scales.size() * sizeof(__nv_bfloat16));
@@ -364,14 +366,14 @@ class Int2GroupedGemmTest : public ::testing::Test {
           stream_, device_transposed.Data<int8_t>(), device_raw.Data<uint8_t>() + expert * expert_bytes,
           num_columns, reduction_size);
       llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
-          stream_, 80, device_packed.Data<int8_t>() + expert * expert_bytes, device_transposed.Data<int8_t>(),
+          stream_, 80, reinterpret_cast<int8_t*>(packed_weights) + expert * expert_bytes, device_transposed.Data<int8_t>(),
           device_permutation.Data<int32_t>(), {static_cast<size_t>(reduction_size), static_cast<size_t>(num_columns)},
           llm::kernels::weight_only::QuantType::W2_A16, false);
     }
 
     Bf16Int2GroupedGemmParams params;
     params.activations = device_activations.Data<__nv_bfloat16>();
-    params.packed_weights = device_packed.Data<uint8_t>();
+    params.packed_weights = packed_weights;
     params.block_scales = device_scales.Data<__nv_bfloat16>();
     params.expert_row_ends = device_row_ends.Data<int64_t>();
     params.output = device_output.Data<__nv_bfloat16>();
@@ -472,6 +474,24 @@ TEST_F(Int2GroupedGemmTest, DISABLED_GptOssDenseBenchmark) {
   }
 }
 
+TEST_F(Int2GroupedGemmTest, AlignedPackedWeightOffsets) {
+  for (int tile_rows : {32, 64}) {
+    for (size_t offset : {16, 32, 48}) {
+      SCOPED_TRACE(testing::Message() << "tile_rows=" << tile_rows << " offset=" << offset);
+      RunCase({0, 1, 33, 0}, 64, 128, 2, false, false, 0, tile_rows, offset);
+    }
+  }
+}
+
+TEST_F(Int2GroupedGemmTest, Int4Int8AlignedPackedWeightOffsets) {
+  for (int weight_bits : {4, 8}) {
+    for (size_t offset : {16, 32, 48}) {
+      SCOPED_TRACE(testing::Message() << "weight_bits=" << weight_bits << " offset=" << offset);
+      RunCase({0, 1, 33, 0}, 64, 128, weight_bits, false, false, 0, 32, offset);
+    }
+  }
+}
+
 TEST_F(Int2GroupedGemmTest, MinimumAlignedShape) {
   RunCase({1, 0, 2}, 64, 64);
 }
@@ -489,6 +509,15 @@ TEST_F(Int2GroupedGemmTest, Prefill2048) {
 }
 
 #if defined(ENABLE_BF16)
+TEST_F(Int2GroupedGemmTest, Bf16AlignedPackedWeightOffsets) {
+  for (int tile_rows : {32, 64}) {
+    for (size_t offset : {16, 32, 48}) {
+      SCOPED_TRACE(testing::Message() << "tile_rows=" << tile_rows << " offset=" << offset);
+      RunBf16Case({0, 1, 33, 0}, 64, 128, tile_rows, false, offset);
+    }
+  }
+}
+
 TEST_F(Int2GroupedGemmTest, Bf16CandidateTacticsParity) {
   for (int tile_rows : {32, 64}) {
     SCOPED_TRACE(tile_rows);

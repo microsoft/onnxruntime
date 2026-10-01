@@ -63,7 +63,8 @@ struct use_dq_gemm<Mma, void_t<typename Mma::IteratorScale>> : platform::true_ty
 
 template <typename Element>
 CUTLASS_HOST_DEVICE bool tensor_aligned(Element const* ref, int stride, int alignment) {
-  return (reinterpret_cast<uintptr_t>(ref) % alignment == 0) && (stride % alignment == 0);
+  const int alignment_bytes = alignment * cutlass::sizeof_bits<Element>::value / 8;
+  return (reinterpret_cast<uintptr_t>(ref) % alignment_bytes == 0) && (stride % alignment == 0);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
