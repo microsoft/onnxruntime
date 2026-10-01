@@ -470,12 +470,13 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_9) {
 // Builds the decomposed pattern
 // X -> ReduceMean -> Sub -> Pow(2) -> ReduceMean -> Add(epsilon) -> Sqrt -> Div -> Mul(gamma) -> Add(beta)
 // with the given epsilon NodeArg, which may sit on either side of the variance Add.
+template <typename T>
 static void BuildDecomposedLayerNormGraph(ModelTestBuilder& builder, NodeArg* epsilon,
                                           bool epsilon_is_first_operand) {
-  auto* input = builder.MakeInput<float>({{2, 3, 4}});
-  auto* gamma = builder.MakeInitializer<float>({4}, std::vector<float>(4, 1.0f));
-  auto* beta = builder.MakeInitializer<float>({4}, std::vector<float>(4, 0.0f));
-  auto* two = builder.MakeInitializer<float>({}, {2.0f});
+  auto* input = builder.MakeInput<T>({{2, 3, 4}});
+  auto* gamma = builder.MakeInitializer<T>({4}, std::vector<T>(4, T{1}));
+  auto* beta = builder.MakeInitializer<T>({4}, std::vector<T>(4, T{0}));
+  auto* two = builder.MakeInitializer<T>({}, {T{2}});
 
   auto* mean1_out = builder.MakeIntermediate();
   auto* sub_out = builder.MakeIntermediate();
@@ -516,7 +517,7 @@ static void BuildDecomposedLayerNormGraph(ModelTestBuilder& builder, NodeArg* ep
 TEST_F(GraphTransformationTests, LayerNormFusionAddEpsilonInput0) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* epsilon = builder.MakeInitializer<float>({}, {1e-3f});
-    BuildDecomposedLayerNormGraph(builder, epsilon, /*epsilon_is_first_operand=*/true);
+    BuildDecomposedLayerNormGraph<float>(builder, epsilon, /*epsilon_is_first_operand=*/true);
   };
 
   auto post_graph_checker = [](Graph& graph) {
@@ -559,7 +560,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionFp16CastConstantEpsilon) {
     auto* epsilon = builder.MakeIntermediate();
     builder.AddNode("Cast", {epsilon_fp16}, {epsilon})
         .AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
-    BuildDecomposedLayerNormGraph(builder, epsilon, /*epsilon_is_first_operand=*/true);
+    BuildDecomposedLayerNormGraph<float>(builder, epsilon, /*epsilon_is_first_operand=*/true);
   };
 
   auto post_graph_checker = [](Graph& graph) {
@@ -597,7 +598,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionSkipsRuntimeEpsilon) {
   for (const bool epsilon_is_first_operand : {false, true}) {
     auto build_test_case = [epsilon_is_first_operand](ModelTestBuilder& builder) {
       auto* epsilon = builder.MakeInput<float>(std::vector<int64_t>{});
-      BuildDecomposedLayerNormGraph(builder, epsilon, epsilon_is_first_operand);
+      BuildDecomposedLayerNormGraph<float>(builder, epsilon, epsilon_is_first_operand);
     };
 
     auto post_graph_checker = [](Graph& graph) {
@@ -623,6 +624,39 @@ TEST_F(GraphTransformationTests, LayerNormFusionSkipsRuntimeEpsilon) {
         std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2),
         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
   }
+}
+
+// The fused node stores epsilon as a float attribute, so a DOUBLE scalar initializer
+// whose value is not representable as float (e.g. 1e-300 underflows to 0.0f) must skip
+// the fusion rather than silently change semantics.
+TEST_F(GraphTransformationTests, LayerNormFusionSkipsNonFloatRepresentableEpsilon) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-300);
+    BuildDecomposedLayerNormGraph<double>(builder, epsilon, /*epsilon_is_first_operand=*/true);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "LayerNormalization") == 0);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "ReduceMean") == 2);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Sub") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Pow") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Add") == 2);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Sqrt") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Div") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Mul") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 18, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
@@ -843,6 +877,50 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSkipsRuntimeEpsilon) {
         std::make_unique<SimplifiedLayerNormFusion>(),
         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
   }
+}
+
+// Same coverage as LayerNormFusionSkipsNonFloatRepresentableEpsilon for the
+// SimplifiedLayerNormalization path: a DOUBLE epsilon that underflows when stored
+// in the float attribute must skip the fusion.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSkipsNonFloatRepresentableEpsilon) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<double>({{2, 4}});
+    auto* pow_exponent = builder.MakeInitializer<double>({}, {2.0});
+    auto* epsilon = builder.MakeScalarInitializer<double>(1e-300);
+    auto* scale = builder.MakeInitializer<double>({4}, {1.0, 1.0, 1.0, 1.0});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "SimplifiedLayerNormalization") == 0);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Pow") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "ReduceMean") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Add") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Sqrt") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Div") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_to_count, "Mul") == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsIntegerPowExponentTwo) {
