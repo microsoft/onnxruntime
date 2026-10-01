@@ -29,18 +29,26 @@ const constexpr auto run_with_tunable_op = &run_options;
 }  // namespace
 
 TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
   constexpr int64_t M = 3;
   constexpr int64_t K = 896;
   constexpr int64_t N = 4;
   const MLFloat16 value{0.1f};
   const MLFloat16 expected{value.ToFloat() * value.ToFloat() * static_cast<float>(K)};
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+
   OpTester test("MatMul", 14);
   test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, value));
   test.AddInput<MLFloat16>("B", {K, N}, std::vector<MLFloat16>(K * N, value), /*is_initializer=*/true);
   test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, expected));
   test.SetOutputAbsErr("Y", 0.01f);
-  test.ConfigEp(DefaultWebGpuExecutionProvider()).RunWithConfig();
+  test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
 // f16 MatMul cases that exercise the Intel 8x16x16 subgroup-matrix impl.
