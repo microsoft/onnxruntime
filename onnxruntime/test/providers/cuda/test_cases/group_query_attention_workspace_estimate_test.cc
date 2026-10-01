@@ -33,6 +33,7 @@ namespace test {
 namespace {
 
 using contrib::attention::AttentionBackend;
+using contrib::cuda::AttentionDispatchPolicy;
 using contrib::cuda::EstimateGroupQueryAttentionWorkspace;
 using contrib::cuda::GetGQACompleteWorkspaceRecipe;
 using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
@@ -50,6 +51,7 @@ using contrib::cuda::GQAWorkspaceEstimateConfig;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAXqaHeadSinkStorage;
 using contrib::cuda::HasGQAReachableBackend;
+using contrib::cuda::ParseAttentionDispatchPolicy;
 using contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate;
 using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
 
@@ -427,6 +429,32 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPas
       static_cast<size_t>(bounds.head_size_bound) * bounds.cache_element_size;
   EXPECT_EQ(with_copy.total_workspace_bytes,
             without.total_workspace_bytes + expected_copy);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyParsesAndIsReaderOnly) {
+  EXPECT_EQ(ParseAttentionDispatchPolicy("latency"), AttentionDispatchPolicy::Latency);
+  EXPECT_EQ(ParseAttentionDispatchPolicy("memory"), AttentionDispatchPolicy::Memory);
+  EXPECT_EQ(ParseAttentionDispatchPolicy("safe"), AttentionDispatchPolicy::Safe);
+  EXPECT_EQ(ParseAttentionDispatchPolicy(""), AttentionDispatchPolicy::Auto);
+  // Matching is exact: a differently cased or unknown token falls back to Auto.
+  EXPECT_EQ(ParseAttentionDispatchPolicy("Latency"), AttentionDispatchPolicy::Auto);
+  EXPECT_EQ(ParseAttentionDispatchPolicy("bogus"), AttentionDispatchPolicy::Auto);
+
+  // The policy is plumbed but not yet consumed, so no policy value changes the estimate.
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  const auto baseline = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(), Device(), options);
+  ASSERT_TRUE(baseline.has_value());
+  for (const auto policy : {AttentionDispatchPolicy::Latency, AttentionDispatchPolicy::Memory,
+                            AttentionDispatchPolicy::Safe, AttentionDispatchPolicy::Auto}) {
+    config.dispatch_policy = policy;
+    const auto estimate = EstimateGroupQueryAttentionWorkspace(
+        config, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(estimate.has_value());
+    EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+  }
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {

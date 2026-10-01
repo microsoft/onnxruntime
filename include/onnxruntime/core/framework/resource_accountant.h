@@ -69,6 +69,9 @@ struct WorkspaceEstimatorConfig {
   // Raw session-option value for ep.cuda.gqa_workspace_max_total_sequence_length; parsed to a
   // positive KV-length envelope by the CUDA EP before it reaches the GQA workspace estimator.
   std::optional<std::string> cuda_gqa_workspace_max_total_sequence_length;
+  // Raw session-option value for session.attention_dispatch_policy; parsed to an intent-level
+  // dispatch policy by the CUDA EP before it reaches the GQA workspace estimator.
+  std::optional<std::string> attention_dispatch_policy;
 };
 
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;

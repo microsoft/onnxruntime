@@ -484,6 +484,13 @@ std::optional<GQAWorkspaceEstimateConfig> ConfigFromNode(const Node& node) {
 
 }  // namespace
 
+AttentionDispatchPolicy ParseAttentionDispatchPolicy(std::string_view value) {
+  if (value == "latency") return AttentionDispatchPolicy::Latency;
+  if (value == "memory") return AttentionDispatchPolicy::Memory;
+  if (value == "safe") return AttentionDispatchPolicy::Safe;
+  return AttentionDispatchPolicy::Auto;
+}
+
 std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const GQAWorkspaceEstimateConfig& config,
     gsl::span<const WorkspaceInputShape> input_shapes,
@@ -503,11 +510,13 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    AttentionDispatchPolicy dispatch_policy) {
   auto config = ConfigFromNode(node);
   if (!config.has_value()) return std::nullopt;
   config->head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   config->max_total_sequence_length = max_total_sequence_length;
+  config->dispatch_policy = dispatch_policy;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);
 }
