@@ -130,6 +130,7 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_Rank2Signal) {
       ExpectedEPNodeAssignment::All);
 }
 
+#if (QNN_API_VERSION_MAJOR <= 2) && (QNN_API_VERSION_MINOR < 37)
 TEST_F(QnnCPUBackendTests, StftOp_Float_WithWindowOnly) {
   std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
@@ -189,6 +190,7 @@ TEST_F(QnnCPUBackendTests, StftOp_Float_Rank2Signal) {
       17,
       ExpectedEPNodeAssignment::All);
 }
+#endif  // (QNN_API_VERSION_MAJOR <= 2) && (QNN_API_VERSION_MINOR < 37)
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
