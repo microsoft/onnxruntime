@@ -432,7 +432,8 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
 
   extern __shared__ float shared[];
   float* logits = shared;
-  float* reduction = logits + candidate_capacity;
+  float* valid_candidates = logits + candidate_capacity;
+  float* reduction = valid_candidates + candidate_capacity;
   T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
   if (h < head_size) {
     shared_query[h] = query_head[h];
@@ -480,7 +481,8 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
       }
     }
     if (lane == 0) {
-      logits[candidate] = valid ? dot * scale : -FLT_MAX;
+      logits[candidate] = valid ? dot * scale : 0.0f;
+      valid_candidates[candidate] = valid ? 1.0f : 0.0f;
     }
   }
   __syncthreads();
@@ -489,7 +491,9 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
                          ? (head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]))
                          : -FLT_MAX;
   for (int candidate = h; candidate < candidate_count; candidate += static_cast<int>(blockDim.x)) {
-    thread_max = fmaxf(thread_max, logits[candidate]);
+    if (valid_candidates[candidate] != 0.0f) {
+      thread_max = fmaxf(thread_max, logits[candidate]);
+    }
   }
   reduction[h] = thread_max;
   __syncthreads();
@@ -509,7 +513,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
   }
   for (int candidate = h; candidate < candidate_count; candidate += static_cast<int>(blockDim.x)) {
     const float logit = logits[candidate];
-    const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - max_logit);
+    const float weight = valid_candidates[candidate] != 0.0f ? expf(logit - max_logit) : 0.0f;
     logits[candidate] = weight;
     thread_sum += weight;
   }
@@ -528,7 +532,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
     float accumulator = 0.0f;
     for (int candidate = 0; candidate < candidate_count; ++candidate) {
       const float weight = logits[candidate];
-      if (weight == 0.0f) {
+      if (valid_candidates[candidate] == 0.0f) {
         continue;
       }
 
@@ -625,7 +629,8 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
 
   extern __shared__ float shared[];
   float* logits = shared;
-  float* reduction = logits + kSplitCandidateSize;
+  float* valid_candidates = logits + kSplitCandidateSize;
+  float* reduction = valid_candidates + kSplitCandidateSize;
   T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
   if (h < head_size) {
     shared_query[h] = query_head[h];
@@ -687,7 +692,8 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
         }
       }
       if (lane == 0) {
-        logits[split_candidate] = valid ? dot * scale : -FLT_MAX;
+        logits[split_candidate] = valid ? dot * scale : 0.0f;
+        valid_candidates[split_candidate] = valid ? 1.0f : 0.0f;
       }
     }
     __syncthreads();
@@ -695,7 +701,9 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
     float thread_max = -FLT_MAX;
     for (int candidate = h; candidate < split_candidate_count;
          candidate += static_cast<int>(blockDim.x)) {
-      thread_max = fmaxf(thread_max, logits[candidate]);
+      if (valid_candidates[candidate] != 0.0f) {
+        thread_max = fmaxf(thread_max, logits[candidate]);
+      }
     }
     reduction[h] = thread_max;
     __syncthreads();
@@ -714,7 +722,7 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
     for (int candidate = h; candidate < split_candidate_count;
          candidate += static_cast<int>(blockDim.x)) {
       const float logit = logits[candidate];
-      const float weight = logit == -FLT_MAX ? 0.0f : expf(logit - next_max);
+      const float weight = valid_candidates[candidate] != 0.0f ? expf(logit - next_max) : 0.0f;
       logits[candidate] = weight;
       thread_sum += weight;
     }
@@ -733,7 +741,7 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
       float tile_accumulator = 0.0f;
       for (int split_candidate = 0; split_candidate < split_candidate_count; ++split_candidate) {
         const float weight = logits[split_candidate];
-        if (weight == 0.0f) {
+        if (valid_candidates[split_candidate] == 0.0f) {
           continue;
         }
 
@@ -820,9 +828,7 @@ __global__ void MergeDynamicSparseAttentionKernel(const float* partial_max,
   float thread_sum = 0.0f;
   for (int split = h; split < split_count; split += static_cast<int>(blockDim.x)) {
     const float split_max = partial_max[partial_start + split];
-    if (split_max != -FLT_MAX) {
-      thread_sum += partial_sum[partial_start + split] * expf(split_max - max_logit);
-    }
+    thread_sum += partial_sum[partial_start + split] * expf(split_max - max_logit);
   }
   reduction[h] = thread_sum;
   __syncthreads();
@@ -839,12 +845,10 @@ __global__ void MergeDynamicSparseAttentionKernel(const float* partial_max,
     float accumulator = 0.0f;
     for (int split = 0; split < split_count; ++split) {
       const float split_max = partial_max[partial_start + split];
-      if (split_max != -FLT_MAX) {
-        const float merge_scale = expf(split_max - max_logit);
-        const int64_t partial_offset =
-            (static_cast<int64_t>(partial_start + split) * head_size) + h;
-        accumulator += partial_output[partial_offset] * merge_scale;
-      }
+      const float merge_scale = expf(split_max - max_logit);
+      const int64_t partial_offset =
+          (static_cast<int64_t>(partial_start + split) * head_size) + h;
+      accumulator += partial_output[partial_offset] * merge_scale;
     }
     output[static_cast<int64_t>(query_block) * head_size + h] =
         denominator == 0.0f ? FromFloat<T>(0.0f) : FromFloat<T>(accumulator / denominator);
@@ -894,7 +898,7 @@ bool UseFusedAttention(const DynamicSparseAttentionParameters& parameters,
   const int threads = GetThreadsPerBlock(parameters.head_size);
   const int fused_threads = threads < 128 ? 128 : threads;
   const size_t fused_shared_bytes =
-      (static_cast<size_t>(GetCandidateCapacity(parameters)) + static_cast<size_t>(fused_threads)) * sizeof(float) +
+      (2 * static_cast<size_t>(GetCandidateCapacity(parameters)) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * element_size;
   return fused_shared_bytes <= kMaxFusedSharedBytes &&
          fused_shared_bytes < max_shared_memory_per_block;
@@ -1117,7 +1121,7 @@ Status LaunchDynamicSparseAttention(
   const int candidate_capacity = static_cast<int>(candidate_capacity_64);
   const int fused_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
   const size_t fused_shared_bytes =
-      (static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
+      (2 * static_cast<size_t>(candidate_capacity) + static_cast<size_t>(fused_threads)) * sizeof(float) +
       static_cast<size_t>(parameters.head_size) * sizeof(T);
   if (UseFusedAttention(parameters, sizeof(T), max_shared_memory_per_block)) {
     FusedDynamicSparseAttentionKernel<<<static_cast<int>(query_blocks), fused_threads, fused_shared_bytes, stream>>>(
@@ -1142,7 +1146,7 @@ Status LaunchDynamicSparseAttention(
     float* partial_output = split_count == 1 ? nullptr : partial_sum + partial_blocks;
     const int split_threads = threads < 128 && max_threads_per_block >= 128 ? 128 : threads;
     const size_t split_shared_bytes =
-        (static_cast<size_t>(kSplitCandidateSize) + static_cast<size_t>(split_threads)) * sizeof(float) +
+        (2 * static_cast<size_t>(kSplitCandidateSize) + static_cast<size_t>(split_threads)) * sizeof(float) +
         static_cast<size_t>(parameters.head_size) * sizeof(T);
     ORT_RETURN_IF_NOT(split_shared_bytes < max_shared_memory_per_block,
                       "DynamicSparseAttention: split attention exceeds the CUDA shared-memory limit.");

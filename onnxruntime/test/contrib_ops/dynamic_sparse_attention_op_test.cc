@@ -543,6 +543,74 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyFloat32_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, FiniteLowestLogitRemainsValid_CUDA) {
+  for (const int64_t candidate_capacity : {int64_t{1}, int64_t{257}}) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) {
+      GTEST_SKIP() << "CUDA EP not available.";
+    }
+
+    DynamicSparseAttentionCase c;
+    c.cache_sequence_length = 1;
+    c.max_selected = candidate_capacity;
+    c.total_sequence_length = 1;
+    c.query.assign(8, 0.0f);
+    c.query[0] = 1.0f;
+    c.key.assign(8, 0.0f);
+    c.key[0] = -std::numeric_limits<float>::max();
+    c.value.assign(8, 3.0f);
+    c.past_key.assign(8, 0.0f);
+    c.past_value.assign(8, 0.0f);
+    c.selected_indices.assign(candidate_capacity, -1);
+    c.selected_indices.back() = 0;
+    c.selected_counts = {static_cast<int32_t>(candidate_capacity)};
+    c.seqlens_k = {0};
+    c.expected_output.assign(8, 3.0f);
+    c.expected_present_key = c.key;
+    c.expected_present_value = c.value;
+
+    SCOPED_TRACE(candidate_capacity == 1 ? "fused" : "split");
+    RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
+  }
+}
+
+TEST(DynamicSparseAttentionTest, ZeroWeightCandidatePreservesNonFiniteValue_CUDA) {
+  for (const int64_t candidate_capacity : {int64_t{2}, int64_t{257}}) {
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (!cuda_ep) {
+      GTEST_SKIP() << "CUDA EP not available.";
+    }
+
+    DynamicSparseAttentionCase c;
+    c.cache_sequence_length = 2;
+    c.max_selected = candidate_capacity;
+    c.total_sequence_length = 2;
+    c.query.assign(8, 0.0f);
+    c.query[0] = 1.0f;
+    c.key.assign(8, 0.0f);
+    c.key[0] = -200.0f;
+    c.value.assign(8, std::numeric_limits<float>::infinity());
+    c.past_key.assign(16, 0.0f);
+    c.past_value.assign(16, 0.0f);
+    std::fill_n(c.past_value.begin(), 8, 1.0f);
+    c.selected_indices.assign(candidate_capacity, -1);
+    c.selected_indices[0] = 0;
+    c.selected_indices[1] = 1;
+    c.selected_counts = {static_cast<int32_t>(candidate_capacity)};
+    c.seqlens_k = {1};
+    // Preserve the reference FP32 arithmetic: exp(-200) underflows, so the valid candidate contributes 0 * Inf.
+    c.expected_output.assign(8, std::numeric_limits<float>::quiet_NaN());
+    c.expected_present_key = c.past_key;
+    c.expected_present_key[8] = -200.0f;
+    c.expected_present_value = c.past_value;
+    std::fill(c.expected_present_value.begin() + 8, c.expected_present_value.end(),
+              std::numeric_limits<float>::infinity());
+
+    SCOPED_TRACE(candidate_capacity == 2 ? "fused" : "split");
+    RunDynamicSparseAttentionCase<float>(c, std::move(cuda_ep));
+  }
+}
+
 TEST(DynamicSparseAttentionTest, SelectedOnlyLargeDecodeSet_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
