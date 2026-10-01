@@ -332,6 +332,9 @@ class TestQMoEBlockFP8(unittest.TestCase):
         dtype=torch.bfloat16,
         scale_dtype=torch.bfloat16,
     ):
+        if not hasattr(torch, "float8_e4m3fn"):
+            raise unittest.SkipTest("PyTorch build does not expose torch.float8_e4m3fn")
+
         torch.manual_seed(2026)
         tensors = {
             "input": torch.randn(tokens, hidden, device=device, dtype=dtype) * 0.2,

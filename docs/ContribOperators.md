@@ -5988,7 +5988,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
         For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
-
+  
         For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
         A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
         [num_experts, ceil(N / block_size), ceil(K / block_size)]:
