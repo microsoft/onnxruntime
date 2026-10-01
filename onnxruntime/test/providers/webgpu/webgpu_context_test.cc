@@ -39,8 +39,8 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/temp_dir.h"
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-#include "core/providers/webgpu/direct_storage_external_data_loader.h"
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
@@ -594,6 +594,12 @@ TEST(WebGpuContextTest, WeightLoadAccelerationRejectsBooleanAndUnknownModes) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
                    WeightLoadAccelerationOptions("automatic")),
                OnnxRuntimeException);
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("preferred-pipelined")),
+               OnnxRuntimeException);
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("required-pipelined")),
+               OnnxRuntimeException);
 }
 
 TEST(WebGpuContextTest, WeightLoadAccelerationOffDoesNotRequireDeviceSupport) {
@@ -605,81 +611,30 @@ TEST(WebGpuContextTest, WeightLoadAccelerationOffDoesNotRequireDeviceSupport) {
 }
 
 TEST(WebGpuContextTest, PreferredWeightLoadAccelerationFallsBackWithoutDeviceSupport) {
-  for (const char* mode : {kWeightLoadAcceleration_Preferred,
-                           kWeightLoadAcceleration_PreferredPipelined}) {
-    auto ep = WebGpuProviderFactoryCreator::Create(
-                  CompileOnlyWeightLoadAccelerationOptions(mode))
-                  ->CreateProvider();
-    ASSERT_NE(ep, nullptr);
-  }
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                CompileOnlyWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
 }
 
 TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport) {
-  for (const char* mode : {kWeightLoadAcceleration_Required,
-                           kWeightLoadAcceleration_RequiredPipelined}) {
-    auto factory = WebGpuProviderFactoryCreator::Create(
-        CompileOnlyWeightLoadAccelerationOptions(mode));
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-    auto ep = factory->CreateProvider();
-    ASSERT_NE(ep, nullptr);
-    auto loader = ep->GetExternalDataLoader();
-    ASSERT_NE(loader, nullptr);
-    EXPECT_FALSE(loader->BeginPreload().IsOK());
+  auto factory = WebGpuProviderFactoryCreator::Create(
+      CompileOnlyWeightLoadAccelerationOptions(
+          kWeightLoadAcceleration_Required));
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  auto ep = factory->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  EXPECT_FALSE(loader->BeginLoad().IsOK());
 #else
-    EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
+  EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
 #endif
-  }
 }
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-TEST(WebGpuContextTest, DirectStorageSplitsRequestsAt64MiBBoundary) {
-  constexpr uint64_t kRequestSize = 64ull * 1024ull * 1024ull;
-  constexpr uint64_t kSourceOffset = 37;
-
-  const auto exact = webgpu::detail::SplitDirectStorageRequests(
-      kSourceOffset, kRequestSize);
-  ASSERT_EQ(exact.size(), 1u);
-  EXPECT_EQ(exact[0].source_offset, kSourceOffset);
-  EXPECT_EQ(exact[0].destination_offset, 0u);
-  EXPECT_EQ(exact[0].size, kRequestSize);
-
-  const auto boundary_plus_one =
-      webgpu::detail::SplitDirectStorageRequests(
-          kSourceOffset, kRequestSize + 1);
-  ASSERT_EQ(boundary_plus_one.size(), 2u);
-  EXPECT_EQ(boundary_plus_one[0].source_offset, kSourceOffset);
-  EXPECT_EQ(boundary_plus_one[0].destination_offset, 0u);
-  EXPECT_EQ(boundary_plus_one[0].size, kRequestSize);
-  EXPECT_EQ(boundary_plus_one[1].source_offset,
-            kSourceOffset + kRequestSize);
-  EXPECT_EQ(boundary_plus_one[1].destination_offset, kRequestSize);
-  EXPECT_EQ(boundary_plus_one[1].size, 1u);
-
-  const auto multi_chunk = webgpu::detail::SplitDirectStorageRequests(
-      kSourceOffset, 2 * kRequestSize + 17);
-  ASSERT_EQ(multi_chunk.size(), 3u);
-  EXPECT_EQ(multi_chunk[0].size, kRequestSize);
-  EXPECT_EQ(multi_chunk[1].source_offset,
-            kSourceOffset + kRequestSize);
-  EXPECT_EQ(multi_chunk[1].destination_offset, kRequestSize);
-  EXPECT_EQ(multi_chunk[1].size, kRequestSize);
-  EXPECT_EQ(multi_chunk[2].source_offset,
-            kSourceOffset + 2 * kRequestSize);
-  EXPECT_EQ(multi_chunk[2].destination_offset, 2 * kRequestSize);
-  EXPECT_EQ(multi_chunk[2].size, 17u);
-
-  const std::array<uint8_t, 13> source{
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  std::array<uint8_t, source.size()> reconstructed{};
-  for (const auto& chunk : webgpu::detail::SplitDirectStorageRequests(
-           0, source.size(), 5)) {
-    std::copy_n(source.begin() + chunk.source_offset, chunk.size,
-                reconstructed.begin() + chunk.destination_offset);
-  }
-  EXPECT_EQ(reconstructed, source);
-}
-
-TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
   auto off_factory = WebGpuProviderFactoryCreator::Create(
       WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));
   auto off_ep = off_factory->CreateProvider();
@@ -687,7 +642,7 @@ TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
 
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   const auto support_status =
-      webgpu::CheckDirectStorageExternalWeightsSupport(context);
+      webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
@@ -698,11 +653,11 @@ TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
   ASSERT_NE(required_ep, nullptr);
   auto loader = required_ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
-  EXPECT_STATUS_OK(loader->BeginPreload());
+  EXPECT_STATUS_OK(loader->BeginLoad());
   loader->AbortLoad();
 }
 
-TEST(WebGpuContextTest, DirectStorageAllocatorUsesProviderRecording) {
+TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
   auto ep = WebGpuProviderFactoryCreator::Create(
                 WeightLoadAccelerationOptions(
                     kWeightLoadAcceleration_Preferred))
@@ -725,7 +680,7 @@ TEST(WebGpuContextTest, DirectStorageAllocatorUsesProviderRecording) {
   EXPECT_TRUE(recording.pending_buffers.empty());
 }
 
-TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterDirectStorageLoader) {
+TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterD3D12AcceleratedLoader) {
   InferenceSession session{SessionOptions{}, GetEnvironment()};
   auto off_provider = WebGpuProviderFactoryCreator::Create(
                           WeightLoadAccelerationOptions(
@@ -753,36 +708,9 @@ TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterDirectStorageLoader) {
             nullptr);
 }
 
-TEST(WebGpuContextTest, RequiredPipelinedRejectsNonPipelinedExistingContext) {
-  auto off_options =
-      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off);
-  auto off_ep =
-      WebGpuProviderFactoryCreator::Create(off_options)->CreateProvider();
-  ASSERT_NE(off_ep, nullptr);
-  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  context.WaitForInitializeComplete();
-  const auto support_status =
-      webgpu::CheckDirectStorageExternalWeightsSupport(context);
-  if (!support_status.IsOK()) {
-    GTEST_SKIP() << support_status.ErrorMessage();
-  }
-
-  auto required_options = WeightLoadAccelerationOptions(
-      kWeightLoadAcceleration_RequiredPipelined);
-  auto required_ep =
-      WebGpuProviderFactoryCreator::Create(required_options)->CreateProvider();
-  ASSERT_NE(required_ep, nullptr);
-  auto loader = required_ep->GetExternalDataLoader();
-  ASSERT_NE(loader, nullptr);
-  const auto status = loader->BeginPreload();
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("required-pipelined"),
-            std::string::npos);
-}
-
-TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorsAcrossFilesAndRanges) {
+TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalTensorsAcrossFilesAndRanges) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_external_tensor_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_external_tensor_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   const auto other_data_path =
@@ -831,25 +759,11 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorsAcrossFilesAndRanges) {
   ASSERT_FALSE(allocators.empty());
   const auto& allocator = allocators.front();
 
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
-
-  ASSERT_STATUS_OK(loader->BeginPreload());
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "separated", kSeparatedDataOffset,
-      sizeof(separated_expected)));
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), other_data_path, "other_weights", kDataOffset,
-      sizeof(other_expected)));
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "empty",
-      kSeparatedDataOffset + sizeof(separated_expected), 0));
-  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
 
   ASSERT_STATUS_OK(loader->BeginLoad());
   ASSERT_STATUS_OK(loader->PrepareTensor(
@@ -911,10 +825,10 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorsAcrossFilesAndRanges) {
   EXPECT_EQ(empty.MutableDataRaw(), nullptr);
 }
 
-void RunDirectStorageExternalInitializerSessionTest(
+void RunD3D12AcceleratedExternalInitializerSessionTest(
     const char* mode, bool fail_late_registration = false) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_session_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_session_test")};
   const auto model_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("model.onnx");
   const auto data_path =
@@ -941,7 +855,7 @@ void RunDirectStorageExternalInitializerSessionTest(
   opset->set_domain("");
   opset->set_version(13);
   auto* graph = model.mutable_graph();
-  graph->set_name("webgpu_direct_storage_session");
+  graph->set_name("webgpu_d3d12_accelerated_session");
 
   const auto set_tensor_type = [&weights](
                                    ONNX_NAMESPACE::ValueInfoProto* value_info,
@@ -1026,60 +940,39 @@ void RunDirectStorageExternalInitializerSessionTest(
   }
 }
 
-TEST(WebGpuContextTest, DirectStorageLoadsExternalInitializerThroughSession) {
+TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalInitializerThroughSession) {
   auto probe_provider = WebGpuProviderFactoryCreator::Create(
                             WeightLoadAccelerationOptions(
                                 kWeightLoadAcceleration_Off))
                             ->CreateProvider();
   ASSERT_NE(probe_provider, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
-  RunDirectStorageExternalInitializerSessionTest(
+  RunD3D12AcceleratedExternalInitializerSessionTest(
       kWeightLoadAcceleration_Required);
 }
 
-TEST(WebGpuContextTest,
-     RequiredPipelinedLoadsExternalInitializerThroughSession) {
-  auto probe_provider = WebGpuProviderFactoryCreator::Create(
-                            WeightLoadAccelerationOptions(
-                                kWeightLoadAcceleration_PreferredPipelined))
-                            ->CreateProvider();
-  ASSERT_NE(probe_provider, nullptr);
-  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
-  const auto support_status =
-      webgpu::CheckDirectStorageExternalWeightsSupport(context);
-  const bool pipelined = context.PipelinedWeightLoadingEnabled();
-  probe_provider.reset();
-  if (!support_status.IsOK() || !pipelined) {
-    GTEST_SKIP() << (support_status.IsOK()
-                         ? "Pipelined DirectStorage initialization is unavailable."
-                         : support_status.ErrorMessage());
-  }
-  RunDirectStorageExternalInitializerSessionTest(
-      kWeightLoadAcceleration_RequiredPipelined);
-}
-
-TEST(WebGpuContextTest, LateRegistrationFailureRollsBackDirectStorageLoader) {
+TEST(WebGpuContextTest, LateRegistrationFailureRollsBackD3D12AcceleratedLoader) {
   auto probe_provider = WebGpuProviderFactoryCreator::Create(
                             WeightLoadAccelerationOptions(
                                 kWeightLoadAcceleration_Off))
                             ->CreateProvider();
   ASSERT_NE(probe_provider, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
-  RunDirectStorageExternalInitializerSessionTest(
+  RunD3D12AcceleratedExternalInitializerSessionTest(
       kWeightLoadAcceleration_Required, true);
 }
 
-TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesCancellation) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_cancellation_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_cancellation_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   const std::array<uint32_t, 16> data{};
@@ -1098,7 +991,7 @@ TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {
   ASSERT_NE(ep, nullptr);
   auto loader = ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
@@ -1112,49 +1005,28 @@ TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {
   loader->AbortLoad();
 }
 
-TEST(WebGpuContextTest, DirectStorageZeroRequestPreloadPreservesCancellation) {
+TEST(WebGpuContextTest, D3D12AcceleratedZeroRequestFinalBatchPreservesCancellation) {
   auto options =
       WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(ep, nullptr);
   auto loader = ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
 
-  ASSERT_STATUS_OK(loader->BeginPreload());
-  const auto status = loader->FinalizePreload([]() { return true; });
-  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
-}
-
-TEST(WebGpuContextTest, DirectStorageZeroRequestFinalBatchPreservesCancellation) {
-  auto options =
-      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  auto loader = ep->GetExternalDataLoader();
-  ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
-      webgpu::WebGpuContextFactory::GetContext(0));
-  if (!support_status.IsOK()) {
-    GTEST_SKIP() << support_status.ErrorMessage();
-  }
-
-  ASSERT_STATUS_OK(loader->BeginPreload());
-  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
   ASSERT_STATUS_OK(loader->BeginLoad());
   const auto status = loader->FinalizeLoad([]() { return true; });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
   loader->AbortLoad();
 }
 
-TEST(WebGpuContextTest, DirectStorageChecksCancellationDuringImport) {
+TEST(WebGpuContextTest, D3D12AcceleratedChecksCancellationDuringImport) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_import_cancellation_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_import_cancellation_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   const std::array<uint32_t, 16> data{};
@@ -1173,16 +1045,12 @@ TEST(WebGpuContextTest, DirectStorageChecksCancellationDuringImport) {
   ASSERT_NE(ep, nullptr);
   auto loader = ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
 
-  ASSERT_STATUS_OK(loader->BeginPreload());
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "weights", 0, sizeof(data)));
-  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
   ASSERT_STATUS_OK(loader->BeginLoad());
   ASSERT_STATUS_OK(loader->PrepareTensor(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
@@ -1195,47 +1063,9 @@ TEST(WebGpuContextTest, DirectStorageChecksCancellationDuringImport) {
   loader->AbortLoad();
 }
 
-TEST(WebGpuContextTest, DirectStorageEmptyFinalBatchPreservesPreloadCancellation) {
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedFallsBackAfterOperationalFailure) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_empty_final_batch_cancellation_test")};
-  const auto data_path =
-      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
-  const std::array<uint32_t, 16> data{};
-  {
-    std::ofstream stream{data_path,
-                         std::ios::binary | std::ios::trunc};
-    ASSERT_TRUE(stream.good());
-    stream.write(reinterpret_cast<const char*>(data.data()),
-                 static_cast<std::streamsize>(sizeof(data)));
-    ASSERT_TRUE(stream.good());
-  }
-
-  auto options =
-      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
-  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  auto loader = ep->GetExternalDataLoader();
-  ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
-      webgpu::WebGpuContextFactory::GetContext(0));
-  if (!support_status.IsOK()) {
-    GTEST_SKIP() << support_status.ErrorMessage();
-  }
-
-  ASSERT_STATUS_OK(loader->BeginPreload());
-  ASSERT_STATUS_OK(loader->PreloadTensor(
-      Env::Default(), data_path, "weights", 0, sizeof(data)));
-  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return true; }));
-  ASSERT_STATUS_OK(loader->BeginLoad());
-
-  const auto status = loader->FinalizeLoad([]() { return false; });
-  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
-  loader->AbortLoad();
-}
-
-TEST(WebGpuContextTest, PreferredDirectStorageFallsBackAfterOperationalFailure) {
-  TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_fallback_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_fallback_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   const std::array<uint32_t, 16> data{};
@@ -1257,7 +1087,7 @@ TEST(WebGpuContextTest, PreferredDirectStorageFallsBackAfterOperationalFailure) 
   auto allocators = ep->CreatePreferredAllocators();
   ASSERT_FALSE(allocators.empty());
   const auto& allocator = allocators.front();
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
@@ -1271,9 +1101,9 @@ TEST(WebGpuContextTest, PreferredDirectStorageFallsBackAfterOperationalFailure) 
   EXPECT_FALSE(loader->CanLoad(allocator->Info()));
 }
 
-TEST(WebGpuContextTest, PreferredDirectStoragePreservesConcurrentCancellation) {
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesConcurrentCancellation) {
   TemporaryDirectory temp_dir{
-      ORT_TSTR("webgpu_direct_storage_failure_cancellation_test")};
+      ORT_TSTR("webgpu_d3d12_accelerated_failure_cancellation_test")};
   const auto data_path =
       std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
   const std::array<uint32_t, 16> data{};
@@ -1292,7 +1122,7 @@ TEST(WebGpuContextTest, PreferredDirectStoragePreservesConcurrentCancellation) {
   ASSERT_NE(ep, nullptr);
   auto loader = ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
-  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
       webgpu::WebGpuContextFactory::GetContext(0));
   if (!support_status.IsOK()) {
     GTEST_SKIP() << support_status.ErrorMessage();
@@ -1309,7 +1139,7 @@ TEST(WebGpuContextTest, PreferredDirectStoragePreservesConcurrentCancellation) {
 
 TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {
   const auto unsupported =
-      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DirectStorage unavailable");
+      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "D3D12Accelerated unavailable");
   bool enabled = true;
 
   EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
@@ -1321,15 +1151,9 @@ TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {
       webgpu::WeightLoadAccelerationMode::Preferred, unsupported, enabled));
   EXPECT_FALSE(enabled);
 
-  enabled = false;
-  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
-      webgpu::WeightLoadAccelerationMode::PreferredPipelined,
-      common::Status::OK(), enabled));
-  EXPECT_TRUE(enabled);
-
   enabled = true;
   const auto required_status = webgpu::ResolveWeightLoadAccelerationMode(
-      webgpu::WeightLoadAccelerationMode::RequiredPipelined, unsupported,
+      webgpu::WeightLoadAccelerationMode::Required, unsupported,
       enabled);
   EXPECT_FALSE(required_status.IsOK());
   EXPECT_FALSE(enabled);

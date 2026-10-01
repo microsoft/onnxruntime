@@ -10,9 +10,6 @@
 #include <list>
 #include <string>
 #include <unordered_map>
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-#include <unordered_set>
-#endif
 #include <thread>
 #include <queue>
 #include <iomanip>
@@ -994,13 +991,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   const std::string& provider_type = p_exec_provider->Type();
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  if (execution_providers_.Get(provider_type) != nullptr) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "Provider ", provider_type,
-        " has already been registered.");
-  }
-#endif
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
@@ -1068,65 +1058,16 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  IDataTransfer* registered_data_transfer = nullptr;
-  IExternalDataLoader* registered_external_data_loader = nullptr;
-  const bool external_data_preload_was_started =
-      external_data_preload_started_;
-  bool provider_registration_succeeded = false;
-  auto rollback_registration = gsl::finally([&]() {
-    if (provider_registration_succeeded) {
-      return;
-    }
-    if (registered_external_data_loader != nullptr) {
-      ORT_IGNORE_RETURN_VALUE(
-          external_data_loader_mgr_.UnregisterExternalDataLoader(
-              registered_external_data_loader));
-      if (!external_data_preload_was_started) {
-        external_data_preload_started_ = false;
-      }
-    }
-    if (registered_data_transfer != nullptr) {
-      ORT_IGNORE_RETURN_VALUE(
-          data_transfer_mgr_.UnregisterDataTransfer(
-              registered_data_transfer));
-    }
-  });
-#endif
   if (p_data_xfr) {
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-    registered_data_transfer = p_data_xfr.get();
-#endif
     auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
     if (!st.IsOK()) {
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-      registered_data_transfer = nullptr;
-#endif
       return st;
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  if (provider_type == onnxruntime::kWebGpuExecutionProvider) {
-    auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
-    if (p_external_data_loader) {
-      registered_external_data_loader = p_external_data_loader.get();
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader)));
-      ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
-    }
-  }
-#endif
-
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
-#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  auto status = execution_providers_.Add(provider_type, p_exec_provider);
-  provider_registration_succeeded = status.IsOK();
-  return status;
-#else
   return execution_providers_.Add(provider_type, p_exec_provider);
-#endif
 }
 
 // Custom Op support
@@ -1255,21 +1196,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
     model_ = p_tmp_model;
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-    status = StartExternalDataPreload();
-    ORT_RETURN_IF_ERROR_SESSIONID_(status);
-    bool post_load_processing_succeeded = false;
-    auto abort_external_data_preload = gsl::finally([&]() {
-      if (!post_load_processing_succeeded) {
-        external_data_loader_mgr_.AbortLoad();
-      }
-    });
-    status = DoPostLoadProcessing(*model_);
-    ORT_RETURN_IF_ERROR_SESSIONID_(status);
-    post_load_processing_succeeded = true;
-#else
     ORT_RETURN_IF_ERROR_SESSIONID_(DoPostLoadProcessing(*model_));
-#endif
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
@@ -1301,47 +1228,6 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
   return status;
 }
-
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-common::Status InferenceSession::StartExternalDataPreload() {
-  if (external_data_preload_started_ || model_ == nullptr ||
-      !external_data_loader_mgr_.HasPreloader()) {
-    return Status::OK();
-  }
-
-  std::unordered_set<std::string> excluded_initializer_names;
-  size_t excluded_initializer_count = session_options_.initializers_to_share_map.size();
-#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
-  excluded_initializer_count += session_options_.external_initializers.size();
-#endif
-  excluded_initializer_names.reserve(excluded_initializer_count);
-  for (const auto& [name, initializer] : session_options_.initializers_to_share_map) {
-    ORT_UNUSED_PARAMETER(initializer);
-    excluded_initializer_names.insert(name);
-  }
-
-  std::unordered_set<PathString> excluded_external_data_files;
-#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
-  for (const auto& [name, initializer] : session_options_.external_initializers) {
-    ORT_UNUSED_PARAMETER(initializer);
-    excluded_initializer_names.insert(name);
-  }
-
-  excluded_external_data_files.reserve(session_options_.external_initializer_files_mmap.size());
-  for (const auto& [file_name, file] : session_options_.external_initializer_files_mmap) {
-    ORT_UNUSED_PARAMETER(file);
-    excluded_external_data_files.insert(file_name);
-  }
-#endif
-
-  ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
-      Env::Default(), model_location_, model_->MainGraph(), excluded_initializer_names,
-      excluded_external_data_files,
-      [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
-  external_data_preload_started_ = true;
-  return Status::OK();
-}
-#endif
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
   model_location_ = model_uri;
@@ -2975,12 +2861,6 @@ common::Status InferenceSession::Initialize() {
 
     auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
     for (const auto& provider : execution_providers_) {
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-      if (provider->Type() == onnxruntime::kWebGpuExecutionProvider &&
-          external_data_loader_mgr_.HasPreloader()) {
-        continue;
-      }
-#endif
       if (auto loader = provider->GetExternalDataLoader()) {
         ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
       }

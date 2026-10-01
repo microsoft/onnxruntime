@@ -55,19 +55,12 @@ WeightLoadAccelerationMode ParseWeightLoadAccelerationMode(
   if (value == kWeightLoadAcceleration_Preferred) {
     return WeightLoadAccelerationMode::Preferred;
   }
-  if (value == kWeightLoadAcceleration_PreferredPipelined) {
-    return WeightLoadAccelerationMode::PreferredPipelined;
-  }
   if (value == kWeightLoadAcceleration_Required) {
     return WeightLoadAccelerationMode::Required;
   }
-  if (value == kWeightLoadAcceleration_RequiredPipelined) {
-    return WeightLoadAccelerationMode::RequiredPipelined;
-  }
   ORT_THROW(
       "Invalid weightLoadAcceleration value: ", value,
-      ". Must be \"off\", \"preferred\", \"preferred-pipelined\", "
-      "\"required\", or \"required-pipelined\".");
+      ". Must be \"off\", \"preferred\", or \"required\".");
 }
 
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {

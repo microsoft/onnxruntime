@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-#include "core/providers/webgpu/direct_storage_external_data_loader.h"
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
 
 #include <mutex>
@@ -620,7 +620,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
 #endif
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
@@ -628,14 +628,14 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
           context.IsDeviceFree(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   if (webgpu::IsWeightLoadAccelerationEnabled(
           config.weight_load_acceleration_mode)) {
-    direct_storage_initializer_allocator_ =
-        CreateDirectStorageWebGpuAllocator(
+    accelerated_initializer_allocator_ =
+        CreateD3D12AcceleratedWebGpuAllocator(
             context_,
             [this]() -> webgpu::CommandRecordingState& { return Recording(); },
-            direct_storage_initializer_state_);
+            accelerated_initializer_state_);
   }
 #else
   if (webgpu::IsWeightLoadAccelerationRequired(
@@ -671,9 +671,9 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = context_.IsDeviceFree();
   return {
   // allocator for initializers
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-      direct_storage_initializer_allocator_ != nullptr
-          ? direct_storage_initializer_allocator_
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+      accelerated_initializer_allocator_ != nullptr
+          ? accelerated_initializer_allocator_
           :
 #endif
           CreateWebGpuAllocator(
@@ -805,14 +805,14 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
 }
-#elif defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#elif defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
-  if (direct_storage_initializer_state_ == nullptr) {
+  if (accelerated_initializer_state_ == nullptr) {
     return nullptr;
   }
 
-  return std::make_unique<webgpu::DirectStorageExternalDataLoader>(
-      context_, direct_storage_initializer_state_,
+  return std::make_unique<webgpu::D3D12AcceleratedExternalDataLoader>(
+      context_, accelerated_initializer_state_,
       weight_load_acceleration_mode_);
 }
 #endif

@@ -9,11 +9,7 @@ namespace webgpu {
 enum class WeightLoadAccelerationMode {
   Off,
   Preferred,
-  // Prefer accelerated loading and overlap it with device initialization when supported.
-  PreferredPipelined,
   Required,
-  // Require both accelerated loading and the pipelined initialization path.
-  RequiredPipelined,
 };
 
 constexpr bool IsWeightLoadAccelerationEnabled(WeightLoadAccelerationMode mode) {
@@ -21,13 +17,7 @@ constexpr bool IsWeightLoadAccelerationEnabled(WeightLoadAccelerationMode mode) 
 }
 
 constexpr bool IsWeightLoadAccelerationRequired(WeightLoadAccelerationMode mode) {
-  return mode == WeightLoadAccelerationMode::Required ||
-         mode == WeightLoadAccelerationMode::RequiredPipelined;
-}
-
-constexpr bool IsWeightLoadAccelerationPipelined(WeightLoadAccelerationMode mode) {
-  return mode == WeightLoadAccelerationMode::PreferredPipelined ||
-         mode == WeightLoadAccelerationMode::RequiredPipelined;
+  return mode == WeightLoadAccelerationMode::Required;
 }
 
 namespace options {
@@ -103,9 +93,7 @@ constexpr const char* kEnableGraphCapture_OFF = "0";
 
 constexpr const char* kWeightLoadAcceleration_Off = "off";
 constexpr const char* kWeightLoadAcceleration_Preferred = "preferred";
-constexpr const char* kWeightLoadAcceleration_PreferredPipelined = "preferred-pipelined";
 constexpr const char* kWeightLoadAcceleration_Required = "required";
-constexpr const char* kWeightLoadAcceleration_RequiredPipelined = "required-pipelined";
 
 constexpr const char* kEnableInt64_ON = "1";
 constexpr const char* kEnableInt64_OFF = "0";

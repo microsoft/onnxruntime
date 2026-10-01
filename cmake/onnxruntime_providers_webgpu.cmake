@@ -7,16 +7,15 @@
 
   add_compile_definitions(USE_WEBGPU=1)
 
-  if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+  if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
     if(NOT WIN32 OR NOT MSVC OR NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-      message(FATAL_ERROR "WebGPU DirectStorage requires native Windows MSVC and the Dawn D3D12 backend.")
-    endif()
-    if(onnxruntime_USE_EXTERNAL_DAWN OR onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-      message(FATAL_ERROR "WebGPU DirectStorage requires the in-tree statically linked Dawn build.")
+      message(FATAL_ERROR "D3D12 accelerated weight loading requires native Windows MSVC and the Dawn D3D12 backend.")
     endif()
     if(onnxruntime_USE_EP_API_ADAPTERS)
-      message(FATAL_ERROR "WebGPU DirectStorage is not supported with EP API adapter/plugin builds.")
+      message(FATAL_ERROR "D3D12 accelerated weight loading is not supported with EP API adapter/plugin builds.")
     endif()
+
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_d3d12_file_loader.cmake")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
@@ -156,10 +155,10 @@
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
-  if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
-    target_include_directories(
+  if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+    target_link_libraries(
       onnxruntime_providers_webgpu
-      PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/windows/direct_storage")
+      PRIVATE onnxruntime_d3d12_file_loader)
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

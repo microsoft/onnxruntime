@@ -18,9 +18,7 @@
 //    │   ├── dlls
 //    │   │   ├── onnxruntime.dll
 //    │   │   ├── webgpu_dawn.dll
-//    │   │   ├── dxcompiler.dll
-//    │   │   ├── dstorage.dll
-//    │   │   └── dstoragecore.dll
+//    │   │   └── dxcompiler.dll
 //    │   └── test.exe
 //    └── onnxruntime_webgpu_delay_load_test.exe (this binary)
 //
@@ -68,13 +66,6 @@ int prepare_main() {
   if (fs::exists(L"webgpu_dawn.dll")) {
     fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
   }
-  if (fs::exists(L"dstorage.dll")) {
-    fs::copy_file(L"dstorage.dll", dlls_folder / L"dstorage.dll");
-  }
-  if (fs::exists(L"dstoragecore.dll")) {
-    fs::copy_file(L"dstoragecore.dll", dlls_folder / L"dstoragecore.dll");
-  }
-
   // copy the test binary to the root folder
   fs::copy_file(exe_full_path, root_folder / L"test.exe");
 

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 
 #include <functional>
 #include <memory>
@@ -21,22 +21,7 @@ namespace webgpu {
 class WebGpuContext;
 struct CommandRecordingState;
 
-namespace detail {
-
-struct DirectStorageRequestChunk {
-  uint64_t source_offset;
-  uint64_t destination_offset;
-  uint32_t size;
-};
-
-std::vector<DirectStorageRequestChunk> SplitDirectStorageRequests(
-    uint64_t source_offset,
-    uint64_t length,
-    uint64_t max_request_size = 64ull * 1024ull * 1024ull);
-
-}  // namespace detail
-
-common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context);
+common::Status CheckD3D12AcceleratedExternalWeightsSupport(WebGpuContext& context);
 
 common::Status ResolveWeightLoadAccelerationMode(
     WeightLoadAccelerationMode mode,
@@ -44,49 +29,41 @@ common::Status ResolveWeightLoadAccelerationMode(
     bool& enabled);
 
 // Shared by the loader and allocator so imported resources outlive initializer loading.
-class DirectStorageInitializerState {
+class D3D12AcceleratedInitializerState {
  public:
-  ~DirectStorageInitializerState();
+  ~D3D12AcceleratedInitializerState();
 
  private:
   struct Impl;
 
-  DirectStorageInitializerState();
+  D3D12AcceleratedInitializerState();
 
   std::unique_ptr<Impl> impl_;
 
-  friend AllocatorPtr CreateDirectStorageWebGpuAllocator(
+  friend AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
       WebGpuContext& context,
       std::function<CommandRecordingState&()> recording_getter,
-      std::shared_ptr<DirectStorageInitializerState>& out_state);
-  friend class DirectStorageExternalDataLoader;
-  friend class DirectStorageWebGpuAllocator;
+      std::shared_ptr<D3D12AcceleratedInitializerState>& out_state);
+  friend class D3D12AcceleratedExternalDataLoader;
+  friend class D3D12AcceleratedWebGpuAllocator;
 };
 
-AllocatorPtr CreateDirectStorageWebGpuAllocator(
+AllocatorPtr CreateD3D12AcceleratedWebGpuAllocator(
     WebGpuContext& context,
     std::function<CommandRecordingState&()> recording_getter,
-    std::shared_ptr<DirectStorageInitializerState>& out_state);
+    std::shared_ptr<D3D12AcceleratedInitializerState>& out_state);
 
-class DirectStorageExternalDataLoader final : public IExternalDataLoader {
+class D3D12AcceleratedExternalDataLoader final : public IExternalDataLoader {
  public:
-  DirectStorageExternalDataLoader(
+  D3D12AcceleratedExternalDataLoader(
       WebGpuContext& context,
-      std::shared_ptr<DirectStorageInitializerState> state,
+      std::shared_ptr<D3D12AcceleratedInitializerState> state,
       WeightLoadAccelerationMode mode);
-  ~DirectStorageExternalDataLoader() override;
+  ~D3D12AcceleratedExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
   bool SupportsDataType(int32_t tensor_data_type) const override;
   bool CreatesTensorForDevice(const OrtDevice& target_device) const override;
-  bool SupportsPreload() const override;
-  common::Status BeginPreload() const override;
-  common::Status PreloadTensor(const Env& env,
-                               const std::filesystem::path& data_file_path,
-                               std::string_view tensor_name,
-                               FileOffsetType data_offset,
-                               SafeInt<size_t> data_length) const override;
-  common::Status FinalizePreload(const std::function<bool()>& is_canceled) const override;
   common::Status BeginLoad() const override;
   common::Status PrepareTensor(const Env& env,
                                const std::filesystem::path& data_file_path,
@@ -111,4 +88,4 @@ class DirectStorageExternalDataLoader final : public IExternalDataLoader {
 }  // namespace webgpu
 }  // namespace onnxruntime
 
-#endif  // defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#endif  // defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
