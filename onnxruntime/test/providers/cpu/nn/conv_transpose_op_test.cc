@@ -2066,6 +2066,21 @@ TEST(ConvTransposeTest, ConvTranspose_2D_ValidOutputPadding_ConsistencyCheck) {
                        kCudaNHWCExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ZeroInputChannelsWithLargeSpatialDimensions) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  constexpr int64_t kLargeDimension = static_cast<int64_t>(1) << 32;
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{kLargeDimension});
+  test.AddAttribute("pads", std::vector<int64_t>{kLargeDimension - 1, kLargeDimension - 1});
+  test.AddInput<float>("X", {1, 0, kLargeDimension}, {});
+  test.AddInput<float>("W", {0, 1, kLargeDimension}, {});
+  test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
 // Test that extreme attribute values causing arithmetic overflow are caught.
 // SafeInt throws on overflow; in no-exceptions builds this aborts, so skip there.

@@ -144,18 +144,32 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     return Status::OK();
   }
 
+  if (p.num_input_channels == 0) {
+    T* output = p.Y->MutableData<T>();
+    const int64_t spatial_size = p.Y->Shape().Slice(2).Size();
+    for (int64_t n = 0; n < p.N; ++n) {
+      for (int64_t c = 0; c < p.num_output_channels; ++c) {
+        const T value = p.B == nullptr ? T{} : p.B->Data<T>()[c];
+        std::fill_n(output, narrow<size_t>(spatial_size), value);
+        output += spatial_size;
+      }
+    }
+    return Status::OK();
+  }
+
   const int64_t input_image_size = p.input_shape.Size();
   const int64_t X_offset = p.num_input_channels / conv_transpose_attrs_.group * input_image_size;
   const int64_t Y_offset = p.Y->Shape().Size() / p.Y->Shape()[0] / conv_transpose_attrs_.group;
   const int64_t W_offset = p.F->Shape().Size() / conv_transpose_attrs_.group;
   const int64_t kernel_size = TensorShape(p.kernel_shape).Size();
-  const int64_t kernel_dim = p.num_output_channels / conv_transpose_attrs_.group * kernel_size;
+  const int64_t kernel_dim =
+      SafeInt<int64_t>(p.num_output_channels / conv_transpose_attrs_.group) * kernel_size;
   const int64_t output_size = (p.Y->Shape().Slice(2)).Size();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const int64_t col_buffer_size = kernel_dim * p.input_shape.Size();
+  const size_t col_buffer_size = SafeInt<size_t>(kernel_dim) * narrow<size_t>(input_image_size);
   auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
@@ -244,18 +258,32 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
     return Status::OK();
   }
 
+  if (p.num_input_channels == 0) {
+    float* output = p.Y->MutableData<float>();
+    const int64_t spatial_size = p.Y->Shape().Slice(2).Size();
+    for (int64_t n = 0; n < p.N; ++n) {
+      for (int64_t c = 0; c < p.num_output_channels; ++c) {
+        const float value = p.B == nullptr ? 0.0f : p.B->Data<float>()[c];
+        std::fill_n(output, narrow<size_t>(spatial_size), value);
+        output += spatial_size;
+      }
+    }
+    return Status::OK();
+  }
+
   const int64_t input_image_size = p.input_shape.Size();
   const int64_t X_offset = p.num_input_channels / conv_transpose_attrs_.group * input_image_size;
   const int64_t Y_offset = p.Y->Shape().Size() / p.Y->Shape()[0] / conv_transpose_attrs_.group;
   const int64_t W_offset = (p.F ? p.F->Shape().Size() : filter_shape_.Size()) / conv_transpose_attrs_.group;
   const int64_t kernel_size = TensorShape(p.kernel_shape).Size();
-  const int64_t kernel_dim = p.num_output_channels / conv_transpose_attrs_.group * kernel_size;
+  const int64_t kernel_dim =
+      SafeInt<int64_t>(p.num_output_channels / conv_transpose_attrs_.group) * kernel_size;
   const int64_t output_size = (p.Y->Shape().Slice(2)).Size();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const int64_t col_buffer_size = kernel_dim * p.input_shape.Size();
+  const size_t col_buffer_size = SafeInt<size_t>(kernel_dim) * narrow<size_t>(input_image_size);
   auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
