@@ -1,4 +1,4 @@
-huggingface_hub==0.25.2
+huggingface_hub
 diffusers==0.28.0
 transformers==4.50.0
 numpy>=1.24.1
