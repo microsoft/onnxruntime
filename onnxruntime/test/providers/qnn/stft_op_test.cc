@@ -17,7 +17,9 @@ namespace test {
 
 // Runs a non-QDQ model on HTP and compares output to CPU EP.
 template <typename SignalType = float, typename StepType = int64_t>
-static void RunStftOpTest(const TestInputDef<SignalType>& signal_def,
+static void RunStftOpTest(const std::string backend_type,
+                          "htp",
+                          const TestInputDef<SignalType>& signal_def,
                           const TestInputDef<StepType>& frame_step_def,
                           const std::optional<TestInputDef<SignalType>>& window_def = std::nullopt,
                           const std::optional<TestInputDef<StepType>>& frame_length_def = std::nullopt,
@@ -26,7 +28,7 @@ static void RunStftOpTest(const TestInputDef<SignalType>& signal_def,
                           ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                           float fp32_abs_err = 1e-3f) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
+  provider_options["backend_type"] = backend_type;
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Create a model builder function
@@ -74,6 +76,7 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_WithWindowOnly) {
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
 
   RunStftOpTest<float, int32_t>(
+      "htp",
       TestInputDef<float>({1, 128, 1}, false, signal_data),  // signal
       TestInputDef<int32_t>({}, true, {8}),                  // frame_step
       TestInputDef<float>({16}, true, window_data),          // window
@@ -88,6 +91,7 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_WithOnesidedFalse) {
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
 
   RunStftOpTest<float, int32_t>(
+      "htp",
       TestInputDef<float>({1, 128, 1}, false, signal_data),         // signal
       TestInputDef<int32_t>({}, true, {8}),                         // frame_step
       TestInputDef<float>({16}, true, window_data),                 // window
@@ -102,6 +106,7 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_SimpleExample) {
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
 
   RunStftOpTest<float, int32_t>(
+      "htp",
       TestInputDef<float>({1, 128, 1}, false, signal_data),  // signal
       TestInputDef<int32_t>({}, true, {8}),                  // frame_step
       TestInputDef<float>({16}, true, window_data),          // window
@@ -116,6 +121,67 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_Rank2Signal) {
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
 
   RunStftOpTest<float, int32_t>(
+      "htp",
+      TestInputDef<float>({1, 128}, false, signal_data),  // signal with rank 2
+      TestInputDef<int32_t>({}, true, {8}),               // frame_step
+      TestInputDef<float>({16}, true, window_data),       // window
+      TestInputDef<int32_t>({}, true, {16}),              // frame_length
+      {utils::MakeAttribute("onesided", static_cast<int64_t>(1))},
+      17,
+      ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, StftOp_Float_WithWindowOnly) {
+  std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
+  std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
+
+  RunStftOpTest<float, int32_t>(
+      "cpu",
+      TestInputDef<float>({1, 128, 1}, false, signal_data),  // signal
+      TestInputDef<int32_t>({}, true, {8}),                  // frame_step
+      TestInputDef<float>({16}, true, window_data),          // window
+      std::nullopt,                                          // no frame_length
+      {utils::MakeAttribute("onesided", static_cast<int64_t>(1))},
+      17,
+      ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, StftOp_Float_WithOnesidedFalse) {
+  std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
+  std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
+
+  RunStftOpTest<float, int32_t>(
+      "cpu",
+      TestInputDef<float>({1, 128, 1}, false, signal_data),         // signal
+      TestInputDef<int32_t>({}, true, {8}),                         // frame_step
+      TestInputDef<float>({16}, true, window_data),                 // window
+      TestInputDef<int32_t>({}, true, {16}),                        // frame_length
+      {utils::MakeAttribute("onesided", static_cast<int64_t>(0))},  // full spectrum
+      17,
+      ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, StftOp_Float_SimpleExample) {
+  std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
+  std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
+
+  RunStftOpTest<float, int32_t>(
+      "cpu",
+      TestInputDef<float>({1, 128, 1}, false, signal_data),  // signal
+      TestInputDef<int32_t>({}, true, {8}),                  // frame_step
+      TestInputDef<float>({16}, true, window_data),          // window
+      TestInputDef<int32_t>({}, true, {16}),                 // frame_length
+      {utils::MakeAttribute("onesided", static_cast<int64_t>(1))},
+      17,
+      ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, StftOp_Float_Rank2Signal) {
+  std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128]
+  std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
+
+  RunStftOpTest<float, int32_t>(
+      "cpu",
       TestInputDef<float>({1, 128}, false, signal_data),  // signal with rank 2
       TestInputDef<int32_t>({}, true, {8}),               // frame_step
       TestInputDef<float>({16}, true, window_data),       // window

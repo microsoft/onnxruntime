@@ -41,8 +41,8 @@ Status STFTOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  // TODO: STFT seg faults on QNN using namespace
-  // ->  As of October 2026, with QAIRT 2.48.0, no segfault has been observed
+  // As of October 2026, with QAIRT >= 2.48.0, no segfault has been observed.
+  // We can now use STFT on CPU backend
 
   // General Datatype checks on various QNN backend (HTP, CPU, GPU)
   ORT_RETURN_IF_ERROR(ProcessDataTypes(qnn_model_wrapper, node_unit));
