@@ -214,7 +214,29 @@ def main():
             differing.append(path)
 
     dist_info = f"{name}-{version}.dist-info"
-    # The dist-info files legitimately differ (WHEEL carries the tag); they are regenerated below.
+    wheel_file = f"{dist_info}/WHEEL"
+    record_file = f"{dist_info}/RECORD"
+
+    # The merged wheel carries a single copy of METADATA, entry_points.txt, etc., so every input has to
+    # agree on them. RECORD is regenerated below and WHEEL is compared after its Tag lines are replaced.
+    inconsistent_metadata = [
+        path for path in differing if path.startswith(dist_info + "/") and path not in (wheel_file, record_file)
+    ]
+    if inconsistent_metadata:
+        sys.exit(
+            "the dist-info files must be byte identical across the wheels. These files differ or are missing "
+            "from some wheels:\n    " + "\n    ".join(inconsistent_metadata)
+        )
+    wheel_texts = set()
+    for wheel in args.wheels:
+        with zipfile.ZipFile(wheel) as archive:
+            if wheel_file not in archive.namelist():
+                sys.exit(f"{wheel_file} is missing from {wheel}")
+            wheel_texts.add(retag_wheel_metadata(archive.read(wheel_file).decode("utf-8"), tags))
+    if len(wheel_texts) != 1:
+        sys.exit(f"{wheel_file} differs between the wheels in more than its Tag lines")
+    merged_wheel_text = wheel_texts.pop()
+
     per_interpreter = [path for path in differing if not path.startswith(dist_info + "/")]
     unexpected = [path for path in per_interpreter if not is_pybind_module(path)]
     if unexpected:
@@ -252,15 +274,12 @@ def main():
                     continue
                 records.append(copy_member(base_zip, base_zip.getinfo(path), out_zip, path))
 
-            # 2. The dist-info of the first wheel, with the WHEEL file retagged.
+            # 2. The dist-info, validated above to be the same in every wheel, with the WHEEL file retagged.
             for path in sorted(p for p in all_paths if p.startswith(dist_info + "/")):
-                if path == f"{dist_info}/RECORD":
+                if path == record_file:
                     continue  # regenerated below
-                if path not in base_zip.namelist():
-                    sys.exit(f"{path} is missing from {args.wheels[0]}")
-                if path == f"{dist_info}/WHEEL":
-                    text = base_zip.read(path).decode("utf-8")
-                    records.append(write_text_member(out_zip, path, retag_wheel_metadata(text, tags)))
+                if path == wheel_file:
+                    records.append(write_text_member(out_zip, path, merged_wheel_text))
                 else:
                     records.append(copy_member(base_zip, base_zip.getinfo(path), out_zip, path))
 

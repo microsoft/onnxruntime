@@ -48,6 +48,8 @@ def write_wheel(
     platform_tag: str = "manylinux_2_28_x86_64",
     pybind_suffix: str = ".so",
     extra_files: dict[str, bytes] | None = None,
+    metadata_extra: str = "",
+    generator: str = "bdist_wheel",
 ) -> str:
     """Write a realistic single-CPython wheel and return its path."""
     # A free-threaded wheel keeps the plain Python tag: cp313-cp313t-<platform>.
@@ -59,10 +61,12 @@ def write_wheel(
     # The binding is the one file that legitimately differs between interpreters.
     members[f"onnxruntime/capi/onnxruntime_pybind11_state{pybind_suffix}"] = f"binding for {abi_tag}".encode()
     members.update(extra_files or {})
-    members[f"{dist_info}/METADATA"] = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n".encode()
+    members[f"{dist_info}/METADATA"] = (
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n{metadata_extra}"
+    ).encode()
     members[f"{dist_info}/WHEEL"] = (
         "Wheel-Version: 1.0\n"
-        "Generator: bdist_wheel\n"
+        f"Generator: {generator}\n"
         "Root-Is-Purelib: false\n"
         f"Tag: {python_tag}-{abi_tag}-{platform_tag}\n"
     ).encode()
@@ -238,6 +242,47 @@ class TestMergeRejects(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("only the onnxruntime pybind11 extension module may differ", result.stderr)
         self.assertIn("onnxruntime/version.py", result.stderr)
+
+    def test_rejects_differing_metadata(self):
+        """Only the first wheel's METADATA is kept, so a per-interpreter difference would be lost."""
+        wheels = [
+            write_wheel(self.tmp.name, abi_tag="cp311", metadata_extra="Requires-Dist: numpy>=1.21\n"),
+            write_wheel(self.tmp.name, abi_tag="cp312", metadata_extra="Requires-Dist: numpy>=2.0\n"),
+        ]
+        result = run_merger(self.out, wheels)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("dist-info files must be byte identical", result.stderr)
+        self.assertIn("onnxruntime-1.28.0.dist-info/METADATA", result.stderr)
+
+    def test_rejects_differing_entry_points(self):
+        entry_points = "onnxruntime-1.28.0.dist-info/entry_points.txt"
+        wheels = [
+            write_wheel(self.tmp.name, abi_tag="cp311", extra_files={entry_points: b"[console_scripts]\na = m:a\n"}),
+            write_wheel(self.tmp.name, abi_tag="cp312", extra_files={entry_points: b"[console_scripts]\nb = m:b\n"}),
+        ]
+        result = run_merger(self.out, wheels)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("dist-info files must be byte identical", result.stderr)
+        self.assertIn(entry_points, result.stderr)
+
+    def test_rejects_entry_points_missing_from_one_wheel(self):
+        entry_points = "onnxruntime-1.28.0.dist-info/entry_points.txt"
+        wheels = [
+            write_wheel(self.tmp.name, abi_tag="cp311"),
+            write_wheel(self.tmp.name, abi_tag="cp312", extra_files={entry_points: b"[console_scripts]\na = m:a\n"}),
+        ]
+        result = run_merger(self.out, wheels)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(entry_points, result.stderr)
+
+    def test_rejects_wheel_files_that_differ_beyond_the_tag(self):
+        wheels = [
+            write_wheel(self.tmp.name, abi_tag="cp311", generator="setuptools (80.9.0)"),
+            write_wheel(self.tmp.name, abi_tag="cp312", generator="setuptools (75.0.0)"),
+        ]
+        result = run_merger(self.out, wheels)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("differs between the wheels in more than its Tag lines", result.stderr)
 
 
 class TestMergeSucceeds(unittest.TestCase):
