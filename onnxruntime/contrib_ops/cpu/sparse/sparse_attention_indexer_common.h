@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace onnxruntime {
@@ -95,6 +96,9 @@ inline bool TryComputeCsaWindowPlan(int64_t past_buffer_length, int64_t sequence
 
   plan.overlap_length = past_buffer_length >= compress_ratio ? compress_ratio : 0;
   plan.leftover_length = past_buffer_length - plan.overlap_length;
+  if (sequence_length > std::numeric_limits<int64_t>::max() - plan.leftover_length) {
+    return false;
+  }
 
   const int64_t pending = plan.leftover_length + sequence_length;
   plan.new_window_count = pending / compress_ratio;

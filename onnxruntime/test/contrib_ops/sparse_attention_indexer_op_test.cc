@@ -101,7 +101,10 @@ struct QsaGraphOptions {
 
 // Builds a "qsa" node whose csa-only input slots are left empty, as the schema requires.
 void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
-  const int64_t total = options.past_sequence_length + options.sequence_length;
+  const int64_t total =
+      options.past_sequence_length > std::numeric_limits<int64_t>::max() - options.sequence_length
+          ? std::numeric_limits<int64_t>::max()
+          : options.past_sequence_length + options.sequence_length;
   const int64_t cache_capacity = options.share_cache ? options.key_cache_capacity : options.past_sequence_length;
   NodeArg& empty = builder.graph_.GetOrCreateNodeArg("", nullptr);
   std::vector<NodeArg*> inputs{
@@ -116,7 +119,7 @@ void AddQsaNode(ModelTestBuilder& builder, const QsaGraphOptions& options) {
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, total, options.rotary_width}),
-        builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
+      builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, total}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, cache_capacity, options.head_size}),
   };
   if (options.add_csa_inputs) {
@@ -580,10 +583,14 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
                          sin_base + query_position * problem.rotary_width);
       }
 
-      const int64_t threshold =
-          position < 0 ? 0
-                       : position / problem.compress_ratio +
-                             (position % problem.compress_ratio == problem.compress_ratio - 1);
+      int64_t threshold = 0;
+      if (position >= 0) {
+        threshold = position / problem.compress_ratio;
+        if (position % problem.compress_ratio == problem.compress_ratio - 1 &&
+            threshold < std::numeric_limits<int64_t>::max()) {
+          ++threshold;
+        }
+      }
       std::vector<float> scores(static_cast<size_t>(present_compressed_length), 0.0f);
       for (int entry = 0; entry < present_compressed_length; ++entry) {
         if (static_cast<int64_t>(entry) >= threshold) {
@@ -1056,6 +1063,33 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithMissingStateOutputs
                        "requires exactly 3 declared outputs");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentLengthOverflow) {
+  QsaGraphOptions options;
+  options.past_sequence_length = std::numeric_limits<int64_t>::max();
+  options.sequence_length = 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "present key sequence length exceeds INT64_MAX");
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWindowPlanOverflow) {
+  CsaGraphOptions options;
+  options.compress_ratio = 2;
+  options.past_buffer_length = 1;
+  options.sequence_length = std::numeric_limits<int64_t>::max();
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
+                       "past_proj_buffer sequence length must be in [0, 2 * compress_ratio)");
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaPresentLengthOverflow) {
+  CsaGraphOptions options;
+  options.compress_ratio = 1;
+  options.past_buffer_length = 0;
+  options.sequence_length = std::numeric_limits<int64_t>::max();
+  options.past_compressed_length = 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
+                       "present compressed-key length exceeds INT64_MAX");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaBuffer) {
   CsaGraphOptions options;
   options.past_buffer_length = 2 * options.compress_ratio;
@@ -1106,6 +1140,33 @@ TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProb
 
 TEST(SparseAttentionIndexerTest, CsaBFloat16) { RunCsaTest<BFloat16>(MakeCsaProblem(), 3.0e-2f); }
 
+TEST(SparseAttentionIndexerTest, CsaFloat16ScoresNewKeysBeforeCacheRounding) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 2;
+  problem.past_compressed_length = 1;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 4;
+  problem.query = {1.0f, 3.0e-4f};
+  problem.key = {0.0f, 0.0f, 1.0f, 3.0e-4f};
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache.assign(4, 1.0f);
+  problem.sin_cache.assign(4, 0.0f);
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {1.0f};
+  problem.position_ids = {2};
+  problem.past_compressed_key =
+      RoundTrip<MLFloat16>(RmsNormalize({1.0f, 3.0e-4f}, problem.key_norm_weight, problem.epsilon));
+  RunCsaTest<MLFloat16>(problem, 2.0e-3f);
+}
+
 TEST(SparseAttentionIndexerTest, CsaBufferOnlyStep) { RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, CsaNoCompressedEntry) {
@@ -1126,7 +1187,10 @@ TEST(SparseAttentionIndexerTest, CsaExplicitZeroScales) {
 }
 
 TEST(SparseAttentionIndexerTest, CsaInt64MaxPosition) {
-  CsaProblem problem = MakeCsaProblem();
+  CsaProblem seed;
+  seed.compress_ratio = 1;
+  seed.past_buffer_length = 0;
+  CsaProblem problem = MakeCsaProblem(std::move(seed));
   problem.position_ids[0] = std::numeric_limits<int64_t>::max();
   RunCsaTest<float>(problem, 1.0e-5f);
 }

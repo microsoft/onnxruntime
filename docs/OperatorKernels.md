@@ -63,7 +63,8 @@ The **OpSet Version** column uses the following notation:
 |||[9, 13]|**T** = tensor(double), tensor(float)|
 |||[7, 8]|**T** = tensor(double), tensor(float)|
 |BitCast|*in* input:**T1**<br> *out* output:**T2**|26+|**T1** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T2** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|BitShift|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**|11+|**T** = tensor(uint32), tensor(uint64), tensor(uint8)|
+|BitShift|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**|28+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[11, 27]|**T** = tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseAnd|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseNot|*in* X:**T**<br> *out* Y:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseOr|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -287,7 +288,8 @@ The **OpSet Version** column uses the following notation:
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(int8), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[8, 11]|**T** = tensor(double), tensor(float)|
 |||[6, 7]|**T** = tensor(float)|
-|Mod|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|Mod|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|28+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[10, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Mul|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||13|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
@@ -535,8 +537,8 @@ The **OpSet Version** column uses the following notation:
 |||[1, 10]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Upsample|*in* X:**T**<br> *in* scales:**tensor(float)**<br> *out* Y:**T**<br><br>or<br><br>*in* X:**T**<br> *out* Y:**T**|9|**T** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
 |||[7, 8]|**T** = tensor(float), tensor(int32), tensor(int8), tensor(uint8)|
-|Where|*in* condition:**B**<br> *in* X:**T**<br> *in* Y:**T**<br> *out* output:**T**|16+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(string), tensor(uint8)|
-|||[9, 15]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(string), tensor(uint8)|
+|Where|*in* condition:**B**<br> *in* X:**T**<br> *in* Y:**T**<br> *out* output:**T**|16+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint32), tensor(uint8)|
+|||[9, 15]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint32), tensor(uint8)|
 |Xor|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|7+|**T** = tensor(bool)<br/> **T1** = tensor(bool)|
 | |
 | |
@@ -860,7 +862,8 @@ The **OpSet Version** column uses the following notation:
 |Min|*in* data_0:**T**<br> *out* min:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||12|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||[6, 11]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
-|Mod|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|Mod|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|28+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|||[13, 27]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||[10, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |Mul|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||13|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
@@ -1099,7 +1102,7 @@ The **OpSet Version** column uses the following notation:
 |GatedRelativePositionBias|*in* query_layer:**T**<br> *in* query_bias:**T**<br> *in* rel_pos:**T**<br> *in* weight:**T**<br> *in* bias:**T**<br> *in* eco_a:**T**<br> *in* token_offset:**M**<br> *out* output:**T**|1+|**T** = tensor(float), tensor(float16)|
 |GatherBlockQuantized|*in* data:**T1**<br> *in* indices:**Tind**<br> *in* scales:**T2**<br> *in* zero_points:**T1**<br> *out* output:**T2**|1+|**T1** = tensor(float4e2m1), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(int4), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **Tind** = tensor(int32), tensor(int64)|
 |Gelu|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
-|GemmFloat8|*in* A:**TA**<br> *in* B:**TB**<br> *in* C:**TC**<br> *in* scaleA:**TS**<br> *in* scaleB:**TS**<br> *in* scaleY:**TS**<br> *out* Y:**TR**|1+|**TA** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TB** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TR** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TS** = tensor(float)|
+|GemmFloat8|*in* A:**TA**<br> *in* B:**TB**<br> *in* C:**TC**<br> *in* scaleA:**TS**<br> *in* scaleB:**TS**<br> *in* scaleY:**TS**<br> *out* Y:**TR**|1+|**TA** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TB** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TC** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **TR** = tensor(bfloat16), tensor(float), tensor(float16), tensor(float8e4m3fn), tensor(float8e5m2)<br/> **TS** = tensor(float)|
 |GemmaRotaryEmbedding|*in* emb:**U**<br> *in* q:**T**<br> *in* q_rot:**T**<br> *in* k:**T**<br> *in* k_rot:**T**<br> *out* output1:**T**<br> *out* output2:**T**|1+|**T** = tensor(float16)<br/> **U** = tensor(float)|
 |GreedySearch|*in* input_ids:**I**<br> *in* max_length:**I**<br> *in* min_length:**I**<br> *in* repetition_penalty:**T**<br> *in* vocab_mask:**I**<br> *in* prefix_vocab_mask:**I**<br> *in* attention_mask:**I**<br> *out* sequences:**I**|1+|**T** = tensor(float), tensor(float16)|
 |GridSample|*in* X:**T1**<br> *in* Grid:**T1**<br> *out* Y:**T2**|1+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
@@ -1143,7 +1146,7 @@ The **OpSet Version** column uses the following notation:
 |SkipLayerNormalization|*in* input:**T**<br> *in* skip:**T**<br> *in* gamma:**T**<br> *in* beta:**T**<br> *in* bias:**T**<br> *out* output:**T**<br> *out* mean:**U**<br> *out* inv_std_var:**U**<br> *out* input_skip_bias_sum:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |SkipSimplifiedLayerNormalization|*in* input:**T**<br> *in* skip:**T**<br> *in* gamma:**T**<br> *in* bias:**T**<br> *out* output:**T**<br> *out* mean:**U**<br> *out* inv_std_var:**U**<br> *out* input_skip_bias_sum:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |SparseAttention|*in* query:**T**<br> *in* key:**T**<br> *in* value:**T**<br> *in* past_key:**T**<br> *in* past_value:**T**<br> *in* block_row_indices:**M**<br> *in* block_col_indices:**M**<br> *in* total_sequence_length:**M**<br> *in* key_total_sequence_lengths:**M**<br> *in* cos_cache:**T**<br> *in* sin_cache:**T**<br> *out* output:**T**<br> *out* present_key:**T**<br> *out* present_value:**T**|1+|**M** = tensor(int32)<br/> **T** = tensor(bfloat16), tensor(float16)|
-|SparseAttentionIndexer|*in* query:**T**<br> *in* key:**T**<br> *in* key_norm_weight:**T**<br> *in* cos_cache:**T**<br> *in* sin_cache:**T**<br> *in* mask:**TB**<br> *in* past_key:**T**<br> *in* gate:**T**<br> *in* position_bias:**T**<br> *in* head_weights:**T**<br> *in* position_ids:**I**<br> *in* past_sequence_length:**M**<br> *in* past_proj_buffer:**T**<br> *out* selected_indices:**M**<br> *out* present_key:**T**<br> *out* present_proj_buffer:**T**|1+|**I** = tensor(int64)<br/> **M** = tensor(int32)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **TB** = tensor(bool)|
+|SparseAttentionIndexer|*in* query:**T**<br> *in* key:**T**<br> *in* query_norm_weight:**T**<br> *in* key_norm_weight:**T**<br> *in* cos_cache:**T**<br> *in* sin_cache:**T**<br> *in* mask:**TB**<br> *in* past_key:**T**<br> *in* gate:**T**<br> *in* position_bias:**T**<br> *in* head_weights:**T**<br> *in* position_ids:**I**<br> *in* past_sequence_length:**M**<br> *in* past_proj_buffer:**T**<br> *out* selected_indices:**M**<br> *out* present_key:**T**<br> *out* present_proj_buffer:**T**|1+|**I** = tensor(int64)<br/> **M** = tensor(int32)<br/> **T** = tensor(bfloat16), tensor(float), tensor(float16)<br/> **TB** = tensor(int64)|
 |TransposeMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |Trilu|*in* X:**T**<br> *in* k:**tensor(int64)**<br> *out* Y:**T**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |UnfoldTensor|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -1226,7 +1229,7 @@ The **OpSet Version** column uses the following notation:
 |||14+|**T** = tensor(float), tensor(float16)|
 |||9+|**T** = tensor(float), tensor(float16)|
 |||7+|**T** = tensor(float), tensor(float16)|
-|BitShift|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**|11+|**T** = tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|BitShift|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**|[11, 27]|**T** = tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseAnd|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseNot|*in* X:**T**<br> *out* Y:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |BitwiseOr|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|18+|**T** = tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|

@@ -68,6 +68,28 @@ static void RunTest(int op_set,
   test.Run(expect_result, expected_err_str, excluded_providers);
 }
 
+TEST(TopKOperator, EmptyOuterDimension) {
+  for (int opset : {9, 11}) {
+    SCOPED_TRACE(opset);
+    OpTester test("TopK", opset);
+    test.AddAttribute("axis", int64_t{1});
+    if (opset == 9) {
+      test.AddAttribute("k", int64_t{1});
+    }
+
+    test.AddInput<float>("X", {0, 5}, {});
+    if (opset >= 10) {
+      test.AddInput<int64_t>("K", {1}, {1});
+    }
+    test.AddOutput<float>("Values", {0, 1}, {});
+    test.AddOutput<int64_t>("Indices", {0, 1}, {});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 TEST(TopKOperator, Top1DefaultAxisOpset9) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};

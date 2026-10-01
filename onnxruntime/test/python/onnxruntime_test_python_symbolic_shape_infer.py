@@ -143,7 +143,16 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_sparse_attention_indexer_qsa(self):
         node = helper.make_node(
             "SparseAttentionIndexer",
-            ["query", "key", "key_norm_weight", "cos_cache", "sin_cache", "mask", "past_key"],
+            [
+                "query",
+                "key",
+                "query_norm_weight",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "mask",
+                "past_key",
+            ],
             ["selected_indices", "present_key"],
             domain="com.microsoft",
             policy_mode="qsa",
@@ -151,12 +160,13 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             token_budget=8,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["batch", "sequence", 8]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
-            helper.make_tensor_value_info("mask", TensorProto.BOOL, ["batch", 1, "sequence", "total"]),
+            helper.make_tensor_value_info("mask", TensorProto.INT64, ["batch", "total"]),
             helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["batch", "past", 8]),
         ]
 
@@ -173,6 +183,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -191,12 +202,13 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             token_budget=8,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["batch", "sequence", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["batch", "sequence", 8]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, ["batch", "total", 8]),
-            helper.make_tensor_value_info("mask", TensorProto.BOOL, ["batch", 1, "sequence", "total"]),
+            helper.make_tensor_value_info("mask", TensorProto.INT64, ["batch", "total"]),
             helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["batch", "capacity", 8]),
             helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]),
         ]
@@ -211,6 +223,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -230,8 +243,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
@@ -256,6 +270,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -275,8 +290,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [2, 5, 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
@@ -299,6 +315,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -318,8 +335,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "sequence", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "sequence", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "sequence", 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, ["batch", 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, ["batch", 64, 4]),

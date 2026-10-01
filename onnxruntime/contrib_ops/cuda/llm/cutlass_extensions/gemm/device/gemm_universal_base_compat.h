@@ -47,6 +47,17 @@ namespace device {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Clears the serial split-K semaphores. Inside a CUDA graph a memset node adds several microseconds
+// of dependency latency, while a kernel node adds well under one.
+template <typename T>
+__global__ void ClearSplitKSemaphoresKernel(T* ptr, int count) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < count; i += gridDim.x * blockDim.x) {
+    ptr[i] = T(0);
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
     This is the device layer from CUTLASS 2.10 (SHA - cc85b64cf676c45f98a17e3a47c0aafcf817f088)
     It is replicated here since we needed to duplicate kernel level APIs for mixed dtype GEMMs
@@ -259,7 +270,16 @@ class GemmUniversalBaseCompat {
 
       if (args.mode == GemmUniversalMode::kGemm) {
         CUTLASS_TRACE_HOST("  clearing device workspace");
-        cudaError_t result = cudaMemsetAsync(workspace, 0, workspace_bytes, stream);
+        cudaError_t result;
+        if (workspace_bytes % sizeof(int) == 0 && workspace_bytes / sizeof(int) <= (size_t(1) << 20)) {
+          int const count = static_cast<int>(workspace_bytes / sizeof(int));
+          int const threads = 256;
+          int const blocks = (count + threads - 1) / threads < 64 ? (count + threads - 1) / threads : 64;
+          ClearSplitKSemaphoresKernel<int><<<blocks, threads, 0, stream>>>(static_cast<int*>(workspace), count);
+          result = cudaGetLastError();
+        } else {
+          result = cudaMemsetAsync(workspace, 0, workspace_bytes, stream);
+        }
 
         if (result != cudaSuccess) {
           CUTLASS_TRACE_HOST("  cudaMemsetAsync() returned error " << cudaGetErrorString(result));

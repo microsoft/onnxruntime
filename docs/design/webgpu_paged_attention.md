@@ -49,6 +49,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 | `slot_mapping` | v1 rejects any non-null `slot_mapping` input with `ORT_NOT_IMPLEMENTED`. GenAI does not emit this input today. Adding it (and the negative-slot skip-write semantics) is Phase 2 work. |
 | `softcap != 0` | v1 rejects with `ORT_NOT_IMPLEMENTED`. FlashAttention has no softcap today; adding it is a Phase 2 change. |
 | `local_window_size > 0` | Supported through gather-then-flash for correctness. Direct paged prefill and split-reduce decode do not yet apply the local-window mask, so those optimized paths remain disabled. |
+| `is_causal = 0` with `local_window_size = W > 0` | Supported through the same dense fallback. Query `q` in a sequence with `P` past tokens and `Q` new tokens attends to keys `[max(0, P + q + 1 - W), P + Q)`. Only the right causal bound is removed; the left bound remains query-relative. |
 | `T = bfloat16` | v1 rejects (registers `MLFloat16` only). FA has no `bf16` path yet either; both add together in Phase 2 when Dawn's `bf16` support on target adapters stabilizes. |
 
 ---

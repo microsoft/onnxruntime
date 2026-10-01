@@ -12,6 +12,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 using namespace onnxruntime::cuda;  // CudaKernel, OrtToCudaType
 
 #define REGISTER_KERNEL_TYPED(Op, T)                                   \
@@ -93,6 +94,7 @@ Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : CudaKernel(info) {
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -128,7 +130,9 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(gate->Data<T>()),
       num_rows,
       static_cast<int>(norm_size),
-      epsilon_);
+      epsilon_,
+      activation_,
+      GetDeviceProp().maxThreadsPerBlock);
 }
 
 template class LinearAttentionGate<float>;
