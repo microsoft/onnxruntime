@@ -4750,7 +4750,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   [total_tokens, ...] axis instead of a dense [batch_size, sequence_length, ...] axis. It selects, for
   every packed query token, the sparse-attention candidates that a following SparsePagedAttention (or
   similar) operator is allowed to read.
-
+  
   Unlike SparseAttentionIndexer, this operator:
     * takes packed query/key tensors plus cumulative_sequence_lengths (request boundaries) and
       past_sequence_lengths (per-request past length) instead of a dense batch and a dense mask;
@@ -4761,10 +4761,10 @@ This version of the operator has been available since version 1 of the 'com.micr
       rejected as a deterministic no-op on state rather than truncated or allowed to corrupt memory;
     * additionally emits selected_counts, the exact number of active (non -1) entries per query, so
       that no downstream consumer needs to scan selected_indices for its query's true count.
-
+  
   Both policy_mode values keep the semantics of SparseAttentionIndexer, applied independently to each
   request's own packed token range and fixed-capacity state slice:
-
+  
     policy_mode = "qsa" ("query sparse attention" token indexer)
       Processes each request's new tokens sequentially: appends raw indexer keys to the generic
       pending buffer, and whenever it reaches compress_ratio tokens, mean-pools it, applies RMSNorm
@@ -4775,7 +4775,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
       incomplete block.
-
+  
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
       count) independently per request, using that request's own buffer_length and new token count;
@@ -4783,7 +4783,7 @@ This version of the operator has been available since version 1 of the 'com.micr
       rotated and appended to key_state. Queries are scored against every causally visible compressed
       entry with sum_h w_h * ReLU(q_h . k) and the index_topk highest scoring entry indices are
       emitted.
-
+  
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
       token_budget + compress_ratio - 1 for "qsa" (values are request-local token positions into the
@@ -4793,7 +4793,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       with attention_mode="local_plus_selected", selected_kv_source="auxiliary"; key_state is
       layout-compatible with a [batch_size, capacity, 1, head_size] auxiliary cache when K = V).
       Unused entries are -1 and selected_counts holds the exact number of used entries.
-    * key_norm_weight is the effective RMSNorm multiplier, exactly as in SparseAttentionIndexer.
+    * query_norm_weight and key_norm_weight are the effective RMSNorm multipliers, exactly as in
+      SparseAttentionIndexer.
     * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
       result is rounded once to the tensor element type.
     * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
@@ -4803,7 +4804,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     * cumulative_sequence_lengths, past_sequence_lengths and past_state_lengths are read directly by
       the device kernel; a zero-token request row (a repeated cumulative offset) is valid and simply
       contributes no query rows for that request.
-
+  
   OgaEngine integration note: this operator only defines the ORT contrib op; wiring
   past_key_state / past_kv_buffer / past_gate_buffer / past_state_lengths as Engine-managed,
   per-request fixed-size state (analogous to a paged auxiliary cache) is expected to happen in the
@@ -8057,4 +8058,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 
