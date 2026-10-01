@@ -142,6 +142,8 @@ def copy_member(source: zipfile.ZipFile, info: zipfile.ZipInfo, target: zipfile.
     target_info.internal_attr = info.internal_attr
     target_info.create_system = info.create_system
     target_info.compress_type = zipfile.ZIP_DEFLATED
+    # Lets zipfile switch to ZIP64 up front for members larger than 2 GiB.
+    target_info.file_size = info.file_size
 
     digest = hashlib.sha256()
     size = 0

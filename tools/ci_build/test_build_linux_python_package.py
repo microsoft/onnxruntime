@@ -40,6 +40,9 @@ class TestLinuxPythonPackage(unittest.TestCase):
                     sys.exit(0)
                 if Path(sys.argv[1]).name != "build.py":
                     os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+                # Like build.py, configure without Python bindings unless they are requested.
+                if "--update" in sys.argv and not {{"--build_wheel", "--enable_pybind"}} & set(sys.argv):
+                    sys.exit("onnxruntime_ENABLE_PYTHON=OFF would drop the onnxruntime_pybind11_state target")
 
                 abi_tag = Path(sys.argv[0]).parents[1].name.split("-")[1]
                 build_dir = Path(sys.argv[sys.argv.index("--build_dir") + 1])
