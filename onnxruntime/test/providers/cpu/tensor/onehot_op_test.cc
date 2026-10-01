@@ -473,6 +473,19 @@ TEST(OneHotOpTest, BFloat16Opset28NegativeAxis) {
   test.Run();
 }
 
+TEST(OneHotOpTest, BFloat16Opset28Int32IndicesZeroOffValue) {
+  OpTester test("OneHot", 28);
+  test.AddInput<int32_t>("indices", {2, 2}, {0, 2, 1, -1});
+  test.AddInput<int32_t>("depth", {1}, {3});
+  test.AddInput<BFloat16>("values", {2}, {BFloat16(0.0f), BFloat16(2.0f)});
+  test.AddOutput<BFloat16>("output", {2, 2, 3},
+                           {BFloat16(2.0f), BFloat16(0.0f), BFloat16(0.0f),
+                            BFloat16(0.0f), BFloat16(0.0f), BFloat16(2.0f),
+                            BFloat16(0.0f), BFloat16(2.0f), BFloat16(0.0f),
+                            BFloat16(0.0f), BFloat16(0.0f), BFloat16(2.0f)});
+  test.Run();
+}
+
 TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange) {
   OpTester test("OneHot", 11);
   test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 13, 4, -12});

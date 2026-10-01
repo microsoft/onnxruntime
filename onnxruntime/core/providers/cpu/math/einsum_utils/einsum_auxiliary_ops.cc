@@ -4,6 +4,10 @@
 #include "einsum_auxiliary_ops.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <vector>
+
+#include "core/common/safeint.h"
 
 using namespace onnxruntime::common;
 
@@ -65,21 +69,75 @@ template <>
 Status MatMul<BFloat16>(const BFloat16* input_1_data, const BFloat16* input_2_data,
                         BFloat16* output_data, size_t left_stride, size_t right_stride,
                         size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N,
-                        concurrency::ThreadPool* /*tp*/, const void* /*mlas_backend_config*/,
+                        concurrency::ThreadPool* tp, const void* mlas_backend_config,
                         void* /*einsum_cuda_assets*/) {
+#if defined(__aarch64__) && defined(__linux__)
+  if (M > 0 && N > 0 && K > 0 && num_batches > 0 && MlasBf16AccelerationSupported()) {
+    const size_t left_matrix_size = static_cast<size_t>(SafeInt<size_t>(M) * K);
+    const size_t right_matrix_size = static_cast<size_t>(SafeInt<size_t>(K) * N);
+    const size_t output_matrix_size = static_cast<size_t>(SafeInt<size_t>(M) * N);
+    std::vector<float> float_left(static_cast<size_t>(SafeInt<size_t>(num_batches) * left_matrix_size));
+    std::vector<float> float_right(static_cast<size_t>(SafeInt<size_t>(num_batches) * right_matrix_size));
+    std::vector<float> float_output(static_cast<size_t>(SafeInt<size_t>(num_batches) * output_matrix_size));
+    std::vector<MLAS_SBGEMM_DATA_PARAMS> batch_data(num_batches);
+
+    for (size_t batch = 0; batch < num_batches; ++batch) {
+      const BFloat16* left = input_1_data + batch * left_stride;
+      const BFloat16* right = input_2_data + batch * right_stride;
+      float* converted_left = float_left.data() + batch * left_matrix_size;
+      float* converted_right = float_right.data() + batch * right_matrix_size;
+
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(left_matrix_size),
+          [&](std::ptrdiff_t index) { converted_left[index] = left[index].ToFloat(); });
+      concurrency::ThreadPool::TrySimpleParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(right_matrix_size),
+          [&](std::ptrdiff_t index) { converted_right[index] = right[index].ToFloat(); });
+
+      auto& params = batch_data[batch];
+      params.A = converted_left;
+      params.lda = K;
+      params.B = converted_right;
+      params.ldb = N;
+      params.C = float_output.data() + batch * output_matrix_size;
+      params.ldc = N;
+      params.AIsfp32 = true;
+      params.BIsfp32 = true;
+    }
+
+    MlasSBGemmBatch(
+        CblasNoTrans, CblasNoTrans, M, N, K, num_batches, batch_data.data(), tp,
+        reinterpret_cast<const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*>(mlas_backend_config));
+
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, onnxruntime::narrow<std::ptrdiff_t>(SafeInt<size_t>(num_batches) * output_matrix_size),
+        [&](std::ptrdiff_t index) {
+          const size_t batch = static_cast<size_t>(index) / output_matrix_size;
+          const size_t matrix_index = static_cast<size_t>(index) % output_matrix_size;
+          output_data[batch * output_stride + matrix_index] =
+              BFloat16(float_output[static_cast<size_t>(index)]);
+        });
+    return Status::OK();
+  }
+#endif
+
   for (size_t batch = 0; batch < num_batches; ++batch) {
     const BFloat16* left = input_1_data + batch * left_stride;
     const BFloat16* right = input_2_data + batch * right_stride;
     BFloat16* output = output_data + batch * output_stride;
-    for (size_t m = 0; m < M; ++m) {
-      for (size_t n = 0; n < N; ++n) {
-        float sum = 0.0f;
-        for (size_t k = 0; k < K; ++k) {
-          sum += left[m * K + k].ToFloat() * right[k * N + n].ToFloat();
-        }
-        output[m * N + n] = BFloat16(sum);
-      }
-    }
+
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, onnxruntime::narrow<std::ptrdiff_t>(SafeInt<size_t>(M) * N),
+        [&](std::ptrdiff_t index) {
+          const size_t output_index = static_cast<size_t>(index);
+          const size_t m = output_index / N;
+          const size_t n = output_index % N;
+          float sum = 0.0f;
+          for (size_t k = 0; k < K; ++k) {
+            sum += left[m * K + k].ToFloat() * right[k * N + n].ToFloat();
+          }
+          output[m * N + n] = BFloat16(sum);
+        });
   }
 
   return Status::OK();
