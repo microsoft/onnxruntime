@@ -3532,6 +3532,7 @@ rather than from attributes:
 
 Alternatively, key and value may be omitted and query contains packed QKV with shape
 `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+`initial_state` is required for packed QKV to determine the head counts and head sizes.
 
 The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
 pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
@@ -3642,7 +3643,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
-               "V-major. May alias final_state.",
+               "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
                "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
@@ -3690,11 +3691,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (has_key != has_value) {
             fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
           }
+          const bool packed_qkv = !has_key;
+          const bool has_state = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          if (packed_qkv && !has_state) {
+            fail_shape_inference("GatedDeltaNet: initial_state is required for packed QKV");
+          }
           if (!hasInputShape(ctx, 0)) {
             return;
           }
           const auto& query_shape = getInputShape(ctx, 0);
-          const bool packed_qkv = !has_key;
           const int rank = query_shape.dim_size();
           const int token_dims = rank - (packed_qkv ? 1 : 2);
           if ((packed_qkv && rank != 2 && rank != 3) ||
@@ -3723,18 +3728,55 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
           }
 
+          if (packed_qkv) {
+            if (state_shape == nullptr) {
+              return;
+            }
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                state_shape->dim(1).has_dim_value() && state_shape->dim(2).has_dim_value() &&
+                state_shape->dim(3).has_dim_value()) {
+              const int64_t packed_size = query_shape.dim(token_dims).dim_value();
+              const int64_t num_heads_v = state_shape->dim(1).dim_value();
+              const int64_t head_size_v = state_shape->dim(2).dim_value();
+              const int64_t head_size_qk = state_shape->dim(3).dim_value();
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_v <= 0 || head_size_v <= 0 || head_size_qk <= 0) {
+                fail_shape_inference("GatedDeltaNet: packed QKV head counts and head sizes must be positive");
+              }
+              if (num_heads_v > max_dimension / head_size_v || head_size_qk > max_dimension / 2) {
+                fail_shape_inference("GatedDeltaNet: packed QKV dimensions overflow int64");
+              }
+              const int64_t value_size = num_heads_v * head_size_v;
+              const int64_t query_key_size = 2 * head_size_qk;
+              if (packed_size <= value_size || (packed_size - value_size) % query_key_size != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                    "num_heads_v * head_size_v");
+              }
+              const int64_t num_heads_q = (packed_size - value_size) / query_key_size;
+              if (num_heads_v % num_heads_q != 0) {
+                fail_shape_inference("GatedDeltaNet: num_heads_v must be a positive multiple of num_heads_q");
+              }
+            }
+            const bool has_cu_seqlens = ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr;
+            if (!has_cu_seqlens && token_dims == 1 && query_shape.dim(0).has_dim_value() &&
+                state_shape->dim(0).has_dim_value()) {
+              const int64_t total_tokens = query_shape.dim(0).dim_value();
+              const int64_t batch = state_shape->dim(0).dim_value();
+              if (batch <= 0 || total_tokens <= 0 || total_tokens % batch != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: total_tokens must be divisible by batch, with positive token count and batch size");
+              }
+            }
+          }
+
           ONNX_NAMESPACE::TensorShapeProto out_shape;
           for (int i = 0; i < token_dims; ++i) {
             *out_shape.add_dim() = query_shape.dim(i);
           }
           if (packed_qkv) {
-            if (state_shape != nullptr) {
-              *out_shape.add_dim() = state_shape->dim(1);
-              *out_shape.add_dim() = state_shape->dim(2);
-            } else {
-              out_shape.add_dim();
-              out_shape.add_dim();
-            }
+            *out_shape.add_dim() = state_shape->dim(1);
+            *out_shape.add_dim() = state_shape->dim(2);
           } else {
             if (query_shape.dim(token_dims).has_dim_value() &&
                 value_shape->dim(token_dims).has_dim_value()) {

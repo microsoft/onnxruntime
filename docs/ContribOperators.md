@@ -2198,6 +2198,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Alternatively, key and value may be omitted and query contains packed QKV with shape
   `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+  `initial_state` is required for packed QKV to determine the head counts and head sizes.
   
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
@@ -2298,7 +2299,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta</tt> (optional) : TS</dt>
 <dd>Update rate, shape (total_tokens, num_heads_v)</dd>
 <dt><tt>initial_state</tt> (optional) : TS</dt>
-<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. May alias final_state.</dd>
+<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
 <dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>

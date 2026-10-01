@@ -68,7 +68,10 @@ struct Inputs {
 };
 
 void VerifyPackedQkvShapeInference(const std::vector<int64_t>& packed_qkv_shape,
-                                   const std::vector<int64_t>& expected_output_shape) {
+                                   const std::vector<int64_t>& expected_output_shape,
+                                   const std::string& expected_error = "",
+                                   const std::vector<int64_t>& initial_state_shape = {2, 48, 128, 128},
+                                   bool ragged = false) {
   std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
   Model model("gated_delta_net_packed_qkv", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
@@ -78,40 +81,76 @@ void VerifyPackedQkvShapeInference(const std::vector<int64_t>& packed_qkv_shape,
   ONNX_NAMESPACE::TypeProto packed_qkv_type;
   packed_qkv_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   for (int64_t dim : packed_qkv_shape) {
-    packed_qkv_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+    auto* dimension = packed_qkv_type.mutable_tensor_type()->mutable_shape()->add_dim();
+    if (dim >= 0) dimension->set_dim_value(dim);
   }
   ONNX_NAMESPACE::TypeProto state_type;
   state_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  for (int64_t dim : {2, 48, 128, 128}) {
-    state_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+  for (int64_t dim : initial_state_shape) {
+    auto* dimension = state_type.mutable_tensor_type()->mutable_shape()->add_dim();
+    if (dim >= 0) dimension->set_dim_value(dim);
   }
+  ONNX_NAMESPACE::TypeProto cu_seqlens_type;
+  cu_seqlens_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  cu_seqlens_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
 
   auto& packed_qkv = graph.GetOrCreateNodeArg("packed_qkv", &packed_qkv_type);
   auto& initial_state = graph.GetOrCreateNodeArg("initial_state", &state_type);
+  auto& cu_seqlens = graph.GetOrCreateNodeArg("cu_seqlens", &cu_seqlens_type);
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
   auto& output = graph.GetOrCreateNodeArg("output", nullptr);
   auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
   graph.AddNode("gdn", "GatedDeltaNet", "packed QKV shape inference",
-                {&packed_qkv, &empty, &empty, &empty, &empty, &empty, &initial_state},
+                {&packed_qkv, &empty, &empty, ragged ? &cu_seqlens : &empty, &empty, &empty, &initial_state},
                 {&output, &final_state}, nullptr, kMSDomain);
   graph.SetOutputs({&output, &final_state});
 
+  if (!expected_error.empty()) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), expected_error);
+    return;
+  }
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_EQ(output.Shape()->dim_size(), static_cast<int>(expected_output_shape.size()));
   for (int i = 0; i < output.Shape()->dim_size(); ++i) {
-    ASSERT_TRUE(output.Shape()->dim(i).has_dim_value());
-    EXPECT_EQ(output.Shape()->dim(i).dim_value(), expected_output_shape[static_cast<size_t>(i)]);
+    const int64_t expected_dimension = expected_output_shape[static_cast<size_t>(i)];
+    ASSERT_EQ(output.Shape()->dim(i).has_dim_value(), expected_dimension >= 0);
+    if (expected_dimension >= 0) {
+      EXPECT_EQ(output.Shape()->dim(i).dim_value(), expected_dimension);
+    }
   }
   ASSERT_EQ(final_state.Shape()->dim_size(), state_type.tensor_type().shape().dim_size());
   for (int i = 0; i < final_state.Shape()->dim_size(); ++i) {
-    ASSERT_TRUE(final_state.Shape()->dim(i).has_dim_value());
-    EXPECT_EQ(final_state.Shape()->dim(i).dim_value(), state_type.tensor_type().shape().dim(i).dim_value());
+    const auto& expected_dimension = state_type.tensor_type().shape().dim(i);
+    ASSERT_EQ(final_state.Shape()->dim(i).has_dim_value(), expected_dimension.has_dim_value());
+    if (expected_dimension.has_dim_value()) {
+      EXPECT_EQ(final_state.Shape()->dim(i).dim_value(), expected_dimension.dim_value());
+    }
   }
 }
 
 TEST(GatedDeltaNetShapeInferenceTest, PackedQkv) {
-  VerifyPackedQkvShapeInference({5, 10240}, {5, 48, 128});
+  VerifyPackedQkvShapeInference({6, 10240}, {6, 48, 128});
   VerifyPackedQkvShapeInference({2, 5, 10240}, {2, 5, 48, 128});
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvRejectsNonDivisibleUniformBatch) {
+  VerifyPackedQkvShapeInference({5, 10240}, {}, "must be divisible by batch");
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvSymbolicAndRaggedShapes) {
+  VerifyPackedQkvShapeInference({6, -1}, {6, 48, 128});
+  VerifyPackedQkvShapeInference({-1, 10240}, {-1, 48, 128});
+  VerifyPackedQkvShapeInference({6, 10240}, {6, -1, 128}, "", {2, -1, 128, 128});
+  VerifyPackedQkvShapeInference({5, 10240}, {5, 48, 128}, "", {2, 48, 128, 128}, true);
+}
+
+TEST(GatedDeltaNetShapeInferenceTest, PackedQkvRejectsInvalidDimensions) {
+  VerifyPackedQkvShapeInference({6, 10241}, {}, "packed QKV last dimension");
+  VerifyPackedQkvShapeInference({6, 6144}, {}, "packed QKV last dimension");
+  VerifyPackedQkvShapeInference({6, 7936}, {}, "must be a positive multiple");
+  VerifyPackedQkvShapeInference({6, 10240}, {}, "head counts and head sizes must be positive", {2, 48, 128, 0});
+  VerifyPackedQkvShapeInference({6, 10240}, {}, "dimensions overflow int64",
+                                {2, std::numeric_limits<int64_t>::max(), 128, 128});
 }
 
 TEST(GatedDeltaNetShapeInferenceTest, ShortOptionalInputList) {
@@ -130,10 +169,7 @@ TEST(GatedDeltaNetShapeInferenceTest, ShortOptionalInputList) {
                 {&query}, {&output}, nullptr, kMSDomain);
   graph.SetOutputs({&output});
 
-  ASSERT_STATUS_OK(graph.Resolve());
-  ASSERT_NE(output.Shape(), nullptr);
-  ASSERT_EQ(output.Shape()->dim_size(), 3);
-  EXPECT_EQ(output.Shape()->dim(0).dim_value(), 5);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(), "initial_state is required for packed QKV");
 }
 
 TEST(GatedDeltaNetShapeInferenceTest, UnknownQueryShapeRequiresPairedKeyValue) {
