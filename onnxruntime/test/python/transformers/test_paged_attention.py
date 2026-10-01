@@ -1712,29 +1712,113 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
             local_window_size_override=4 if local else -1,
         )
 
-    @unittest.skipIf(
-        platform.system() != "Linux" or not torch.cuda.is_available(),
-        reason="The rotary reference requires CUDA and Triton on Linux.",
-    )
-    def test_qk_norm_qwen38_non_causal_local_window_prefill(self):
-        # Two queries select multi-row split-reduce with 256-wide heads and 6:1 GQA.
-        # Appending at positions 15/16 crosses a cache page; visible keys are
-        # [14, 17) and [15, 17), distinguishing local masking from causal masking.
-        config = Config(1, 2, 17, 24, 4, 256, 16, True, True, False, False, 0.0, ep="WebGpuExecutionProvider")
+    def _check_qk_norm_qwen38_cpu_reference(self, query_length, window, block_ids):
+        past_length, block_size = 15, 16
+        total_length = past_length + query_length
+        config = Config(
+            1,
+            query_length,
+            total_length,
+            24,
+            4,
+            256,
+            block_size,
+            True,
+            True,
+            False,
+            False,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
         config.use_qk_norm = True
         config.is_causal = False
-        with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
-            torch.manual_seed(0)
-            # The shared reference generates independent Q/K/V and Q/K gains and
-            # checks both attention output and the normalized-then-rotated K cache.
-            parity_check_paged_attention(
-                config,
-                rtol=5e-3,
-                atol=5e-3,
-                new_seqlens_override=torch.tensor([2], dtype=torch.int32),
-                past_seqlens_override=torch.tensor([15], dtype=torch.int32),
-                local_window_size_override=2,
-            )
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        def randn(*shape):
+            return torch.randn(*shape, generator=generator, device="cpu", dtype=torch.float32)
+
+        query = (
+            randn(query_length, config.num_heads, config.head_size)
+            * torch.linspace(0.1, 2.4, config.num_heads, device="cpu").reshape(1, -1, 1)
+        ).half()
+        key = (
+            randn(query_length, config.kv_num_heads, config.head_size)
+            * torch.linspace(0.2, 1.7, config.kv_num_heads, device="cpu").reshape(1, -1, 1)
+        ).half()
+        value = randn(query_length, config.kv_num_heads, config.head_size).half()
+        q_weight = torch.linspace(0.2, 1.7, config.head_size, device="cpu").half()
+        k_weight = torch.linspace(1.3, -0.7, config.head_size, device="cpu").half()
+        # One physical page is unused, in addition to unused slots on the last logical page.
+        num_blocks = len(block_ids) + 1
+        key_cache = randn(num_blocks, block_size, config.kv_num_heads, config.head_size).half()
+        value_cache = randn(num_blocks, block_size, config.kv_num_heads, config.head_size).half()
+        block_table = torch.tensor([block_ids], dtype=torch.int32, device="cpu")
+
+        frequencies = 10000.0 ** (-torch.arange(0, config.head_size, 2, device="cpu").float() / config.head_size)
+        angles = torch.arange(total_length, device="cpu").float()[:, None] * frequencies
+        cos, sin = angles.cos().half(), angles.sin().half()
+
+        def normalize_and_rotate(x, weight):
+            # Materialize FP16 RMSNorm before FP32 split-half RoPE, then round to FP16 again.
+            normalized = rms_norm_ref(x, weight, config.qk_norm_epsilon).float()
+            x0, x1 = normalized.chunk(2, dim=-1)
+            c, s = cos[past_length:, None, :].float(), sin[past_length:, None, :].float()
+            return torch.cat((x0 * c - x1 * s, x0 * s + x1 * c), dim=-1).half()
+
+        q_ref = normalize_and_rotate(query, q_weight)
+        k_ref = normalize_and_rotate(key, k_weight)
+        expected_k, expected_v = key_cache.clone(), value_cache.clone()
+        unchanged = numpy.ones((num_blocks, block_size), dtype=bool)
+        for row in range(query_length):
+            position = past_length + row
+            block, slot = block_ids[position // block_size], position % block_size
+            expected_k[block, slot] = k_ref[row]
+            expected_v[block, slot] = value[row]
+            unchanged[block, slot] = False
+
+        dense_k = expected_k[block_table[0].long()].flatten(0, 1)[:total_length]
+        dense_v = expected_v[block_table[0].long()].flatten(0, 1)[:total_length]
+        reference, _ = attention_ref(
+            q_ref.unsqueeze(0),
+            dense_k.unsqueeze(0),
+            dense_v.unsqueeze(0),
+            causal=False,
+            window_size=(window, total_length),
+        )
+        output, actual_k, actual_v = paged_attention_func(
+            config,
+            query.flatten(1),
+            key.flatten(1),
+            value.flatten(1),
+            key_cache,
+            value_cache,
+            torch.tensor([0, query_length], dtype=torch.int32, device="cpu"),
+            torch.tensor([past_length], dtype=torch.int32, device="cpu"),
+            block_table,
+            cos,
+            sin,
+            window_size=window,
+            q_norm_weight=q_weight,
+            k_norm_weight=k_weight,
+        )
+        numpy.testing.assert_allclose(
+            output.numpy(), reference.reshape(output.shape).numpy(), rtol=5e-3, atol=5e-3, equal_nan=False
+        )
+        numpy.testing.assert_allclose(actual_k, expected_k.numpy(), rtol=5e-3, atol=5e-3, equal_nan=False)
+        numpy.testing.assert_array_equal(actual_v, expected_v.numpy())
+        # Cached K must not be normalized/rotated again; old and unused slots stay bit-identical.
+        numpy.testing.assert_array_equal(actual_k[unchanged], key_cache.numpy()[unchanged])
+        numpy.testing.assert_array_equal(actual_v[unchanged], value_cache.numpy()[unchanged])
+
+    def test_qk_norm_qwen38_non_causal_local_window_prefill(self):
+        # Two queries select split-reduce with 256-wide heads and 6:1 GQA.
+        # Positions 15/16 cross a page; non-causal visible keys are [14, 17) and [15, 17).
+        self._check_qk_norm_qwen38_cpu_reference(query_length=2, window=2, block_ids=[1, 0])
+
+    def test_qk_norm_qwen38_non_causal_local_window_dense_prefill(self):
+        # Q=32 selects dense prefill's 16-key tiles. Appends cross positions 15/16 and 31/32.
+        # Window=4 partially masks the first tile for early queries and fully masks it for later ones.
+        self._check_qk_norm_qwen38_cpu_reference(query_length=32, window=4, block_ids=[2, 0, 1])
 
     def test_qk_norm_split_norm_dimension(self):
         # A single 512-channel head selects the normalization helper's split-dimension shader.
