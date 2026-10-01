@@ -48,6 +48,18 @@ namespace {
 // The block reductions below halve the active thread count, so this must stay a power of two.
 constexpr int kThreads = 128;
 
+template <typename Kernel>
+Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* kernel_name) {
+  int device = 0;
+  int max_bytes = 0;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+  CUDA_RETURN_IF_ERROR(
+      cudaDeviceGetAttribute(&max_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+  ORT_RETURN_IF_ERROR(ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
+      bytes, static_cast<size_t>(max_bytes), kernel_name));
+  return CUDA_CALL(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_bytes));
+}
+
 // Largest b such that cumulative_sequence_lengths[b] <= token, assuming the array is nondecreasing.
 // If the data itself is malformed this may attribute a token to the wrong request, but the result
 // is always an index in [0, batch_size), so it can never cause an out-of-bounds access.
@@ -239,9 +251,9 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
     __syncthreads();
 
     const int64_t abs_position =
-        params.has_position_ids
-            ? position_ids[token]
-            : static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch]);
+        kUseLeadingRope
+            ? static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch])
+            : position_ids[token];
     const int position = SaiClampPosition(abs_position, params.max_rotary_length);
     const int64_t cache_offset =
         (static_cast<int64_t>(params.cos_cache_batched ? batch : 0) * params.max_rotary_length + position) *
@@ -265,7 +277,7 @@ __global__ void PackedRotateQueryKernel(const T* query, const T* query_norm_weig
 template <typename T>
 __global__ void QsaBlockScoreKernel(const T* present_key_state, const float* query_rotated,
                                     const int32_t* cumulative_sequence_lengths,
-                                    const int32_t* past_sequence_lengths, const int64_t* position_ids,
+                                    const int32_t* past_sequence_lengths,
                                     const int32_t* present_state_lengths, float* block_scores,
                                     PackedSparseAttentionIndexerParams params) {
   extern __shared__ float reduction[];
@@ -284,9 +296,7 @@ __global__ void QsaBlockScoreKernel(const T* present_key_state, const float* que
     }
 
     const int64_t abs_position =
-        params.has_position_ids
-            ? position_ids[token]
-            : static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch]);
+        static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch]);
     const int64_t causal_count = SaiCausalThreshold(abs_position, params.compress_ratio);
     const int64_t visible_block_count = causal_count < key_len_after ? causal_count : key_len_after;
     if (static_cast<int64_t>(block_index) >= visible_block_count) {
@@ -319,7 +329,7 @@ __global__ void QsaBlockScoreKernel(const T* present_key_state, const float* que
 // whose update step was rejected for exceeding state_capacity this call (overflow_flags[batch] set)
 // always gets the safe empty result: indices stay -1 (already reset below) and count is 0.
 __global__ void QsaSelectKernel(const float* block_scores, const int32_t* cumulative_sequence_lengths,
-                                const int32_t* past_sequence_lengths, const int64_t* position_ids,
+                                const int32_t* past_sequence_lengths,
                                 const int32_t* present_state_lengths, const int32_t* overflow_flags,
                                 int32_t* selected_indices, int32_t* selected_counts,
                                 PackedSparseAttentionIndexerParams params) {
@@ -345,9 +355,7 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* cumula
 
     const int key_len_after = present_state_lengths[batch * 2 + psai::kKeyStateLength];
     const int64_t abs_position =
-        params.has_position_ids
-            ? position_ids[token]
-            : static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch]);
+        static_cast<int64_t>(past_sequence_lengths[batch]) + (token - cumulative_sequence_lengths[batch]);
     const int64_t causal_count = SaiCausalThreshold(abs_position, params.compress_ratio);
     const int64_t visible_64 = causal_count < key_len_after ? causal_count : static_cast<int64_t>(key_len_after);
     const int visible_block_count = static_cast<int>(visible_64 < 0 ? 0 : visible_64);
@@ -740,7 +748,7 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream, const PackedSparseAttentionIndexerParams& params, const T* query, const T* key,
     const T* query_norm_weight, const T* key_norm_weight, const T* cos_cache, const T* sin_cache,
     const int32_t* cumulative_sequence_lengths,
-    const int32_t* past_sequence_lengths, const int64_t* position_ids, const T* past_key_state,
+    const int32_t* past_sequence_lengths, const T* past_key_state,
     const T* past_kv_buffer, const int32_t* past_state_lengths, int32_t* selected_indices,
     int32_t* selected_counts, T* present_key_state, T* present_kv_buffer, int32_t* present_state_lengths,
     float* float_workspace, int32_t* overflow_flags) {
@@ -768,8 +776,11 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   }
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t update_shared_bytes = 2 * value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(QsaUpdateStateKernel<T>, update_shared_bytes, "QsaUpdateStateKernel"));
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  QsaUpdateStateKernel<T><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+  QsaUpdateStateKernel<T><<<state_blocks, kThreads, update_shared_bytes, stream>>>(
       key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
       past_state_lengths, present_key_state, present_kv_buffer, present_state_lengths, overflow_flags, params);
 
@@ -783,21 +794,24 @@ Status LaunchQsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  const size_t rotate_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+      PackedRotateQueryKernel<T, true>, rotate_shared_bytes, "PackedRotateQueryKernel"));
+  PackedRotateQueryKernel<T, true><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
-      position_ids, query_rotated, params);
+      nullptr, query_rotated, params);
 
   if (params.state_capacity > 0) {
     const int64_t score_work = static_cast<int64_t>(params.total_tokens) * params.state_capacity;
     const int score_blocks = static_cast<int>(std::min<int64_t>(score_work, kSaiMaxGridDimX));
     QsaBlockScoreKernel<T><<<score_blocks, kThreads, kThreads * sizeof(float), stream>>>(
-        present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths, position_ids,
+        present_key_state, query_rotated, cumulative_sequence_lengths, past_sequence_lengths,
         present_state_lengths, block_scores, params);
   }
 
   const int token_blocks = static_cast<int>(std::min<int64_t>(params.total_tokens, kSaiMaxGridDimX));
   QsaSelectKernel<<<token_blocks, kThreads, kThreads * (sizeof(float) + sizeof(int)), stream>>>(
-      block_scores, cumulative_sequence_lengths, past_sequence_lengths, position_ids, present_state_lengths,
+      block_scores, cumulative_sequence_lengths, past_sequence_lengths, present_state_lengths,
       overflow_flags, selected_indices, selected_counts, params);
 
   return CUDA_CALL(cudaGetLastError());
@@ -844,8 +858,11 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   }
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t update_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(CsaUpdateStateKernel<T>, update_shared_bytes, "CsaUpdateStateKernel"));
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
-  CsaUpdateStateKernel<T><<<state_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  CsaUpdateStateKernel<T><<<state_blocks, kThreads, update_shared_bytes, stream>>>(
       key, gate, key_norm_weight, cos_cache, sin_cache, position_bias, cumulative_sequence_lengths,
       past_sequence_lengths, past_kv_buffer, past_gate_buffer, past_state_lengths, present_key_state,
       present_kv_buffer, present_gate_buffer, present_state_lengths, overflow_flags, params);
@@ -859,7 +876,10 @@ Status LaunchCsaPackedSparseAttentionIndexer(
 
   const int64_t rotate_rows = static_cast<int64_t>(params.total_tokens) * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rotate_rows, kSaiMaxGridDimX));
-  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  const size_t rotate_shared_bytes = value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(ConfigureDynamicSharedMemory(
+      PackedRotateQueryKernel<T, false>, rotate_shared_bytes, "PackedRotateQueryKernel"));
+  PackedRotateQueryKernel<T, false><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths,
       position_ids, query_rotated, params);
 
@@ -882,7 +902,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
 #define INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(T)                                                            \
   template Status LaunchQsaPackedSparseAttentionIndexer<T>(                                                       \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,            \
-      const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*, const T*, const int32_t*,     \
+      const T*, const T*, const int32_t*, const int32_t*, const T*, const T*, const int32_t*,                     \
       int32_t*,                                                                                                   \
       int32_t*, T*, T*, int32_t*, float*, int32_t*);                                                              \
   template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                       \

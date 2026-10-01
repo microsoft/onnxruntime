@@ -29,6 +29,9 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
+#ifdef USE_CUDA
+#include "contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.h"
+#endif
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -106,7 +109,7 @@ struct GraphOptions {
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
 // Builds a fixed 16-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
+// requires. position_ids (slot 11) is forbidden for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -214,6 +217,19 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndSt
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
 }
 
+#ifdef USE_CUDA
+TEST(PackedSparseAttentionIndexerCudaTest, DynamicSharedMemoryBoundaryValidation) {
+  constexpr size_t supported_bytes = 64 * 1024;
+  EXPECT_STATUS_OK(contrib::cuda::ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
+      supported_bytes, supported_bytes, "BoundaryKernel"));
+  const Status status = contrib::cuda::ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
+      supported_bytes + 1, supported_bytes, "BoundaryKernel");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("requires 65537 bytes"), std::string::npos);
+  EXPECT_NE(status.ErrorMessage().find("supports at most 65536"), std::string::npos);
+}
+#endif
+
 #ifndef ORT_NO_EXCEPTIONS
 
 namespace {
@@ -301,12 +317,11 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIdsAndCsaInputsMismatch) {
-  // position_ids alone is allowed for qsa (optional); only the csa-only slots must be omitted.
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  std::unique_ptr<Model> model;
-  ASSERT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "position_ids) must be omitted when policy_mode is 'qsa'");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {

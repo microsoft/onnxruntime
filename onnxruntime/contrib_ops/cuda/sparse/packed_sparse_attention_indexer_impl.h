@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "core/providers/cuda/cuda_common.h"
@@ -27,7 +28,6 @@ struct PackedSparseAttentionIndexerParams {
   int state_capacity = 0;   // past_key_state.shape[1]
   int buffer_capacity = 0;  // past_kv_buffer.shape[1] == 2 * compress_ratio - 1
   int capacity = 0;         // selected_indices.shape[1]
-  bool has_position_ids = false;
   float epsilon = 1e-6f;
   float scale = 0.0f;
 
@@ -42,6 +42,13 @@ struct PackedSparseAttentionIndexerParams {
 // Scratch requirements, in float elements.
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
+inline Status ValidatePackedSparseAttentionIndexerDynamicSharedMemory(size_t required_bytes, size_t supported_bytes,
+                                                                      const char* kernel_name) {
+  ORT_RETURN_IF(required_bytes > supported_bytes,
+                "PackedSparseAttentionIndexer: ", kernel_name, " requires ", required_bytes,
+                " bytes of dynamic shared memory, but the device supports at most ", supported_bytes);
+  return Status::OK();
+}
 
 // `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
 // (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
@@ -62,7 +69,6 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const T* sin_cache,
     const int32_t* cumulative_sequence_lengths,
     const int32_t* past_sequence_lengths,
-    const int64_t* position_ids,
     const T* past_key_state,
     const T* past_kv_buffer,
     const int32_t* past_state_lengths,

@@ -2639,8 +2639,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   // Strict policy input validation: every fixed slot required by every policy must be provided;
-  // csa-only slots must be provided iff policy_mode is 'csa'; position_ids is optional for 'qsa'
-  // and required for 'csa'.
+  // csa-only slots must be provided iff policy_mode is 'csa'.
   for (int index : {psai::kQuery, psai::kKey, psai::kKeyNormWeight, psai::kCosCache, psai::kSinCache,
                     psai::kCumulativeSequenceLengths, psai::kPastSequenceLengths, psai::kPastKeyState,
                     psai::kPastKvBuffer, psai::kPastStateLengths}) {
@@ -2655,9 +2654,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
                                   : " is required when policy_mode is 'csa'");
     }
   }
-  if (!is_qsa && !PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
+  if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds) == is_qsa) {
     fail_shape_inference("PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                         " (position_ids) is required when policy_mode is 'csa'");
+                         is_qsa ? " (position_ids) must be omitted when policy_mode is 'qsa'"
+                                : " (position_ids) is required when policy_mode is 'csa'");
   }
 
   if (ctx.getNumOutputs() != static_cast<size_t>(psai::kFixedOutputCount)) {
@@ -2902,7 +2902,8 @@ request's own packed token range and fixed-capacity state slice:
     sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
     their token indices are emitted (request-local logical positions, i.e. the same numbering as
     past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-    incomplete block.
+    incomplete block. QSA positions are always the request-local logical cache positions derived
+    from past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
 
   policy_mode = "csa" ("compressed sparse attention" block indexer)
     Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -3015,8 +3016,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7,
                "past_sequence_lengths",
                "Device-resident number of tokens already processed for each request before this call, with "
-               "shape (batch_size). Used as the default absolute query position when position_ids is omitted "
-               "(policy_mode 'qsa'), and to validate state consistency.",
+               "shape (batch_size). Used to derive request-local logical query positions for policy_mode 'qsa' "
+               "and to validate state consistency.",
                "M")
         .Input(8,
                "gate",
@@ -3036,8 +3037,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(11,
                "position_ids",
-               "Optional for policy_mode 'qsa', required for policy_mode 'csa': absolute position of every "
-               "packed query, with shape (total_tokens).",
+               "Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).",
                "I",
                OpSchema::Optional)
         .Input(12,

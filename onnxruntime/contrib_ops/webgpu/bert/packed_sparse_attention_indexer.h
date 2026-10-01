@@ -57,10 +57,9 @@ class PackedSparseAttentionIndexerQsaUpdateProgram final
 class PackedSparseAttentionIndexerQsaSelectProgram final
     : public Program<PackedSparseAttentionIndexerQsaSelectProgram> {
  public:
-  PackedSparseAttentionIndexerQsaSelectProgram(bool cos_cache_batched, bool has_position_ids)
+  explicit PackedSparseAttentionIndexerQsaSelectProgram(bool cos_cache_batched)
       : Program{"PackedSparseAttentionIndexerQsaSelect"},
-        cos_cache_batched_{cos_cache_batched},
-        has_position_ids_{has_position_ids} {}
+        cos_cache_batched_{cos_cache_batched} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"total_tokens", ProgramUniformVariableDataType::Uint32},
@@ -78,7 +77,6 @@ class PackedSparseAttentionIndexerQsaSelectProgram final
 
  private:
   bool cos_cache_batched_;
-  bool has_position_ids_;
 };
 
 // One invocation per request: closes every new compression window (softmax-gated pool -> RMSNorm

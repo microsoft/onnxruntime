@@ -4894,7 +4894,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       sum_h ReLU(q_h . k), the token_budget / compress_ratio highest scoring blocks are kept, and
       their token indices are emitted (request-local logical positions, i.e. the same numbering as
       past_sequence_lengths + local offset) followed by the causally visible tokens of the trailing
-      incomplete block.
+      incomplete block. QSA positions are always the request-local logical cache positions derived
+      from past_sequence_lengths and cumulative_sequence_lengths; position_ids must be omitted.
   
     policy_mode = "csa" ("compressed sparse attention" block indexer)
       Applies the same window-plan arithmetic as SparseAttentionIndexer (overlap/leftover/new window
@@ -4973,7 +4974,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>cumulative_sequence_lengths</tt> : M</dt>
 <dd>Device-resident packed request boundaries with shape (batch_size + 1); cumulative_sequence_lengths[0] must be 0 and cumulative_sequence_lengths[batch_size] must equal total_tokens. Request b owns rows [cumulative_sequence_lengths[b], cumulative_sequence_lengths[b + 1]) of query/key (a repeated offset is a valid zero-token row).</dd>
 <dt><tt>past_sequence_lengths</tt> : M</dt>
-<dd>Device-resident number of tokens already processed for each request before this call, with shape (batch_size). Used as the default absolute query position when position_ids is omitted (policy_mode 'qsa'), and to validate state consistency.</dd>
+<dd>Device-resident number of tokens already processed for each request before this call, with shape (batch_size). Used to derive request-local logical query positions for policy_mode 'qsa' and to validate state consistency.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': gate projection of the new tokens with shape (total_tokens, 2 * head_size).</dd>
 <dt><tt>position_bias</tt> (optional) : T</dt>
@@ -4981,7 +4982,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>head_weights</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': per-head score weights with shape (total_tokens, num_heads).</dd>
 <dt><tt>position_ids</tt> (optional) : I</dt>
-<dd>Optional for policy_mode 'qsa', required for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
+<dd>Only for policy_mode 'csa': absolute position of every packed query, with shape (total_tokens).</dd>
 <dt><tt>past_key_state</tt> : T</dt>
 <dd>Generic fixed-capacity state: policy_mode 'qsa' stores prepared complete-block keys; policy_mode 'csa' stores compressed keys. Shape is (batch_size, state_capacity, head_size) and never changes across calls.</dd>
 <dt><tt>past_kv_buffer</tt> : T</dt>
