@@ -76,6 +76,454 @@ TEST(WebGpuConcurrentContextTestStandalone, ShaderDumpWritesRemainComplete) {
   }
 }
 
+// Fixture: builds the shared model once and provides session/feed factories. A long-lived
+// keepalive session pins the shared WebGPU context (ref-count > 0) for the whole test so that
+// churn/destroy in one thread never tears the context down under the others.
+class WebGpuConcurrentContextTest : public ::testing::Test {
+ protected:
+  static constexpr int64_t kNumElements = 256 * 1024;  // 1 MB per initializer
+  static constexpr int kChainLen = 8;                  // 8 uploads + 8 dispatches per session
+  static constexpr float kExpected = 1.0f + 0.5f * kChainLen;
+
+  void SetUp() override {
+    if (DefaultWebGpuExecutionProvider() == nullptr) {
+      GTEST_SKIP() << "WebGPU execution provider is not available.";
+    }
+    ASSERT_NO_FATAL_FAILURE(BuildAddChainModel(kChainLen, kNumElements, model_bytes_));
+    keepalive_ = MakeSession();
+  }
+
+  std::unique_ptr<InferenceSession> MakeSession() {
+    SessionOptions so;
+    so.session_logid = "webgpu_concurrent_ctx";
+    auto session = std::make_unique<InferenceSession>(so, GetEnvironment());
+    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+    ORT_THROW_IF_ERROR(session->Load(model_bytes_.data(), static_cast<int>(model_bytes_.size())));
+    ORT_THROW_IF_ERROR(session->Initialize());
+    return session;
+  }
+
+  NameMLValMap MakeFeeds() const {
+    std::vector<float> x_values(static_cast<size_t>(kNumElements), 1.0f);
+    OrtValue x_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                         std::vector<int64_t>{kNumElements}, x_values, &x_value);
+    return NameMLValMap{{"X", x_value}};
+  }
+
+  // Runs one inference and validates the numerical result. Records into `sink` on failure.
+  void RunOnce(InferenceSession& session, ErrorSink& sink, const std::string& tag) {
+    std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    Status s = session.Run(RunOptions{}, MakeFeeds(), output_names, &fetches);
+    if (!s.IsOK()) {
+      sink.Record(tag + " Run failed: " + s.ErrorMessage());
+      return;
+    }
+    const Tensor& out = fetches[0].Get<Tensor>();
+    const float* data = out.Data<float>();
+    const int64_t n = out.Shape().Size();
+    for (int64_t i = 0; i < n; i += (n / 8) + 1) {
+      if (std::abs(data[i] - kExpected) > 1e-3f) {
+        sink.Record(tag + " wrong output: " + std::to_string(data[i]));
+        return;
+      }
+    }
+  }
+
+  // Repeatedly runs an existing session until `iters` reached or a failure is recorded.
+  void RunLoop(InferenceSession& session, int iters, ErrorSink& sink, const std::string& tag) {
+    for (int i = 0; i < iters && !sink.Failed(); ++i) {
+      try {
+        RunOnce(session, sink, tag);
+      } catch (const std::exception& e) {
+        sink.Record(tag + " threw: " + e.what());
+        return;
+      }
+    }
+  }
+
+  static void JoinAll(std::vector<std::thread>& threads) {
+    for (auto& t : threads) {
+      t.join();
+    }
+  }
+
+  std::string model_bytes_;
+  std::unique_ptr<InferenceSession> keepalive_;
+};
+
+// Case A: one session, run() concurrently from many threads. InferenceSession serializes these
+// via session_mutex_, but this still must never crash or deadlock on the shared context.
+TEST_F(WebGpuConcurrentContextTest, SingleSessionMultiThreadRun) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 30;
+
+  auto session = MakeSession();
+  ErrorSink sink;
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() { RunLoop(*session, kIters, sink, "A.run" + std::to_string(t)); });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case B: many threads, each with its own pre-created session. All sessions share the default
+// context, so their Run paths execute concurrently against it. Before the fix they also shared a
+// single command encoder, which is what this case exposed.
+TEST_F(WebGpuConcurrentContextTest, PerThreadSessionRun) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 30;
+
+  std::vector<std::unique_ptr<InferenceSession>> sessions(kThreads);
+  for (int t = 0; t < kThreads; ++t) {
+    sessions[t] = MakeSession();
+  }
+
+  ErrorSink sink;
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() { RunLoop(*sessions[t], kIters, sink, "B.sess" + std::to_string(t)); });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case C: mixed. Runner threads dispatch on pre-initialized sessions while builder threads keep
+// creating + Initializing (initializer-upload path) + running fresh sessions. This is the
+// closest shape to the original WebNN crash (dispatch racing initializer upload).
+TEST_F(WebGpuConcurrentContextTest, MixedCreateAndRun) {
+  constexpr int kRunners = 3;
+  constexpr int kBuilders = 3;
+  constexpr int kIters = 30;
+
+  std::vector<std::unique_ptr<InferenceSession>> runner_sessions(kRunners);
+  for (int t = 0; t < kRunners; ++t) {
+    runner_sessions[t] = MakeSession();
+  }
+
+  ErrorSink sink;
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kRunners; ++t) {
+    threads.emplace_back([&, t]() { RunLoop(*runner_sessions[t], kIters, sink, "C.runner" + std::to_string(t)); });
+  }
+  for (int t = 0; t < kBuilders; ++t) {
+    threads.emplace_back([&, t]() {
+      const std::string tag = "C.builder" + std::to_string(t);
+      for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+        try {
+          auto session = MakeSession();  // Initialize -> initializer upload
+          RunOnce(*session, sink, tag);
+        } catch (const std::exception& e) {
+          sink.Record(tag + " threw: " + e.what());
+          return;
+        }
+      }
+    });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case D: churn. Many threads each repeatedly create + run + destroy their own session,
+// exercising concurrent allocation and release against the shared context-level buffer manager.
+TEST_F(WebGpuConcurrentContextTest, ChurnCreateRunDestroy) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 15;
+
+  ErrorSink sink;
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() {
+      const std::string tag = "D.churn" + std::to_string(t);
+      for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+        try {
+          auto session = MakeSession();
+          RunOnce(*session, sink, tag);
+          session.reset();  // drop session -> release its resources while others run
+        } catch (const std::exception& e) {
+          sink.Record(tag + " threw: " + e.what());
+          return;
+        }
+      }
+    });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case E: a session warming up pipelines concurrently with a warm session must remain correct.
+//
+// A builder thread creates a session over a model with many distinct op types and runs it once,
+// which compiles one pipeline per op. Meanwhile a runner thread keeps dispatching on an already
+// warm session.
+//
+// Timing is reported to make lock contention visible without imposing a machine-dependent
+// performance threshold on this correctness test.
+TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
+  using Clock = std::chrono::steady_clock;
+  using Ms = std::chrono::duration<double, std::milli>;
+
+  std::string cold_model_bytes;
+  ASSERT_NO_FATAL_FAILURE(BuildUnaryFanOutModel(kNumElements, cold_model_bytes));
+
+  // Warm session: every pipeline it needs is already compiled and cached on the context.
+  auto warm_session = MakeSession();
+  ErrorSink sink;
+  RunOnce(*warm_session, sink, "E.warmup");
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+
+  // Baseline latency with no other session active.
+  constexpr int kBaselineIters = 20;
+  std::vector<double> baseline_ms;
+  baseline_ms.reserve(kBaselineIters);
+  for (int i = 0; i < kBaselineIters; ++i) {
+    const auto start = Clock::now();
+    RunOnce(*warm_session, sink, "E.baseline");
+    baseline_ms.push_back(Ms(Clock::now() - start).count());
+  }
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+  std::sort(baseline_ms.begin(), baseline_ms.end());
+  const double baseline_median = baseline_ms[baseline_ms.size() / 2];
+
+  std::atomic<bool> builder_done{false};
+  std::vector<double> contended_ms;
+  double builder_ms = 0.0;
+
+  std::thread builder([&]() {
+    const auto start = Clock::now();
+    try {
+      SessionOptions so;
+      so.session_logid = "webgpu_concurrent_ctx_cold";
+      InferenceSession cold_session(so, GetEnvironment());
+      ORT_THROW_IF_ERROR(cold_session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+      ORT_THROW_IF_ERROR(cold_session.Load(cold_model_bytes.data(), static_cast<int>(cold_model_bytes.size())));
+      ORT_THROW_IF_ERROR(cold_session.Initialize());
+
+      std::vector<std::string> output_names;
+      for (size_t i = 0; i < std::size(kUnaryOps); ++i) {
+        output_names.push_back("Y" + std::to_string(i));
+      }
+      std::vector<OrtValue> fetches;
+      // This Run is what triggers compilation of one pipeline per op type.
+      ORT_THROW_IF_ERROR(cold_session.Run(RunOptions{}, MakeFeeds(), output_names, &fetches));
+    } catch (const std::exception& e) {
+      sink.Record(std::string("E.builder threw: ") + e.what());
+    }
+    builder_ms = Ms(Clock::now() - start).count();
+    builder_done.store(true);
+  });
+
+  // Always take at least one measurement so the loop cannot produce an empty sample set if the
+  // builder happens to finish first.
+  const auto contended_start = Clock::now();
+  do {
+    const auto start = Clock::now();
+    RunOnce(*warm_session, sink, "E.contended");
+    contended_ms.push_back(Ms(Clock::now() - start).count());
+  } while (!builder_done.load() && !sink.Failed());
+  const double contended_window_ms = Ms(Clock::now() - contended_start).count();
+  builder.join();
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+
+  const double contended_max = *std::max_element(contended_ms.begin(), contended_ms.end());
+  std::sort(contended_ms.begin(), contended_ms.end());
+  const double contended_median = contended_ms[contended_ms.size() / 2];
+
+  // Fraction of the contended window during which the warm session kept doing useful work, using
+  // its uncontended latency as the reference. 1.0 means the cold session cost it nothing.
+  const double throughput_efficiency =
+      (static_cast<double>(contended_ms.size()) * baseline_median) / contended_window_ms;
+
+  std::cout << "[ WebGPU  ] cold-session warmup: " << builder_ms << " ms for "
+            << std::size(kUnaryOps) << " pipelines\n"
+            << "[ WebGPU  ] warm-session latency: baseline median " << baseline_median
+            << " ms, contended median " << contended_median
+            << " ms, contended max " << contended_max
+            << " ms over " << contended_ms.size() << " runs\n"
+            << "[ WebGPU  ] warm-session throughput efficiency while cold session warmed up: "
+            << throughput_efficiency << std::endl;
+}
+
+// Case F: the public session allocator wraps this same internal allocator. Allocations made
+// concurrently with Run must not race the session's command recording state.
+TEST_F(WebGpuConcurrentContextTest, SessionAllocatorAndRunConcurrently) {
+  constexpr int kIters = 40;
+  auto session = MakeSession();
+  auto allocator = session->GetAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
+                                                       OrtAllocatorType::OrtDeviceAllocator,
+                                                       webgpu::WebGpuDevice,
+                                                       OrtMemTypeDefault));
+  ASSERT_NE(allocator, nullptr);
+
+  ErrorSink sink;
+  std::barrier start{2};
+  std::thread runner([&]() {
+    start.arrive_and_wait();
+    RunLoop(*session, kIters, sink, "F.run");
+  });
+  std::thread allocator_user([&]() {
+    start.arrive_and_wait();
+    try {
+      for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+        Tensor tensor(DataTypeImpl::GetType<float>(), TensorShape{kNumElements}, allocator);
+        ASSERT_NE(tensor.MutableDataRaw(), nullptr);
+      }
+    } catch (const std::exception& e) {
+      sink.Record(std::string("F.allocator threw: ") + e.what());
+    }
+  });
+  runner.join();
+  allocator_user.join();
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case G: exercise the plugin Env allocator's shared implementation and getter ownership in a
+// native build. Its private command state must remain thread-safe across callers.
+TEST_F(WebGpuConcurrentContextTest, SharedAllocatorMultiThreadCreateTensor) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 60;
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto context_ref = std::shared_ptr<webgpu::WebGpuContext>(&context, [](webgpu::WebGpuContext*) {});
+  auto recording = std::make_shared<webgpu::CommandRecordingState>();
+  std::weak_ptr<webgpu::CommandRecordingState> recording_lifetime = recording;
+  auto allocator = std::make_shared<webgpu::GpuBufferAllocator>(
+      [context_ref = std::move(context_ref)]() -> const webgpu::BufferManager& {
+        return context_ref->BufferManager();
+      },
+      [recording = std::move(recording)]() -> webgpu::CommandRecordingState& { return *recording; },
+      false,
+      []() { return true; });
+
+  ErrorSink sink;
+  std::barrier start{kThreads};
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() {
+      start.arrive_and_wait();
+      try {
+        for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+          Tensor tensor(DataTypeImpl::GetType<float>(), TensorShape{1024 + t * 16}, allocator);
+          ASSERT_NE(tensor.MutableDataRaw(), nullptr);
+        }
+      } catch (const std::exception& e) {
+        sink.Record("G.thread" + std::to_string(t) + " threw: " + e.what());
+      }
+    });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+  EXPECT_FALSE(recording_lifetime.expired());
+  AllocatorStats stats{};
+  allocator->GetStats(&stats);
+  EXPECT_EQ(stats.num_allocs, 0);
+  allocator.reset();
+  EXPECT_TRUE(recording_lifetime.expired());
+}
+
+// Case H: OrtEnv owns one data-transfer implementation per EP factory. Concurrent CopyTensors
+// calls must not encode and flush through the same recording state simultaneously.
+TEST_F(WebGpuConcurrentContextTest, SharedDataTransferMultiThreadCopy) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 30;
+  constexpr size_t kElements = 4096;
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::CommandRecordingState recording;
+  webgpu::DataTransferImpl data_transfer(
+      [&context]() -> const webgpu::BufferManager& { return context.BufferManager(); }, recording);
+
+  std::array<wgpu::Buffer, kThreads> gpu_buffers;
+  for (auto& buffer : gpu_buffers) {
+    wgpu::BufferDescriptor desc{};
+    desc.size = kElements * sizeof(float);
+    desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    buffer = context.Device().CreateBuffer(&desc);
+  }
+
+  ErrorSink sink;
+  std::barrier start{kThreads};
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() {
+      std::vector<float> input(kElements, static_cast<float>(t + 1));
+      std::vector<float> output(kElements);
+      start.arrive_and_wait();
+      try {
+        for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+          ORT_THROW_IF_ERROR(data_transfer.CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
+                                                      input.size() * sizeof(float)));
+          ORT_THROW_IF_ERROR(data_transfer.CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
+                                                      output.size() * sizeof(float)));
+          if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
+            sink.Record("H.thread" + std::to_string(t) + " copied incorrect data");
+          }
+        }
+      } catch (const std::exception& e) {
+        sink.Record("H.thread" + std::to_string(t) + " threw: " + e.what());
+      }
+    });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+// Case I: separate data-transfer objects share the context-level BufferManager but own distinct
+// command recording timelines. Their command encoders and pending buffers must remain isolated.
+TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 30;
+  constexpr size_t kElements = 4096;
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+
+  std::array<webgpu::CommandRecordingState, kThreads> recordings;
+  std::array<std::unique_ptr<webgpu::DataTransferImpl>, kThreads> data_transfers;
+  std::array<wgpu::Buffer, kThreads> gpu_buffers;
+  for (int t = 0; t < kThreads; ++t) {
+    data_transfers[t] = std::make_unique<webgpu::DataTransferImpl>(
+        [&context]() -> const webgpu::BufferManager& { return context.BufferManager(); }, recordings[t]);
+    wgpu::BufferDescriptor desc{};
+    desc.size = kElements * sizeof(float);
+    desc.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+    gpu_buffers[t] = context.Device().CreateBuffer(&desc);
+  }
+
+  ErrorSink sink;
+  std::barrier start{kThreads};
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kThreads; ++t) {
+    threads.emplace_back([&, t]() {
+      std::vector<float> input(kElements, static_cast<float>(t + 1));
+      std::vector<float> output(kElements);
+      start.arrive_and_wait();
+      try {
+        for (int i = 0; i < kIters && !sink.Failed(); ++i) {
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
+                                                           input.size() * sizeof(float)));
+          ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
+                                                           output.size() * sizeof(float)));
+          if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
+            sink.Record("I.thread" + std::to_string(t) + " copied incorrect data");
+          }
+        }
+      } catch (const std::exception& e) {
+        sink.Record("I.thread" + std::to_string(t) + " threw: " + e.what());
+      }
+    });
+  }
+  JoinAll(threads);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
 // DIAGNOSTIC (disabled by default): keeps N sessions over an identical model alive and runs them
 // round-robin on one thread, then holds so an external sampler can read steady-state GPU memory.
 // This is the shape that distinguishes a context-wide buffer pool (steady state ~= one session's

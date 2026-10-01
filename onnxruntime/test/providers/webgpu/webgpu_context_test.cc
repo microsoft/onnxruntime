@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -20,14 +22,26 @@
 #include "core/common/common.h"
 #include "core/framework/config_options.h"
 #include "core/framework/run_options.h"
+#include "core/framework/tensor.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/inference_session.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/temp_dir.h"
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/providers/webgpu/d3d12_external_data_loader.h"
+#endif
 
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
@@ -80,7 +94,7 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
     }
     existing_provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     ASSERT_NE(existing_provider, nullptr);
-    existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
+    existing_device = webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get();
   }
 
   EXPECT_EXIT(
@@ -90,7 +104,8 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
       },
       testing::ExitedWithCode(EXIT_SUCCESS), "");
 
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get(),
+            existing_device);
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
   flag_error.clear();
   EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
@@ -101,6 +116,18 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
   ORT_UNUSED_PARAMETER(compile_only_parent);
   test_body();
 #endif
+}
+
+ConfigOptions WeightLoadAccelerationOptions(const char* value) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kWeightLoadAcceleration, value));
+  return options;
+}
+
+ConfigOptions CompileOnlyWeightLoadAccelerationOptions(const char* value) {
+  auto options = WeightLoadAccelerationOptions(value);
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  return options;
 }
 
 bool DeviceToggleIsEnabled(const webgpu::WebGpuContext& context, std::string_view toggle_name) {
@@ -120,9 +147,11 @@ bool DisableRobustnessToggleIsEnabled(const webgpu::WebGpuContext& context) {
   return DeviceToggleIsEnabled(context, "disable_robustness");
 }
 
-std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuContext& context,
-                                                              WGPUBuffer buffer) {
-  constexpr size_t kBufferSize = sizeof(std::array<uint32_t, 16>);
+template <size_t ElementCount = 16>
+std::array<uint32_t, ElementCount> ReadBufferWithExternalCommandEncoder(
+    webgpu::WebGpuContext& context, WGPUBuffer buffer) {
+  constexpr size_t kBufferSize =
+      sizeof(std::array<uint32_t, ElementCount>);
   wgpu::BufferDescriptor readback_desc{};
   readback_desc.size = kBufferSize;
   readback_desc.usage = wgpu::BufferUsage::MapRead | wgpu::BufferUsage::CopyDst;
@@ -142,7 +171,7 @@ std::array<uint32_t, 16> ReadBufferWithExternalCommandEncoder(webgpu::WebGpuCont
       &map_status)));
   ORT_ENFORCE(map_status == wgpu::MapAsyncStatus::Success);
 
-  std::array<uint32_t, 16> result;
+  std::array<uint32_t, ElementCount> result;
   const auto* mapped_data = static_cast<const uint32_t*>(readback_buffer.GetConstMappedRange());
   ORT_ENFORCE(mapped_data != nullptr);
   std::copy_n(mapped_data, result.size(), result.begin());
@@ -1068,7 +1097,7 @@ TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
     ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
   },
                              /*compile_only_parent=*/true);
 #endif
@@ -1108,7 +1137,6 @@ TEST(WebGpuContextTest, AdapterIndexRejectsUnsupportedBuild) {
 #else
   ConfigOptions options;
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
-  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
 
   try {
     WebGpuProviderFactoryCreator::Create(options);
@@ -1118,6 +1146,574 @@ TEST(WebGpuContextTest, AdapterIndexRejectsUnsupportedBuild) {
   }
 #endif
 }
+
+TEST(WebGpuContextTest, WeightLoadAccelerationRejectsBooleanAndUnknownModes) {
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("1")),
+               OnnxRuntimeException);
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("automatic")),
+               OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, WeightLoadAccelerationOffDoesNotRequireDeviceSupport) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                CompileOnlyWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Off))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+}
+
+TEST(WebGpuContextTest, PreferredWeightLoadAccelerationFallsBackWithoutDeviceSupport) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                CompileOnlyWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+}
+
+TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport) {
+  auto factory = WebGpuProviderFactoryCreator::Create(
+      CompileOnlyWeightLoadAccelerationOptions(
+          kWeightLoadAcceleration_Required));
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+  auto ep = factory->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  EXPECT_FALSE(loader->BeginLoad().IsOK());
+#else
+  EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
+#endif
+}
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
+  auto off_factory = WebGpuProviderFactoryCreator::Create(
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));
+  auto off_ep = off_factory->CreateProvider();
+  ASSERT_NE(off_ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  const auto support_status =
+      webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  auto required_factory = WebGpuProviderFactoryCreator::Create(
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
+  auto required_ep = required_factory->CreateProvider();
+  ASSERT_NE(required_ep, nullptr);
+  auto loader = required_ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  EXPECT_STATUS_OK(loader->BeginLoad());
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                WeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  auto& allocator = allocators.front();
+  void* buffer = allocator->Alloc(16);
+  ASSERT_NE(buffer, nullptr);
+
+  auto& webgpu_ep = *static_cast<WebGpuExecutionProvider*>(ep.get());
+  auto& recording = webgpu_ep.Recording();
+  recording.has_unsubmitted_work = true;
+  allocator->Free(buffer);
+  EXPECT_EQ(recording.pending_buffers.size(), 1u);
+
+  recording.has_unsubmitted_work = false;
+  webgpu_ep.InitializerBufferManager().RefreshPendingBuffers(recording);
+  EXPECT_TRUE(recording.pending_buffers.empty());
+}
+
+TEST(WebGpuContextTest, DuplicateProviderDoesNotRegisterD3D12AcceleratedLoader) {
+  InferenceSession session{SessionOptions{}, GetEnvironment()};
+  auto off_provider = WebGpuProviderFactoryCreator::Create(
+                          WeightLoadAccelerationOptions(
+                              kWeightLoadAcceleration_Off))
+                          ->CreateProvider();
+  ASSERT_NE(off_provider, nullptr);
+  auto allocators = off_provider->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  const auto memory_info = allocators.front()->Info();
+  ASSERT_STATUS_OK(
+      session.RegisterExecutionProvider(std::move(off_provider)));
+
+  auto accelerated_provider =
+      WebGpuProviderFactoryCreator::Create(
+          WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required))
+          ->CreateProvider();
+  ASSERT_NE(accelerated_provider, nullptr);
+  const auto status =
+      session.RegisterExecutionProvider(std::move(accelerated_provider));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("already been registered"),
+            std::string::npos);
+  EXPECT_EQ(session.GetExternalDataLoaderManager().GetExternalDataLoader(
+                memory_info),
+            nullptr);
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalTensorsAcrossFilesAndRanges) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_external_tensor_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const auto other_data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("other_weights.bin");
+  constexpr size_t kDataOffset = 32;
+  constexpr size_t kSeparatedDataOffset = 128;
+  const std::array<uint32_t, 15> expected{
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
+  const std::array<uint32_t, 4> separated_expected{101, 102, 103, 104};
+  const std::array<uint32_t, 3> other_expected{201, 202, 203};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    const std::array<char, kDataOffset> prefix{};
+    stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    stream.write(reinterpret_cast<const char*>(expected.data()),
+                 static_cast<std::streamsize>(sizeof(expected)));
+    stream.seekp(kSeparatedDataOffset);
+    stream.write(reinterpret_cast<const char*>(separated_expected.data()),
+                 static_cast<std::streamsize>(sizeof(separated_expected)));
+    ASSERT_TRUE(stream.good());
+  }
+  {
+    std::ofstream stream{other_data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    const std::array<char, kDataOffset> prefix{};
+    stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    stream.write(reinterpret_cast<const char*>(other_expected.data()),
+                 static_cast<std::streamsize>(sizeof(other_expected)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  EXPECT_FALSE(loader->SupportsDataType(
+      ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  EXPECT_TRUE(loader->SupportsDataType(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  const auto& allocator = allocators.front();
+
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "separated", kSeparatedDataOffset,
+      sizeof(separated_expected)));
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), other_data_path, "other_weights", kDataOffset,
+      sizeof(other_expected)));
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "empty",
+      kSeparatedDataOffset + sizeof(separated_expected), 0));
+  ASSERT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
+
+  Tensor weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({15}),
+                 nullptr, allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), data_path, "weights", kDataOffset, sizeof(expected),
+      allocator, weights));
+  std::array<uint32_t, 16> aligned_expected{};
+  std::copy(expected.begin(), expected.end(), aligned_expected.begin());
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<16>(
+                webgpu::WebGpuContextFactory::GetContext(0),
+                reinterpret_cast<WGPUBuffer>(weights.MutableDataRaw())),
+            aligned_expected);
+
+  Tensor separated_weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({4}),
+                           nullptr, allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), data_path, "separated", kSeparatedDataOffset,
+      sizeof(separated_expected), allocator, separated_weights));
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<4>(
+                webgpu::WebGpuContextFactory::GetContext(0),
+                reinterpret_cast<WGPUBuffer>(
+                    separated_weights.MutableDataRaw())),
+            separated_expected);
+
+  Tensor other_weights{DataTypeImpl::GetType<uint32_t>(), TensorShape({3}),
+                       nullptr, allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), other_data_path, "other_weights", kDataOffset,
+      sizeof(other_expected), allocator, other_weights));
+  std::array<uint32_t, 4> aligned_other_expected{};
+  std::copy(other_expected.begin(), other_expected.end(),
+            aligned_other_expected.begin());
+  aligned_other_expected.back() = other_expected.front();
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<4>(
+                webgpu::WebGpuContextFactory::GetContext(0),
+                reinterpret_cast<WGPUBuffer>(other_weights.MutableDataRaw())),
+            aligned_other_expected);
+
+  Tensor empty{DataTypeImpl::GetType<uint32_t>(), TensorShape({0}), nullptr,
+               allocator};
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), data_path, "empty",
+      kSeparatedDataOffset + sizeof(separated_expected), 0, allocator, empty));
+  EXPECT_EQ(empty.SizeInBytes(), 0u);
+  EXPECT_EQ(empty.MutableDataRaw(), nullptr);
+}
+
+void RunD3D12AcceleratedExternalInitializerSessionTest(
+    const char* mode, bool fail_late_registration = false) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_session_test")};
+  const auto model_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("model.onnx");
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  constexpr size_t kDataOffset = 32;
+  const std::array<float, 15> weights{
+      0.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+      10.0f, 11.0f, 12.0f, 13.0f, 14.0f};
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    const std::array<char, kDataOffset> prefix{};
+    stream.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    stream.write(reinterpret_cast<const char*>(weights.data()),
+                 static_cast<std::streamsize>(sizeof(weights)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(8);
+  model.set_producer_name("onnxruntime-test");
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_d3d12_accelerated_session");
+
+  const auto set_tensor_type = [&weights](
+                                   ONNX_NAMESPACE::ValueInfoProto* value_info,
+                                   const char* name) {
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(weights.size());
+  };
+  set_tensor_type(graph->add_input(), "X");
+  set_tensor_type(graph->add_output(), "Y");
+
+  auto* initializer = graph->add_initializer();
+  initializer->set_name("W");
+  initializer->set_data_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  initializer->add_dims(weights.size());
+  initializer->set_data_location(
+      ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* location = initializer->add_external_data();
+  location->set_key("location");
+  location->set_value("weights.bin");
+  auto* offset = initializer->add_external_data();
+  offset->set_key("offset");
+  offset->set_value(std::to_string(kDataOffset));
+  auto* length = initializer->add_external_data();
+  length->set_key("length");
+  length->set_value(std::to_string(sizeof(weights)));
+
+  auto* add = graph->add_node();
+  add->set_op_type("Add");
+  add->add_input("X");
+  add->add_input("W");
+  add->add_output("Y");
+  {
+    std::ofstream stream{model_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    ASSERT_TRUE(model.SerializeToOstream(&stream));
+  }
+
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+  auto provider = WebGpuProviderFactoryCreator::Create(
+                      WeightLoadAccelerationOptions(mode))
+                      ->CreateProvider();
+  ASSERT_NE(provider, nullptr);
+  if (fail_late_registration) {
+    auto allocators = provider->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    const auto memory_info = allocators.front()->Info();
+    ASSERT_STATUS_OK(session.Load(model_path.native()));
+    ASSERT_TRUE(std::filesystem::remove(data_path));
+    const auto status =
+        session.RegisterExecutionProvider(std::move(provider));
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_EQ(session.GetExternalDataLoaderManager().GetExternalDataLoader(
+                  memory_info),
+              nullptr);
+    return;
+  }
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::vector<float> input(weights.size(), 1.0f);
+  OrtValue input_value;
+  CreateMLValue<float>(
+      TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+      {static_cast<int64_t>(weights.size())}, input, &input_value);
+  NameMLValMap feeds{{"X", input_value}};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(
+      session.Run(RunOptions{}, feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& output = fetches[0].Get<Tensor>();
+  ASSERT_EQ(output.Shape(), TensorShape({static_cast<int64_t>(weights.size())}));
+  const auto* output_data = output.Data<float>();
+  for (size_t index = 0; index < weights.size(); ++index) {
+    EXPECT_FLOAT_EQ(output_data[index], input[index] + weights[index]);
+  }
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalInitializerThroughSession) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Off))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+  RunD3D12AcceleratedExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required);
+}
+
+TEST(WebGpuContextTest, LateRegistrationFailureRollsBackD3D12AcceleratedLoader) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Off))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+  RunD3D12AcceleratedExternalInitializerSessionTest(
+      kWeightLoadAcceleration_Required, true);
+}
+
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesCancellation) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_cancellation_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 16> data{};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(sizeof(data)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+  const auto status = loader->FinalizeLoad([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedZeroRequestFinalBatchPreservesCancellation) {
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  const auto status = loader->FinalizeLoad([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedChecksCancellationDuringImport) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_import_cancellation_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 16> data{};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(sizeof(data)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+
+  size_t cancellation_checks = 0;
+  const auto status = loader->FinalizeLoad([&cancellation_checks]() {
+    return cancellation_checks++ != 0;
+  });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedFallsBackAfterOperationalFailure) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_fallback_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 16> data{};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(sizeof(data)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  auto allocators = ep->CreatePreferredAllocators();
+  ASSERT_FALSE(allocators.empty());
+  const auto& allocator = allocators.front();
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+  ASSERT_TRUE(std::filesystem::remove(data_path));
+  EXPECT_STATUS_OK(loader->FinalizeLoad([]() { return false; }));
+  EXPECT_FALSE(loader->CanLoad(allocator->Info()));
+}
+
+TEST(WebGpuContextTest, PreferredD3D12AcceleratedPreservesConcurrentCancellation) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_accelerated_failure_cancellation_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 16> data{};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(sizeof(data)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+  ASSERT_TRUE(std::filesystem::remove(data_path));
+  const auto status = loader->FinalizeLoad([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {
+  const auto unsupported =
+      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "D3D12Accelerated unavailable");
+  bool enabled = true;
+
+  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::Off, unsupported, enabled));
+  EXPECT_FALSE(enabled);
+
+  enabled = true;
+  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::Preferred, unsupported, enabled));
+  EXPECT_FALSE(enabled);
+
+  enabled = true;
+  const auto required_status = webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::Required, unsupported,
+      enabled);
+  EXPECT_FALSE(required_status.IsOK());
+  EXPECT_FALSE(enabled);
+  EXPECT_EQ(required_status.ErrorMessage(), unsupported.ErrorMessage());
+}
+#endif
 
 TEST(WebGpuContextTest, AdapterIndexRejectsConflictingSelectorOnReusedContext) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
@@ -1150,9 +1746,24 @@ TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
     ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+    EXPECT_EQ(ep->GetDeviceId(), webgpu::kDeviceFreeDefaultContextId);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
   },
                              /*compile_only_parent=*/true);
+}
+
+TEST(WebGpuContextTest, CompileOnlyAndRunnableDefaultContextsAreIsolated) {
+  ConfigOptions compile_only_options;
+  ORT_THROW_IF_ERROR(compile_only_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto compile_only_ep = WebGpuProviderFactoryCreator::Create(compile_only_options)->CreateProvider();
+  ASSERT_NE(compile_only_ep, nullptr);
+
+  ConfigOptions runnable_options;
+  auto runnable_ep = WebGpuProviderFactoryCreator::Create(runnable_options)->CreateProvider();
+  ASSERT_NE(runnable_ep, nullptr);
+
+  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(compile_only_ep->GetDeviceId()).IsDeviceFree());
+  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(runnable_ep->GetDeviceId()).IsDeviceFree());
 }
 
 TEST(WebGpuContextTest, EnableRobustnessIsIndependentFromValidationMode) {

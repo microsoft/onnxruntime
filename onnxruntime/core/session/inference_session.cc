@@ -1212,6 +1212,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     telemetry_.event_name_ = telemetry_detail::BoundedTelemetryString(event_name);
     ORT_TELEMETRY_CAPTURE_STATUS_END();
   }
+
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));

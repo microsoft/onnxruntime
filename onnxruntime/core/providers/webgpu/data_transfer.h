@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 
@@ -56,8 +58,8 @@ struct CommandRecordingState;
 // DataTransfer (IDataTransfer subclass) and the C API wrapper.
 class DataTransferImpl {
  public:
-  DataTransferImpl(const BufferManager& buffer_manager, CommandRecordingState& recording)
-      : buffer_manager_{buffer_manager}, recording_{recording} {}
+  DataTransferImpl(std::function<const BufferManager&()> buffer_manager_getter, CommandRecordingState& recording)
+      : buffer_manager_getter_{std::move(buffer_manager_getter)}, recording_{recording} {}
 
   common::Status CopyTensor(void const* src_data,
                             bool src_is_gpu,
@@ -66,14 +68,16 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
-  const BufferManager& buffer_manager_;
+  std::function<const BufferManager&()> buffer_manager_getter_;
   CommandRecordingState& recording_;
 };
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const BufferManager& buffer_manager, CommandRecordingState& recording, int context_id)
-      : impl_{buffer_manager, recording}, context_id_{context_id} {}
+  DataTransfer(std::function<const BufferManager&()> buffer_manager_getter,
+               CommandRecordingState& recording,
+               int context_id)
+      : impl_{std::move(buffer_manager_getter), recording}, context_id_{context_id} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
