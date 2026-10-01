@@ -140,12 +140,11 @@ TEST(SparseAttentionIndexerCudaKernelTest, QsaLongContextPerformanceRegression) 
     }
 
     const size_t query_prepare_shared_bytes = (kHeadSize + kThreads) * sizeof(float);
-    const size_t block_score_shared_bytes = (2 * kHeadSize + kThreads) * sizeof(float);
     if (kernel_params.gridDim.x == kNumHeads && kernel_params.sharedMemBytes == query_prepare_shared_bytes) {
       ++query_prepare_nodes;
     }
     if (kernel_params.gridDim.x == static_cast<unsigned int>(params.max_block_count) &&
-        kernel_params.sharedMemBytes == block_score_shared_bytes) {
+        kernel_params.sharedMemBytes == 0) {
       ++block_score_nodes;
     }
   }
