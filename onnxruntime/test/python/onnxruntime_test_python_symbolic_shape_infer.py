@@ -358,6 +358,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(buffer_shape[1], "batch")
         self.assertTrue(compressed_shape[1].startswith("SparseAttentionIndexer_"))
         self.assertTrue(buffer_shape[2].startswith("SparseAttentionIndexer_"))
+
     def test_dynamic_sparse_attention_separate_qkv_with_past(self):
         inputs = [
             helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
@@ -533,6 +534,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         separate_graph = infer(33, False)
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
         self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [
