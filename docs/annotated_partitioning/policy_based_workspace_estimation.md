@@ -153,8 +153,18 @@ has_memory_efficient_attention(sm, fp16, bf16, head_size, head_size)         // 
 By the priority ladder, on any Run either a higher-priority route claims it (and runs, linear), or
 — if none does — Flash/MEA runs *because it is statically eligible*. Either way one of
 `use_flash || use_mea || use_xqa || use_cudnn` is true, so the unfused guard is false. **Unfused
-never executes in the current source, with no code change.** `max(prefill, decode, chunk)` is sound
-as-is. This is the common production case (fp16/bf16, head_size 64/128, SM80+, no bias).
+never executes in the current source, with no code change.** This is the common production case
+(fp16/bf16, head_size 64/128, SM80+, no bias).
+
+Case A eliminates only the *unfused* terminal; it does **not** by itself bound the higher-priority
+routes. In particular a reachable **cuDNN** route (preferred on SM≥90, including auto-selection — the
+cuDNN-SDPA block in `group_query_attention.cc`) has no graph-free workspace oracle, so
+`max(prefill, decode, chunk)` — which sizes only Flash/XQA — is sound **only when cuDNN is not
+reachable**. The estimator enforces exactly this: `BuildBounds` flags a reachable cuDNN route
+(`group_query_attention_workspace_estimate.cc`) and `GetGQAWorkspaceAggregateForBounds` returns
+`Unavailable` for it (`group_query_attention_workspace_bounds.cc`), so the reduced estimate is
+emitted only when **every** reachable route is soundly sizeable; otherwise the conservative
+reservation is retained.
 
 Inputs to the predicate and where they come from at partition time:
 
@@ -197,10 +207,25 @@ separately:
 | **`S_kv` / capacity** | accumulated KV context / provisioned ceiling (`seqlen_present_kv_cache`) | overridden `past_key` seq dim, or the GQA capacity knob (see below) |
 
 `S_kv` (`total_sequence_length`) is a **runtime scalar input** — not recoverable from graph shapes —
-which is why the benchmark added an out-of-band knob
-(`ep.cuda.gqa_workspace_max_total_sequence_length`) to hand the estimator the KV bound directly.
-The invariant is `S_q ≤ total_sequence_length ≤ kv_cache_capacity`; the two axes coincide only in
-the first full prefill.
+which is why a *proposed* out-of-band knob (`ep.cuda.gqa_workspace_max_total_sequence_length`, added
+by the envelope-plumbing PR in this series) hands the estimator the KV bound directly. The ordering
+`S_q ≤ total_sequence_length ≤ kv_cache_capacity` holds, and the two axes coincide only in the first
+full prefill.
+
+**Two caveats the envelope must respect:**
+
+- **`max_shape_override` is an estimation *hint*, not a runtime bound.** Its public contract
+  (`onnxruntime_session_options_config_keys.h`, `kOrtSessionOptionsMaxShapeOverride`) states it does
+  not constrain runtime inputs, so a valid Run whose `S_q` exceeds the declared `P` can still exceed
+  `W_L1`. The no-OOM claim therefore requires a **hard runtime envelope check** on *both* the query
+  and KV bounds — a separate enforced option, not `max_shape_override` alone — or the smaller
+  estimate must not be trusted.
+- **The KV axis is cache-mode-aware.** For sliding-window GQA the *absolute* `total_sequence_length`
+  may exceed the resident cache capacity, and workspace is sized from a route-specific
+  resident/staged extent (`GetGQAEffectiveWorkspaceKvLength`), not from absolute context length. The
+  envelope's KV bound must be that effective extent for a windowed cache and the absolute total
+  length for a non-windowed cache; conflating the two would reject valid windowed workloads or derive
+  the wrong bound.
 
 See [`onnxruntime_session_options_config_keys.h`](../../include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h)
 `kOrtSessionOptionsMaxShapeOverride` ("session.max_shape_override").
@@ -268,8 +293,11 @@ The L1 budget must be reconciled with what the kernel actually declares/consumes
   runtime: `ComputeInternal` still sizes its scratch inline, and `GQABufferRequirements::Compute`
   (`group_query_attention_impl.h`) sizes only `qkv_buffer`. So the remaining work is
   one-directional — **migrate the runtime allocation to consume the same recipe builders the
-  estimator already uses** — after which estimate == allocation by construction and profiling
-  becomes *validation*, not a *requirement*. (The recipe layouts are marginally larger than the
+  estimator already uses** — after which the per-`(state, route)` sizing *formula* is identical on
+  both sides and each concrete Run's allocation is provably **bounded by** `W_L1`. It is **not**
+  *equal*: `W_L1` is the `max` over envelope states and permitted routes, while a Run allocates for
+  one concrete state and route and usually uses strictly less. Profiling then becomes *validation* of
+  that bound, not a *requirement*. (The recipe layouts are marginally larger than the
   current inline math — e.g. the unfused recipe 256-aligns its QK and softmax regions separately —
   so this is a sound behavior reconciliation, validated by `group_query_attention_workspace*_test.cc`
   plus the GQA op tests, not a byte-identical refactor.)
@@ -329,7 +357,8 @@ ep.cuda.gqa_dispatch_policy = "prefill=flash;decode=xqa;fallback=error"
 ```
 
 The literal `π`, for benchmarking / power users. EP-scoped because routes are hardware-specific —
-consistent with the existing `ep.cuda.gqa_workspace_max_total_sequence_length`. Today's scattered
+consistent with the proposed `ep.cuda.gqa_workspace_max_total_sequence_length` (added by the
+envelope-plumbing PR in this series). Today's scattered
 per-route toggles become the **compile target** this policy lowers to:
 
 - `ORT_ENABLE_XQA`, `ORT_DISABLE_FLASH_DECODE` — environment variables
@@ -413,16 +442,24 @@ Policy π_GQA(x):
 Envelope: query bound `P` (from `max_shape_override`), KV capacity `C` (from the GQA knob).
 
 ```
-prefill/chunk :  CompleteWorkspace(S_q=P, S_kv=C, Flash) = lse + lse_accum + out_accum   [linear]
+prefill/chunk :  CompleteWorkspace(S_q=P, S_kv=C, Flash) = lse + lse_accum + out_accum
 decode        :  CompleteWorkspace(S_q=1, S_kv=C, XQA)   = GetXQAScratchSize(C)          [small]
-W_L1 = max(...) = flash prefill term        ← linear, ~38x below the unfused reservation
+W_L1 = max(...) = flash prefill term        ← ~38x below the unfused reservation
 ```
 
-Using `(S_q=P, S_kv=C)` as a single safe corner slightly over-approximates any individual Run
-(first prefill has `S_kv=S_q`; a deep chunk has small `S_q`) but is a valid, still-linear upper
-bound. Tighten by tracking the per-phase `(S_q, S_kv)` coupling if needed. If a policy branch
-switches route at an interior shape threshold, take the `max` **piecewise per route-region** (the
-max may sit at the switch boundary, not the envelope corner).
+The Flash term is **not** read off a single envelope corner. Its `lse_accum`/`out_accum` size scales
+with `num_splits`, which `flash::num_splits_heuristic` picks by **occupancy**: a large `S_q=P` may use
+one split (no accumulators) while a *shorter* admitted chunk at the same KV extent uses several, so
+the maximum need not sit at `(S_q=P, S_kv=C)`. The estimator bounds it across **all** occupancy
+regimes — `FlashBackendEnvelope` (`group_query_attention_workspace_bounds.cc`) sizes the accumulators
+with the *structural* split ceiling
+`max_splits = min(128, multi_processor_count, ⌈(kv + block_n − 1) / block_n⌉)` rather than evaluating
+the heuristic at a point ("sound across its discontinuities"); preparation/QKV buffers come from
+`GQABufferRequirements`. Using `(S_q=P, S_kv=C)` for the *shape* axes still over-approximates any
+individual Run (first prefill has `S_kv=S_q`; a deep chunk has small `S_q`). If a policy branch
+switches route at an interior shape threshold, take the `max` **piecewise per route-region** (the max
+may sit at the switch boundary, not the envelope corner). Stage-4 profiling *validates* this bound; it
+does not replace it with a sampled peak.
 
 ---
 
@@ -498,9 +535,14 @@ workspace estimate being both safe and tight.
 - **Forward-looking** (gate on the Stage-4 profiling that makes latency comparable): full policy
   comparability including CPU-boundary cost, and the auto-optimizer that consumes it — but ship the
   `(W_L1, cost)` interface early so it drops in without rework.
-- **Single hard prerequisite for all of it:** the dispatch-ladder enforcement change — redirecting
-  the unfused terminal (`data.use_unfused = true` in `group_query_attention.cc`) under a committed
-  contract — landed as its own small, well-tested PR *before* any smaller estimate is trusted.
+- **The hard prerequisite for the Case B reductions:** the dispatch-ladder enforcement change —
+  redirecting the unfused terminal (`data.use_unfused = true` in `group_query_attention.cc`) under a
+  committed contract — landed as its own small, well-tested PR *before* any estimate that **removes a
+  currently-reachable route** is trusted. It is **not** required for Case A, where static Flash/MEA
+  eligibility already forecloses unfused with no code change; that reclamation is sound on its own.
+  (Independently, a reduced estimate is emitted only when every *remaining* reachable route is soundly
+  sizeable — e.g. a reachable cuDNN route ⇒ `Unavailable` — so the two dependencies compose into one
+  consistent rule.)
 
 ---
 
