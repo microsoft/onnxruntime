@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Runs a non-QDQ model on HTP and compares output to CPU EP.
+// Runs a non-QDQ model on the requested QNN backend and compares output to CPU EP.
 template <typename SignalType = float, typename StepType = int64_t>
 static void RunStftOpTest(const std::string backend_type,
                           const TestInputDef<SignalType>& signal_def,
