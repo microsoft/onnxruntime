@@ -30,8 +30,11 @@ namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
-          .MayInplace(11, 2)                                           \
-          .MayInplace(14, 5),                                          \
+          .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)     \
+          .MayInplace(psai::kPastKvBuffer, psai::kPresentKvBuffer)     \
+          .MayInplace(psai::kPastGateBuffer, psai::kPresentGateBuffer) \
+          .MayInplace(psai::kPastStateLengths,                         \
+                      psai::kPresentStateLengths),                     \
       PackedSparseAttentionIndexer<T>);
 
 REGISTER_KERNEL_TYPED(float)
