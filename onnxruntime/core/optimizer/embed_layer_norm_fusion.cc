@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/embed_layer_norm_fusion.h"
 
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -247,8 +248,8 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
       {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
@@ -259,7 +260,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_2{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
       {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
@@ -271,15 +272,15 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Range", {11, 27}, kOnnxDomain},
-      {0, 1, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Range", {11, 27, 28}, kOnnxDomain},
+      {0, 1, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Path 4 pattern (Path 3 with no "Cast"):
   std::vector<graph_utils::EdgeEndToMatch> parent_path_4{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
-      {0, 0, "Range", {11, 27}, kOnnxDomain},
+      {0, 0, "Range", {11, 27, 28}, kOnnxDomain},
       {0, 1, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Match one of the three path patterns.
@@ -446,7 +447,7 @@ template <typename T>
 bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
   // check that all batches has same data.
   size_t data_length = SafeInt<size_t>(batch_size) * element_count;
-  for (size_t i = gsl::narrow<size_t>(element_count); i < data_length; i++) {
+  for (size_t i = narrow<size_t>(element_count); i < data_length; i++) {
     if (data[i] != data[i % element_count]) {
       return false;
     }
@@ -480,13 +481,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, data, narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, data, narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializerWithOrtValue(graph, initializer);
@@ -494,13 +495,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   return &node_arg;
 }
 
-static void CreateEmbedLayernormNode(Graph& graph,
-                                     NodeArg* input_ids,
-                                     NodeArg* segment_ids,
-                                     NodeArg* word_embedding,
-                                     NodeArg* position_embedding,
-                                     NodeArg* segment_embedding,
-                                     Node& layer_norm_node) {
+static Node& CreateEmbedLayernormNode(Graph& graph,
+                                      NodeArg* input_ids,
+                                      NodeArg* segment_ids,
+                                      NodeArg* word_embedding,
+                                      NodeArg* position_embedding,
+                                      NodeArg* segment_embedding,
+                                      Node& layer_norm_node) {
   // Cast input_ids and segment_ids to int32 if needed.
   input_ids = CastToInt32(graph, input_ids, layer_norm_node);
   if (segment_ids != nullptr && segment_embedding != nullptr) {
@@ -543,6 +544,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
 
   // Assign provider to this new node. Provider should be same as the provider for old node.
   embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
+  return embed_layer_norm_node;
 }
 
 static bool FuseSubGraph(Graph& graph,
@@ -693,11 +695,15 @@ static bool FuseSubGraph(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
-                           layer_norm_node);
+  Node& embed_layer_norm_node =
+      CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
+                               layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(
+        graph, *graph.GetNode(nodes_to_remove[0]), &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, embed_layer_norm_node.Index());
   }
 
   nodes_to_remove.clear();
@@ -709,6 +715,7 @@ static bool FuseSubGraph(Graph& graph,
   nodes_to_remove.push_back(layer_norm_add_node.Index());
   nodes_to_remove.push_back(layer_norm_node.Index());
 
+  graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
   for (const NodeIndex index : nodes_to_remove) {
     Node* node = graph.GetNode(index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -789,11 +796,15 @@ static bool FuseSubGraphDistilBert(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
-                           layer_norm_node);
+  Node& embed_layer_norm_node =
+      CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
+                               layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(
+        graph, *graph.GetNode(nodes_to_remove[0]), &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, embed_layer_norm_node.Index());
   }
 
   nodes_to_remove.clear();
@@ -803,6 +814,7 @@ static bool FuseSubGraphDistilBert(Graph& graph,
 
   nodes_to_remove.push_back(layer_norm_node.Index());
 
+  graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
   for (const NodeIndex index : nodes_to_remove) {
     Node* node = graph.GetNode(index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);

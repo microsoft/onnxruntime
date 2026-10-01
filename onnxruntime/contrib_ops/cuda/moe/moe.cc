@@ -5,6 +5,10 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/moe/moe.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
+#include "core/framework/kernel_pilot.h"
+#endif
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
@@ -293,6 +297,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    ORT_RETURN_IF_ERROR(routing_snapshot_->BeginInvocation(pilot->Moe(), static_cast<size_t>(moe_params.num_experts)));
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(expert_indices, expanded_rows, stream));
+  }
+#endif
+
   Tensor* output = context->Output(0, input->Shape());
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params{};
@@ -377,6 +390,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       }(),
       onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
       stream);
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  if (routing_snapshot_) {
+    ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+  }
+#endif
 
   return Status::OK();
 }

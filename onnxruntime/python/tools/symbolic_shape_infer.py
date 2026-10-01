@@ -2630,13 +2630,16 @@ class SymbolicShapeInference:
         query_shape = self._get_shape(node, 0)
         if query_shape is not None:
             output_shape = query_shape.copy()
-            if node.input[1] == "" and node.input[2] == "" and isinstance(output_shape[2], int):
+            if node.input[1] == "" and node.input[2] == "":
                 num_heads = get_attribute(node, "num_heads")
                 kv_num_heads = get_attribute(node, "kv_num_heads")
-                divisor = num_heads + 2 * kv_num_heads
-                if output_shape[2] % divisor == 0:
-                    head_size = output_shape[2] // divisor
-                    output_shape[2] = num_heads * head_size
+                if isinstance(output_shape[2], int):
+                    divisor = num_heads + 2 * kv_num_heads
+                    if output_shape[2] % divisor == 0:
+                        head_size = output_shape[2] // divisor
+                        output_shape[2] = num_heads * head_size
+                    else:
+                        output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
                 else:
                     output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
             vi = self.known_vi_[node.output[0]]

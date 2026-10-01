@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -61,6 +62,7 @@ struct DynamicSparseAttentionCase {
   int64_t smooth_softmax = 0;
   bool packed_qkv = false;
   bool has_past = true;
+  bool has_scale = true;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -130,7 +132,9 @@ void RunDynamicSparseAttentionCase(
   OpTester tester("DynamicSparseAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", c.num_heads);
   tester.AddAttribute<int64_t>("kv_num_heads", c.kv_num_heads);
-  tester.AddAttribute<float>("scale", c.scale);
+  if (c.has_scale) {
+    tester.AddAttribute<float>("scale", c.scale);
+  }
   tester.AddAttribute<int64_t>("is_causal", 1);
   tester.AddAttribute<int64_t>("local_window_size", c.local_window_size);
   tester.AddAttribute<std::string>("attention_mode", c.attention_mode);
@@ -268,7 +272,9 @@ DynamicSparseAttentionCase MakeSingleTokenSelectedValueCase(float value = 9.0f) 
 
 #ifdef USE_CUDA
 Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8,
-                                          int64_t num_heads = 1) {
+                                          int64_t num_heads = 1, int64_t kv_num_heads = 1,
+                                          bool packed_qkv = false, const char* query_width_symbol = nullptr,
+                                          bool* output_width_is_unknown = nullptr) {
   Model model("dynamic_sparse_attention_shape_inference", true, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
               {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
@@ -288,11 +294,22 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
   };
 
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto* query_type = add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, query_width});
+  if (query_width_symbol != nullptr) {
+    auto* width_dim = query_type->mutable_tensor_type()->mutable_shape()->mutable_dim(2);
+    width_dim->clear_dim_value();
+    width_dim->set_dim_param(query_width_symbol);
+  }
   std::vector<NodeArg*> inputs{
-      &graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                         {1, 1, query_width})),
-      &graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
-      &graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      &graph.GetOrCreateNodeArg("query", query_type),
+      packed_qkv
+          ? &empty
+          : &graph.GetOrCreateNodeArg(
+                "key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      packed_qkv
+          ? &empty
+          : &graph.GetOrCreateNodeArg(
+                "value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
       &graph.GetOrCreateNodeArg("past_key",
                                 add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 2, 8})),
       &graph.GetOrCreateNodeArg("past_value",
@@ -321,8 +338,13 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
   auto& node = graph.AddNode("dynamic_sparse_attention", "DynamicSparseAttention", "",
                              inputs, outputs, nullptr, kMSDomain);
   node.AddAttribute("num_heads", num_heads);
-  node.AddAttribute("kv_num_heads", int64_t{1});
-  return graph.Resolve();
+  node.AddAttribute("kv_num_heads", kv_num_heads);
+  auto status = graph.Resolve();
+  if (status.IsOK() && output_width_is_unknown != nullptr) {
+    const auto& width_dim = outputs[0]->Shape()->dim(2);
+    *output_width_is_unknown = !width_dim.has_dim_value() && !width_dim.has_dim_param();
+  }
+  return status;
 }
 #endif
 
@@ -336,11 +358,30 @@ TEST(DynamicSparseAttentionTest, ShapeInferenceSupportsOptionalCacheOutputs_CUDA
   ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(2));
 }
 
+TEST(DynamicSparseAttentionTest, ShapeInferenceDoesNotCopyPackedSymbolicWidth_CUDA) {
+  bool output_width_is_unknown = false;
+  ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(1, 8, 4, 2, true, "packed_width",
+                                                      &output_width_is_unknown));
+  EXPECT_TRUE(output_width_is_unknown);
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(DynamicSparseAttentionTest, ShapeInferenceRejectsNonDivisibleSeparateQueryWidth_CUDA) {
   const auto status = ResolveDynamicSparseAttentionGraph(3, 9, 2);
   ASSERT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("Query hidden size must be divisible"), std::string::npos);
+}
+
+TEST(DynamicSparseAttentionTest, ShapeInferenceRejectsHeadCountsOutsideKernelBounds_CUDA) {
+  const auto num_heads_status =
+      ResolveDynamicSparseAttentionGraph(3, 8, std::numeric_limits<int64_t>::max(), 1);
+  ASSERT_FALSE(num_heads_status.IsOK());
+  EXPECT_NE(num_heads_status.ErrorMessage().find("num_heads must be a positive int"), std::string::npos);
+
+  const auto kv_num_heads_status =
+      ResolveDynamicSparseAttentionGraph(3, 8, 2, std::numeric_limits<int64_t>::max());
+  ASSERT_FALSE(kv_num_heads_status.IsOK());
+  EXPECT_NE(kv_num_heads_status.ErrorMessage().find("kv_num_heads must be positive"), std::string::npos);
 }
 #endif
 
@@ -617,6 +658,77 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyExplicitSinkSharesSoftmax_CUDA) {
   c.head_sink = {0.0f};
   // The selected value and zero-valued sink have equal logits.
   c.expected_output.assign(8, 2.0f);
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, SelectedOnlySmoothSoftmaxAddsImplicitSink_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  auto c = MakeSingleTokenSelectedValueCase(4.0f);
+  c.smooth_softmax = 1;
+  c.expected_output.assign(8, 2.0f);
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, ExplicitZeroScaleProducesUniformLogits_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  DynamicSparseAttentionCase c;
+  c.cache_sequence_length = 2;
+  c.total_sequence_length = 2;
+  c.max_selected = 2;
+  c.scale = 0.0f;
+  c.query.assign(8, 1.0f);
+  c.key.assign(8, 1.0f);
+  c.value.assign(8, 6.0f);
+  c.past_key.assign(16, 0.0f);
+  c.past_value.assign(16, 0.0f);
+  std::fill_n(c.past_value.begin(), 8, 2.0f);
+  c.selected_indices = {0, 1};
+  c.selected_counts = {2};
+  c.seqlens_k = {1};
+  c.expected_output.assign(8, 4.0f);
+  c.expected_present_key.assign(16, 0.0f);
+  std::fill(c.expected_present_key.begin() + 8, c.expected_present_key.end(), 1.0f);
+  c.expected_present_value = c.past_value;
+  std::fill(c.expected_present_value.begin() + 8, c.expected_present_value.end(), 6.0f);
+
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, OmittedScaleUsesHeadSizeDefault_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  DynamicSparseAttentionCase c;
+  c.cache_sequence_length = 2;
+  c.total_sequence_length = 2;
+  c.max_selected = 2;
+  c.has_scale = false;
+  c.query.assign(8, 1.0f);
+  c.key.assign(8, 1.0f);
+  c.value.assign(8, 6.0f);
+  c.past_key.assign(16, 0.0f);
+  c.past_value.assign(16, 0.0f);
+  std::fill_n(c.past_value.begin(), 8, 2.0f);
+  c.selected_indices = {0, 1};
+  c.selected_counts = {2};
+  c.seqlens_k = {1};
+  const float current_weight = std::exp(std::sqrt(8.0f));
+  c.expected_output.assign(8, (2.0f + 6.0f * current_weight) / (1.0f + current_weight));
+  c.expected_present_key.assign(16, 0.0f);
+  std::fill(c.expected_present_key.begin() + 8, c.expected_present_key.end(), 1.0f);
+  c.expected_present_value = c.past_value;
+  std::fill(c.expected_present_value.begin() + 8, c.expected_present_value.end(), 6.0f);
+
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
 }
 

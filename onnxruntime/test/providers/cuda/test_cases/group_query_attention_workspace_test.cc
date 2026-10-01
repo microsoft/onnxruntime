@@ -16,6 +16,7 @@ namespace test {
 using contrib::cuda::CheckedGQAWorkspaceAdd;
 using contrib::cuda::CheckedGQAWorkspaceAlign;
 using contrib::cuda::CheckedGQAWorkspaceMultiply;
+using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
 using contrib::cuda::GetGQAPreparationRecipe;
 using contrib::cuda::GQAKvQuantizationType;
 using contrib::cuda::GQAPreparationRecipe;
@@ -72,6 +73,21 @@ testing::AssertionResult BuildRecipe(
 }
 
 }  // namespace
+
+TEST(GroupQueryAttentionWorkspaceTest, EffectiveKvLengthMatchesRuntimeCacheExtent) {
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(100, 8, false), 100);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(5, 8, true), 5);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(8, 8, true), 8);
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(100, 8, true), 8);
+
+  // A multi-token windowed update changes the runtime cache extent from C to C + S.
+  // The workspace must cover all staged rows, not only the final window capacity.
+  constexpr int cache_capacity = 8;
+  constexpr int sequence_length = 3;
+  EXPECT_EQ(GetGQAEffectiveWorkspaceKvLength(
+                100, cache_capacity + sequence_length, true),
+            11);
+}
 
 TEST(GroupQueryAttentionWorkspaceTest, CheckedArithmeticRejectsOverflow) {
   size_t result = 0;
