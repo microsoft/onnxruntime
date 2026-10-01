@@ -25,6 +25,7 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -137,6 +138,32 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
 #endif  // ENABLE_TRAINING_CORE
 
 #if defined(ORT_ENABLE_STREAM) && !defined(__wasm__)
+class StreamPoolTestStream : public Stream {
+ public:
+  explicit StreamPoolTestStream(const OrtDevice& device) : Stream(nullptr, device) {
+    SetDevice(device.Id());
+  }
+
+  static void SetDevice(OrtDevice::DeviceId device_id) { current_device_ = device_id; }
+
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t) override {
+    EXPECT_EQ(current_device_, GetDevice().Id());
+    return std::make_unique<TestNotification>(*this);
+  }
+
+ private:
+  class TestNotification : public synchronize::Notification {
+   public:
+    explicit TestNotification(Stream& stream) : synchronize::Notification(stream) {}
+
+   private:
+    void Activate() override {}
+  };
+
+  // Simulate device selection being local to each calling thread.
+  inline static thread_local OrtDevice::DeviceId current_device_ = -1;
+};
+
 class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
  public:
   explicit StreamPoolTestExecutionProvider(bool enable_graph_capture)
@@ -148,8 +175,9 @@ class StreamPoolTestExecutionProvider : public CPUExecutionProvider {
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& registry, AllocatorMap&) const override {
     registry.RegisterCreateStreamFn(OrtDevice::CPU, [this](const OrtDevice& device) {
       ++num_streams_created_;
-      return std::make_unique<Stream>(nullptr, device);
+      return std::make_unique<StreamPoolTestStream>(device);
     });
+    registry.RegisterSetDeviceFn(OrtDevice::CPU, StreamPoolTestStream::SetDevice);
   }
 
   size_t NumStreamsCreated() const { return num_streams_created_.load(); }
@@ -178,6 +206,7 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
   ExternalDataLoaderManager external_data_loader_manager;
   profiling::Profiler profiler;
   SessionOptions session_options;
+  session_options.enable_mem_pattern = false;
   SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
                              external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
                              profiler, session_options);
@@ -207,6 +236,13 @@ static void TestDeviceStreamPool(bool enable_graph_capture) {
         EXPECT_NE(first.get(), main_collection);
       } else {
         EXPECT_EQ(first.get(), main_collection);
+      }
+      if (first) {
+        std::vector<OrtValue> fetches;
+        const std::array<size_t, 1> notification_owners{0};
+        StreamExecutionContext context(session_state, 1, notification_owners, 0, first.get(),
+                                       {}, {}, {}, fetches, {}, session_state.Logger(), true);
+        EXPECT_NE(context.GetNotification(0), nullptr);
       }
       const auto* first_collection = first.get();
       session_state.RecycleDeviceStreamCollection(std::move(first));
