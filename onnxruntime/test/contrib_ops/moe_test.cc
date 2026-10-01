@@ -2461,9 +2461,24 @@ TEST(MoETest, QMoETest_Int2CudaCachedScalesDecodeThenPrefill) {
 }
 #endif
 
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDefaultEnabled) {
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_ENABLE_QMOE_INT2_GEMV", std::nullopt}, {"ORT_ENABLE_QMOE_INT2_PREFILL", std::nullopt}}};
+  for (int64_t num_rows : {1, 33, 257}) {
+    SCOPED_TRACE(num_rows);
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, num_rows);
+#if defined(ENABLE_BF16)
+    RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, num_rows);
+#endif
+  }
+}
+
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWithoutDecode) {
-  if (!HasCudaEnvironment(800) || GetCudaArchitecture() != 800) {
-    GTEST_SKIP() << "SM80 is required for packed INT2 prefill.";
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
@@ -2473,10 +2488,10 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWithoutDecode) {
   }
 }
 
-#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+#if defined(ENABLE_BF16)
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBFloat16WithoutDecode) {
-  if (!HasCudaEnvironment(800) || GetCudaArchitecture() != 800) {
-    GTEST_SKIP() << "SM80 is required for packed INT2 prefill.";
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
@@ -2618,8 +2633,8 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
-  if (!HasCudaEnvironment(800) || GetCudaArchitecture() != 800) {
-    GTEST_SKIP() << "SM80 is required for packed INT2 prefill.";
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
@@ -2627,7 +2642,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
     for (bool skewed : {false, true}) {
       SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " skewed=" << skewed);
       RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 512, 256, top_k, skewed);
-#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+  #if defined(ENABLE_BF16)
       RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 512, 256, top_k, skewed);
 #endif
     }
@@ -2635,22 +2650,22 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRuntimeScales) {
-  if (!HasCudaEnvironment(800) || GetCudaArchitecture() != 800) {
-    GTEST_SKIP() << "SM80 is required for packed INT2 prefill.";
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 128, 64, 2, false, false);
   RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 64, 128, 4, true, false);
-#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+#if defined(ENABLE_BF16)
   RunQMoEPackedPrefillRoutingTest<BFloat16>(33, 128, 64, 2, false, false);
   RunQMoEPackedPrefillRoutingTest<BFloat16>(33, 64, 128, 4, true, false);
 #endif
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillFallback) {
-  if (!HasCudaEnvironment(800) || GetCudaArchitecture() != 800) {
-    GTEST_SKIP() << "SM80 is required for packed INT2 prefill.";
+  if (!HasCudaEnvironment(800) || (GetCudaArchitecture() != 800 && GetCudaArchitecture() != 860)) {
+    GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};

@@ -82,7 +82,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   fc1.num_columns = params.inter_size * 2;
   fc1.reduction_size = params.hidden_size;
   fc1.num_experts = params.num_experts;
-  fc1.sm = 80;
+  fc1.sm = params.sm;
   fc1.multiprocessor_count = params.multiprocessor_count;
   fc1.stream = params.stream;
   RunInt2GroupedGemm(fc1);
@@ -101,7 +101,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
       activated_output, offsets + 1, reinterpret_cast<const cutlass::uint4b_t*>(params.fc2_weights), static_cast<const ElementType*>(params.fc2_scales), nullptr, nullptr, fc2_output, nullptr, nullptr, ActivationType::Identity, expanded, params.hidden_size, params.inter_size, params.num_experts, 64, true, false, params.stream, {}, {}};
   fc2.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-      cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
+      cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
   MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> fc2_runner;
   fc2_runner.moeGemm(fc2, {});
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(

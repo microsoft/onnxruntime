@@ -25,6 +25,7 @@ struct Int2MoePrefillParams {
   int inter_size = 0;
   int num_experts = 0;
   int top_k = 0;
+  int sm = 0;
   int multiprocessor_count = 0;
   float alpha = 1.0f;
   float beta = 0.0f;

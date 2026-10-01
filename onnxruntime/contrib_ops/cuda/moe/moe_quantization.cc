@@ -386,9 +386,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
-  enable_int2_prefill_ = quant_type_ == "int" && sm_ == 80 && block_size_ == 64 &&
+  enable_int2_prefill_ = quant_type_ == "int" && (sm_ == 80 || sm_ == 86) && block_size_ == 64 &&
                          fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 4 &&
-                         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 0) != 0;
+                         onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
@@ -1802,6 +1802,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.inter_size = static_cast<int>(moe_params.inter_size);
     params.num_experts = static_cast<int>(moe_params.num_experts);
     params.top_k = static_cast<int>(k_);
+    params.sm = sm_;
     params.multiprocessor_count = GetDeviceProp().multiProcessorCount;
     params.alpha = activation_alpha_;
     params.beta = activation_beta_;
