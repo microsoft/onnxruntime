@@ -332,24 +332,28 @@ class CudaKernel : public OpKernel {
 namespace onnxruntime {
 namespace cuda {
 
-// Returns the tensor element type of the input at input_index. Out-of-range inputs and omitted
-// optional inputs both return TensorProto_DataType_UNDEFINED, allowing callers to query optional
-// input metadata without build-specific bounds or existence checks.
-inline int32_t GetInputElementType(const OpKernelInfo& info, size_t input_index) {
+inline bool InputExists(const OpKernelInfo& info, size_t input_index) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   const auto node = info.node();
-  if (!node.InputExists(input_index)) {
+  return node.InputExists(input_index);
+#else
+  const auto& input_defs = info.node().InputDefs();
+  return input_index < input_defs.size() && input_defs[input_index]->Exists();
+#endif
+}
+
+// Returns the tensor element type of the input at input_index. Out-of-range inputs and omitted
+// optional inputs both return TensorProto_DataType_UNDEFINED.
+inline int32_t GetInputElementType(const OpKernelInfo& info, size_t input_index) {
+  if (!InputExists(info, input_index)) {
     return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
   }
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   return static_cast<int32_t>(
       info.GetKernelInfo().GetInputTypeInfo(input_index).GetTensorTypeAndShapeInfo().GetElementType());
 #else
   const auto& input_defs = info.node().InputDefs();
-  if (input_index >= input_defs.size() || !input_defs[input_index]->Exists()) {
-    return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  }
-
   return input_defs[input_index]->TypeAsProto()->tensor_type().elem_type();
 #endif
 }

@@ -192,14 +192,10 @@ class MatMulNBits final : public CudaKernel {
     constexpr int kInputIndexGroupIndex = 4;
     constexpr int kInputIndexBias = 5;
 
-    const int32_t scale_type = GetInputElementType(info, kInputIndexScale);
-    const int32_t zero_point_type = GetInputElementType(info, kInputIndexZeroPoints);
-    has_zero_points_ = zero_point_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-    has_g_idx_ = GetInputElementType(info, kInputIndexGroupIndex) !=
-                 ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-    has_bias_ = GetInputElementType(info, kInputIndexBias) !=
-                ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-    is_zero_points_scale_same_type_ = has_zero_points_ && zero_point_type == scale_type;
+    has_zero_points_ = InputExists(info, kInputIndexZeroPoints);
+    has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
+    has_bias_ = InputExists(info, kInputIndexBias);
+    is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;
     group_index_is_initializer_ = has_g_idx_ &&
