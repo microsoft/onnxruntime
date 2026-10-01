@@ -43,7 +43,8 @@ Status STFTOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(logger);
 // The STFT crash previously seen on the QNN CPU backend was not reproduced with QAIRT 2.48.0.
 // We still reject CPU backend if QAIRT version is not high enough
-#if (QNN_API_VERSION_MAJOR <= 2) && (QNN_API_VERSION_MINOR < 37)
+#if QNN_API_VERSION_MAJOR < 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR < 37)
   bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
   ORT_RETURN_IF(is_cpu_backend, "QNN EP: STFT Op disabled in CPU backend.");
 #endif
