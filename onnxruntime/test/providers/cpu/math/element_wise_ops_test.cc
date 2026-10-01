@@ -4718,6 +4718,26 @@ TEST(ModOpTest, Signed_integer_overflow_case_fmod) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ModOpTest, Int64_fmod_precision) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int64_t>("X", {1}, {9007199254740993LL});
+  test.AddInput<int64_t>("Y", {1}, {10});
+  test.AddOutput<int64_t>("Z", {1}, {3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, UInt64_fmod_precision) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<uint64_t>("X", {1}, {18446744073709551613ULL});
+  test.AddInput<uint64_t>("Y", {1}, {10});
+  test.AddOutput<uint64_t>("Z", {1}, {3});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(ModOpTest, Int8_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
   test.AddInput<int8_t>("X", {6}, {-4, 7, 5, 4, -7, 8});

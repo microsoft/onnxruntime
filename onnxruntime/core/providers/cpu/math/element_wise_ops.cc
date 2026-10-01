@@ -2134,6 +2134,26 @@ ONNX_CPU_OPERATOR_KERNEL(
 namespace mod_internal {
 
 template <class T>
+inline T TruncatingRemainder(T x, T y) {
+  if constexpr (std::is_signed_v<T>) {
+    if (x == std::numeric_limits<T>::min() && y == T{-1}) {
+      return T{0};
+    }
+  }
+
+  return x % y;
+}
+
+template <class T>
+inline T FMod(T x, T y) {
+  if constexpr (std::is_integral_v<T>) {
+    return TruncatingRemainder(x, y);
+  }
+
+  return static_cast<T>(std::fmod(x, y));
+}
+
+template <class T>
 void BroadCastFMod(OpKernelContext* context) {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
@@ -2143,7 +2163,7 @@ void BroadCastFMod(OpKernelContext* context) {
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](T y) {
-                         return static_cast<T>(std::fmod(X, y));
+                         return FMod(X, y);
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -2153,7 +2173,7 @@ void BroadCastFMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) {
-                         return static_cast<T>(std::fmod(x, Y));
+                         return FMod(x, Y);
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -2163,7 +2183,7 @@ void BroadCastFMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, T y) {
-                         return static_cast<T>(std::fmod(x, y));
+                         return FMod(x, y);
                        });
       }};
 
@@ -2172,13 +2192,7 @@ void BroadCastFMod(OpKernelContext* context) {
 
 template <class T>
 inline T Modulus(T x, T y) {
-  if constexpr (std::is_signed_v<T>) {
-    if (x == std::numeric_limits<T>::min() && y == T{-1}) {
-      return T{0};
-    }
-  }
-
-  auto res = x % y;
+  auto res = TruncatingRemainder(x, y);
   if ((res < 0 && y > 0) || (res > 0 && y < 0)) {
     res += y;
   }
