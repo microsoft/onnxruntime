@@ -2075,6 +2075,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
     fail_shape_inference("SparseAttentionIndexer: query width must be > 0, got ", query_width_dim.dim_value());
   }
+  if (query_width_dim.has_dim_value() && query_width_dim.dim_value() > std::numeric_limits<int>::max()) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be no greater than INT_MAX");
+  }
   if (query_norm_shape == nullptr) {
     return;
   }

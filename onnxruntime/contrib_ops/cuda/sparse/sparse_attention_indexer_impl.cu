@@ -37,8 +37,7 @@ Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* ker
   ORT_RETURN_IF(bytes > static_cast<size_t>(max_bytes),
                 "SparseAttentionIndexer: ", kernel_name, " requires ", bytes,
                 " bytes of dynamic shared memory, but the device supports at most ", max_bytes);
-  return CUDA_CALL(
-      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(bytes)));
+  return CUDA_CALL(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_bytes));
 }
 
 __device__ __forceinline__ float NegativeInfinity() { return -CUDART_INF_F; }
@@ -94,8 +93,7 @@ __device__ __forceinline__ void ScanForNext(const float* scores, int count, floa
                                             int previous_index, float* best_value, int* best_index) {
   *best_index = -1;
   *best_value = 0.0f;
-  for (int candidate = static_cast<int>(threadIdx.x); candidate < count;
-       candidate += static_cast<int>(blockDim.x)) {
+  for (int64_t candidate = threadIdx.x; candidate < count; candidate += blockDim.x) {
     const float value = scores[candidate];
     if (previous_index >= 0 &&
         !(value < previous_score || (value == previous_score && candidate > previous_index))) {
@@ -104,7 +102,7 @@ __device__ __forceinline__ void ScanForNext(const float* scores, int count, floa
     if (*best_index < 0 || value > *best_value ||
         (value == *best_value && candidate < *best_index)) {
       *best_value = value;
-      *best_index = candidate;
+      *best_index = static_cast<int>(candidate);
     }
   }
 }

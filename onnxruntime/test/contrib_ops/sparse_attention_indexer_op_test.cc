@@ -1012,6 +1012,14 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaCapacity) {
                        "selected capacity no greater than INT_MAX");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaQueryWidth) {
+  QsaGraphOptions options;
+  options.num_heads = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+  options.head_size = 2;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "query width must be no greater than INT_MAX");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
   QsaGraphOptions options;
   options.add_csa_inputs = true;
@@ -1024,6 +1032,15 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithQsaAttribute) {
   options.add_token_budget = true;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
                        "token_budget must not be set when policy_mode is 'csa'");
+}
+
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaQueryWidth) {
+  CsaGraphOptions options;
+  options.num_heads = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+  options.head_size = 2;
+  options.rotary_width = 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
+                       "query width must be no greater than INT_MAX");
 }
 
 // A "csa" node must declare every state output. Rejecting the node before any output is written
