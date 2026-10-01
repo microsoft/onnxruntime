@@ -486,6 +486,13 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
         fill_string_map("session_options", ort_file.session_options);
         fill_string_map("provider_options", ort_file.provider_options);
 
+        if (ort_file.session_options.has_value() &&
+            ort_file.session_options->count(kOrtSessionOptionsConfigOptimizedModelFilePath) != 0) {
+          ORT_THROW("ORT variant configuration: '", kOrtSessionOptionsConfigOptimizedModelFilePath,
+                    "' cannot be set in model package session options for variant '",
+                    ort_variant.variant_name, "' in component '", component_name, "'");
+        }
+
         // Resolve path-valued session options (e.g. the external initializers folder) against the
         // package so variants can reference shared assets by sha256: URI or relative path.
         if (ort_file.session_options.has_value()) {
