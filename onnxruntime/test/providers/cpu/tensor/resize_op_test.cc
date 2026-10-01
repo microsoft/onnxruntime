@@ -3083,6 +3083,21 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
       {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
+TEST(ResizeOpTest, Antialias_Use_ExtrapolationWithNegativeRoi) {
+  std::vector<float> X(16);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y(4, 10.0f);
+
+  TestAntialiasing(
+      {{"mode", "linear"},
+       {"exclude_outside", "0"},
+       {"extrapolation_value", "10"},
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0,0,-100,-100,1,1,1,1}"}},
+      {1, 1, 4, 4}, X, std::vector<float>{1.0f, 1.0f, 0.5f, 0.5f}, Y,
+      {kCudaExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(ResizeOpTest, Antialias_Large_half_pixel) {
   std::vector<float> X{0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
   std::vector<float> Y = {1.f, 4.f};
