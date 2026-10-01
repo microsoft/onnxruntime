@@ -70,7 +70,8 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams(),
                                const std::function<void(SessionOptions&)>& session_options_updater = {},
-                               bool verify_outputs = true);
+                               bool verify_outputs = true,
+                               bool allow_released_opsets_only = true);
 
 // Tests model loading only.
 // This can be used to test EPs in builds where only loading (and not running) of a model is supported.

@@ -116,7 +116,8 @@ The **OpSet Version** column uses the following notation:
 |||[17, 19]|**T1** = tensor(double), tensor(float)<br/> **T2** = tensor(int32), tensor(int64)|
 |DeformConv|*in* X:**T**<br> *in* W:**T**<br> *in* offset:**T**<br> *in* B:**T**<br> *in* mask:**T**<br> *out* Y:**T**|22+|**T** = tensor(double), tensor(float)|
 |||[19, 21]|**T** = tensor(double), tensor(float)|
-|DepthToSpace|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
+|DepthToSpace|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
 |||[1, 10]|**T** = tensor(double), tensor(float)|
 |DequantizeLinear|*in* x:**T**<br> *in* x_scale:**tensor(float)**<br> *in* x_zero_point:**T**<br> *out* y:**tensor(float)**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T3**|25+|**T1** = tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(int16), tensor(int2), tensor(int32), tensor(int4), tensor(int8), tensor(uint16), tensor(uint2), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)|
@@ -479,7 +480,8 @@ The **OpSet Version** column uses the following notation:
 |||[1, 21]|**T** = tensor(float)|
 |Softsign|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
 |||[1, 21]|**T** = tensor(float)|
-|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
+|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
 |||[1, 12]|**T** = tensor(double), tensor(float), tensor(int8), tensor(uint8)|
 |Split|*in* input:**T**<br> *in* split:**T**<br> *out* outputs...:**T**<br><br>or<br><br>*in* input:**T**<br> *in* split:**tensor(int64)**<br> *out* outputs:**T**<br><br>or<br><br>*in* input:**T**<br> *out* outputs:**T**|18+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[13, 17]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -730,7 +732,8 @@ The **OpSet Version** column uses the following notation:
 |||[11, 13]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T2** = tensor(int32), tensor(int64)|
 |DeformConv|*in* X:**T**<br> *in* W:**T**<br> *in* offset:**T**<br> *in* B:**T**<br> *in* mask:**T**<br> *out* Y:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |||[19, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
-|DepthToSpace|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|DepthToSpace|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |DequantizeLinear|*in* x:**T**<br> *in* x_scale:**tensor(float)**<br> *in* x_zero_point:**T**<br> *out* y:**tensor(float)**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T3**|25+|**T1** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)<br/> **T3** = tensor(float), tensor(float16)|
@@ -1019,7 +1022,8 @@ The **OpSet Version** column uses the following notation:
 |||[1, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Softsign|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |||[1, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
-|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Split|*in* input:**T**<br> *in* split:**T**<br> *out* outputs...:**T**<br><br>or<br><br>*in* input:**T**<br> *in* split:**tensor(int64)**<br> *out* outputs:**T**<br><br>or<br><br>*in* input:**T**<br> *out* outputs:**T**|18+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[13, 17]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
@@ -1180,7 +1184,8 @@ The **OpSet Version** column uses the following notation:
 |ConvTranspose|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[11, 21]|**T** = tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(float), tensor(float16)|
-|DepthToSpace|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|DepthToSpace|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
@@ -1197,7 +1202,8 @@ The **OpSet Version** column uses the following notation:
 |||10|**I** = tensor(int64)<br/> **T** = tensor(float), tensor(float16)|
 |||[8, 9]|**I** = tensor(int64)<br/> **T** = tensor(float), tensor(float16)|
 |||[1, 7]|**T** = tensor(float), tensor(float16)|
-|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
+|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[13, 27]|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 | |
 | |
@@ -1278,7 +1284,8 @@ The **OpSet Version** column uses the following notation:
 |||11+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |DFT|*in* input:**T1**<br> *in* dft_length:**T2**<br> *in* axis:**tensor(int64)**<br> *out* output:**T1**<br><br>or<br><br>*in* input:**T1**<br> *in* dft_length:**T2**<br> *out* output:**T1**|20+|**T1** = tensor(double), tensor(float), tensor(float16)<br/> **T2** = tensor(int32), tensor(int64)|
 |||17+|**T1** = tensor(double), tensor(float), tensor(float16)<br/> **T2** = tensor(int32), tensor(int64)|
-|DepthToSpace|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|DepthToSpace|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[13, 27]|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||11+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||1+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |DequantizeLinear|*in* x:**T**<br> *in* x_scale:**tensor(float)**<br> *in* x_zero_point:**T**<br> *out* y:**tensor(float)**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T2**<br><br>or<br><br>*in* x:**T1**<br> *in* x_scale:**T2**<br> *in* x_zero_point:**T1**<br> *out* y:**T3**|21+|**T1** = tensor(int4), tensor(int8), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)|
@@ -1553,7 +1560,8 @@ The **OpSet Version** column uses the following notation:
 |||1+|**T** = tensor(float), tensor(float16)|
 |Softplus|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
 |Softsign|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(float), tensor(float16)|
-|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|SpaceToDepth|*in* input:**T**<br> *out* output:**T**|28+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
+|||[13, 27]|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||1+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |Split|*in* input:**T**<br> *in* split:**T**<br> *out* outputs...:**T**<br><br>or<br><br>*in* input:**T**<br> *in* split:**tensor(int64)**<br> *out* outputs:**T**<br><br>or<br><br>*in* input:**T**<br> *out* outputs:**T**|18+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||13+|**T** = tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|

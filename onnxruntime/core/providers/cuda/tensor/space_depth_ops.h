@@ -13,9 +13,12 @@ template <bool Layout>
 class SpaceToDepth final : public CudaKernel, SpaceDepthBase {
  public:
   explicit SpaceToDepth(const OpKernelInfo& info)
-      : CudaKernel(info), SpaceDepthBase(info) {}
+      : CudaKernel(info), SpaceDepthBase(info), is_dcr_(space_depth_internal::ReadIsDCR(info)) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool is_dcr_ = true;
 };
 
 template <bool Layout>

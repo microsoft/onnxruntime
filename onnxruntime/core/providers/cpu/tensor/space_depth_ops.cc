@@ -18,9 +18,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                               DataTypeImpl::GetTensorType<int8_t>()}),
     SpaceToDepth);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     SpaceToDepth,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
+    SpaceToDepth);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    SpaceToDepth,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
@@ -47,9 +58,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                               DataTypeImpl::GetTensorType<int8_t>()}),
     DepthToSpace);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
+    DepthToSpace);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    DepthToSpace,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
@@ -107,7 +129,11 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
 
-  std::array<Eigen::DenseIndex, IntermediateTensorRank> permutation{{0, 3, 5, 1, 2, 4}};
+  const auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 3, 5, 1, 2, 4}}
+                                   : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 5, 2, 4}};
+  const auto out_dim1 = onnxruntime::narrow<ptrdiff_t>(is_dcr_ ? blocksize_ : input_depth);
+  const auto out_dim2 = onnxruntime::narrow<ptrdiff_t>(blocksize_);
+  const auto out_dim3 = onnxruntime::narrow<ptrdiff_t>(is_dcr_ ? input_depth : blocksize_);
 
   if (input.IsDataType<float>()) {
     SpaceDepthOpCpuImpl<float>(input.Data<float>(), output.MutableData<float>(), permutation,
@@ -117,9 +143,7 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
                                onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                               onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                               out_dim1, out_dim2, out_dim3,
                                onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
                                onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else if (input.IsDataType<double>()) {
@@ -130,9 +154,7 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
                                 onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
                                 onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
                                 onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                                out_dim1, out_dim2, out_dim3,
                                 onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
                                 onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else if (input.IsDataType<uint8_t>() || input.IsDataType<int8_t>()) {
@@ -146,9 +168,7 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
                                  onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_),
                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
-                                 onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                 onnxruntime::narrow<ptrdiff_t>(blocksize_),
-                                 onnxruntime::narrow<std::ptrdiff_t>(input_depth),
+                                 out_dim1, out_dim2, out_dim3,
                                  onnxruntime::narrow<std::ptrdiff_t>(input_height / blocksize_),
                                  onnxruntime::narrow<std::ptrdiff_t>(input_width / blocksize_));
   } else {

@@ -6,10 +6,11 @@
 namespace onnxruntime {
 namespace js {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace,
     kMSInternalNHWCDomain,
     13,
+    27,
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
@@ -17,8 +18,27 @@ ONNX_OPERATOR_KERNEL_EX(
 
 ONNX_OPERATOR_KERNEL_EX(
     DepthToSpace,
+    kMSInternalNHWCDomain,
+    28,
+    kJsExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", JsepSupportedDataTypes()),
+    DepthToSpace<true>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    DepthToSpace,
     kOnnxDomain,
     13,
+    27,
+    kJsExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", JsepSupportedDataTypes()),
+    DepthToSpace<false>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    DepthToSpace,
+    kOnnxDomain,
+    28,
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedDataTypes()),
