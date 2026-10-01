@@ -457,7 +457,7 @@ TEST_F(ActivationOpTest, CeluOpset28NewTypes) {
 
   TestActivationOp<double>(
       "Celu", {{-1.0, -0.5, 0.0, 1.0}},
-      [alpha](double x) { return std::max(0.0, x) + std::min(0.0, alpha * (std::exp(x / alpha) - 1.0)); },
+      [](double x) { return std::max(0.0, x) + std::min(0.0, alpha * (std::exp(x / alpha) - 1.0)); },
       {{"alpha", alpha}}, {}, false, 28);
 }
 
