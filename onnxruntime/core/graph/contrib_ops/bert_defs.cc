@@ -666,6 +666,8 @@ Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirecti
 The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
 is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
 and v_hidden_size is that of V.
+Q, K and V hidden sizes must be positive multiples of num_heads. Their sum must match the weights' second dimension.
+When qkv_hidden_sizes is omitted, the weights' second dimension must be divisible by three.
 
 The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
 or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
