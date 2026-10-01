@@ -12,7 +12,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
-from onnx import helper
+from onnx import helper, load_model_from_string
 
 import onnxruntime
 
@@ -429,17 +429,57 @@ class TestQMoEBlockFP8(unittest.TestCase):
         self._parity(dtype=torch.float16)
 
     def test_block_fp8_scale_types(self):
-        for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
-            with self.subTest(scale_dtype=scale_dtype):
-                self._parity(scale_dtype=scale_dtype)
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                with self.subTest(dtype=dtype, scale_dtype=scale_dtype):
+                    self._parity(dtype=dtype, scale_dtype=scale_dtype)
 
     def test_block_fp8_initializers(self):
-        for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
-            with self.subTest(scale_dtype=scale_dtype):
-                tensors = self._inputs(scale_dtype=scale_dtype)
-                actual = self._execute(tensors, initializers=True)
-                expected = self._reference(tensors, 128, 0)
-                torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                with self.subTest(dtype=dtype, scale_dtype=scale_dtype):
+                    tensors = self._inputs(dtype=dtype, scale_dtype=scale_dtype)
+                    actual = self._execute(tensors, initializers=True)
+                    expected = self._reference(tensors, 128, 0)
+                    torch.testing.assert_close(actual.float(), expected.float(), atol=0.003, rtol=0.04)
+
+    def test_integer_scales_still_require_activation_type(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for scale_dtype in (torch.float32, torch.float16, torch.bfloat16):
+                if scale_dtype == dtype:
+                    continue
+                for initializers in (False, True):
+                    with self.subTest(dtype=dtype, scale_dtype=scale_dtype, initializers=initializers):
+                        tensors = self._inputs(hidden=128, inter=128, dtype=dtype, scale_dtype=scale_dtype)
+                        del tensors["fc3_weights"], tensors["fc3_scales"]
+                        for fc in ("fc1", "fc2"):
+                            tensors[f"{fc}_scales"] = torch.ones(16, 128, 1, device=device, dtype=scale_dtype)
+                        onnx_dtype = TensorProto.FLOAT16 if dtype == torch.float16 else TensorProto.BFLOAT16
+                        model_bytes, input_types = create_block_fp8_moe_graph(
+                            tensors, 10, onnx_dtype, 128, initializers=initializers
+                        )
+                        model = load_model_from_string(model_bytes)
+                        for attr in model.graph.node[0].attribute:
+                            if attr.name == "quant_type":
+                                attr.s = b"int"
+                        for graph_input in model.graph.input:
+                            if graph_input.name.endswith("_weights"):
+                                graph_input.type.tensor_type.elem_type = TensorProto.UINT8
+                        for initializer in model.graph.initializer:
+                            if initializer.name.endswith("_weights"):
+                                initializer.data_type = TensorProto.UINT8
+                        for name in input_types:
+                            if name.endswith("_weights"):
+                                input_types[name] = TensorProto.UINT8
+                        options = onnxruntime.SessionOptions()
+                        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                        with self.assertRaisesRegex(Exception, "scales must match the activation type"):
+                            session = onnxruntime.InferenceSession(
+                                model.SerializeToString(),
+                                options,
+                                providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+                            )
+                            self._execute(tensors, session=(session, input_types))
 
     def test_block_fp8_swiglu_layouts(self):
         for fusion in (1, 2):

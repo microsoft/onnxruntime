@@ -248,7 +248,9 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<uint8_t>(),       \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<T>(),             \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),         \
+                                 DataTypeImpl::GetTensorType<MLFloat16>(),     \
+                                 DataTypeImpl::GetTensorType<BFloat16>(),      \
                                  DataTypeImpl::GetTensorType<Float8E8M0>(),    \
                                  DataTypeImpl::GetTensorType<Float8E4M3FN>()}) \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>()),         \
@@ -734,6 +736,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
   const Tensor* fc2_experts_weights = weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(5);
   const Tensor* fc2_scales = (is_int && !packed_fc2_scales_) ? context->Input<Tensor>(6) : nullptr;
+  if (is_int) {
+    for (const int input_idx : {3, 6}) {
+      const auto* scales = context->Input<Tensor>(input_idx);
+      ORT_RETURN_IF(scales && !(is_fp16_ ? scales->IsDataType<MLFloat16>() : scales->IsDataType<BFloat16>()),
+                    "QMoE integer fc", input_idx == 3 ? 1 : 2, "_scales must match the activation type.");
+    }
+  }
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
   const Tensor* fc3_experts_weights = context->Input<Tensor>(8);
   const bool split_fp8_fc1 = is_block_fp8 && fc3_experts_weights != nullptr;
@@ -2515,6 +2524,10 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+  if (quant_type_ == "int" && (input_idx == 3 || input_idx == 6)) {
+    ORT_RETURN_IF_NOT(is_fp16_ ? tensor.IsDataType<MLFloat16>() : tensor.IsDataType<BFloat16>(),
+                      "QMoE integer fc", input_idx == 3 ? 1 : 2, "_scales must match the activation type.");
+  }
   if (quant_type_ == "fp8" && (input_idx == 11 || input_idx == 12 || input_idx == 13)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "QMoE FP8 does not support zero_points.");
   }
