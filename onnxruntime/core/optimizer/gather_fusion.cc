@@ -318,7 +318,8 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Range", {11, 27}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1 ||
+        graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 

@@ -39,6 +39,117 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
+    def test_shape_preserving_hyper_connection_ops(self):
+        cases = {
+            "BranchwiseRMSNorm": (
+                ["input"],
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"])],
+            ),
+            "HyperConnectionPostMix": (
+                ["input", "block_output", "post_mix"],
+                [
+                    helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"]),
+                    helper.make_tensor_value_info("block_output", TensorProto.FLOAT16, ["batch", "hidden"]),
+                    helper.make_tensor_value_info("post_mix", TensorProto.FLOAT16, ["batch", "sequence"]),
+                ],
+            ),
+            "ScaledSiLU": (
+                ["input"],
+                [helper.make_tensor_value_info("input", TensorProto.FLOAT16, ["batch", "sequence", "hidden"])],
+            ),
+        }
+        for op_type, (node_inputs, graph_inputs) in cases.items():
+            with self.subTest(op_type=op_type):
+                graph = helper.make_graph(
+                    [helper.make_node(op_type, node_inputs, ["output"], domain="com.microsoft")],
+                    op_type,
+                    graph_inputs,
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT16, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                inferred = SymbolicShapeInference.infer_shapes(
+                    model, auto_merge=True, int_max=100000, guess_output_rank=False
+                )
+                output = inferred.graph.output[0].type.tensor_type
+                self.assertEqual(output.elem_type, TensorProto.FLOAT16)
+                self.assertEqual(
+                    [dimension.dim_param for dimension in output.shape.dim],
+                    ["batch", "sequence", "hidden"],
+                )
+
+    def test_hyper_connection_pre_mix(self):
+        for flattened in (False, True):
+            with self.subTest(flattened=flattened):
+                input_shape = ["batch", 64] if flattened else ["batch", 4, "hidden"]
+                attributes = {"num_branches": 4} if flattened else {}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionPreMix",
+                            ["streams", "pre_mix"],
+                            ["output"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "hyper_connection_pre_mix",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("pre_mix", TensorProto.FLOAT, ["batch", 4]),
+                    ],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                inferred = SymbolicShapeInference.infer_shapes(
+                    model, auto_merge=True, int_max=100000, guess_output_rank=False
+                )
+                dimensions = inferred.graph.output[0].type.tensor_type.shape.dim
+                if flattened:
+                    self.assertEqual(dimensions[0].dim_param, "batch")
+                    self.assertEqual(dimensions[1].dim_value, 16)
+                else:
+                    self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
+
+    def test_hyper_connection_pre_mix_invalid_stream_shape(self):
+        cases = [
+            ("non_positive_branches", [10], -1, "num_branches must be positive"),
+            ("flattened_scalar", [], 4, "flattened streams must have rank at least 1"),
+            ("non_divisible_width", [10], 4, "flattened stream width must be positive and divisible by num_branches"),
+            ("grouped_rank_one", [10], None, "grouped streams must have rank at least 2"),
+        ]
+        for name, input_shape, num_branches, error in cases:
+            with self.subTest(name=name):
+                attributes = {} if num_branches is None else {"num_branches": num_branches}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionPreMix",
+                            ["streams", "pre_mix"],
+                            ["output"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "invalid_hyper_connection_pre_mix",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("pre_mix", TensorProto.FLOAT, [4]),
+                    ],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                with self.assertRaisesRegex(AssertionError, error):
+                    SymbolicShapeInference.infer_shapes(model, auto_merge=True, int_max=100000, guess_output_rank=False)
+
     def test_symbolic_shape_infer(self):
         from pathlib import Path  # noqa: PLC0415
 
@@ -123,6 +234,182 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         for vi, inferred_vi in zip(vis, inferred_vis, strict=False):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
+
+    def test_dynamic_sparse_attention_separate_qkv_with_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionSeparate",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_packed_qkv_without_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 64]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionPacked",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_invalid_widths_are_not_truncated(self):
+        def infer(query_width, packed):
+            input_names = ["query", "", ""]
+            inputs = [helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", query_width])]
+            if not packed:
+                input_names[1:] = ["key", "value"]
+                inputs.extend(
+                    [
+                        helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+                        helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+                    ]
+                )
+            inputs.extend(
+                [
+                    helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+                    helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+                    helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+                ]
+            )
+            node = helper.make_node(
+                "DynamicSparseAttention",
+                [
+                    *input_names,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "selected_indices",
+                    "selected_counts",
+                    "seqlens_k",
+                    "total_sequence_length",
+                ],
+                ["output", "present_key", "present_value"],
+                domain="com.microsoft",
+                num_heads=4,
+                kv_num_heads=2,
+            )
+            graph = helper.make_graph(
+                [node],
+                "DynamicSparseAttentionInvalidWidth",
+                inputs,
+                [
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+                    helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+                ],
+                [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+            )
+            model = helper.make_model(
+                graph,
+                opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+            )
+            return SymbolicShapeInference.infer_shapes(model, auto_merge=True).graph
+
+        packed_graph = infer(65, True)
+        self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
+        self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
+
+        symbolic_packed_graph = infer("packed_width", True)
+        inferred_width = symbolic_packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param
+        self.assertTrue(inferred_width)
+        self.assertNotEqual(inferred_width, "packed_width")
+        self.assertFalse(symbolic_packed_graph.output[1].type.tensor_type.HasField("shape"))
+
+        separate_graph = infer(33, False)
+        self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
+        self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
 
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
