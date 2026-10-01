@@ -70,8 +70,6 @@ Status LaunchQsaSparseAttentionIndexer(
     const T* past_key,
     int32_t* selected_indices,
     T* present_key,
-    T* state_update_values,
-    int32_t* state_update_rows,
     float* float_workspace,
     int32_t* int_workspace);
 

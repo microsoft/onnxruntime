@@ -2064,8 +2064,7 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     }
   }
   const size_t expected_outputs = is_qsa ? sai::kQsaOutputCount : sai::kCsaOutputCount;
-  if (ctx.getNumOutputs() != expected_outputs &&
-      !(is_qsa && ctx.getNumOutputs() == sai::kQsaStateUpdateOutputCount)) {
+  if (ctx.getNumOutputs() != expected_outputs) {
     fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
                          expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
   }
@@ -2140,23 +2139,6 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
       }
       SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
       updateOutputShape(ctx, sai::kPresentKey, present_shape);
-    }
-    if (ctx.getNumOutputs() == sai::kQsaStateUpdateOutputCount) {
-      propagateElemTypeFromInputToOutput(
-          ctx, sai::kQuery, sai::kPresentProjBuffer);
-      ONNX_NAMESPACE::TensorShapeProto update_shape;
-      SparseAttentionIndexerAppendDim(update_shape, batch_dim);
-      SparseAttentionIndexerAppendDim(update_shape, sequence_dim);
-      SparseAttentionIndexerAppendDim(update_shape, head_size_dim);
-      updateOutputShape(ctx, sai::kPresentProjBuffer, update_shape);
-
-      updateOutputElemType(
-          ctx, sai::kStateUpdateRows,
-          ONNX_NAMESPACE::TensorProto_DataType_INT32);
-      ONNX_NAMESPACE::TensorShapeProto row_shape;
-      SparseAttentionIndexerAppendDim(row_shape, batch_dim);
-      SparseAttentionIndexerAppendDim(row_shape, sequence_dim);
-      updateOutputShape(ctx, sai::kStateUpdateRows, row_shape);
     }
     return;
   }
@@ -2409,16 +2391,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(2,
                 "present_proj_buffer",
-                "For policy_mode 'csa', updated packed key/gate projection buffer. For policy_mode "
-                "'qsa', optional compact per-token state-update values with shape "
-                "(batch_size, sequence_length, head_size).",
+                "Only for policy_mode 'csa': updated packed key/gate projection buffer with shape "
+                "(2, batch_size, present_buffer_length, 2 * head_size).",
                 "T",
-                OpSchema::Optional)
-        .Output(3,
-                "state_update_rows",
-                "Only for policy_mode 'qsa': optional cache row written by each new token, with "
-                "shape (batch_size, sequence_length).",
-                "M",
                 OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},

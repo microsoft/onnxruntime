@@ -270,10 +270,6 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                                              TensorShape({batch_size, sequence_length, params.capacity}));
   Tensor* present_key =
       context->Output(sai::kPresentKey, TensorShape({batch_size, params.key_cache_capacity, head_size}));
-  Tensor* state_update_values =
-      context->Output(sai::kPresentProjBuffer, TensorShape({batch_size, sequence_length, head_size}));
-  Tensor* state_update_rows =
-      context->Output(sai::kStateUpdateRows, TensorShape({batch_size, sequence_length}));
   ORT_RETURN_IF(selected_indices == nullptr || present_key == nullptr,
                 "SparseAttentionIndexer: policy_mode 'qsa' requires both selected_indices and present_key outputs");
 
@@ -296,11 +292,6 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(past_key->Data<T>()),
       selected_indices->MutableData<int32_t>(),
       reinterpret_cast<CudaT*>(present_key->MutableData<T>()),
-      state_update_values == nullptr
-          ? nullptr
-          : reinterpret_cast<CudaT*>(state_update_values->MutableData<T>()),
-      state_update_rows == nullptr ? nullptr
-                                   : state_update_rows->MutableData<int32_t>(),
       float_workspace.get(),
       int_workspace.get());
 }

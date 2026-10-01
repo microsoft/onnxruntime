@@ -211,9 +211,7 @@ __global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttention
 }
 
 template <typename T>
-__global__ void AppendQsaKeyTailKernel(
-    const T* key, T* present_key, T* state_update_values,
-    int32_t* state_update_rows, SparseAttentionIndexerParams params) {
+__global__ void AppendQsaKeyTailKernel(const T* key, T* present_key, SparseAttentionIndexerParams params) {
   const int64_t total = static_cast<int64_t>(params.batch_size) * params.sequence_length * params.head_size;
   for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; index < total;
        index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
@@ -222,18 +220,9 @@ __global__ void AppendQsaKeyTailKernel(
     const int token = static_cast<int>(token_row % params.sequence_length);
     const int batch = static_cast<int>(token_row / params.sequence_length);
     const int position = params.past_sequence_length + token;
-    const int representative_capacity = params.key_cache_capacity / kQwenCompressRatio;
-    if (state_update_values != nullptr &&
-        position % kQwenCompressRatio != kQwenCompressRatio - 1) {
-      state_update_values[index] =
-          key[token_row * params.key_row_stride + d];
-      if (d == 0) {
-        state_update_rows[token_row] =
-            representative_capacity + position % kQwenCompressRatio;
-      }
-    }
     const int completed_tokens = params.total_sequence_length / kQwenCompressRatio * kQwenCompressRatio;
     if (position >= completed_tokens) {
+      const int representative_capacity = params.key_cache_capacity / kQwenCompressRatio;
       const int cache_position = representative_capacity + position % kQwenCompressRatio;
       present_key[(static_cast<int64_t>(batch) * params.key_cache_capacity + cache_position) * params.head_size + d] =
           key[token_row * params.key_row_stride + d];
@@ -247,8 +236,6 @@ template <typename T>
 __global__ void QsaBuildBlockRepresentativesKernel(const T* past_key, const T* key, T* present_key,
                                                    const T* key_norm_weight,
                                                    const T* cos_cache, const T* sin_cache,
-                                                   T* state_update_values,
-                                                   int32_t* state_update_rows,
                                                    SparseAttentionIndexerParams params) {
   __shared__ float pooled[kQwenHeadSize];
   __shared__ float reduction[kThreads];
@@ -297,63 +284,10 @@ __global__ void QsaBuildBlockRepresentativesKernel(const T* past_key, const T* k
     for (int d = threadIdx.x; d < kQwenHeadSize; d += blockDim.x) {
       const int64_t output_base =
           (static_cast<int64_t>(batch) * params.key_cache_capacity + block) * kQwenHeadSize;
-      const T value = from_float<T>(LeadingRope<T>(
+      present_key[output_base + d] = from_float<T>(LeadingRope<T>(
           pooled, params.rotary_width, cos_cache + rotary_offset, sin_cache + rotary_offset, d));
-      present_key[output_base + d] = value;
-      const int token =
-          first_position + kQwenCompressRatio - 1 -
-          params.past_sequence_length;
-      if (state_update_values != nullptr && token >= 0 &&
-          token < params.sequence_length) {
-        const int64_t token_row =
-            static_cast<int64_t>(batch) * params.sequence_length + token;
-        state_update_values[token_row * params.head_size + d] = value;
-        if (d == 0) {
-          state_update_rows[token_row] = block;
-        }
-      }
     }
     __syncthreads();
-  }
-}
-
-template <typename T>
-__global__ void CaptureQsaStateUpdatesKernel(
-    const T* key, const T* present_key, T* state_update_values,
-    int32_t* state_update_rows, SparseAttentionIndexerParams params) {
-  const int64_t total =
-      static_cast<int64_t>(params.batch_size) * params.sequence_length *
-      params.head_size;
-  for (int64_t index =
-           static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-       index < total;
-       index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
-    const int d = static_cast<int>(index % params.head_size);
-    const int64_t token_row = index / params.head_size;
-    const int token = static_cast<int>(token_row % params.sequence_length);
-    const int batch = static_cast<int>(token_row / params.sequence_length);
-    const int position = params.past_sequence_length + token;
-
-    int cache_row = position;
-    const T* source = key + token_row * params.key_row_stride;
-    if (params.use_block_representatives) {
-      if (position % kQwenCompressRatio == kQwenCompressRatio - 1) {
-        cache_row = position / kQwenCompressRatio;
-        source = present_key +
-                 (static_cast<int64_t>(batch) * params.key_cache_capacity +
-                  cache_row) *
-                     params.head_size;
-      } else {
-        const int representative_capacity =
-            params.key_cache_capacity / kQwenCompressRatio;
-        cache_row =
-            representative_capacity + position % kQwenCompressRatio;
-      }
-    }
-    state_update_values[index] = source[d];
-    if (d == 0) {
-      state_update_rows[token_row] = cache_row;
-    }
   }
 }
 
@@ -1487,7 +1421,6 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
                                        const T* key_norm_weight,
                                        const T* cos_cache, const T* sin_cache, const int64_t* mask,
                                        const T* past_key, int32_t* selected_indices, T* present_key,
-                                       T* state_update_values, int32_t* state_update_rows,
                                        float* float_workspace, int32_t* int_workspace) {
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
 
@@ -1505,14 +1438,13 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
     const int64_t new_blocks = static_cast<int64_t>(params.batch_size) * (completed_blocks - first_block);
     if (new_blocks > 0) {
       QsaBuildBlockRepresentativesKernel<T><<<GridForElements(new_blocks), kThreads, 0, stream>>>(
-          past_key, key, present_key, key_norm_weight, cos_cache, sin_cache,
-          state_update_values, state_update_rows, params);
+          past_key, key, present_key, key_norm_weight, cos_cache, sin_cache, params);
     }
     const int64_t new_key_elements =
         static_cast<int64_t>(params.batch_size) * params.sequence_length * params.head_size;
     if (new_key_elements > 0) {
       AppendQsaKeyTailKernel<T><<<GridForElements(new_key_elements), kThreads, 0, stream>>>(
-          key, present_key, state_update_values, state_update_rows, params);
+          key, present_key, params);
     }
   } else {
     const int64_t new_key_elements =
@@ -1520,14 +1452,6 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
     if (new_key_elements > 0) {
       AppendQsaKeyKernel<T><<<GridForElements(new_key_elements), kThreads, 0, stream>>>(key, present_key, params);
     }
-  }
-  if (!params.use_block_representatives &&
-      state_update_values != nullptr && state_update_rows != nullptr &&
-      rows > 0) {
-    const int64_t update_elements = rows * params.head_size;
-    CaptureQsaStateUpdatesKernel<T>
-        <<<GridForElements(update_elements), kThreads, 0, stream>>>(
-            key, present_key, state_update_values, state_update_rows, params);
   }
 
   if (rows == 0) {
@@ -1735,8 +1659,7 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
 #define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                                      \
   template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,              \
                                                      const T*, const T*, const T*, const T*, const T*, const T*,     \
-                                                     const int64_t*, const T*, int32_t*, T*, T*, int32_t*, float*,   \
-                                                     int32_t*);                                                      \
+                                                     const int64_t*, const T*, int32_t*, T*, float*, int32_t*);      \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                                \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*, const T*, \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);
