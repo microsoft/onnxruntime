@@ -10,16 +10,16 @@ namespace onnxruntime {
 /**
 @Class ConvBNFusion
 
-Rewrite rule that fuses two Conv+BN nodes to a single Conv node.
+Rewrite rule that fuses Conv/ConvTranspose+BN nodes to a single Conv/ConvTranspose node.
 
-It is attempted to be triggered only on nodes with op type "Conv".
+It is attempted to be triggered only on nodes with op type "Conv" or "ConvTranspose".
 */
 class ConvBNFusion : public RewriteRule {
  public:
   ConvBNFusion() noexcept : RewriteRule("ConvBNFusion") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Conv"};
+    return {"Conv", "ConvTranspose"};
   }
 
  private:

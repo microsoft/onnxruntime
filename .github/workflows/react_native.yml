@@ -102,10 +102,10 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Use Node.js 22.x
+      - name: Use Node.js 24.x
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - name: Install ninja
@@ -246,10 +246,10 @@ jobs:
       - name: Use Xcode 15.3.0
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
-      - name: Use Node.js 22.x
+      - name: Use Node.js 24.x
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - name: Get vcpkg tool info

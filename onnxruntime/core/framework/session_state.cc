@@ -7,6 +7,11 @@
 #include <mutex>
 #include <sstream>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include <fstream>
+#include "core/common/parse_string.h"
+#endif
+
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -1598,6 +1603,35 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state,
+                                              std::string graph_scope) {
+  moe_expert_state_ = std::move(state);
+  for (const auto& node : graph_.Nodes()) {
+    if (node.Domain() != kMSDomain || (node.OpType() != "MoE" && node.OpType() != "QMoE")) {
+      continue;
+    }
+    const auto& ep = node.GetExecutionProviderType();
+    ORT_RETURN_IF_NOT(ep == kCpuExecutionProvider || ep == kCudaExecutionProvider,
+                      "MoE expert counting is not supported by ", ep);
+    const auto* shape = node.InputDefs().at(1)->Shape();
+    ORT_RETURN_IF_NOT(shape && shape->dim_size() == 2 && shape->dim(1).has_dim_value() &&
+                          shape->dim(1).dim_value() > 0,
+                      "MoE expert counting requires a static positive expert dimension for ", node.Name());
+    ORT_RETURN_IF_ERROR(moe_expert_state_->RegisterNode(
+        GetKernel(node.Index()), graph_scope, node.Index(), node.OpType(), static_cast<size_t>(shape->dim(1).dim_value())));
+  }
+  for (auto& [node_index, subgraphs] : subgraph_session_states_) {
+    for (auto& [attribute, subgraph] : subgraphs) {
+      const std::string scope = MakeString(graph_scope, "/", node_index, "/",
+                                           attribute.size(), ":", attribute);
+      ORT_RETURN_IF_ERROR(subgraph->InitializeMoeExpertState(moe_expert_state_, scope));
+    }
+  }
+  return Status::OK();
+}
+#endif
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           bool remove_initializers,
@@ -1629,10 +1663,42 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 #endif
   }
 
-  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
-                                  remove_initializers,
-                                  GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
-                                  constant_initializers_use_count, max_shape_inference_result);
+  Status status = FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
+                                           remove_initializers,
+                                           GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
+                                           constant_initializers_use_count, max_shape_inference_result);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(status);
+  const bool enable_moe_expert_counting =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
+  const bool enable_moe_expert_statistics =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+  if (enable_moe_expert_counting || enable_moe_expert_statistics) {
+    double alpha = 0.0;
+    double beta = 0.0;
+    auto state = std::make_shared<KernelPilotMoeExpertState>();
+    const auto alpha_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.9");
+    const auto beta_value =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterBeta, "0.1");
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(alpha_value, alpha),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterAlpha, " value: ", alpha_value);
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
+                      "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
+    ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
+    ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
+    const auto state_file =
+        sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
+    if (!state_file.empty()) {
+      std::ifstream input(ToPathString(state_file));
+      ORT_RETURN_IF_NOT(input.is_open(), "Unable to open MoE expert counter state file: ", state_file);
+      ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
+    }
+    ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
+  }
+#endif
+  return status;
 }
 
 bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {
@@ -1708,22 +1774,51 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   // Process explicit inputs to the node
   // (they are passed through as explicit subgraph inputs and hence requires a re-mapping of names
   // to their corresponding names in the inner nested subgraph(s) held by the node)
-  const auto& subgraph_inputs = subgraph.GetInputs();
-
-  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
-                        &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
-    const auto& name = input.Name();
-    OrtValueIndex index = -1;
-    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
-
-    // Store the location of the outer scope value in the map using the subgraph input as the key
-    // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
-    outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
-
-    return Status::OK();
-  };
-
+  //
+  // Only nodes whose inputs map one-to-one onto the explicit subgraph inputs (Loop, Scan>=9) reach the
+  // re-mapping below; for other control flow nodes (e.g. If, or Scan opset 8) there is no such positional
+  // mapping and nothing is accumulated here.
   if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
+    // The parent node's explicit inputs map positionally onto the subgraph's declared inputs.
+    //
+    // GetInputs() (inputs that are not backed by an initializer) is the list every downstream Loop/Scan path
+    // validates and indexes against - see Loop::Info, scan::detail::Info and scan_8/scan_9's
+    // ValidateSubgraphInput - so it is also the list used for the re-mapping here. Those downstream checks are
+    // ORT_ENFORCE based, which abort() in ORT_NO_EXCEPTIONS builds, so the mismatch has to be rejected with a
+    // clean status here before we get that far.
+    //
+    // A malformed/hostile model can declare a subgraph input that is also an initializer of the subgraph. Such
+    // an input is dropped from GetInputs() while remaining in GetInputsIncludingInitializers(), making
+    // GetInputs() shorter than the parent's input list. Without this check, indexing the shorter vector by the
+    // parent's input index below is an out-of-bounds read.
+    const auto num_parent_inputs = parent_node.InputDefs().size();
+    const auto& subgraph_inputs = subgraph.GetInputs();
+    if (subgraph_inputs.size() != num_parent_inputs) {
+      const char* initializer_hint =
+          subgraph.GetInputsIncludingInitializers().size() != subgraph_inputs.size()
+              ? " The subgraph declares a graph input that is also one of its initializers, which is not supported"
+                " for the body of a Loop or Scan node."
+              : "";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Subgraph input count does not match the number of inputs provided by the parent node '",
+                             parent_node.Name(), "' (OpType: ", parent_node.OpType(), "). Parent provides ",
+                             num_parent_inputs, " inputs but the subgraph has ", subgraph_inputs.size(),
+                             " inputs that are not also initializers.", initializer_hint);
+    }
+
+    auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
+                          &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
+      const auto& name = input.Name();
+      OrtValueIndex index = -1;
+      ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+
+      // Store the location of the outer scope value in the map using the subgraph input as the key
+      // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
+      outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
+
+      return Status::OK();
+    };
+
     return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
   }
 
