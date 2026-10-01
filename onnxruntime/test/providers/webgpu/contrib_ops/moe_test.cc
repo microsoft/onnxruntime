@@ -246,6 +246,57 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
   RunWebGpuOnly(webgpu_tester, std::move(webgpu_ep));
 }
 
+static void RunQMoEWebGpuSingleTokenExpertPoolTieTest(int num_experts, int top_k) {
+  GET_WEBGPU_EP_OR_SKIP(webgpu_ep);
+
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+  std::vector<float> router_probs(num_experts, -10.0f);
+  std::vector<float> fc2_bias(num_experts * hidden_size, 0.0f);
+  for (int expert = 0; expert < top_k - 1; ++expert) {
+    router_probs[expert] = 10.0f;
+    std::fill_n(fc2_bias.begin() + expert * hidden_size, hidden_size, 1.0f);
+  }
+  router_probs[num_experts - 2] = 10.0f;
+  router_probs[num_experts - 1] = 10.0f;
+  std::fill_n(fc2_bias.begin() + (num_experts - 2) * hidden_size, hidden_size, 10.0f);
+  std::fill_n(fc2_bias.begin() + (num_experts - 1) * hidden_size, hidden_size, 20.0f);
+
+  const std::vector<uint8_t> weights(num_experts * inter_size * hidden_size / 2, 0x88);
+  const std::vector<float> fc1_scales(num_experts * inter_size, 0.01f);
+  const std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
+  const std::vector<float> expected(hidden_size, static_cast<float>(top_k + 9) / top_k);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddInput<MLFloat16>("input", {1, hidden_size}, ToFloat16(std::vector<float>(hidden_size, 0.25f)));
+  tester.AddInput<MLFloat16>("router_probs", {1, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, inter_size, hidden_size / 2}, weights);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size}, ToFloat16(fc1_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / 2}, weights);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size}, ToFloat16(fc2_scales));
+  tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {1, hidden_size}, ToFloat16(expected));
+  tester.SetOutputTolerance(0.01f);
+
+  RunWebGpuOnly(tester, std::move(webgpu_ep));
+}
+
+TEST(MoETest, QMoETest_WebGPU_SingleTokenOddExpertPoolTie) {
+  RunQMoEWebGpuSingleTokenExpertPoolTieTest(3, 2);
+}
+
+TEST(MoETest, QMoETest_WebGPU_SingleTokenLargeExpertPoolTie) {
+  RunQMoEWebGpuSingleTokenExpertPoolTieTest(512, 10);
+}
+
 TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
