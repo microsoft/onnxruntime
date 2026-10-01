@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -32,17 +33,17 @@ TEST(MlasPool1D, LargeOverlappingWindows) {
     const int64_t input_shape[] = {2, 3, s.width};
     const int64_t output_shape[] = {2, 3, s.output};
     const int64_t pads[] = {s.left, s.right};
-    std::vector<float> input(6 * s.width);
-    std::vector<float> output(6 * s.output, nan);
+    std::vector<float> input(static_cast<size_t>(6 * s.width));
+    std::vector<float> output(static_cast<size_t>(6 * s.output), nan);
     for (int64_t i = 0; i < s.width; i++) {
-      input[i] = float(i * 17 % 53 - 26);
-      input[s.width + i] = nan;
-      input[2 * s.width + i] = -inf;
-      input[3 * s.width + i] = i % 2 ? 0.0f : -0.0f;
-      input[4 * s.width + i] = i % 2 ? -0.0f : 0.0f;
-      input[5 * s.width + i] = i % 3 ? float(i - s.width) : nan;
+      input[static_cast<size_t>(i)] = float(i * 17 % 53 - 26);
+      input[static_cast<size_t>(s.width + i)] = nan;
+      input[static_cast<size_t>(2 * s.width + i)] = -inf;
+      input[static_cast<size_t>(3 * s.width + i)] = i % 2 ? 0.0f : -0.0f;
+      input[static_cast<size_t>(4 * s.width + i)] = i % 2 ? -0.0f : 0.0f;
+      input[static_cast<size_t>(5 * s.width + i)] = i % 3 ? float(i - s.width) : nan;
     }
-    input[5 * s.width + s.width / 2] = inf;
+    input[static_cast<size_t>(5 * s.width + s.width / 2)] = inf;
 
     MlasPool(MlasMaximumPooling, 1, input_shape, &s.kernel, pads, &s.stride,
              output_shape, input.data(), output.data(), nullptr);
@@ -52,10 +53,10 @@ TEST(MlasPool1D, LargeOverlappingWindows) {
         float expected = std::numeric_limits<float>::lowest();
         const int64_t start = p * s.stride - s.left;
         for (int64_t i = std::max(int64_t(0), start); i < std::min(s.width, start + s.kernel); i++) {
-          expected = std::max(expected, input[c * s.width + i]);
+          expected = std::max(expected, input[static_cast<size_t>(c * s.width + i)]);
         }
         // Include the sign of zero in the comparison.
-        EXPECT_EQ(0, std::memcmp(&expected, &output[c * s.output + p], sizeof(float)))
+        EXPECT_EQ(0, std::memcmp(&expected, &output[static_cast<size_t>(c * s.output + p)], sizeof(float)))
             << "channel=" << c << " output=" << p;
       }
     }
