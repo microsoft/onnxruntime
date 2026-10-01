@@ -22,11 +22,11 @@ ONNX_CPU_OPERATOR_KERNEL(
     Einsum,
     28,
     KernelDefBuilder().TypeConstraint("T", std::vector<MLDataType>{
-                                           DataTypeImpl::GetTensorType<float>(),
-                                           DataTypeImpl::GetTensorType<double>(),
-                                           DataTypeImpl::GetTensorType<int64_t>(),
-                                           DataTypeImpl::GetTensorType<int32_t>(),
-                                           DataTypeImpl::GetTensorType<BFloat16>()}),
+                                               DataTypeImpl::GetTensorType<float>(),
+                                               DataTypeImpl::GetTensorType<double>(),
+                                               DataTypeImpl::GetTensorType<int64_t>(),
+                                               DataTypeImpl::GetTensorType<int32_t>(),
+                                               DataTypeImpl::GetTensorType<BFloat16>()}),
     Einsum);
 
 Status Einsum::Compute(OpKernelContext* context) const {
@@ -134,17 +134,17 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<BFloat16>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<BFloat16>(context,
-                                                                            allocator,
-                                                                            tp,
-                                                                            reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
-                                                                            einsum_compute_preprocessor,
-                                                                            nullptr);
+                                                                          allocator,
+                                                                          tp,
+                                                                          reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
+                                                                          einsum_compute_preprocessor,
+                                                                          nullptr);
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<BFloat16>,
-                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<BFloat16>,
-                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
-                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer,
-                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::CreateTensor);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<BFloat16>,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<BFloat16>,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::CreateTensor);
 
     return einsum_compute_processor.Run();
   }

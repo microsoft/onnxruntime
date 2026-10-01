@@ -98,11 +98,11 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
 
 template <>
 std::unique_ptr<Tensor> ReduceSum<BFloat16>(const Tensor& input,
-                                           gsl::span<const int64_t> reduce_axes,
-                                           bool keep_dims, AllocatorPtr allocator,
-                                           const TensorShape* input_shape_override,
-                                           concurrency::ThreadPool* tp,
-                                           void* /*einsum_cuda_assets*/) {
+                                            gsl::span<const int64_t> reduce_axes,
+                                            bool keep_dims, AllocatorPtr allocator,
+                                            const TensorShape* input_shape_override,
+                                            concurrency::ThreadPool* tp,
+                                            void* /*einsum_cuda_assets*/) {
   Tensor float_input(DataTypeImpl::GetType<float>(), input.Shape(), allocator);
   const auto input_data = input.DataAsSpan<BFloat16>();
   auto float_input_data = float_input.MutableDataAsSpan<float>();

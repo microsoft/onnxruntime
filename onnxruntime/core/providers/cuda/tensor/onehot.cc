@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // T1: indices, T2: depth, T3: values
-#define REGISTER_TYPED_ONE_HOT_OP_V11_27(in_type, out_type, depth_type)   \
+#define REGISTER_TYPED_ONE_HOT_OP_V11_27(in_type, out_type, depth_type)    \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                 \
       OneHot,                                                              \
       kOnnxDomain,                                                         \

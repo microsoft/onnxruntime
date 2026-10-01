@@ -467,9 +467,9 @@ TEST(OneHotOpTest, BFloat16Opset28NegativeAxis) {
   test.AddInput<int64_t>("depth", {1}, {3});
   test.AddInput<BFloat16>("values", {2}, {BFloat16(-1.0f), BFloat16(2.0f)});
   test.AddOutput<BFloat16>("output", {2, 3, 2},
-                            {BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(-1.0f),
-                             BFloat16(-1.0f), BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f),
-                             BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(2.0f)});
+                           {BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(-1.0f),
+                            BFloat16(-1.0f), BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f),
+                            BFloat16(2.0f), BFloat16(-1.0f), BFloat16(-1.0f), BFloat16(2.0f)});
   test.Run();
 }
 

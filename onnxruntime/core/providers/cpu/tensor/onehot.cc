@@ -46,14 +46,14 @@ namespace onnxruntime {
 
 // T1: indices, T2: depth, T3: values
 #define REG_TYPED_ONE_HOT_OP_V11_27(types_str, in_type, out_type, depth_type) \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
-      OneHot,                                                                \
-      11, 27,                                                                \
-      types_str,                                                             \
-      KernelDefBuilder()                                                     \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())      \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>())   \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                   \
+      OneHot,                                                                 \
+      11, 27,                                                                 \
+      types_str,                                                              \
+      KernelDefBuilder()                                                      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())       \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>())    \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),     \
       OneHotOp<in_type, out_type, depth_type>);
 
 #define REG_TYPED_ONE_HOT_OP_V28(types_str, in_type, out_type, depth_type) \
