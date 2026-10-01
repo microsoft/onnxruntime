@@ -452,6 +452,7 @@ class SessionState {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpertState> state, std::string graph_scope);
+  Status InitializeKernelPilots();
 #endif
 
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,

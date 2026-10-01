@@ -28,26 +28,24 @@ The four numerical policy parameters are exposed as session configuration entrie
 
 | Session option | Parameter | Meaning and valid range |
 |---|---|---|
-| `session.moe_cpu_offload_experts` | Offload target | Global integer expert count (`>= 1`) or proportion (`0 < value < 1`). |
+| `session.moe_cuda_expert_count` | CUDA budget | Global number of experts to keep in VRAM (`>= 0`). |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
 | `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
 | `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
 
-The offload target has the following meaning:
+The CUDA budget has the following meaning:
 
-- An integer greater than or equal to `1` is the total number of experts to offload to CPU.
-- A value strictly between `0` and `1` is the proportion of all experts to offload to CPU. The concrete expert count is
-  `ceil(value * total_expert_count)`.
-- Zero, negative values, non-integral values greater than `1`, non-finite values, and counts larger than the total
-  number of experts are invalid.
+- A non-negative integer is the total number of experts to keep in VRAM.
+- Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16 `MoE` experts
+  are invalid.
 - When the option is absent, expert offloading is disabled.
 
-The global CUDA budget is:
+The number of CPU experts is:
 
 ```text
-cuda_expert_count = total_expert_count - cpu_offload_expert_count
+cpu_expert_count = total_expert_count - cuda_expert_count
 ```
 
 One CUDA slot contains all weights required to execute one expert. CUDA slots contain copies only; moving an expert
@@ -182,7 +180,7 @@ regressing the regular CUDA path, an internal graph transformer may insert an ex
 operator. That operator must reuse `MoE`/`QMoE` schema semantics and kernels and must not become part of the exported
 model contract.
 
-When `session.moe_cpu_offload_experts` is absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
+When `session.moe_cuda_expert_count` is absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
 
 ## State ownership and concurrency
 
@@ -272,13 +270,17 @@ Depends on PRs 1 and 2.
 Connect the session-global expert state and CUDA cache manager to every participating CUDA `MoE` and `QMoE` node using
 the following strategy.
 
+The first implementation slice is the FP16 `MoE` path with static placement. The session option
+`session.moe_cuda_expert_count` sets the global number of experts retained in VRAM. `KernelPilot` determines the
+per-node expert selection before session initialization returns; CUDA materializes only those expert copies, while
+the remaining experts keep canonical CPU weights and execute through MLAS. Counters continue updating, but this slice
+does not move weights, swap experts, or redistribute the budget after a run.
+
 **Configuration and initial placement**
 
-- Wire the four session options `session.moe_cpu_offload_experts`, `session.moe_expert_counter_alpha`,
+- Wire the four session options `session.moe_cuda_expert_count`, `session.moe_expert_counter_alpha`,
   `session.moe_expert_counter_beta`, and `session.moe_expert_swap_epsilon` to the cache manager.
-- Apply `session.moe_cpu_offload_experts` globally across all participating nodes, not separately to each node. Values
-  greater than `1` specify an integer expert count; values strictly between `0` and `1` specify a proportion. The value
-  `1` specifies one expert. Derive the global CUDA budget from the complementary expert count.
+- Apply `session.moe_cuda_expert_count` globally across all participating nodes, not separately to each node.
 - Use the session-global per-expert counters, initialized from the optional text file or to zero.
 - Rank experts by descending counter and select the highest-ranked experts up to the global CUDA budget. Count the
   selected experts belonging to each node to determine that node's initial CUDA allocation. Resolve ties

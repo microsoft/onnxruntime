@@ -2767,7 +2767,8 @@ common::Status InferenceSession::Initialize() {
            value != "0") ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
-          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+          option == kOrtSessionOptionsConfigMoeExpertCounterBeta ||
+          option == kOrtSessionOptionsConfigMoeCudaExpertCount) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -2786,28 +2787,30 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_NOT(enable_moe_counting == "0" || enable_moe_counting == "1",
                       kOrtSessionOptionsConfigEnableMoeExpertCounting, " must be \"0\" or \"1\".");
     const bool enable_moe_expert_counting = enable_moe_counting == "1";
+    const bool enable_moe_cpu_offload =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCudaExpertCount).has_value();
     const auto moe_counter_state_file =
         session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
     if (moe_counter_state_file) {
-      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics,
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload,
                         kOrtSessionOptionsConfigMoeExpertCounterStateFile,
-                        " requires expert counting or statistics logging to be enabled.");
+                        " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
       ORT_RETURN_IF(moe_counter_state_file->empty(),
                     kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
     }
     for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
                             kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
       ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
-                        !enable_moe_expert_counting && !enable_moe_expert_statistics,
-                    key, " requires expert counting or statistics logging to be enabled.");
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics && !enable_moe_cpu_offload,
+                    key, " requires expert counting, statistics logging, or MoE CPU offload to be enabled.");
     }
-    if (enable_moe_expert_counting) {
+    if (enable_moe_expert_counting || enable_moe_cpu_offload) {
       for (const auto& execution_provider : execution_providers_) {
         ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
                           execution_provider->GetOrtEp() != nullptr,
-                      "MoE expert counting is not supported by the CUDA plugin execution provider.");
+                      "MoE expert counting and CPU offload are not supported by the CUDA plugin execution provider.");
         ORT_RETURN_IF(execution_provider->IsGraphCaptureEnabled(),
-                      "MoE expert counting is not supported when graph capture is enabled.");
+                      "MoE expert counting and CPU offload are not supported when graph capture is enabled.");
       }
     }
     if (enable_moe_expert_statistics) {
@@ -3715,7 +3718,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
       session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
+      session_options_.config_options.GetConfigEntry(
+                                         kOrtSessionOptionsConfigMoeCudaExpertCount)
+          .has_value();
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";

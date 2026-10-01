@@ -8,7 +8,9 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
+#include <array>
 #include <mutex>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -21,10 +23,30 @@ class MoE final : public CudaKernel, public MoEBase {
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+  Status InitializeKernelPilot(KernelPilot* pilot) override;
 
  private:
+  struct PackedTensor {
+    TensorShape shape;
+    IAllocatorUniquePtr<void> cpu_data;
+    IAllocatorUniquePtr<void> cuda_data;
+    size_t bytes{0};
+    bool present{false};
+  };
+
+  Status InitializeCudaExpertWeights(gsl::span<const int> cuda_experts);
+
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
+  bool cpu_offload_enabled_{false};
+  AllocatorPtr cpu_allocator_;
+  AllocatorPtr cuda_allocator_;
+  std::array<PackedTensor, 8> packed_inputs_;
+  InlinedVector<int> cuda_experts_;
+  InlinedVector<int> expert_map_;
+  IAllocatorUniquePtr<void> device_expert_map_;
 };
 
 }  // namespace cuda

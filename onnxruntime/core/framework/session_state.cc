@@ -1630,6 +1630,23 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
   }
   return Status::OK();
 }
+
+Status SessionState::InitializeKernelPilots() {
+  for (const auto& node : graph_.Nodes()) {
+    auto* kernel = GetMutableKernel(node.Index());
+    if (kernel != nullptr) {
+      ORT_RETURN_IF_ERROR(kernel->InitializeKernelPilot(GetKernelPilot(kernel)));
+    }
+  }
+  for (auto& [node_index, subgraphs] : subgraph_session_states_) {
+    ORT_UNUSED_PARAMETER(node_index);
+    for (auto& [attribute, subgraph] : subgraphs) {
+      ORT_UNUSED_PARAMETER(attribute);
+      ORT_RETURN_IF_ERROR(subgraph->InitializeKernelPilots());
+    }
+  }
+  return Status::OK();
+}
 #endif
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -1674,7 +1691,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
   const bool enable_moe_expert_statistics =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  if (enable_moe_expert_counting || enable_moe_expert_statistics) {
+  const auto cuda_expert_count_value =
+      sess_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCudaExpertCount);
+  if (enable_moe_expert_counting || enable_moe_expert_statistics || cuda_expert_count_value.has_value()) {
     double alpha = 0.0;
     double beta = 0.0;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
@@ -1687,6 +1706,15 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
     ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
+    if (cuda_expert_count_value) {
+      int64_t cuda_expert_count = -1;
+      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*cuda_expert_count_value, cuda_expert_count) &&
+                            cuda_expert_count >= 0,
+                        "Invalid ", kOrtSessionOptionsConfigMoeCudaExpertCount,
+                        " value: ", *cuda_expert_count_value,
+                        ". Expected a non-negative integer.");
+      ORT_RETURN_IF_ERROR(state->SetCudaExpertCount(static_cast<size_t>(cuda_expert_count)));
+    }
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
     const auto state_file =
         sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeExpertCounterStateFile, "");
@@ -1696,6 +1724,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       ORT_RETURN_IF_ERROR(moe_expert_state_->Load(input));
     }
     ORT_RETURN_IF_ERROR(moe_expert_state_->FinalizeInitialization());
+    ORT_RETURN_IF_ERROR(InitializeKernelPilots());
   }
 #endif
   return status;
