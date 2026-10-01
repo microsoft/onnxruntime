@@ -38,7 +38,7 @@ Do not modify directly.*
 | DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | DequantizeLinear | ai.onnx(10-12,13-18,19-20,21+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
-| Einsum | ai.onnx(12+) |  |
+| Einsum | ai.onnx(12-27,28+) |  |
 | Elu | ai.onnx(6+) |  |
 | Equal | ai.onnx(7-10,11-12,13-18,19+) |  |
 | Erf | ai.onnx(9-12,13+) |  |
