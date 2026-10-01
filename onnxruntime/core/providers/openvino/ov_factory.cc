@@ -96,8 +96,7 @@ OrtStatus* OpenVINOEpPluginFactory::GetSupportedDevices(const OrtHardwareDevice*
       continue;
     }
 
-    if (device_type != OrtHardwareDeviceType::OrtHardwareDeviceType_CPU &&
-        ort_api.HardwareDevice_VendorId(&device) != vendor_id_) {
+    if (!IsHardwareDeviceEligible(device_type, ort_api.HardwareDevice_VendorId(&device))) {
       // Only Intel devices are supported for OpenVINO GPU and NPU devices.
       continue;
     }

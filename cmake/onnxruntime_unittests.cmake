@@ -1185,9 +1185,12 @@ if (onnxruntime_USE_OPENVINO)
   # ov_protobuf_utils.cpp lives under core/providers (not test/), so partition_provider_test_srcs
   # would route it to onnxruntime_test_all. Append it here after the partition so it is compiled into
   # onnxruntime_provider_test alongside openvino_ov_protobuf_utils_test.cc, because the OpenVINO EP
-  # is a dynamically-loaded module and is not statically linked into the test binary.
+  # is a dynamically-loaded module and is not statically linked into the test binary. Same for 
+  # ov_factory.cc, which is used by openvino_ov_protobuf_utils_test.cc to exercise 
+  # GetSupportedDevices directly.
   list(APPEND onnxruntime_provider_test_srcs
-       ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_protobuf_utils.cpp)
+       ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_protobuf_utils.cpp
+       ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_factory.cc)
 endif()
 
 # Workarounds for onnxruntime test targets.
@@ -1449,6 +1452,10 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  if (onnxruntime_USE_OPENVINO)
+    target_link_libraries(onnxruntime_provider_test PRIVATE openvino::runtime)
+  endif()
 
   onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
