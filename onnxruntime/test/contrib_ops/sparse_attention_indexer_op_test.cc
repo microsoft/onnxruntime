@@ -1132,11 +1132,14 @@ TEST(SparseAttentionIndexerTest, CsaBFloat16) { RunCsaTest<BFloat16>(MakeCsaProb
 
 template <typename T>
 void RunCsaNonFiniteSoftmaxTest(float tolerance) {
-  CsaProblem problem = MakeCsaProblem();
-  problem.gate.assign(problem.gate.size(), -std::numeric_limits<float>::infinity());
-  problem.past_gate_buffer.assign(problem.past_gate_buffer.size(), -std::numeric_limits<float>::infinity());
-  problem.position_bias.assign(problem.position_bias.size(), 0.0f);
-  RunCsaTest<T>(problem, tolerance);
+  for (const float non_finite : {-std::numeric_limits<float>::infinity(),
+                                 std::numeric_limits<float>::infinity()}) {
+    CsaProblem problem = MakeCsaProblem();
+    problem.gate.assign(problem.gate.size(), non_finite);
+    problem.past_gate_buffer.assign(problem.past_gate_buffer.size(), non_finite);
+    problem.position_bias.assign(problem.position_bias.size(), 0.0f);
+    RunCsaTest<T>(problem, tolerance);
+  }
 }
 
 TEST(SparseAttentionIndexerTest, CsaFloatNonFiniteSoftmaxFallsBackToZero) {

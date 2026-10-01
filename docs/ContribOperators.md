@@ -7077,8 +7077,8 @@ This version of the operator has been available since version 1 of the 'com.micr
       the current window its "Cb" half), normalizes and rotates the entry, appends it to the
       compressed-key state, scores the queries against every compressed entry with
       sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
-      highest scoring entry indices. If a channel's softmax denominator is non-positive or non-finite,
-      its pooled value is zero.
+      highest scoring entry indices. If a channel's softmax denominator is non-positive or non-finite
+      (for example, all logits are -inf or any logit is +inf), its pooled value is zero.
   
   Common contract:
     * selected_indices is int32 with a fixed capacity that only depends on attributes:
@@ -7900,4 +7900,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-

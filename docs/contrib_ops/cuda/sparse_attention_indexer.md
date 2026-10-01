@@ -207,8 +207,8 @@ For window `w`, a `2r`-slot pooling window is built from `[B, 2r, D]` values and
 the bias is re-applied at use time and never accumulates). A softmax over the `2r` slots is taken
 **per channel `d`**, the values are weighted and summed, the result is RMS-normalized with
 `key_norm_weight`, and finally rotated at absolute position `(Pc + w) * r`. If the softmax
-denominator is non-positive or non-finite (for example, all logits are `-inf`), the pooled value
-for that channel is zero.
+denominator is non-positive or non-finite (for example, all logits are `-inf` or any logit is
+`+inf`), the pooled value for that channel is zero.
 
 ### Scoring and selection
 
