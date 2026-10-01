@@ -30,11 +30,12 @@ function(
     message(FATAL_ERROR "NuGet packages are only supported for MSVC on Windows.")
     endif()
 
-    # Retrieve the latest version of nuget
+    # Keep the version and digest in sync with cmake/external/dml.cmake.
     include(ExternalProject)
     ExternalProject_Add(nuget_exe
                         PREFIX nuget_exe
-                        URL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+                        URL "https://dist.nuget.org/win-x86-commandline/v6.12.2/nuget.exe"
+                        URL_HASH "SHA256=64F467376F2EE364BA389461DF4A29A8F8DD9AA38120D29046E70B9C82045D97"
                         DOWNLOAD_NO_EXTRACT 1
                         CONFIGURE_COMMAND ""
                         BUILD_COMMAND ""
