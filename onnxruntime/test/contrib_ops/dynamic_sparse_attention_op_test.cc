@@ -1344,6 +1344,46 @@ TEST(DynamicSparseAttentionTest, ExplicitPositionIdsApplyToQueryAndNewKey_WebGPU
   RunDynamicSparseAttentionCase<float>(c, std::move(webgpu_ep));
 }
 
+TEST(DynamicSparseAttentionTest, PositionIdsWithNonzeroHighWordAreIgnored_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  DynamicSparseAttentionCase c;
+  c.cache_sequence_length = 2;
+  c.max_selected = 2;
+  c.total_sequence_length = 2;
+  c.do_rotary = 1;
+  c.rotary_cache_length = 2;
+  c.rotary_half_dim = 4;
+  c.query.assign(8, 0.0f);
+  c.query[0] = 1.0f;
+  c.key.assign(8, 0.0f);
+  c.key[0] = 1.0f;
+  c.value.assign(8, 6.0f);
+  c.past_key.assign(2 * 8, 0.0f);
+  c.past_key[4] = 1.0f;
+  c.past_value.assign(2 * 8, 0.0f);
+  std::fill_n(c.past_value.begin(), 8, 2.0f);
+  c.selected_indices = {0, 1};
+  c.selected_counts = {2};
+  c.seqlens_k = {1};
+  c.cos_cache = {1.0f, 1.0f, 1.0f, 1.0f,
+                 0.0f, 0.0f, 0.0f, 0.0f};
+  c.sin_cache = {0.0f, 0.0f, 0.0f, 0.0f,
+                 1.0f, 1.0f, 1.0f, 1.0f};
+  c.position_ids = {(int64_t{1} << 32) + 1};
+  const float current_weight = std::exp(1.0f);
+  c.expected_output.assign(8, (2.0f + 6.0f * current_weight) / (1.0f + current_weight));
+  c.expected_present_key = c.past_key;
+  c.expected_present_key[8] = 1.0f;
+  c.expected_present_value = c.past_value;
+  std::fill(c.expected_present_value.begin() + 8, c.expected_present_value.end(), 6.0f);
+
+  RunDynamicSparseAttentionCase<float>(c, std::move(webgpu_ep));
+}
+
 #endif  // USE_WEBGPU
 
 }  // namespace test

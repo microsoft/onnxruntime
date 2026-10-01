@@ -159,12 +159,17 @@ Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelpe
       body << "      q_pair *= f32(" << q_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "      let position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
+           << "      let position_valid = position_words.y == 0u"
+              " && position_words.x < uniforms.rotary_max_position;\n"
+           << "      let position = i32(position_words.x);\n";
     } else {
       body << "      let position = " << seqlens_k.GetByOffset("b")
-           << " + 1i - i32(uniforms.sequence_length) + i32(s);\n";
+           << " + 1i - i32(uniforms.sequence_length) + i32(s);\n"
+           << "      let position_valid = position >= 0i"
+              " && position < i32(uniforms.rotary_max_position);\n";
     }
-    body << "      if (position >= 0i && position < i32(uniforms.rotary_max_position)) {\n"
+    body << "      if (position_valid) {\n"
          << "        let cosine = f32("
          << cos_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
          << "        let sine = f32("
@@ -247,6 +252,7 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
         << "var<workgroup> k_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
         << "var<workgroup> k_inv_rms: f32;\n";
   }
+  shader.AdditionalImplementation() << "var<workgroup> destination_shared: i32;\n";
 
   auto& body = shader.MainFunctionBody();
   body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
@@ -254,8 +260,11 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
        << "  let row = workgroup_idx / uniforms.kv_num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n"
-       << "  let destination = " << seqlens_k.GetByOffset("b")
+       << "  if (local_idx == 0u) {\n"
+       << "    destination_shared = " << seqlens_k.GetByOffset("b")
        << " + 1i - i32(uniforms.sequence_length) + i32(s);\n"
+       << "  }\n"
+       << "  let destination = workgroupUniformLoad(&destination_shared);\n"
        << "  if (destination < 0i || destination >= i32(uniforms.cache_capacity)) { return; }\n";
   if (packed_qkv_) {
     body << "  let key_base = row * uniforms.packed_stride + uniforms.query_hidden_size"
@@ -321,11 +330,16 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
       body << "      key_pair *= f32(" << k_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "      let rotary_position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let position_words = " << position_ids->GetByOffset("row", true) << ";\n"
+           << "      let rotary_position_valid = position_words.y == 0u"
+              " && position_words.x < uniforms.rotary_max_position;\n"
+           << "      let rotary_position = i32(position_words.x);\n";
     } else {
-      body << "      let rotary_position = destination;\n";
+      body << "      let rotary_position = destination;\n"
+           << "      let rotary_position_valid = rotary_position >= 0i"
+              " && rotary_position < i32(uniforms.rotary_max_position);\n";
     }
-    body << "      if (rotary_position >= 0i && rotary_position < i32(uniforms.rotary_max_position)) {\n"
+    body << "      if (rotary_position_valid) {\n"
          << "        let cosine = f32("
          << cos_cache->GetByOffset("u32(rotary_position) * half_dim + cache_d") << ");\n"
          << "        let sine = f32("
@@ -370,7 +384,11 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
-      << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n";
+      << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
+      << "var<workgroup> total_length_shared: i32;\n";
+  if (has_selection_) {
+    shader.AdditionalImplementation() << "var<workgroup> selected_count_shared: u32;\n";
+  }
   auto& body = shader.MainFunctionBody();
   body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
        << "  let head = workgroup_idx % uniforms.num_heads;\n"
@@ -379,7 +397,10 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
        << "  let b = row / uniforms.sequence_length;\n"
        << "  let kv_head = head / (uniforms.num_heads / uniforms.kv_num_heads);\n"
        << "  let q_base = (row * uniforms.num_heads + head) * uniforms.head_size;\n"
-       << "  let total_length = " << seqlens_k.GetByOffset("b") << " + 1i;\n"
+       << "  if (local_idx == 0u) {\n"
+       << "    total_length_shared = " << seqlens_k.GetByOffset("b") << " + 1i;\n"
+       << "  }\n"
+       << "  let total_length = workgroupUniformLoad(&total_length_shared);\n"
        << "  let query_position = total_length - i32(uniforms.sequence_length) + i32(s);\n"
        << "  var max_logit = -3.402823466e+38;\n"
        << "  var denominator = 0.0;\n"
@@ -439,8 +460,11 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   }
 
   if (has_selection_) {
-    body << "  let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
-         << "  let selected_count = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+    body << "  if (local_idx == 0u) {\n"
+         << "    let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
+         << "    selected_count_shared = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+         << "  }\n"
+         << "  let selected_count = workgroupUniformLoad(&selected_count_shared);\n"
          << "  for (var i = 0u; i < selected_count; i++) {\n"
          << "    let selected_index = "
          << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
