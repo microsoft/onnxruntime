@@ -121,6 +121,30 @@ TEST_F(RandomAccessFileTest, ReadsRangesAndLengthFromOneOpenFile) {
   EXPECT_EQ(output, legacy_output);
 }
 
+TEST_F(RandomAccessFileTest, MappingUsesOpenedFileAfterPathReplacement) {
+  PathString replacement_path;
+  ScopedFileDeleter replacement_deleter;
+  const std::string replacement(contents_.size(), 'x');
+  ASSERT_NO_FATAL_FAILURE(WriteRandomAccessTestFile(replacement, replacement_path, replacement_deleter));
+
+  const PathString opened_path = path_ + ORT_TSTR(".opened");
+  ScopedFileDeleter opened_deleter(opened_path);
+  std::error_code ec;
+  std::filesystem::rename(path_, opened_path, ec);
+  ASSERT_FALSE(ec) << ec.message();
+  std::filesystem::rename(replacement_path, path_, ec);
+  ASSERT_FALSE(ec) << ec.message();
+
+  RandomAccessFile::MappedMemoryPtr mapped_memory;
+  ASSERT_STATUS_OK(file_->Map(0, contents_.size(), mapped_memory));
+  ASSERT_NE(mapped_memory, nullptr);
+  EXPECT_EQ(std::memcmp(mapped_memory.get(), contents_.data(), contents_.size()), 0);
+
+  PathString canonical_path;
+  ASSERT_STATUS_OK(file_->GetCanonicalPath(canonical_path));
+  EXPECT_FALSE(canonical_path.empty());
+}
+
 #ifndef __wasm__
 TEST_F(RandomAccessFileTest, ConcurrentReadsDoNotShareAFilePosition) {
   constexpr size_t kReaderCount = 4;

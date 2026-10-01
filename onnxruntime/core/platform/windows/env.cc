@@ -378,6 +378,63 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
     return Status::OK();
   }
 
+  Status GetCanonicalPath(PathString& path) const override {
+    std::vector<PathChar> buffer(MAX_PATH);
+    for (;;) {
+      const DWORD length = GetFinalPathNameByHandleW(
+          file_handle_.get(), buffer.data(), static_cast<DWORD>(buffer.size()), 0);
+      ORT_RETURN_IF_NOT(length > 0, "GetFinalPathNameByHandleW failed: ", GetLastError());
+      if (length < buffer.size()) {
+        path.assign(buffer.data(), length);
+        break;
+      }
+      buffer.resize(length);
+    }
+
+    if (path.find(ORT_TSTR(R"(\\?\)")) == 0) {
+      if (path.size() > 6 && path[5] == ORT_TSTR(':')) {
+        path.erase(0, 4);
+      } else if (path.find(ORT_TSTR(R"(UNC\)"), 4) == 4) {
+        path.erase(2, 6);
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset < 0");
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    size_t file_size = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_size));
+    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
+
+    wil::unique_handle mapping{CreateFileMappingW(file_handle_.get(), nullptr, PAGE_READONLY, 0, 0, nullptr)};
+    ORT_RETURN_IF(mapping.get() == nullptr,
+                  "CreateFileMappingW failed: ", GetLastError());
+
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    const FileOffsetType offset_to_granularity =
+        offset % static_cast<FileOffsetType>(sysinfo.dwAllocationGranularity);
+    const SIZE_T mapped_length = SafeInt<SIZE_T>(offset_to_granularity) + length;
+    const FileOffsetType mapped_offset = offset - offset_to_granularity;
+    const uint64_t mapped_offset_u64 = static_cast<uint64_t>(mapped_offset);
+    void* const mapped_base = MapViewOfFile(mapping.get(), FILE_MAP_READ,
+                                            static_cast<DWORD>(mapped_offset_u64 >> 32),
+                                            static_cast<DWORD>(mapped_offset_u64 & 0xFFFFFFFF),
+                                            mapped_length);
+    ORT_RETURN_IF(mapped_base == nullptr, "MapViewOfFile failed: ", GetLastError());
+
+    mapped_memory = MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
+                                    [mapped_base](void*) { UnmapViewOfFile(mapped_base); }};
+    return Status::OK();
+  }
+
   Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
     if (offset < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile: offset < 0");

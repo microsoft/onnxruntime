@@ -35,6 +35,8 @@ limitations under the License.
 #endif
 #include <unistd.h>
 
+#include <array>
+#include <climits>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -137,6 +139,59 @@ class PosixRandomAccessFile final : public RandomAccessFile {
 
   common::Status GetLength(size_t& length) const override {
     return GetFileLength(descriptor_.Get(), length);
+  }
+
+  common::Status GetCanonicalPath(PathString& path) const override {
+#if defined(__APPLE__) && defined(F_GETPATH)
+    std::array<char, PATH_MAX> buffer{};
+    if (fcntl(descriptor_.Get(), F_GETPATH, buffer.data()) != 0) {
+      return ReportSystemError("fcntl(F_GETPATH)", path_);
+    }
+    path.assign(buffer.data());
+    return Status::OK();
+#elif defined(__linux__) || defined(__ANDROID__)
+    const std::string fd_path = "/proc/self/fd/" + std::to_string(descriptor_.Get());
+    std::array<char, PATH_MAX> buffer{};
+    const auto length = readlink(fd_path.c_str(), buffer.data(), buffer.size() - 1);
+    if (length < 0) {
+      return ReportSystemError("readlink", fd_path);
+    }
+    path.assign(buffer.data(), static_cast<size_t>(length));
+    return Status::OK();
+#else
+    ORT_UNUSED_PARAMETER(path);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Canonical paths for open files are not supported on this platform.");
+#endif
+  }
+
+  common::Status Map(FileOffsetType offset, size_t length, MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(offset >= 0, "RandomAccessFile::Map: offset must be nonnegative.");
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+    size_t file_size = 0;
+    ORT_RETURN_IF_ERROR(GetLength(file_size));
+    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
+
+    static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
+    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
+    const FileOffsetType mapped_offset = offset - offset_to_page;
+    void* const mapped_base =
+        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
+    if (mapped_base == MAP_FAILED) {
+      return ReportSystemError("mmap", path_);
+    }
+
+    mapped_memory = MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
+                                    [mapped_base, mapped_length](void*) {
+                                      UnmapFile(mapped_base, mapped_length);
+                                    }};
+    return Status::OK();
   }
 
   common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {

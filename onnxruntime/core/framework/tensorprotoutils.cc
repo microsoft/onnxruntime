@@ -568,6 +568,34 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
+static Status ValidateOpenedExternalDataPath(const std::filesystem::path& model_path,
+                                             const std::filesystem::path& opened_path) {
+  const std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
+                                              ? std::filesystem::path{"."}
+                                              : model_path.parent_path();
+
+  std::filesystem::path model_dir_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir, model_dir_canonical));
+  if (HasPathComponentPrefix(model_dir_canonical, opened_path)) {
+    return Status::OK();
+  }
+
+  std::error_code ec;
+  if (!model_path.empty() && std::filesystem::is_symlink(model_path, ec)) {
+    std::filesystem::path real_model_path;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
+    std::filesystem::path real_model_dir_canonical;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_path.parent_path(), real_model_dir_canonical));
+    if (HasPathComponentPrefix(real_model_dir_canonical, opened_path)) {
+      return Status::OK();
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Opened external data file escapes model directory. Opened path: ",
+                         opened_path, " allowed directory: ", model_dir_canonical);
+}
+
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
@@ -1624,18 +1652,17 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #endif
 
 #if !defined(__wasm__)
-static Status GetFileContent(const Env& env, const std::filesystem::path& file_path, FileOffsetType offset,
+static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
                              size_t length, IAllocatorUniquePtr<void>& external_data) {
   // query length if it is 0
   if (length == 0) {
-    // The return type of std::filesystem::file_size is uintmax_t which could be bigger than size_t
-    length = narrow<size_t>(std::filesystem::file_size(file_path));
+    ORT_RETURN_IF_ERROR(file.GetLength(length));
   }
 
   // first, try to map into memory
   {
-    Env::MappedMemoryPtr mapped_memory{};
-    auto status = env.MapFileIntoMemory(file_path.native().c_str(), offset, length, mapped_memory);
+    RandomAccessFile::MappedMemoryPtr mapped_memory{};
+    auto status = file.Map(offset, length, mapped_memory);
     if (status.IsOK()) {
       IAllocatorUniquePtr<void> raw_buffer(mapped_memory.release(),
                                            mapped_memory.get_deleter());
@@ -1646,8 +1673,7 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 
   // if that fails, try to copy
   auto buffer = std::make_unique<char[]>(length);
-  ORT_RETURN_IF_ERROR(
-      env.ReadFileIntoBuffer(file_path.native().c_str(), offset, length, gsl::make_span(buffer.get(), length)));
+  ORT_RETURN_IF_ERROR(file.Read(offset, gsl::make_span(buffer.get(), length)));
 
   IAllocatorUniquePtr<void> raw_buffer(buffer.release(), [](void* p) { delete[] reinterpret_cast<char*>(p); });
   external_data.swap(raw_buffer);
@@ -1673,8 +1699,7 @@ static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProt
 }
 
 #if !defined(__wasm__)
-static Status LoadPrepackedWeightsFromFile(const Env& env,
-                                           const std::filesystem::path& external_data_file_path,
+static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
                                            std::uintmax_t file_length,
                                            const ExternalDataInfo::PrepackedInfos& prepacked_infos,
                                            PrepackedWeightsForGraph& prepacked_info) {
@@ -1692,8 +1717,7 @@ static Status LoadPrepackedWeightsFromFile(const Env& env,
                     " is out of bounds and can not read in full");
 
       IAllocatorUniquePtr<void> data_ptr;
-      ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, blob_offset, blob_length,
-                                         data_ptr));
+      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr));
       prepacked_weights.buffers_.push_back(std::move(data_ptr));
       prepacked_weights.buffer_sizes_.push_back(blob_length);
     }
@@ -1805,9 +1829,14 @@ Status GetExtDataFromTensorProto(const Env& env,
     buffer.release();
 
 #else
-    //  The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
-    //  manually check file size first.
-    std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+    std::unique_ptr<RandomAccessFile> external_data_file;
+    ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
+    PathString opened_path;
+    ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
+    ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+
+    size_t file_length = 0;
+    ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
@@ -1817,8 +1846,7 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " are out of bounds or can not be read in full.");
 
     IAllocatorUniquePtr<void> ext_data_buf;
-    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path, file_offset, raw_data_safe_len,
-                                       ext_data_buf));
+    ORT_RETURN_IF_ERROR(GetFileContent(*external_data_file, file_offset, raw_data_safe_len, ext_data_buf));
 
     // Data on disk is little endian
     if constexpr (endian::native != endian::little) {
@@ -1847,7 +1875,7 @@ Status GetExtDataFromTensorProto(const Env& env,
 
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
       ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromFile(
-          env, external_data_file_path, file_length, *prepacked_infos, *prepacked_info));
+          *external_data_file, file_length, *prepacked_infos, *prepacked_info));
     }
 #endif
   }
@@ -1885,9 +1913,14 @@ Status LoadPrepackedWeightsFromExternalData(const Env& env,
   ORT_RETURN_IF(external_data_file_path == kTensorProtoNativeEndianMemoryAddressTag ||
                     external_data_file_path == kTensorProtoLittleEndianMemoryAddressTag,
                 "Pre-packed blobs cannot be restored from an in-memory external tensor.");
-  const std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
-  return LoadPrepackedWeightsFromFile(
-      env, external_data_file_path, file_length, prepacked_infos, prepacked_info);
+  std::unique_ptr<RandomAccessFile> external_data_file;
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(external_data_file_path.c_str(), external_data_file));
+  PathString opened_path;
+  ORT_RETURN_IF_ERROR(external_data_file->GetCanonicalPath(opened_path));
+  ORT_RETURN_IF_ERROR(ValidateOpenedExternalDataPath(model_path, std::filesystem::path{opened_path}));
+  size_t file_length = 0;
+  ORT_RETURN_IF_ERROR(external_data_file->GetLength(file_length));
+  return LoadPrepackedWeightsFromFile(*external_data_file, file_length, prepacked_infos, prepacked_info);
 #endif
 }
 
