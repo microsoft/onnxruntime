@@ -31,6 +31,9 @@ permissions:
   contents: read
   packages: write
 
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
   llama-requirements:
     name: Validate Llama requirements
@@ -41,7 +44,7 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: onnxruntime/python/tools/transformers/models/llama/requirements.txt
 
@@ -117,7 +120,7 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: onnxruntime/python/tools/transformers/models/stable_diffusion/requirements/requirements.txt
 
@@ -194,7 +197,7 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: onnxruntime/python/tools/transformers/models/whisper/requirements.txt
 
