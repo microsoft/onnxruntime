@@ -9,6 +9,9 @@
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
 #include "core/mlas/inc/mlas.h"
+#ifdef USE_CUDA
+#include "test/util/include/default_providers.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -89,6 +92,29 @@ TEST(TensorOpTest, SpaceToDepthOpset28BlocksizeThree) {
                          10.f, 13.f, 16.f, 2.f, 5.f, 8.f, 11.f, 14.f, 17.f});
   test.Run();
 }
+
+#ifdef USE_CUDA
+TEST(TensorOpTest, SpaceToDepthOpset28NhwcCrd) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("SpaceToDepth", 28, kMSInternalNHWCDomain);
+  test.AddAttribute("blocksize", int64_t{2});
+  test.AddAttribute("mode", "CRD");
+  test.AddInput<float>("input", {1, 2, 4, 2},
+                       {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
+                        8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f});
+  test.AddOutput<float>("output", {1, 1, 2, 8},
+                        {0.f, 1.f, 2.f, 3.f, 8.f, 9.f, 10.f, 11.f,
+                         4.f, 5.f, 6.f, 7.f, 12.f, 13.f, 14.f, 15.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(TensorOpTest, DepthToSpaceOpset28Modes) {
   constexpr int64_t blocksize = 2;

@@ -112,6 +112,15 @@ TEST_F(QnnCPUBackendTests, SpaceToDepth_Flaky2) {
   }
 }
 
+TEST_F(QnnCPUBackendTests, SpaceToDepth_Opset28CrdFallsBackToCpu) {
+  RunOpTestOnCPU("SpaceToDepth",
+                 {TestInputDef<float>({1, 1, 2, 2}, false, {0.f, 1.f, 2.f, 3.f})},
+                 {utils::MakeAttribute("blocksize", int64_t{2}),
+                  utils::MakeAttribute("mode", "CRD")},
+                 28,
+                 ExpectedEPNodeAssignment::None);
+}
+
 // Test f32 Relu on the CPU backend.
 // TODO: When this is fixed, enable ActivationOpTest.Relu test in cpu/activation/activation_op_test tests.
 // Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
