@@ -2494,8 +2494,16 @@ class SymbolicShapeInference:
         input_shape = self._get_sympy_shape(node, 0)
         branches = get_attribute(node, "num_branches", 0)
         if branches:
+            assert branches > 0, "num_branches must be positive"
+            assert len(input_shape) >= 1, "flattened streams must have rank at least 1"
+            width = input_shape[-1]
+            if is_literal(width):
+                assert width > 0 and width % branches == 0, (
+                    "flattened stream width must be positive and divisible by num_branches"
+                )
             output_shape = [*input_shape[:-1], sympy.simplify(input_shape[-1] / branches)]
         else:
+            assert len(input_shape) >= 2, "grouped streams must have rank at least 2"
             output_shape = [*input_shape[:-2], input_shape[-1]]
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]

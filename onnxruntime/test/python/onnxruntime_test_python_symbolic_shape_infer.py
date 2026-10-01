@@ -116,6 +116,42 @@ class TestSymbolicShapeInference(unittest.TestCase):
                 else:
                     self.assertEqual([dimension.dim_param for dimension in dimensions], ["batch", "hidden"])
 
+    def test_hyper_connection_pre_mix_invalid_stream_shape(self):
+        cases = [
+            ("non_positive_branches", [10], -1, "num_branches must be positive"),
+            ("flattened_scalar", [], 4, "flattened streams must have rank at least 1"),
+            ("non_divisible_width", [10], 4, "flattened stream width must be positive and divisible by num_branches"),
+            ("grouped_rank_one", [10], None, "grouped streams must have rank at least 2"),
+        ]
+        for name, input_shape, num_branches, error in cases:
+            with self.subTest(name=name):
+                attributes = {} if num_branches is None else {"num_branches": num_branches}
+                graph = helper.make_graph(
+                    [
+                        helper.make_node(
+                            "HyperConnectionPreMix",
+                            ["streams", "pre_mix"],
+                            ["output"],
+                            domain="com.microsoft",
+                            **attributes,
+                        )
+                    ],
+                    "invalid_hyper_connection_pre_mix",
+                    [
+                        helper.make_tensor_value_info("streams", TensorProto.FLOAT, input_shape),
+                        helper.make_tensor_value_info("pre_mix", TensorProto.FLOAT, [4]),
+                    ],
+                    [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                )
+                with self.assertRaisesRegex(AssertionError, error):
+                    SymbolicShapeInference.infer_shapes(
+                        model, auto_merge=True, int_max=100000, guess_output_rank=False
+                    )
+
     def test_symbolic_shape_infer(self):
         from pathlib import Path  # noqa: PLC0415
 
