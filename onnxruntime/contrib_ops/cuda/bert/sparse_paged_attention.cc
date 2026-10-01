@@ -60,14 +60,22 @@ SparsePagedAttention<T, TCACHE>::SparsePagedAttention(const OpKernelInfo& info)
               "num_heads must be divisible by kv_num_heads.");
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  local_window_size_ =
-      static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  is_causal_ = info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1;
-  do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-  rotary_interleaved_ =
-      info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
-  rotary_offset_ =
-      static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_offset", 0));
+  const int64_t local_window_size = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  ORT_ENFORCE(local_window_size >= -1 && local_window_size <= std::numeric_limits<int>::max(),
+              "local_window_size must be in the range [-1, INT_MAX].");
+  local_window_size_ = static_cast<int>(local_window_size);
+  const auto get_boolean_attribute = [&info](const char* name, int64_t default_value) {
+    const int64_t value = info.GetAttrOrDefault<int64_t>(name, default_value);
+    ORT_ENFORCE(value == 0 || value == 1, name, " must be 0 or 1.");
+    return value == 1;
+  };
+  is_causal_ = get_boolean_attribute("is_causal", 1);
+  do_rotary_ = get_boolean_attribute("do_rotary", 0);
+  rotary_interleaved_ = get_boolean_attribute("rotary_interleaved", 0);
+  const int64_t rotary_offset = info.GetAttrOrDefault<int64_t>("rotary_offset", 0);
+  ORT_ENFORCE(rotary_offset >= 0 && rotary_offset <= std::numeric_limits<int>::max(),
+              "rotary_offset must be in the range [0, INT_MAX].");
+  rotary_offset_ = static_cast<int>(rotary_offset);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   qk_norm_epsilon_ =
@@ -100,8 +108,7 @@ SparsePagedAttention<T, TCACHE>::SparsePagedAttention(const OpKernelInfo& info)
       info.GetAttrOrDefault<std::string>("auxiliary_cache_layout", "contiguous") ==
           "contiguous",
       "Only auxiliary_cache_layout='contiguous' is supported.");
-  auxiliary_kv_shared_ =
-      info.GetAttrOrDefault<int64_t>("auxiliary_kv_shared", 0) == 1;
+  auxiliary_kv_shared_ = get_boolean_attribute("auxiliary_kv_shared", 0);
 }
 
 template <typename T, typename TCACHE>
@@ -142,6 +149,10 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
       KVCacheDataType::DEFAULT, SparseCacheStorageDataType<TCACHE>(),
       /*is_latent_kv*/ false, /*v_head_size*/ 0, rotary_offset_,
       scale_ != 0.0f, device_prop.maxThreadsPerBlock));
+  if (parameters.head_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "head_size must be positive.");
+  }
   parameters.local_window_size = local_window_size_;
   parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
@@ -198,6 +209,10 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "auxiliary_key must have shape (batch_size, capacity, 1 or "
           "kv_num_heads, head_size).");
+    }
+    if (aux_dims[1] > std::numeric_limits<int>::max()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "auxiliary cache capacity must not exceed INT_MAX.");
     }
     auxiliary_capacity = static_cast<int>(aux_dims[1]);
     auxiliary_num_heads = static_cast<int>(aux_dims[2]);
