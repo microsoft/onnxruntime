@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -13,6 +16,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_int2.h"
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -22,8 +26,9 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
+#endif
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -65,8 +70,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
     int device = 0;
     ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
     ASSERT_EQ(cudaGetDeviceProperties(&properties_, device), cudaSuccess);
-    if (properties_.major != 8 || properties_.minor != 0) {
-      GTEST_SKIP() << "INT2 grouped GEMM currently targets SM80";
+    if (properties_.major != 8) {
+      GTEST_SKIP() << "INT2 grouped GEMM tests require SM8x";
     }
     ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking), cudaSuccess);
   }
@@ -80,6 +85,10 @@ class Int2GroupedGemmTest : public ::testing::Test {
   void RunCase(const std::vector<int64_t>& expert_rows, int num_columns, int reduction_size,
                int weight_bits = 2, bool sample_reference = false, bool benchmark = false,
                int dense_mode = 0, int tile_rows = 32, size_t packed_offset_bytes = 0) {
+#if defined(BUILD_CUDA_EP_AS_PLUGIN)
+    ASSERT_EQ(weight_bits, 2);
+    ASSERT_EQ(dense_mode, 0);
+#endif
     std::vector<int64_t> row_ends;
     int64_t num_rows = 0;
     for (const auto rows : expert_rows) {
@@ -179,6 +188,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
     params.multiprocessor_count = properties_.multiProcessorCount;
     params.stream = stream_;
     ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
+    const size_t dense_bytes = static_cast<size_t>(num_experts) * num_columns * reduction_size * sizeof(half);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
     using namespace llm::kernels::cutlass_kernels;
     const auto tile_config = tile_rows == 32
                                  ? llm::cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64
@@ -188,7 +199,6 @@ class Int2GroupedGemmTest : public ::testing::Test {
     std::unique_ptr<DeviceBuffer> dense_weights;
     std::unique_ptr<DeviceBuffer> dense_scales;
     std::unique_ptr<MoeGemmRunner<half, half, half>> dense_runner;
-    const size_t dense_bytes = static_cast<size_t>(num_experts) * num_columns * reduction_size * sizeof(half);
     const auto dequantize = [&]() {
       ORT_THROW_IF_ERROR((contrib::cuda::DequantizeNBits<half, uint8_t>(
           weight_bits, dense_weights->Data<half>(), device_raw.Data<uint8_t>(),
@@ -225,7 +235,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
           params.activations, params.expert_row_ends, reinterpret_cast<const WeightType*>(params.packed_weights), params.block_scales, nullptr, nullptr, params.output, nullptr, nullptr, ActivationType::Identity, params.num_rows, params.num_columns, params.reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
       inputs.gemm_config = llm::cutlass_extensions::CutlassGemmConfig(
           llm::cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-          llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
+          llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
       runner.moeGemm(inputs, {});
     };
     const auto launch = [&]() {
@@ -237,7 +247,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
             params.activations, params.expert_row_ends, dense_weights->Data<half>(), nullptr, nullptr, nullptr, params.output, nullptr, nullptr, ActivationType::Identity, params.num_rows, params.num_columns, params.reduction_size, params.num_experts, 0, false, false, params.stream, {}, {}};
         inputs.gemm_config = llm::cutlass_extensions::CutlassGemmConfig(
             tile_config,
-            llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
+            llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
         dense_runner->moeGemm(inputs, {});
       } else if (weight_bits == 2) {
         RunInt2GroupedGemm(params);
@@ -247,6 +257,9 @@ class Int2GroupedGemmTest : public ::testing::Test {
         launch_existing(*int8_runner, static_cast<uint8_t*>(nullptr));
       }
     };
+#else
+    const auto launch = [&]() { RunInt2GroupedGemm(params); };
+#endif
     launch();
     if (benchmark) {
       for (int warmup = 0; warmup < 5; ++warmup) {
@@ -430,10 +443,12 @@ TEST_F(Int2GroupedGemmTest, SingleExpert) {
   RunCase({128}, 128, 256);
 }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, DenseBaselineParity) {
   RunCase({0, 1, 31, 96}, 192, 192, 2, false, false, 1);
   RunCase({0, 1, 31, 96}, 192, 192, 2, false, false, 2);
 }
+#endif
 
 TEST_F(Int2GroupedGemmTest, CandidateTacticsParity) {
   for (int tile_rows : {64}) {
@@ -443,6 +458,7 @@ TEST_F(Int2GroupedGemmTest, CandidateTacticsParity) {
   }
 }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, DISABLED_GptOssTacticBenchmark) {
   for (int tokens : {128, 512, 2048}) {
     for (bool skewed : {false, true}) {
@@ -473,6 +489,7 @@ TEST_F(Int2GroupedGemmTest, DISABLED_GptOssDenseBenchmark) {
     RunCase(rows, 5760, 2880, 2, true, true, 2);
   }
 }
+#endif
 
 TEST_F(Int2GroupedGemmTest, AlignedPackedWeightOffsets) {
   for (int tile_rows : {32, 64}) {
@@ -483,6 +500,7 @@ TEST_F(Int2GroupedGemmTest, AlignedPackedWeightOffsets) {
   }
 }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, Int4Int8AlignedPackedWeightOffsets) {
   for (int weight_bits : {4, 8}) {
     for (size_t offset : {16, 32, 48}) {
@@ -491,6 +509,7 @@ TEST_F(Int2GroupedGemmTest, Int4Int8AlignedPackedWeightOffsets) {
     }
   }
 }
+#endif
 
 TEST_F(Int2GroupedGemmTest, MinimumAlignedShape) {
   RunCase({1, 0, 2}, 64, 64);
@@ -534,6 +553,7 @@ TEST_F(Int2GroupedGemmTest, Bf16GptOssFc1SampledParity) {
 }
 #endif
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, Int4Block64EmptyExpertsAndPartialTiles) {
   RunCase({0, 1, 0, 39, 88, 0}, 64, 128, 4);
 }
@@ -549,6 +569,7 @@ TEST_F(Int2GroupedGemmTest, Int8Block64EmptyExpertsAndPartialTiles) {
 TEST_F(Int2GroupedGemmTest, Int8Block64Prefill512) {
   RunCase({3, 253, 0, 256}, 192, 192, 8);
 }
+#endif
 
 TEST_F(Int2GroupedGemmTest, GptOssFc1BalancedSampledParity) {
   for (int tokens : {128, 512, 2048}) {
@@ -571,6 +592,7 @@ TEST_F(Int2GroupedGemmTest, GptOssFc1SkewedSampledParity) {
   }
 }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 TEST_F(Int2GroupedGemmTest, GptOssFc2Int4SampledParity) {
   for (int tokens : {128, 512, 2048}) {
     SCOPED_TRACE(tokens);
@@ -586,6 +608,7 @@ TEST_F(Int2GroupedGemmTest, DISABLED_GptOssKernelBenchmark) {
     RunCase(rows, 2880, 2880, 4, true, true);
   }
 }
+#endif
 
 template <typename ElementType>
 void TestMisalignedBuffers() {
