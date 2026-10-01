@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "contrib_ops/cuda/llm/moe_gemm/moe_int2_prefill.h"
 #include "cutlass/epilogue/thread/activation.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
