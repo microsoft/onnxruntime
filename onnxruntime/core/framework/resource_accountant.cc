@@ -569,6 +569,8 @@ Status CreateAccountants(
   WorkspaceEstimatorConfig estimator_config{
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
       config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+  estimator_config.attention_dispatch_policy =
+      config_options.GetConfigEntry(kOrtSessionOptionsAttentionDispatchPolicy);
   ORT_RETURN_IF_ERROR(ParseCudaGqaWorkspaceMaxTotalSequenceLength(
       config_options, estimator_config.cuda_gqa_workspace_max_total_sequence_length));
 

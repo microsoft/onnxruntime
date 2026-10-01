@@ -69,6 +69,9 @@ struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_profile_m;
   // Validated nonnegative, int32-compatible envelope; zero means unspecified.
   int64_t cuda_gqa_workspace_max_total_sequence_length = 0;
+  // Raw session-option value for session.attention_dispatch_policy; parsed to an intent-level
+  // dispatch policy by the CUDA EP before it reaches the GQA workspace estimator.
+  std::optional<std::string> attention_dispatch_policy;
 };
 
 // Reads the caller-declared CUDA GQA envelope and validates its runtime ABI range.
