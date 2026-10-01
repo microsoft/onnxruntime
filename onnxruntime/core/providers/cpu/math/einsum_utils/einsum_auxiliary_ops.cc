@@ -69,7 +69,7 @@ template <>
 Status MatMul<BFloat16>(const BFloat16* input_1_data, const BFloat16* input_2_data,
                         BFloat16* output_data, size_t left_stride, size_t right_stride,
                         size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N,
-                        concurrency::ThreadPool* tp, const void* mlas_backend_config,
+                        concurrency::ThreadPool* tp, [[maybe_unused]] const void* mlas_backend_config,
                         void* /*einsum_cuda_assets*/) {
 #if defined(__aarch64__) && defined(__linux__)
   if (M > 0 && N > 0 && K > 0 && num_batches > 0 && MlasBf16AccelerationSupported()) {
