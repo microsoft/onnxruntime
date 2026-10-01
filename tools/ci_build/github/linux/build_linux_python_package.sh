@@ -175,6 +175,10 @@ do
   fi
 
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
+  if [ "$MULTI_PYTHON_WHEEL" = "true" ]; then
+    # setup.py's auditwheel glob also matches previously repaired wheels.
+    rm -f /build/"$BUILD_CONFIG"/dist/*.whl
+  fi
   IS_FIRST_PYTHON="false"
   MERGE_PYTHON_EXE=$PYTHON_EXE
 done
