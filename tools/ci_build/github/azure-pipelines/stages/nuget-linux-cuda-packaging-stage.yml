@@ -130,6 +130,7 @@ stages:
     pool:
       name: 'Onnxruntime-Linux-GPU-A10'
       demands: ImageOverride -equals onnxruntime-ubuntu2404-CUDA
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -142,6 +143,8 @@ stages:
         value: ${{ variables.linux_trt_version_cuda13 }}
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
+    - name: System.Debug
+      value: 'true'
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
     - checkout: onnxruntime-inference-examples                  # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
