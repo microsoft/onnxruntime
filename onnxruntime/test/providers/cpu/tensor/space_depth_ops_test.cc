@@ -72,6 +72,7 @@ TEST(TensorOpTest, SpaceToDepthOpset28Modes) {
            {"DCR", {0.f, 2.f, 8.f, 10.f, 1.f, 3.f, 9.f, 11.f, 4.f, 6.f, 12.f, 14.f, 5.f, 7.f, 13.f, 15.f}},
            {"CRD", {0.f, 2.f, 1.f, 3.f, 4.f, 6.f, 5.f, 7.f, 8.f, 10.f, 9.f, 11.f, 12.f, 14.f, 13.f, 15.f}}}) {
     OpTester test("SpaceToDepth", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", blocksize);
     test.AddAttribute("mode", mode.c_str());
     test.AddInput<float>("input", {1, 2, 2, 4}, input);
@@ -82,6 +83,7 @@ TEST(TensorOpTest, SpaceToDepthOpset28Modes) {
 
 TEST(TensorOpTest, SpaceToDepthOpset28BlocksizeThree) {
   OpTester test("SpaceToDepth", 28);
+  test.SetAllowUnreleasedOnnxOpset();
   test.AddAttribute("blocksize", int64_t{3});
   test.AddAttribute("mode", "CRD");
   test.AddInput<float>("input", {1, 1, 3, 6},
@@ -101,6 +103,7 @@ TEST(TensorOpTest, SpaceToDepthOpset28NhwcCrd) {
   }
 
   OpTester test("SpaceToDepth", 28, kMSInternalNHWCDomain);
+  test.SetAllowUnreleasedOnnxOpset();
   test.AddAttribute("blocksize", int64_t{2});
   test.AddAttribute("mode", "CRD");
   test.AddInput<float>("input", {1, 2, 4, 2},
@@ -125,6 +128,7 @@ TEST(TensorOpTest, DepthToSpaceOpset28Modes) {
            {"DCR", {0.f, 2.f, 8.f, 10.f, 1.f, 3.f, 9.f, 11.f, 4.f, 6.f, 12.f, 14.f, 5.f, 7.f, 13.f, 15.f}},
            {"CRD", {0.f, 2.f, 1.f, 3.f, 4.f, 6.f, 5.f, 7.f, 8.f, 10.f, 9.f, 11.f, 12.f, 14.f, 13.f, 15.f}}}) {
     OpTester test("DepthToSpace", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", blocksize);
     test.AddAttribute("mode", mode.c_str());
     test.AddInput<float>("input", {1, 8, 1, 2}, input);
@@ -135,6 +139,7 @@ TEST(TensorOpTest, DepthToSpaceOpset28Modes) {
 
 TEST(TensorOpTest, DepthToSpaceOpset28BlocksizeThree) {
   OpTester test("DepthToSpace", 28);
+  test.SetAllowUnreleasedOnnxOpset();
   test.AddAttribute("blocksize", int64_t{3});
   test.AddAttribute("mode", "CRD");
   test.AddInput<float>("input", {1, 9, 1, 2},
@@ -149,6 +154,7 @@ TEST(TensorOpTest, DepthToSpaceOpset28BlocksizeThree) {
 TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
   {
     OpTester test("SpaceToDepth", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", int64_t{2});
     test.AddAttribute("mode", "invalid");
     test.AddInput<float>("input", {1, 1, 2, 2}, {0.f, 1.f, 2.f, 3.f});
@@ -158,6 +164,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
 
   {
     OpTester test("DepthToSpace", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", int64_t{2});
     test.AddAttribute("mode", "invalid");
     test.AddInput<float>("input", {1, 4, 1, 1}, {0.f, 1.f, 2.f, 3.f});
@@ -167,6 +174,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
 
   {
     OpTester test("SpaceToDepth", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", int64_t{2});
     test.AddInput<float>("input", {1, 1, 3, 4}, std::vector<float>(12));
     test.AddOutput<float>("output", {1, 4, 1, 2}, std::vector<float>(8));
@@ -175,6 +183,7 @@ TEST(TensorOpTest, SpaceDepthOpset28RejectsInvalidAttributesAndShapes) {
 
   {
     OpTester test("DepthToSpace", 28);
+    test.SetAllowUnreleasedOnnxOpset();
     test.AddAttribute("blocksize", int64_t{2});
     test.AddInput<float>("input", {1, 3, 1, 1}, std::vector<float>(3));
     test.AddOutput<float>("output", {1, 1, 2, 2}, std::vector<float>(4));

@@ -3,6 +3,8 @@
 
 #include "test/util/include/test_utils.h"
 
+#include <sstream>
+
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/framework/ort_value.h"
@@ -143,7 +145,8 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params,
                                const std::function<void(SessionOptions&)>& session_options_updater,
-                               bool verify_outputs) {
+                               bool verify_outputs,
+                               bool allow_released_opsets_only) {
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
@@ -160,7 +163,16 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   // get expected output from CPU EP
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  const auto load_model = [&](InferenceSessionWrapper& session) {
+    if (allow_released_opsets_only) {
+      return session.Load(model_data.data(), static_cast<int>(model_data.size()));
+    }
+
+    const std::string model_data_string(reinterpret_cast<const char*>(model_data.data()), model_data.size());
+    std::istringstream model_stream(model_data_string);
+    return session.Load(model_stream, false);
+  };
+  ASSERT_STATUS_OK(load_model(session_object));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
@@ -185,7 +197,7 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(load_model(session_object2));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   const auto& graph2 = session_object2.GetGraph();

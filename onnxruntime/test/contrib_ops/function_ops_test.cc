@@ -121,7 +121,7 @@ void CheckSpaceDepthFunction(const char* op_type, std::vector<int64_t> input_sha
   test_case.AddOutput("output");
   test_case.AddAttribute("blocksize", blocksize);
   test_case.AddAttribute("mode", mode);
-  test_case.RunTest();
+  test_case.RunTest(/*allow_released_opsets_only*/ false);
 }
 
 TEST_F(ContribFunExpansionTest, SpaceDepthOpset28FunctionParity) {

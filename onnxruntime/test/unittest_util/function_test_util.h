@@ -132,9 +132,11 @@ struct FunctionTestCase {
 
   std::unique_ptr<Model> CreateModel(bool inline_call = false);
 
-  static std::vector<OrtValue> Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> output_names);
+  static std::vector<OrtValue> Run(onnxruntime::Model& model, NameMLValMap& feeds,
+                                   std::vector<std::string> output_names,
+                                   bool allow_released_opsets_only = true);
 
-  void RunTest();
+  void RunTest(bool allow_released_opsets_only = true);
 
   static void AssertEqual(const std::vector<OrtValue>& results1, const std::vector<OrtValue>& results2);
 

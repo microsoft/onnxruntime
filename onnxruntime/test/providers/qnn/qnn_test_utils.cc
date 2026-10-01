@@ -101,7 +101,8 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
-                     std::function<void(const Graph&)>* ep_graph_checker) {
+                     std::function<void(const Graph&)>* ep_graph_checker,
+                     bool allow_released_opsets_only) {
   std::filesystem::path output_dir;
   if (QNNTestEnvironment::GetInstance().dump_onnx() ||
       QNNTestEnvironment::GetInstance().dump_json() ||
@@ -158,7 +159,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, verification_params,
-                            {}, verify_outputs);
+                            {}, verify_outputs, allow_released_opsets_only);
 }
 
 void RunQnnModelTestHTPNoVerify(const GetTestModelFn& build_test_case, ProviderOptions provider_options,

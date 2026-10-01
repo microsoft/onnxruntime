@@ -1322,7 +1322,8 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
                      float fp32_abs_err = 1e-5f,
                      logging::Severity log_severity = logging::Severity::kERROR,
                      bool verify_outputs = true,
-                     std::function<void(const Graph&)>* ep_graph_checker = nullptr);
+                     std::function<void(const Graph&)>* ep_graph_checker = nullptr,
+                     bool allow_released_opsets_only = true);
 
 /**
  * Runs a test model on the QNN HTP backend and verifies node assignment to QNN EP without comparing outputs to ORT CPU.

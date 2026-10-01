@@ -43,7 +43,9 @@ ONNX_NAMESPACE::TypeProto FunctionTestCase::TensorType(int32_t elem_type, std::v
   return typeProto;
 }
 
-std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> output_names) {
+std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLValMap& feeds,
+                                            std::vector<std::string> output_names,
+                                            bool allow_released_opsets_only) {
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
 
@@ -51,7 +53,7 @@ std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLVal
   const bool serialization_status = model.ToProto().SerializeToString(&serialized_model);
   EXPECT_TRUE(serialization_status) << "Failed to serialize proto to string";
   std::stringstream sstr(serialized_model);
-  auto status = session_object.Load(sstr);
+  auto status = session_object.Load(sstr, allow_released_opsets_only);
   EXPECT_TRUE(status.IsOK());
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -154,12 +156,12 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
   return model;
 }
 
-void FunctionTestCase::RunTest() {
+void FunctionTestCase::RunTest(bool allow_released_opsets_only) {
   auto model1 = CreateModel(false);
-  auto results1 = Run(*model1, input_value_map, output_names);
+  auto results1 = Run(*model1, input_value_map, output_names, allow_released_opsets_only);
 
   auto model2 = CreateModel(true);
-  auto results2 = Run(*model2, input_value_map, output_names);
+  auto results2 = Run(*model2, input_value_map, output_names, allow_released_opsets_only);
 
   AssertEqual(results1, results2);
 }

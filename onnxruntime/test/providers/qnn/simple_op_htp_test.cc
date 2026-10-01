@@ -25,7 +25,8 @@ static void RunOpTestOnCPU(const std::string& op_type,
                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                            int opset_version,
                            ExpectedEPNodeAssignment expected_ep_assignment,
-                           const std::string& op_domain = kOnnxDomain) {
+                           const std::string& op_domain = kOnnxDomain,
+                           bool allow_released_opsets_only = true) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -33,7 +34,8 @@ static void RunOpTestOnCPU(const std::string& op_type,
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  1e-5f, logging::Severity::kERROR, true, nullptr, allow_released_opsets_only);
 }
 
 template <typename InputType1, typename InputType2 = int64_t>
@@ -44,7 +46,8 @@ static void RunOpTestOnCPU(const std::string& op_type,
                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                            int opset_version,
                            ExpectedEPNodeAssignment expected_ep_assignment,
-                           const std::string& op_domain = kOnnxDomain) {
+                           const std::string& op_domain = kOnnxDomain,
+                           bool allow_released_opsets_only = true) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -52,7 +55,8 @@ static void RunOpTestOnCPU(const std::string& op_type,
   RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, input_defs_1, input_defs_2, input_defs_3, attrs, op_domain),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment);
+                  expected_ep_assignment,
+                  1e-5f, logging::Severity::kERROR, true, nullptr, allow_released_opsets_only);
 }
 
 // Test float DepthToSpace on the QNN CPU backend.
@@ -118,7 +122,9 @@ TEST_F(QnnCPUBackendTests, SpaceToDepth_Opset28CrdFallsBackToCpu) {
                  {utils::MakeAttribute("blocksize", int64_t{2}),
                   utils::MakeAttribute("mode", "CRD")},
                  28,
-                 ExpectedEPNodeAssignment::None);
+                 ExpectedEPNodeAssignment::None,
+                 kOnnxDomain,
+                 false);
 }
 
 // Test f32 Relu on the CPU backend.
