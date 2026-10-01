@@ -6,12 +6,10 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
 #include "core/mlas/inc/mlas.h"
-#ifdef USE_CUDA
-#include "test/util/include/default_providers.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
