@@ -1481,8 +1481,9 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
         dequantized_weight = (quantized_weight - zero_point) * scale
       When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
-      If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
-      the dequantization is performed per block of size block_size along the K (input feature) dimension.
+      For integer and FP4 quantization, a provided block_size requires hidden_size and inter_size
+      to be divisible by the block size. FP8 with block_size=128 instead uses float8e4m3fn weights
+      and FP32 scales per 128x128 output/input-feature tile, including partial edge tiles.
 
       Packed byte dimensions are computed as logical_element_count * effective_expert_weight_bits / 8.
       Weight rows must be byte-aligned. Zero-point rows are padded to a whole byte when necessary.
@@ -1564,7 +1565,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "
-              "Both hidden_size and inter_size must be divisible by the block size. "
+              "For integer and FP4 quantization, both hidden_size and inter_size must be divisible by "
+              "the block size. FP8 with block_size=128 supports partial 128x128 tiles. "
               "The FP4 modes always use blocking: MXFP4 ('fp4'/'wfp4afp8') is normalized to block_size 32 "
               "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
               "FP8 with block_size 128 uses 128x128 output/input-feature scale tiles. "

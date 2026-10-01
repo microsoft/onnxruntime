@@ -54,19 +54,10 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-    if (!has_indirect_experts_) {
-      shader.AddInput("weights_backing", ShaderUsage::UseElementTypeAlias);
-    }
     const auto& weights = shader.AddInput("weights", ShaderUsage::UseElementTypeAlias);
-    if (!has_indirect_experts_) {
-      shader.AddInput("scales_backing", ShaderUsage::UseElementTypeAlias);
-    }
     const auto& scales = shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
     const ShaderVariableHelper* bias = &input;
     if (has_bias_) {
-      if (!has_indirect_experts_) {
-        shader.AddInput("bias_backing", ShaderUsage::UseElementTypeAlias);
-      }
       bias = &shader.AddInput("bias", ShaderUsage::UseElementTypeAlias);
     }
     const ShaderVariableHelper* indirect_experts = &weights;
@@ -135,23 +126,20 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
     const uint32_t weight_elements = cols * inner;
     ORT_RETURN_IF_NOT(weight_elements % 4 == 0,
                       "Block-scaled FP8 expert weight slices must be divisible by four elements.");
-    program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
-        .AddInputs({ProgramInput::BufferView(&raw_weights,
-                                             ProgramTensorMetadataDependency::Type,
-                                             TensorShape({weight_elements / 4}),
-                                             expert_idx * weight_elements / 4,
-                                             4)})
-        .AddInputs({{scales, ProgramTensorMetadataDependency::Type}})
+    program.AddInputs({ProgramInput::BufferView(&raw_weights,
+                                                ProgramTensorMetadataDependency::Type,
+                                                TensorShape({weight_elements / 4}),
+                                                expert_idx * weight_elements / 4,
+                                                4)})
         .AddInputs({ProgramInput::BufferView(scales,
                                              ProgramTensorMetadataDependency::Type,
                                              TensorShape({scale_n_blocks * scale_k_blocks}),
                                              expert_idx * scale_n_blocks * scale_k_blocks)});
     if (bias) {
-      program.AddInputs({{bias, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({ProgramInput::BufferView(bias,
-                                               ProgramTensorMetadataDependency::Type,
-                                               TensorShape({cols}),
-                                               expert_idx * cols)});
+      program.AddInputs({ProgramInput::BufferView(bias,
+                                                  ProgramTensorMetadataDependency::Type,
+                                                  TensorShape({cols}),
+                                                  expert_idx * cols)});
     }
   }
   constexpr uint32_t workgroup_size = 64;
@@ -469,6 +457,12 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       ORT_RETURN_IF_ERROR(ValidateBlockFp8Scales(fc3_scales_optional, "fc3_scales", moe_params.num_experts,
                                                  moe_params.inter_size, moe_params.hidden_size));
     }
+  } else {
+    ORT_RETURN_IF_NOT(fc1_experts_weights->DataType() == DataTypeImpl::GetType<uint8_t>() &&
+                          fc2_experts_weights->DataType() == DataTypeImpl::GetType<uint8_t>() &&
+                          (fc3_experts_weights_optional == nullptr ||
+                           fc3_experts_weights_optional->DataType() == DataTypeImpl::GetType<uint8_t>()),
+                      "Integer QMoE weights must use uint8 elements.");
   }
 
   if (fc1_expert_weight_bits_ != expert_weight_bits_ ||

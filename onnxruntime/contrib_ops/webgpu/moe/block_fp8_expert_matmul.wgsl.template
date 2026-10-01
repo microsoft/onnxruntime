@@ -16,8 +16,12 @@ $MAIN {
 
 #if has_indirect_experts
   let expert_idx = indirect_experts.getByOffset(row);
+  let weight_base = (expert_idx * uniforms.cols + col) * uniforms.inner;
+  let scale_base = expert_idx * uniforms.scale_n_blocks * uniforms.scale_k_blocks +
+                   (col / 128u) * uniforms.scale_k_blocks;
 #else
-  let expert_idx = uniforms.expert_idx;
+  let weight_base = col * uniforms.inner;
+  let scale_base = (col / 128u) * uniforms.scale_k_blocks;
 #endif
 #if broadcast_input
   let input_row = 0u;
@@ -25,9 +29,6 @@ $MAIN {
   let input_row = row;
 #endif
 
-  let weight_base = (expert_idx * uniforms.cols + col) * uniforms.inner;
-  let scale_base = expert_idx * uniforms.scale_n_blocks * uniforms.scale_k_blocks +
-                   (col / 128u) * uniforms.scale_k_blocks;
   var value = 0.0;
   for (var inner = 0u; inner < uniforms.inner; inner++) {
     let weight_offset = weight_base + inner;
@@ -38,7 +39,11 @@ $MAIN {
     value += f32(input.getByOffset(input_row * uniforms.inner + inner)) * weight * scale;
   }
 #if has_bias
+#if has_indirect_experts
   value += f32(bias.getByOffset(expert_idx * uniforms.cols + col));
+#else
+  value += f32(bias.getByOffset(col));
+#endif
 #endif
   output.setByOffset(row * uniforms.cols + col, output_element_t(value));
 } // MAIN
