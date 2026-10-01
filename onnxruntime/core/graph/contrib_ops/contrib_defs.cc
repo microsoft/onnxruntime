@@ -1484,7 +1484,7 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       For integer quantization, if block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
 
-      For quant_type='fp8', weights are float8e4m3fn tensors stored as [num_experts, N, K].
+      For quant_type='fp8', weights instead use row-major float8e4m3fn tensors shaped [num_experts, N, K].
       A positive block_size selects square block scaling with float32, float16, or bfloat16 fc*_scales tensors shaped
       [num_experts, ceil(N / block_size), ceil(K / block_size)]:
         dequantized_weight[e, n, k] = float(weight[e, n, k]) * scale[e, n / block_size, k / block_size]

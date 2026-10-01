@@ -579,7 +579,8 @@ class TestQMoEBlockFP8(unittest.TestCase):
 
     def test_block_fp8_rejects_transposed_weights(self):
         tensors = self._inputs()
-        tensors["fc2_weights"] = tensors["fc2_weights"].transpose(1, 2).contiguous()
+        for name in ("fc1_weights", "fc2_weights", "fc3_weights"):
+            tensors[name] = tensors[name].transpose(1, 2).contiguous()
         with self.assertRaisesRegex(Exception, "row-major"):
             self._execute(tensors)
 
