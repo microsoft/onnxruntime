@@ -1,0 +1,292 @@
+# Experimental unified-wheel build; used only by the CUDA 13 test pipeline.
+parameters:
+- name: MACHINE_POOL
+  type: string
+  default: 'onnxruntime-Win2022-GPU-A10'
+
+- name: PYTHON_VERSIONS
+  type: object
+  default:
+    - '3.11'
+    - '3.12'
+    - '3.13'
+    - '3.14'
+
+- name: EP_BUILD_FLAGS
+  type: string
+
+- name: BUILD_PY_PARAMETERS
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+- name: CudaVersion
+  type: string
+  default: '13.0'
+  values:
+    - '13.0'
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: use_tensorrt
+  type: boolean
+  default: false
+
+stages:
+  - stage: Win_py_gpu_Wheels_unified_Build
+    dependsOn: []
+    jobs:
+    - job: Win_py_gpu_Wheels_unified_Build
+      timeoutInMinutes: 720
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            # TODO: check why pyd file was not signed
+            break: false
+            additionalTargetsGlobPattern: f|**\*.pyd
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: win_gpu_wheel_unified
+      variables:
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CUDA_MODULE_LOADING
+        value: 'LAZY'
+      - name: win_trt_folder
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.win_trt_folder_cuda13 }}
+      - name: trt_build_flag
+        ${{ if eq(parameters.use_tensorrt, true) }}:
+          value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
+        ${{ if eq(parameters.use_tensorrt, false) }}:
+          value: ''
+      - name: build_wheel_flag
+        value: '--cuda_version=${{ parameters.CudaVersion }}'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: ${{ parameters.PYTHON_VERSIONS[0] }}
+
+      - template: ../templates/jobs/download_win_gpu_library.yml
+        parameters:
+          CudaVersion: ${{ parameters.CudaVersion }}
+          DownloadCUDA: true
+          DownloadTRT: ${{ parameters.use_tensorrt }}
+
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - ${{ each version in parameters.PYTHON_VERSIONS }}:
+        - task: UsePythonVersion@0
+          displayName: 'Use Python ${{ version }}'
+          inputs:
+            versionSpec: ${{ version }}
+            architecture: 'x64'
+
+        - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+          displayName: 'Install build requirements for Python ${{ version }}'
+          env:
+            TMPDIR: "$(Agent.TempDirectory)"
+
+        # The first interpreter builds everything, including the CUDA and TensorRT providers that
+        # dominate this package. The remaining ones only recompile the CPython extension module.
+        - ${{ if eq(version, parameters.PYTHON_VERSIONS[0]) }}:
+          - task: PythonScript@0
+            displayName: 'Build - Python ${{ version }}'
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: >-
+                --config ${{ parameters.cmake_build_type }}
+                --build_dir $(Build.BinariesDirectory)
+                --skip_submodule_sync
+                --cmake_generator "$(VSGenerator)"
+                --enable_pybind
+                --enable_onnx_tests
+                --parallel
+                --nvcc_threads 1
+                --flash_nvcc_threads 1
+                --use_vcpkg
+                --use_vcpkg_ms_internal_asset_cache
+                --use_binskim_compliant_compile_flags
+                --update
+                --build
+                $(TelemetryOption)
+                ${{ parameters.BUILD_PY_PARAMETERS }}
+                ${{ parameters.EP_BUILD_FLAGS }}
+                ${{ variables.trt_build_flag }}
+              workingDirectory: '$(Build.BinariesDirectory)'
+        - ${{ else }}:
+          - task: PythonScript@0
+            displayName: 'Build extension module - Python ${{ version }}'
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: >-
+                --config ${{ parameters.cmake_build_type }}
+                --build_dir $(Build.BinariesDirectory)
+                --skip_submodule_sync
+                --cmake_generator "$(VSGenerator)"
+                --enable_pybind
+                --enable_onnx_tests
+                --parallel
+                --nvcc_threads 1
+                --flash_nvcc_threads 1
+                --use_vcpkg
+                --use_vcpkg_ms_internal_asset_cache
+                --use_binskim_compliant_compile_flags
+                --update
+                --build
+                --target onnxruntime_pybind11_state
+                $(TelemetryOption)
+                ${{ parameters.BUILD_PY_PARAMETERS }}
+                ${{ parameters.EP_BUILD_FLAGS }}
+                ${{ variables.trt_build_flag }}
+              workingDirectory: '$(Build.BinariesDirectory)'
+
+          # Re-running CMake with a different interpreter can relink the native libraries, which
+          # would also drop the signature they already carry, so restore the saved copies.
+          - task: PowerShell@2
+            displayName: 'Restore the signed native dlls - Python ${{ version }}'
+            inputs:
+              targetType: inline
+              script: |
+                $capi = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi"
+                Copy-Item -Path "$(Build.BinariesDirectory)\native_lib_backup\*.dll" -Destination $capi -Force
+                Get-ChildItem $capi | Format-Table Name, Length
+
+        # Esrp signing. The native dlls are signed once, together with the first extension module.
+        # The later interpreters only produce a new .pyd, so only that one has to be signed again.
+        - template: ../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+            DisplayName: 'ESRP - Sign Native dlls - Python ${{ version }}'
+            DoEsrp: true
+            ${{ if eq(version, parameters.PYTHON_VERSIONS[0]) }}:
+              Pattern: '*.pyd,*.dll'
+            ${{ else }}:
+              Pattern: '*.pyd'
+
+        - ${{ if eq(version, parameters.PYTHON_VERSIONS[0]) }}:
+          - task: PowerShell@2
+            displayName: 'Save the signed native dlls'
+            inputs:
+              targetType: inline
+              script: |
+                $backup = "$(Build.BinariesDirectory)\native_lib_backup"
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $backup
+                New-Item -ItemType Directory -Force -Path $backup | Out-Null
+                $capi = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi"
+                Copy-Item -Path "$capi\*.dll" -Destination $backup -Force
+                Get-ChildItem $backup | Format-Table Name, Length
+
+        - task: PythonScript@0
+          displayName: 'Build wheel - Python ${{ version }}'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\setup.py'
+            arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=gpu ${{ variables.build_wheel_flag }}'
+            workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+
+      - task: PowerShell@2
+        displayName: 'Merge the wheels'
+        inputs:
+          targetType: inline
+          script: |
+            $dist = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist"
+            $wheels = @(Get-ChildItem -Path $dist -Filter *.whl | ForEach-Object { $_.FullName })
+            Write-Host "merging $($wheels.Count) wheels"
+            python $(Build.SourcesDirectory)\tools\ci_build\merge_python_wheels.py --out-dir "$(Build.ArtifactStagingDirectory)" @wheels
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+
+  - stage: Win_py_gpu_Wheels_unified_Tests
+    dependsOn: Win_py_gpu_Wheels_unified_Build
+    jobs:
+    - job: Win_py_gpu_Wheels_unified_Tests
+      strategy:
+        matrix:
+          ${{ each version in parameters.PYTHON_VERSIONS }}:
+            Python_${{ replace(version, '.', '_') }}:
+              PythonVersion: ${{ version }}
+      workspace:
+        clean: all
+      pool:
+        name: ${{parameters.MACHINE_POOL}}
+        os: windows
+      templateContext:
+        inputs:
+        - input: pipelineArtifact
+          artifactName: win_gpu_wheel_unified
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: ../templates/setup-feeds-and-python-steps.yml
+          parameters:
+            versionSpec: $(PythonVersion)
+            architecture: 'x64'
+
+        - template: ../templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            DownloadCUDA: true
+            DownloadTRT: ${{ parameters.use_tensorrt }}
+
+        - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+          env:
+            TMPDIR: "$(Agent.TempDirectory)"
+
+        - powershell: |
+            $ErrorActionPreference = "Stop"
+            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $wheels = @(Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)" -Filter *.whl)
+            if ($wheels.Count -ne 1) { throw "Expected exactly one unified wheel" }
+            python -m pip --disable-pip-version-check install --no-deps $wheels[0].FullName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            New-Item -ItemType Directory -Force -Path "$(Agent.TempDirectory)\ort_test_data" | Out-Null
+            Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
+            Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
+            cd $(Agent.TempDirectory)\ort_test_data
+            python -m pip install psutil py-cpuinfo py3nvml
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python -c "import sysconfig; import onnxruntime as ort; from onnxruntime.capi import onnxruntime_pybind11_state as binding; print(binding.__file__); assert binding.__file__.endswith(sysconfig.get_config_var('EXT_SUFFIX')); assert 'CUDAExecutionProvider' in ort.get_available_providers(); ort.print_debug_info()"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python onnx_backend_test_series.py
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          workingDirectory: '$(Build.sourcesDirectory)'
+          displayName: 'Test the unified wheel on Python $(PythonVersion)'
