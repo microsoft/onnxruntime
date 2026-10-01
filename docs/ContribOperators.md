@@ -6496,6 +6496,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.ResizeArgMax"></a><a name="com.microsoft.resizeargmax">**com.microsoft.ResizeArgMax**</a>
 
+  Apply spatial linear Resize to an NCHW tensor, then ArgMax on axis 1. Batch and channel sizes must not change. Exactly one of scales and sizes must be non-empty. This operator avoids the full Resize output tensor.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -6515,18 +6517,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd></dd>
+<dd>Input tensor in NCHW order.</dd>
 <dt><tt>scales</tt> (optional) : tensor(float)</dt>
-<dd></dd>
+<dd>Four positive Resize scales. Batch and channel scales must be one.</dd>
 <dt><tt>sizes</tt> (optional) : tensor(int64)</dt>
-<dd></dd>
+<dd>Four positive Resize output sizes. Batch and channel sizes must match X.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : tensor(int64)</dt>
-<dd></dd>
+<dd>Class indices after Resize. Shape is [N, 1, H, W] or [N, H, W].</dd>
 </dl>
 
 #### Type Constraints
