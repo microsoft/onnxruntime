@@ -25,6 +25,12 @@
 
 struct pthreadpool;
 namespace onnxruntime {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+namespace ep::adapter {
+struct Logger;
+}
+#endif
+
 namespace webgpu {
 
 // forward declaration for this EP's namespace.
@@ -116,6 +122,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
+  webgpu::BufferManager& InitializerBufferManager() const;
+  webgpu::CommandRecordingState& Recording() const { return *recording_; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
@@ -124,12 +132,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
-    return *ep_logger_;
-  }
-  inline void SetEpLogger(const OrtLogger* logger) {
-    ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
-  }
+  onnxruntime::ep::adapter::Logger& GetEpLogger() const;
+  void SetEpLogger(const OrtLogger* logger);
 #endif
 
  private:
@@ -156,6 +160,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
+  // Command recording is per session and is passed separately from the context-level BufferManagers.
+  std::unique_ptr<webgpu::CommandRecordingState> recording_;
 
   // Per-graph buffer managers keyed by annotation ID.
   // Each captured graph gets its own buffer manager so that buffer caches

@@ -24,12 +24,16 @@ namespace fpA_intB_gemv {
 enum class KernelType {
   FP16Int8Groupwise,
   FP16Int4Groupwise,
+  FP16Int2Groupwise,
   FP16Int8PerChannel,
   FP16Int4PerChannel,
+  FP16Int2PerChannel,
   BF16Int8Groupwise,
   BF16Int4Groupwise,
+  BF16Int2Groupwise,
   BF16Int8PerChannel,
-  BF16Int4PerChannel
+  BF16Int4PerChannel,
+  BF16Int2PerChannel
 };
 
 struct Params {
