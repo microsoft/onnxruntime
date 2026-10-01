@@ -26,7 +26,7 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
 
-  // The enums have the same values through FLOAT4E2M1. Their final three entries
+  // The enums have the same values through FLOAT4E2M1. The following three entries
   // differ because ONNX inserted FLOAT8E8M0 before UINT2 and INT2.
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0:
@@ -42,7 +42,7 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
 
 consteval bool IsTensorProtoToOrtElementTypeMapBijective() {
   constexpr size_t ort_element_type_count =
-      static_cast<size_t>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0) + 1;
+      static_cast<size_t>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2) + 1;
   constexpr size_t onnx_element_type_count = ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE;
   if constexpr (onnx_element_type_count != ort_element_type_count) {
     return false;

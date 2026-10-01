@@ -63,6 +63,11 @@ Status CheckInputs(const T* /*activation*/,
                            "block_size must be a power of 2, and >= 16. Got ", block_size);
   }
 
+  if (bits == 2 && block_size > 256) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "2-bit MatMulNBits block_size must not exceed 256. Got ", block_size);
+  }
+
   const int64_t k_blocks = GetKBlocks(k, block_size);
   const int64_t blob_size = GetBlobSize(block_size, bits);
 

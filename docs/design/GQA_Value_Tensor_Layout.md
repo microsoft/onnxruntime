@@ -1,6 +1,6 @@
 # BNHS Value layout for GroupQueryAttention
 
-Status: partially implemented (see [Sequencing](#8-sequencing))
+Status: implemented, pending two API decisions and two verification gaps (see [Status](#8-status))
 Last updated: 2026-09-08
 
 ## Motivation
@@ -743,14 +743,39 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
   `present_value`.
 - `docs/ContribOperators.md`: **no change** — the operator schema is untouched.
 
-## 8. Sequencing
+## 8. Status
 
-| PR | Contents | Status |
-|---|---|---|
-| 1-3 | Both public keys, validation, example-EP metadata, autoep test, transformer, `TransformGraph` wiring, fusion diagnostic, 6.1 unit tests, docs | Implemented |
-| 3b | CPU-fallback numerical parity tests (6.2), sole-ownership guards (3.6), ORT format rejection (5) | Implemented |
-| 4 | Compiling EP advertises the key, implements the fusion, 6.4 tests | Not started (EP-side) |
-| 5 | Real ORT format support (running the transformer on that path) | Deferred |
+The work landed as a single PR rather than the staged sequence this section originally planned, so
+what follows is implementation status rather than a delivery order. Section numbers referenced
+elsewhere in this document are unaffected.
+
+| Area | Status |
+|---|---|
+| Both public keys, validation, example-EP metadata, autoep round-trip test | Implemented |
+| Transformer, `TransformGraph` placement, two-pass validate-then-convert (3.6) | Implemented |
+| Per-operand classification (3.4), sole-ownership, initializer, rank and cache-format checks (3.5) | Implemented |
+| CPU numerical parity, including one buffer aliased across both boundaries (6.2) | Implemented |
+| Post-partition unfused-Transpose diagnostic (4.2) | Implemented |
+| ORT format path: BNHS refused, explicit BNSH checked, boundaries detected (5) | Implemented |
+| Minimal-build support — `gqa_value_layout_boundaries.{h,cc}` in the minimal source lists (4.3) | Implemented, **never compiled** |
+| Device-copy traversal, on both sides of the `Transpose` | Implemented |
+| Subgraph GQA rejected for a BNHS request (4.1) | Implemented |
+| End-to-end device-EP saved-model regression test | Written, **never executed** |
+| Compiling EP advertises BNHS and implements the fusion | Not started (EP-side) |
+| Running the transformer on the ORT format path | Deferred (5) |
+
+Two rows above are claims this repository cannot currently substantiate, and they should be read as
+untested rather than done:
+
+- **No minimal build has been compiled.** The base-minimal fallbacks in
+  `gqa_value_layout_boundaries.cc` — the node-walking `ProducerOf` / `ConsumersOf`, and the gating in
+  `PartitionOrtFormatModel` that keeps them off the default load path — are reasoned from the guard
+  structure in `graph.h` and `onnxruntime_optimizer.cmake`, not from a build. A minimal-build CI leg is
+  the thing that would turn that into evidence.
+- **The device-EP test always skips.** `RejectsADeviceOptimizedBnhsModelWhenBnshIsRequested` needs a
+  non-CPU EP to make `MemcpyTransformer` insert real copies. It compiles and skips everywhere it has
+  been run, so the device-copy handling is covered only by hand-built fixtures, which assert the graph
+  shape rather than that ORT produces that shape.
 
 ## Open items
 
@@ -761,7 +786,7 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
    surfaces as a main-graph boundary. Erroring is the conservative reading of the option contract;
    if that shape turns out to be common, the tracing is the fix, and it would also open the door to
    converting such a boundary rather than refusing it.
-2. **A conversion becomes structurally invisible once an EP fuses it.** Detection is structural --
+2. **A conversion becomes structurally invisible once an EP fuses it.** Detection is structural —
    it looks for the `Transpose` pair — so after a provider absorbs them there is nothing left to
    find. That is correct for the diagnostic (nothing executes, nothing to report), but it means an
    explicit BNSH request could not be checked against a model serialized *after* fusion. The
@@ -771,8 +796,8 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
    of truth that can disagree with the graph.
 3. **4-bit packed V cache under BNHS.** Currently planned as a hard error (3.5). To support it we
    must define whether the packing axis follows `head_size` or becomes the (now-minor) `seq` axis,
-   and the declared shape has to encode that choice. Worth deciding before PR 2 lands, since it
-   turns a validation rule into a code path.
+   and the declared shape has to encode that choice. Worth deciding before the option becomes public,
+   since it turns a validation rule into a code path.
 4. **Heterogeneous sessions.** The session key is session-wide. If one EP fuses and another does
    not, the non-fusing EP's layers hit the 4.2 warning path with no per-node escape. Acceptable
    initially; a per-EP override key would be the escape hatch if this becomes real.
@@ -780,6 +805,23 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
    Supporting them means transforming each boundary once and rewiring every BNSH user, which matters
    only for models that share one Value cache across GQA nodes.
 6. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
-   in particular whether it tolerates non-adjacent Transposes, and whether it requires `perm` to be
-   literally `[0,1,3,2]` versus any last-two-dimension swap. The 4.1 placement guarantees adjacency
-   today, but pinning the contract protects against future transformer churn.
+   in particular whether it requires `perm` to be literally `[0,1,3,2]` versus any last-two-dimension
+   swap. This is no longer hypothetical for adjacency: `MemcpyTransformer` can place a device copy on
+   either side of either `Transpose`, so an EP whose matcher requires
+   `Transpose -> GQA -> Transpose` to be contiguous will silently decline to fuse a model saved from a
+   non-CPU session — the exact configuration BNHS exists for. The matcher has to see through
+   `MemcpyFromHost` / `MemcpyToHost` the way the detection in 3.4 does, or the copies have to be
+   removed before it runs.
+7. **Public API key naming.** `session.gqa_value_layout` and `gqa_preferred_value_layout` put one
+   contrib operator into permanent, unversioned public surface. Raised in review and still undecided.
+   A rename to `…_value_cache_layout` was tried and reverted, so the open question is not the wording
+   but the shape: the alternatives are a generalized `kv_cache_value_layout` that a future MHA or
+   PagedAttention could share, or an `experimental.` prefix that keeps the keys removable. Cheap to
+   change now, expensive after a release.
+8. **No early cross-check of the application's choice against the EPs.** `InferenceSession` holds
+   `environment_`, and `Environment::GetOrtEpDevices()` exposes the advertised preference, so a
+   BNHS request could be compared against the registered EPs at option-parse time. Declined so far
+   because the check is necessarily weaker than the one already there — it would match EPs by name,
+   built-in EPs registered without an `OrtEpDevice` have no metadata at all, and EP assignment is not
+   yet known — while the post-partition diagnostic reports what actually happened. Worth revisiting if
+   finding out sooner matters on large models.

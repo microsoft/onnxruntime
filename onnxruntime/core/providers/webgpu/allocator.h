@@ -12,18 +12,26 @@ namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
+struct CommandRecordingState;
 
 inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
                                         OrtDevice::MemType::DEFAULT,
                                         OrtDevice::VendorIds::NONE,
                                         0};
 
+// Shared allocation implementation for native and plugin builds. Session getters borrow the EP;
+// plugin Env getters retain a context and an independent recording instead. The returned objects
+// must remain alive throughout allocator use and tensor frees. Plugin ABI wrappers live in ep/allocator.h.
 class GpuBufferAllocator : public IAllocator {
  public:
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
+  // Read-only initializers skip cached-buffer clears and can be mapped at creation on UMA.
+  // should_submit_zero_initialize controls plain Alloc; a matching plugin AllocOnStream
+  // instead defers clears on the supplied Session stream.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+                     std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
                      std::function<bool()> should_submit_zero_initialize = {});
 
@@ -31,9 +39,16 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  bool IsStreamAware() const override { return true; }
+  void* AllocOnStream(size_t size, Stream* stream) override;
+#endif
+
  private:
+  void* Allocate(size_t size, bool submit_zero_initialize);
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
   // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
@@ -59,6 +74,7 @@ class WebGpuNoOpAllocator : public IAllocator {
 // allocation ever happens.
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
+                                   std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize = {});
 
