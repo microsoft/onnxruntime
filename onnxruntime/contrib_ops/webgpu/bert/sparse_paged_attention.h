@@ -165,8 +165,8 @@ class SparsePagedAttentionMainProgram final
 //
 // Inputs (all read):
 //   query            : (token_count, num_heads * head_size)                [T]
-//   auxiliary_key    : (batch_size, capacity, kv_heads_or_one, head_size)  [T_AUX]
-//   auxiliary_value  : same shape as auxiliary_key           [T_AUX] (absent when K=V)
+//   auxiliary_key    : (batch_size, capacity, kv_heads_or_one, head_size)  [T]
+//   auxiliary_value  : same shape as auxiliary_key               [T] (absent when K=V)
 //   token_meta       : (token_count, 4)                                    [S]
 //   selected_indices : (token_count, max_selected_entries)                 [S]
 //   selected_counts  : (token_count,)                                      [S]

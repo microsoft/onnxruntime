@@ -183,6 +183,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
+
 #### Inputs (2 - 7)
 
 <dl>
