@@ -787,6 +787,16 @@ static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
   }
 }
 
+template <typename FLOAT6_TYPE>
+Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                          const std::filesystem::path& tensor_proto_dir,
+                                          size_t expected_num_elements, FLOAT6_TYPE* p_data) {
+  ORT_RETURN_IF(p_data == nullptr, "nullptr == p_data");
+  std::vector<uint8_t> packed_data;
+  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, packed_data));
+  return UnpackFloat6Tensor(tensor, packed_data.data(), packed_data.size(), p_data, expected_num_elements);
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -860,16 +870,6 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 #if !defined(DISABLE_FLOAT4_TYPES)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 #endif
-
-template <typename FLOAT6_TYPE>
-Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                          const std::filesystem::path& tensor_proto_dir,
-                                          size_t expected_num_elements, FLOAT6_TYPE* p_data) {
-  ORT_RETURN_IF(p_data == nullptr, "nullptr == p_data");
-  std::vector<uint8_t> packed_data;
-  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, packed_data));
-  return UnpackFloat6Tensor(tensor, packed_data.data(), packed_data.size(), p_data, expected_num_elements);
-}
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -1856,10 +1856,10 @@ Status GetExtDataFromTensorProto(const Env& env,
     const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
     const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
     if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3) {
-      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+      ORT_RETURN_IF_ERROR(UnpackFloat6TensorWithExternalData(
           tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E2M3>()));
     } else {
-      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+      ORT_RETURN_IF_ERROR(UnpackFloat6TensorWithExternalData(
           tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E3M2>()));
     }
     if (prepacked_info != nullptr) {
@@ -2343,9 +2343,11 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
         *mutable_string_data->Add() = *f;
       }
     } else if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3) {
-      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E2M3>(), tensor.Shape().Size());
+      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E2M3>(),
+                                                          gsl::narrow_cast<size_t>(tensor.Shape().Size()));
     } else if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
-      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E3M2>(), tensor.Shape().Size());
+      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E3M2>(),
+                                                          gsl::narrow_cast<size_t>(tensor.Shape().Size()));
     } else {
       SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
     }

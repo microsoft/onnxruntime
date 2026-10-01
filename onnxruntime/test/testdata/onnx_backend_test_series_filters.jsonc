@@ -272,6 +272,18 @@
         "^test_mod_mixed_sign_int8_cuda$",
         "^test_mod_uint16_cuda$",
         "^test_mod_uint8_cuda$",
+        // Python backend cannot pass FLOAT8E4M3FN (260), FLOAT8E5M2 (262), INT2 (270), or UINT2 (271)
+        // through NumPy/MLDataType, even when the opset-28 CPU Q/DQ kernel supports the model.
+        ["opset28", "^test_dequantizelinear_e4m3fn_cpu$"],
+        ["opset28", "^test_dequantizelinear_e4m3fn_float16_cpu$"],
+        ["opset28", "^test_dequantizelinear_e4m3fn_zero_point_cpu$"],
+        ["opset28", "^test_dequantizelinear_e5m2_cpu$"],
+        ["opset28", "^test_dequantizelinear_int2_cpu$"],
+        ["opset28", "^test_dequantizelinear_uint2_cpu$"],
+        ["opset28", "^test_quantizelinear_e4m3fn_cpu$"],
+        ["opset28", "^test_quantizelinear_e5m2_cpu$"],
+        ["opset28", "^test_quantizelinear_int2_cpu$"],
+        ["opset28", "^test_quantizelinear_uint2_cpu$"],
         // TODO(#32372): Remove these CUDA skips when opset-28 Q/DQ kernels land there.
         ["opset28", "^test_dequantizelinear_cuda$"],
         ["opset28", "^test_dequantizelinear_axis_cuda$"],

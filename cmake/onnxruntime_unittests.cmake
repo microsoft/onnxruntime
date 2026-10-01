@@ -1495,6 +1495,11 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
+  if (MSVC)
+    set_property(SOURCE "${TEST_SRC_DIR}/providers/cpu/tensor/cast_op_test.cc"
+                 APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
+  endif()
+
   if (NOT onnxruntime_provider_test_target STREQUAL "onnxruntime_provider_test")
     # Keep the public build target responsible for both runtime artifacts without
     # making the executable depend on the module that imports its symbols.
