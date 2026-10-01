@@ -12,6 +12,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::contrib::linear_attention_gates_helper;
 using namespace onnxruntime::cuda;  // CudaKernel, OrtToCudaType
 
 #define REGISTER_KERNEL_TYPED(Op, T)                                   \

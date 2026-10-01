@@ -63,6 +63,8 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc = true);
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(uint64_t max_size);
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+    const ConfigOptions& config_options, uint64_t max_size);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 

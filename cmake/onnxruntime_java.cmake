@@ -189,14 +189,12 @@ if (WIN32)
         if (FALSE)
           add_custom_command(
             TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:Microsoft::DXIL>
                 $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
                 ${JAVA_PACKAGE_LIB_DIR}/
           )
         else()
           add_custom_command(
             TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
                 $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
                 ${JAVA_PACKAGE_LIB_DIR}/
           )
