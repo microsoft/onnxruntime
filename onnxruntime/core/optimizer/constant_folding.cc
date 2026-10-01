@@ -395,7 +395,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
-    return graph.IsSparseInitializer(name);
+    const auto* node_arg = graph.GetNodeArg(name);
+    return graph.IsSparseInitializer(name) && node_arg != nullptr &&
+           node_arg->TypeAsProto() != nullptr && node_arg->TypeAsProto()->has_sparse_tensor_type();
   };
 #endif
 

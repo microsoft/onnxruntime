@@ -411,7 +411,9 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
       [&session_state](const std::string& name) -> bool {
         int idx = -1;
         if (session_state.GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
-          return session_state.IsSparseInitializer(idx);
+          const auto* node_arg = session_state.GetGraphViewer().GetNodeArg(name);
+          return session_state.IsSparseInitializer(idx) && node_arg != nullptr &&
+                 node_arg->TypeAsProto() != nullptr && node_arg->TypeAsProto()->has_sparse_tensor_type();
         }
         return false;
       },
