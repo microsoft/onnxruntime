@@ -197,6 +197,12 @@ SessionOptions CountingOptions() {
   return options;
 }
 
+InlinedVector<int> CudaExperts(KernelPilotMoeExpertState& state, const OpKernel* kernel) {
+  gsl::span<const int> experts;
+  ORT_THROW_IF_ERROR(state.GetKernelPilot(kernel)->GetMoeCudaExperts(experts));
+  return InlinedVector<int>(experts.begin(), experts.end());
+}
+
 // Groups the flat ExpertStat list by kernel, ordered by expert_id, for tests that don't
 // care about graph identity and just want each registered node's counters.
 std::map<const OpKernel*, InlinedVector<double>> CountersByKernel(const KernelPilotMoeExpertState& state) {
@@ -654,6 +660,92 @@ TEST(MoeExpertCountingTest, LoadsInitialStateFile) {
       session.GetSessionState().GetKernel(0), counters));
   EXPECT_EQ(counters, (InlinedVector<double>{3.25, 0, 0.1, 0}));
 }
+
+#if defined(USE_CUDA)
+TEST(MoeExpertCountingTest, StaticCpuOffloadDistributesZeroCountersAcrossNodes) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto model = MakeCountingModel(false, true);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(0)),
+            (InlinedVector<int>{0, 1, 2}));
+  EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(1)),
+            (InlinedVector<int>{0, 1}));
+}
+
+TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  const char* path = "moe_static_cpu_offload_initial_state.txt";
+  auto cleanup = gsl::finally([path]() { std::remove(path); });
+  {
+    std::ofstream file(path);
+    file << "moe_expert_state 1\n"
+            "\"main\" 0 MoE 3 10\n"
+            "\"main\" 1 MoE 2 9\n"
+            "\"main\" 1 MoE 0 8\n"
+            "\"main\" 0 MoE 1 7\n"
+            "\"main\" 1 MoE 3 6\n";
+    ASSERT_TRUE(file.good());
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "3"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile, path));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto model = MakeCountingModel(false, true);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(0)),
+            (InlinedVector<int>{1, 3}));
+  EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(1)),
+            (InlinedVector<int>{0, 2, 3}));
+}
+
+TEST(MoeExpertCountingTest, StaticCpuOffloadRejectsCountAboveEligibleExperts) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE CPU offload is not supported by the CUDA plugin execution provider.";
+  }
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "9"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto model = MakeCountingModel(false, true);
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  const auto status = session.Initialize();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("contain only 8 experts"), std::string::npos);
+}
+#endif
 
 TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
   for (const auto& entry : {

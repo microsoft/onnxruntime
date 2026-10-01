@@ -42,20 +42,8 @@ void LogSwigluFusionRemapOnce() {
       (*KernelDefBuilder::Create()).MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), MoE<T>);
 
 REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MoE, kMSDomain, 1, MLFloat16, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .MayInplace(0, 0)
-        .InputMemoryType(OrtMemTypeCPUInput, 2)
-        .InputMemoryType(OrtMemTypeCPUInput, 3)
-        .InputMemoryType(OrtMemTypeCPUInput, 4)
-        .InputMemoryType(OrtMemTypeCPUInput, 5)
-        .InputMemoryType(OrtMemTypeCPUInput, 6)
-        .InputMemoryType(OrtMemTypeCPUInput, 7)
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
-    MoE<MLFloat16>);
 
 template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
