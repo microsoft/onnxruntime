@@ -54,10 +54,8 @@ static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F
                                             wgpu::SubgroupMatrixComponentType::I32}),
               "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
 
-// Vendor-agnostic subgroup matrix config: {componentType, resultComponentType, M, N, K,
-// subgroupSize, needsPrepack}. Any GPU reporting a matching config from
-// wgpu::AdapterPropertiesSubgroupMatrixConfigs and supporting the required subgroup size is supported.
-struct SupportedSubgroupMatrixConfig {
+// A subgroup-matrix configuration implemented by an operation, including any operation-specific metadata.
+struct SubgroupMatrixConfig {
   wgpu::SubgroupMatrixComponentType componentType;
   wgpu::SubgroupMatrixComponentType resultComponentType;
   uint32_t M;
@@ -72,13 +70,6 @@ struct SupportedSubgroupMatrixConfig {
   }
 };
 
-struct SubgroupMatrixConfigPreference {
-  uint32_t M;
-  uint32_t N;
-  uint32_t K;
-  uint32_t subgroupSize;
-};
-
 // A fixed-size adapter already guarantees the required size. An adapter exposing a range needs
 // subgroup-size control so the kernel can select its required size instead of relying on the
 // implementation's choice.
@@ -88,38 +79,28 @@ constexpr bool IsSubgroupSizeSupported(uint32_t adapter_min_size, uint32_t adapt
          (adapter_min_size == adapter_max_size || has_subgroup_size_control);
 }
 
-// Subgroup matrix configs the subgroup-matrix kernels are implemented for.
-inline constexpr std::array<SupportedSubgroupMatrixConfig, 4> supported_subgroup_matrix_configs = {{
-    // 16x16x16 config with 128x128 tiles (AMD RDNA 3+ and NVIDIA Blackwell)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, true},
-    // 8x16x16 config (Intel Xe2/Xe3)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 32, true},
-    // 8x8x8 config (Apple M-series, etc.)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, false},
-    {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, false},
-}};
-
 // Selects a subgroup-matrix configuration supported by both the operation and the device.
 //
-// `is_fp16` restricts candidates to F16 configs when true and F32 configs when false.
-// `preferences` lists the matrix shape and subgroup size combinations implemented by the
-// operation, in performance-preference order. A candidate must also be reported by the adapter
-// and have a usable subgroup size. Fixed-size adapters need no subgroup-size-control feature;
+// `preferences` contains the complete configurations implemented by the operation, in
+// performance-preference order. The first configuration also reported by the adapter and with a
+// usable subgroup size is returned. Fixed-size adapters need no subgroup-size-control feature;
 // adapters reporting a size range must support subgroup-size control.
 //
-// Returns the selected index in `supported_subgroup_matrix_configs`, or `std::nullopt` when no
-// configuration satisfies all requirements.
-std::optional<int32_t> SelectSubgroupMatrixConfig(
+// Returns the selected configuration by value, or `std::nullopt` when no configuration satisfies
+// all requirements.
+std::optional<SubgroupMatrixConfig> SelectSubgroupMatrixConfig(
     const ComputeContextBase& context,
-    bool is_fp16,
-    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+    std::initializer_list<SubgroupMatrixConfig> preferences);
 
 namespace detail {
 
-// Separated from device capability discovery for focused preference-order testing.
-std::optional<int32_t> SelectSubgroupMatrixConfigFromCandidates(
-    gsl::span<const int32_t> candidate_indices,
-    std::initializer_list<SubgroupMatrixConfigPreference> preferences);
+// Separated from ComputeContext feature discovery for focused preference-order testing.
+std::optional<SubgroupMatrixConfig> SelectSubgroupMatrixConfigFromAdapterConfigs(
+    gsl::span<const wgpu::SubgroupMatrixConfig> adapter_configs,
+    uint32_t adapter_min_subgroup_size,
+    uint32_t adapter_max_subgroup_size,
+    bool has_subgroup_size_control,
+    std::initializer_list<SubgroupMatrixConfig> preferences);
 
 }  // namespace detail
 
