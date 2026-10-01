@@ -235,7 +235,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
           params.activations, params.expert_row_ends, reinterpret_cast<const WeightType*>(params.packed_weights), params.block_scales, nullptr, nullptr, params.output, nullptr, nullptr, ActivationType::Identity, params.num_rows, params.num_columns, params.reduction_size, params.num_experts, params.block_size, true, false, params.stream, {}, {}};
       inputs.gemm_config = llm::cutlass_extensions::CutlassGemmConfig(
           llm::cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
-          llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
+          llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
       runner.moeGemm(inputs, {});
     };
     const auto launch = [&]() {
@@ -247,7 +247,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
             params.activations, params.expert_row_ends, dense_weights->Data<half>(), nullptr, nullptr, nullptr, params.output, nullptr, nullptr, ActivationType::Identity, params.num_rows, params.num_columns, params.reduction_size, params.num_experts, 0, false, false, params.stream, {}, {}};
         inputs.gemm_config = llm::cutlass_extensions::CutlassGemmConfig(
             tile_config,
-            llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 3);
+            llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
         dense_runner->moeGemm(inputs, {});
       } else if (weight_bits == 2) {
         RunInt2GroupedGemm(params);
