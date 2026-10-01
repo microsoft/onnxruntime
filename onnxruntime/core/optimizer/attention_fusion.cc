@@ -144,7 +144,7 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  return SafeMultiply(num_heads, head_size, hidden_size) &&
+  return SafeMultiply(num_heads, head_size, hidden_size) && hidden_size > 0 &&
          hidden_size <= std::numeric_limits<int64_t>::max() / 3;
 }
 
