@@ -2028,6 +2028,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    bool BIsTransposed = false;       /**< unpacked fp16 B is stored as N x K instead of K x N */
 };
 
 /**
@@ -2765,7 +2766,7 @@ MlasComputeFP16Erf(
  * @param algo    GELU algorithm variant (exact erf or tanh approximation).
  */
 void
-MLASCALL 
+MLASCALL
 MlasComputeFP16Gelu(
     const MLAS_FP16* input,
     MLAS_FP16* output,
