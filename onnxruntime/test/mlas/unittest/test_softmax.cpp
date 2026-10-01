@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <limits>
 
 #include "test_util.h"
@@ -106,10 +107,20 @@ class MlasComputeExpTest : public MlasTestBase {
             << " @ " << in << ", got: " << out << ", expecting: " << ref16;
         continue;
       }
-      float diff = std::fabs(out - ref16);
-      ASSERT_TRUE(diff <= AbsoluteTolerance || diff <= std::fabs(ref16) * RelativeTolerance)
+      // A zero or subnormal reference sits far below the absolute tolerance used for
+      // normal results, so that tolerance would accept the fp16 min-normal
+      // (6.103515625e-5) in place of zero and hide a lower-clamp regression. Hold those
+      // references to a single subnormal step instead, and keep the normal tolerances
+      // for everything else.
+      constexpr float MinimumSubnormal = 5.9604645e-8f;
+      constexpr float MinimumNormal = 6.103515625e-5f;
+      const bool tiny = std::fabs(ref16) < MinimumNormal;
+      const float tolerance =
+          tiny ? MinimumSubnormal
+               : std::max(AbsoluteTolerance, std::fabs(ref16) * RelativeTolerance);
+      ASSERT_TRUE(std::fabs(out - ref16) <= tolerance)
           << " @ " << in << " (lane " << pos << " of " << N << "), got: " << out
-          << ", expecting: " << ref16;
+          << ", expecting: " << ref16 << ", tolerance: " << tolerance;
     }
   }
 
@@ -166,13 +177,17 @@ class MlasComputeExpTest : public MlasTestBase {
     }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    // fp16 min-normal, min-subnormal, the exp() overflow boundary (exp(11.09) is
-    // the largest representable result) and the non-finite inputs, each placed at
-    // every lane offset of an 8-wide vector, at the first scalar-tail lane, and at
-    // the last lane of the buffer.
+    // fp16 min-normal and min-subnormal, both inputs adjacent to the exp() overflow
+    // boundary, and the non-finite inputs -- each placed at every lane offset of an
+    // 8-wide vector, at the first scalar-tail lane, and at the last lane of the buffer.
+    //
+    // The boundary is a pair, not a single value: 11.0859375 is the largest fp16 input
+    // whose exponential is still finite (65248), and the next representable input up,
+    // 11.09375, already overflows to fp16 infinity. Testing only one side would let a
+    // kernel that overflows one step early, or one step late, pass.
     constexpr float kExtremes[] = {
         0.0f, -0.0f, 5.9604645e-8f, -5.9604645e-8f, 6.103515625e-5f, -6.103515625e-5f,
-        11.0f, 11.09f, 11.2f, -17.0f, -24.0f, 65504.0f, -65504.0f,
+        11.0f, 11.0859375f, 11.09375f, 11.2f, -17.0f, -24.0f, 65504.0f, -65504.0f,
         std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::quiet_NaN()};
     for (size_t N : {size_t{1}, size_t{7}, size_t{8}, size_t{9}, size_t{16}, size_t{17}}) {
