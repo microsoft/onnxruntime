@@ -15,7 +15,7 @@ activation to FP8 E4M3 internally (W8A8 numerics).
 Y[m, n] = sum_k A[m, k] * (fp8_e4m3(B[n, k]) * b_scale[n, k / block_size]) + bias[n]
 ```
 
-The path is architecture independent: it dequantizes the weight to the
+The default path is architecture independent: it dequantizes the weight to the
 activation type and runs a standard cuBLAS GEMM (or a fused GEMV for small `M`),
 so it does not rely on native FP8 block-scaled tensor cores and works on any
 CUDA architecture (SM80+).
@@ -243,6 +243,56 @@ full FP16/BF16 precision (weight-only W8A16).
 
 ---
 
+### 6.1 Opt-in SM90 DeepGEMM W8A8 path
+
+Set `ORT_FP8_MATMUL_DEEPGEMM=1` before creating the session to enable a native
+FP8 dense GEMM path on Hopper (SM90). It is off by default and requires a build
+with DeepGEMM enabled (non-Windows, nonminimal CUDA with contrib ops and an
+SM90-or-later build target).
+
+The path requires all of the following:
+
+- The optional scalar `a_scale` is present.
+- `block_size=128`, `K` is a positive multiple of 128, and `N` is a multiple of 64.
+- `M <= 128`, `N >= 2048` and the FP8 weight occupies at least 8 MiB. Smaller weights and
+  larger M retain the fallback based on measured complete-operator latency.
+- The existing small-M GEMV path was not selected. Its MMA limit currently
+  defaults to 32 and can be changed with `ORT_FP8_GEMV_MAX_M`.
+- At least 64 columns of FP32 output scratch fit within
+  `ORT_FP8_DEQUANT_SCRATCH_MIB` (default 256 MiB).
+
+Other calls retain the existing GEMV or dequantize-plus-cuBLAS path. In
+particular, omitting `a_scale` preserves weight-only FP16/BF16 activations.
+
+The SM90 `1D1D` kernel consumes the existing FP8 weight bytes and independent
+FP32 scales per row and 128 K elements. A helper quantizes activations using
+the supplied scalar, and scale helpers prepare TMA-compatible layouts on every
+call, including when scale inputs change. No weight requantization or persistent
+weight mirror is needed. FP32 output scratch is zeroed before each GEMM because
+the upstream kernel uses accumulating stores, then converted to the activation
+type. Bias is added after this conversion, matching the existing output rounding
+order. Output scratch is tiled over N using the scratch limit; activation and
+scale scratch are additional allocations.
+
+This path changes intermediate rounding: scales are applied to FP32 K-block
+partial sums instead of rounding dequantized operands to FP16/BF16 first.
+Results are therefore not guaranteed to be bit-identical to the default path.
+Validate model accuracy and complete operator latency before enabling it in a
+deployment. The opt-in does not imply a speedup for every shape.
+
+Run the focused integration tests against the built CUDA Python package:
+
+```bash
+ORT_TEST_FP8_DEEPGEMM=1 python onnxruntime/test/python/contrib_ops/test_matmul_fp8_deepgemm.py
+```
+
+The tests cover FP16/BF16, independent per-row/per-K-block scales, bias, changing
+scale inputs, zero activation scale, scratch tiling, fallbacks, and CUDA graph
+replay. For dispatch evidence, set `onnxruntime.set_default_logger_severity(0)` and look for
+`MatMulBlockQuantizedFp8Weight: using SM90 DeepGEMM`, or capture a CUDA trace
+and verify `sm90_fp8_gemm_1d1d_impl` launches. Compare complete CUDA graph replay
+latency with `ORT_FP8_MATMUL_DEEPGEMM=0` and `1`, including helper kernels.
+
 ## 7. Testing and Benchmarking
 
 The commands below use two environment variables so they can be copied without
@@ -278,6 +328,11 @@ cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
 cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 \
   python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
   --op fp8 --activation-dtype bf16 --m 16 --n 4096 --k 4096 --warmup 50 --repeat 200 --w8a8
+
+# Opt-in SM90 prefill, complete CUDA graph replay latency (compare with the flag set to 0)
+cd /tmp && PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 ORT_FP8_MATMUL_DEEPGEMM=1 \
+  python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
+  --op fp8 --activation-dtype bf16 --m 128 --n 4096 --k 4096 --w8a8 --bias --cuda-graph
 ```
 
 After rebuilding `libonnxruntime_providers_cuda.so`, sync the provider into the

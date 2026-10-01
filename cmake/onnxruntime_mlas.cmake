@@ -12,6 +12,15 @@ set(mlas_private_compile_definitions)
 if(onnxruntime_BUILD_UNIT_TESTS)
   list(APPEND mlas_private_compile_definitions MLAS_ENABLE_TEST_HOOKS)
 endif()
+
+# Adds compile definitions to mlas_private_compile_definitions from any scope, including from within nested function
+# calls. set(... PARENT_SCOPE) propagates a value exactly one scope up, so it silently drops the definition when the
+# caller is itself a function (e.g. setup_arm_neon_nchwc() called from setup_mlas_source_for_windows()). Directory
+# properties are not affected by function scopes, so accumulate the definitions in one and merge them back into
+# mlas_private_compile_definitions before it is consumed.
+function(mlas_add_private_compile_definitions)
+  set_property(DIRECTORY APPEND PROPERTY mlas_private_compile_definitions_from_functions ${ARGN})
+endfunction()
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -193,8 +202,7 @@ function(setup_mlas_source_for_windows)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/linear_attention_sve_asm.S)
-        list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
-        set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+        mlas_add_private_compile_definitions(MLAS_USE_SVE)
       endif()
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -420,8 +428,7 @@ function (setup_arm_neon_nchwc)
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
      )
   endif()
-  list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
-  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+  mlas_add_private_compile_definitions(MLAS_USE_ARM_NEON_NCHWC)
 endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -655,20 +662,30 @@ else()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
 
+        if ((NOT APPLE) OR (CMAKE_SYSTEM_NAME STREQUAL "Darwin"))
+          list(APPEND mlas_platform_srcs
+            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
+            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+          )
+          set_source_files_properties(
+            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
+            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 "
+          )
+        endif()
+
         if (NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
             ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
             ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
-            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/pooling_fp16.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
-            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
@@ -692,11 +709,9 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
@@ -832,7 +847,7 @@ else()
         set(mlas_platform_srcs_avx2
           ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
@@ -1152,7 +1167,9 @@ else()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/conv_activation_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/linear_attention_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -1166,7 +1183,9 @@ else()
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/conv_activation_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/qnbitgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/linear_attention_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 
@@ -1207,6 +1226,12 @@ else()
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
+
+# Merge in the definitions that were added from within functions.
+get_property(mlas_private_compile_definitions_from_functions
+             DIRECTORY PROPERTY mlas_private_compile_definitions_from_functions)
+list(APPEND mlas_private_compile_definitions ${mlas_private_compile_definitions_from_functions})
+list(REMOVE_DUPLICATES mlas_private_compile_definitions)
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
