@@ -21,7 +21,7 @@ parameters:
   type: string
   default: ''
 
-- name: CudaVersion
+- name: cuda_version
   type: string
   default: '13.0'
   values:
@@ -77,7 +77,7 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        ${{ if eq(parameters.cuda_version, '13.0') }}:
           value: ${{ variables.win_trt_folder_cuda13 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
@@ -85,7 +85,7 @@ stages:
         ${{ if eq(parameters.use_tensorrt, false) }}:
           value: ''
       - name: build_wheel_flag
-        value: '--cuda_version=${{ parameters.CudaVersion }}'
+        value: '--cuda_version=${{ parameters.cuda_version }}'
       steps:
       - checkout: self
         clean: true
@@ -98,7 +98,7 @@ stages:
 
       - template: ../templates/jobs/download_win_gpu_library.yml
         parameters:
-          CudaVersion: ${{ parameters.CudaVersion }}
+          CudaVersion: ${{ parameters.cuda_version }}
           DownloadCUDA: true
           DownloadTRT: ${{ parameters.use_tensorrt }}
 
@@ -262,7 +262,7 @@ stages:
 
         - template: ../templates/jobs/download_win_gpu_library.yml
           parameters:
-            CudaVersion: ${{ parameters.CudaVersion }}
+            CudaVersion: ${{ parameters.cuda_version }}
             DownloadCUDA: true
             DownloadTRT: ${{ parameters.use_tensorrt }}
 

@@ -6,6 +6,11 @@ parameters:
 - name: machine_pool
   type: string
 
+- name: test_machine_pool
+  type: string
+  default: ''
+  displayName: 'GPU pool that tests the wheel on every Python ABI. No GPU test stage is added if it is empty.'
+
 - name: extra_build_arg
   type: string
   default: ''
@@ -156,3 +161,115 @@ stages:
             mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
           displayName: 'Move build intermediates'
+
+- ${{ if ne(parameters.test_machine_pool, '') }}:
+  - stage: ${{ parameters.stage_name }}_Tests
+    dependsOn: ${{ parameters.stage_name }}
+    jobs:
+    - job: ${{ parameters.stage_name }}_Tests
+      timeoutInMinutes: 240
+      strategy:
+        matrix:
+          cp311:
+            PythonAbi: '311'
+          cp312:
+            PythonAbi: '312'
+          cp313:
+            PythonAbi: '313'
+          cp313t:
+            PythonAbi: '313t'
+          cp314:
+            PythonAbi: '314'
+          cp314t:
+            PythonAbi: '314t'
+      workspace:
+        clean: all
+      pool:
+        name: ${{ parameters.test_machine_pool }}
+        os: linux
+      templateContext:
+        inputs:
+        - input: pipelineArtifact
+          artifactName: ${{ parameters.wheel_artifact_name }}
+          targetPath: $(Build.BinariesDirectory)/whl
+      variables:
+        - template: ../templates/common-variables.yml
+        - name: trt_version
+          ${{ if eq(parameters.arch, 'aarch64') }}:
+            value: ${{ variables.aarch64_trt_version }}
+          ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+            value: ${{ variables.linux_trt_version_cuda13 }}
+        - name: trt_download_url
+          ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+            value: ${{ variables.aarch64_trt_download_url_cuda13 }}
+          ${{ else }}:
+            value: ''
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: ../templates/setup-feeds-and-python-steps.yml
+          parameters:
+            architecture: ${{ parameters.arch }}
+
+        - template: ../templates/get-docker-image-steps.yml
+          parameters:
+            Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+            Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+            DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
+            Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+
+        # Run from a copy outside the source tree so the installed wheel, not the sources, is imported.
+        - bash: |
+            set -euo pipefail
+            docker run --rm -i --gpus all \
+              --volume "$(Build.BinariesDirectory)/whl:/wheels:ro" \
+              --volume "$(Build.SourcesDirectory):/onnxruntime_src:ro" \
+              -e PIP_INDEX_URL \
+              -e PYTHON_ABI="$(PythonAbi)" \
+              -w /tmp \
+              onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} \
+              /bin/bash -s <<'SCRIPT'
+            set -euo pipefail
+            wheels=(/wheels/*.whl)
+            if [ "${#wheels[@]}" -ne 1 ] || [ ! -f "${wheels[0]}" ]; then
+              echo "Expected exactly one unified wheel"
+              exit 1
+            fi
+            python_tag=${PYTHON_ABI%t}
+            "/opt/python/cp${python_tag}-cp${PYTHON_ABI}/bin/python3.${python_tag:1}" -m venv /tmp/ort_venv
+            python=/tmp/ort_venv/bin/python
+            "$python" -m pip install --disable-pip-version-check "${wheels[0]}"
+
+            mkdir -p /tmp/ort_test/testdata
+            cp /onnxruntime_src/onnxruntime/test/testdata/mul_1.onnx /tmp/ort_test/testdata/
+            cd /tmp/ort_test
+            "$python" - <<'PY'
+            import sysconfig
+
+            import numpy as np
+            import onnxruntime as ort
+            from onnxruntime.capi import onnxruntime_pybind11_state as binding
+
+            print(binding.__file__)
+            assert binding.__file__.endswith(sysconfig.get_config_var("EXT_SUFFIX"))
+            ort.print_debug_info()
+            cuda = ort.InferenceSession("testdata/mul_1.onnx", providers=["CUDAExecutionProvider"])
+            assert cuda.get_providers()[0] == "CUDAExecutionProvider", cuda.get_providers()
+            cpu = ort.InferenceSession("testdata/mul_1.onnx", providers=["CPUExecutionProvider"])
+            feeds = {"X": np.arange(6, dtype=np.float32).reshape(3, 2)}
+            np.testing.assert_allclose(cuda.run(None, feeds)[0], cpu.run(None, feeds)[0])
+            PY
+
+            if [[ "$PYTHON_ABI" == *t ]]; then
+              echo "ONNX does not publish free-threaded wheels; skipping the ONNX backend tests."
+              exit 0
+            fi
+            requirements=/onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
+            "$python" -m pip install --disable-pip-version-check "$(grep -E '^onnx==' "$requirements")"
+            cp /onnxruntime_src/onnxruntime/test/python/onnx_backend_test_series.py .
+            cp /onnxruntime_src/onnxruntime/test/testdata/onnx_backend_test_series_*.jsonc testdata/
+            "$python" onnx_backend_test_series.py
+            SCRIPT
+          displayName: 'Test the unified wheel on Python ABI $(PythonAbi)'
