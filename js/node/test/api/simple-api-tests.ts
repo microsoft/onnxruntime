@@ -90,7 +90,7 @@ const MODEL_TEST_TYPES_CASES: Array<{
 describe('API Tests - simple API tests', () => {
   it('recognizes every WebGPU weightLoadAcceleration value', async () => {
     const values: ReadonlyArray<NonNullable<InferenceSession.WebGpuExecutionProviderOption['weightLoadAcceleration']>> =
-      ['off', 'preferred', 'required', 'preferred-pipelined', 'required-pipelined'];
+      ['off', 'preferred', 'required'];
     const model = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
 
     for (const weightLoadAcceleration of values) {
@@ -100,7 +100,7 @@ describe('API Tests - simple API tests', () => {
         });
         await session.release();
       } catch (error) {
-        // Builds without WebGPU/DirectStorage and machines without compatible
+        // Builds without WebGPU/D3D12 file loading and machines without compatible
         // hardware can reject the provider after parsing. The regression here
         // is specifically that Node must recognize and forward the option.
         assert.doesNotMatch(String(error), /WebGPU EP has an unrecognized option: 'weightLoadAcceleration'/);

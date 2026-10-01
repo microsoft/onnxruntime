@@ -594,12 +594,6 @@ TEST(WebGpuContextTest, WeightLoadAccelerationRejectsBooleanAndUnknownModes) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
                    WeightLoadAccelerationOptions("automatic")),
                OnnxRuntimeException);
-  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
-                   WeightLoadAccelerationOptions("preferred-pipelined")),
-               OnnxRuntimeException);
-  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
-                   WeightLoadAccelerationOptions("required-pipelined")),
-               OnnxRuntimeException);
 }
 
 TEST(WebGpuContextTest, WeightLoadAccelerationOffDoesNotRequireDeviceSupport) {

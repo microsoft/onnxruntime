@@ -285,16 +285,14 @@ export declare namespace InferenceSession {
     /**
      * Select accelerated external-weight loading for the native Windows WebGPU execution provider.
      * - 'off': Disable accelerated weight loading.
-     * - 'preferred': Use DirectStorage when available and otherwise use the ordinary loading path.
-     * - 'required': Require DirectStorage support.
-     * - 'preferred-pipelined': Prefer DirectStorage and overlap weight loading with Dawn device initialization.
-     * - 'required-pipelined': Require DirectStorage with pipelined device initialization.
+     * - 'preferred': Use D3D12 accelerated loading when available and otherwise use the ordinary loading path.
+     * - 'required': Require D3D12 accelerated loading support.
      *
-     * This setting is available only in ONNX Runtime (Node.js binding) builds with DirectStorage support.
+     * This setting is available only in ONNX Runtime (Node.js binding) builds with D3D12 file loading support.
      *
      * @default 'off'
      */
-    weightLoadAcceleration?: 'off' | 'preferred' | 'required' | 'preferred-pipelined' | 'required-pipelined';
+    weightLoadAcceleration?: 'off' | 'preferred' | 'required';
 
     /**
      * Specify the cache mode for storage buffers.
