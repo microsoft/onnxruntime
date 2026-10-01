@@ -3,7 +3,9 @@
 
 #include "ep.h"
 
+#include "allocator.h"
 #include "factory.h"
+#include "sync_stream.h"
 
 #include "core/framework/run_options.h"
 #include "core/framework/kernel_registry.h"
@@ -37,7 +39,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
-  CreateSyncStreamForDevice = nullptr;          // Not stream aware
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
@@ -298,16 +300,30 @@ OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignme
   return ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy();
 }
 
+OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
+    OrtEp* this_ptr, const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
+  ORT_ENFORCE(Api().ep.MemoryDevice_GetDeviceType(memory_device) == OrtMemoryInfoDeviceType_GPU &&
+                  static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) == ep.GetDeviceId(),
+              "Unsupported memory device for WebGPU Session stream.");
+  *stream = CreateWebGpuSyncStream(ep);
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtMemoryInfo* memory_info,
                                                 _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
+  // Wrap the existing Session allocator, unlike Factory::CreateAllocatorImpl's Env path.
+  // The wrapper retains the allocator implementation, not the EP borrowed by its getters.
   if (ort_memory_info.GetAllocatorType() == OrtReadOnlyAllocator) {
-    *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, ep->config_.initializer_allocator);
+    *allocator = CreateWebGpuSessionAllocator(ep->config_.initializer_allocator);
   } else {
-    *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, ep->config_.device_allocator);
+    *allocator = CreateWebGpuSessionAllocator(ep->config_.device_allocator);
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

@@ -4,12 +4,15 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/math/gemm_auto_tuner.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-bool SmallNGemvEnabledFromEnvironment();
+// Resolves the fp16/bf16 small-M kernel policy from ORT_ENABLE_SMALL_N_GEMV, the session config
+// ep.cuda.enable_gemm_auto_tune and ORT_CUDA_GEMM_AUTO_TUNE. The default is cuBLAS.
+GemmDispatchPolicy GetGemmDispatchPolicy(const OpKernelInfo& info);
 
 template <typename T>
 class MatMul final : public CudaKernel {
@@ -23,18 +26,24 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
-        small_n_gemv_enabled_{SmallNGemvEnabledFromEnvironment()} {}
+        gemm_policy_{GetGemmDispatchPolicy(info)} {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
  private:
+  // Picks between cuBLAS (`run_cublas`) and the small-N GEMV for an eligible single GEMM.
+  template <typename RunCublas>
+  Status SelectSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c, int m, int n, int k,
+                          const RunCublas& run_cublas, bool& use_small_n) const;
+  Status RunSmallNGemv(OpKernelContext* ctx, const void* a, const void* b, void* c, int m, int n, int k) const;
+
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
-  const bool small_n_gemv_enabled_;
+  const GemmDispatchPolicy gemm_policy_;
 };
 
 template <typename T>
