@@ -877,9 +877,8 @@ struct ProviderHostImpl : ProviderHost {
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
                                                  OrtReadNamedBufferFunc* read_func, void** read_state,
-                                                 size_t* read_max_data_size,
                                                  OrtWriteNamedBufferFunc* write_func, void** write_state) override {
-    p->GetEpContextDataCallbacks(read_func, read_state, read_max_data_size, write_func, write_state);
+    p->GetEpContextDataCallbacks(read_func, read_state, write_func, write_state);
   }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }

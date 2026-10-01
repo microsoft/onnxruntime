@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -42,7 +41,6 @@ struct OrtEpContextConfig {
   void* write_state = nullptr;
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  OrtEpContextDataReadOptions read_options;
 };
 
 using namespace onnxruntime;
@@ -105,7 +103,6 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
 
   ep_context_config->read_func = session_options->value.ep_context_data_read_func;
   ep_context_config->read_state = session_options->value.ep_context_data_read_state;
-  ep_context_config->read_options.max_data_size = session_options->value.ep_context_data_read_max_size;
   *config = ep_context_config.release();
   return nullptr;
   API_IMPL_END
@@ -116,20 +113,13 @@ ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config
 }
 
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
-                    _Outptr_result_maybenull_ OrtEpContextDataReadOptions** read_options) {
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
   ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
   ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
-  ORT_API_RETURN_IF(read_options == nullptr, ORT_INVALID_ARGUMENT, "Output read_options is NULL");
-
-  auto options = config->read_func != nullptr
-                     ? std::make_unique<OrtEpContextDataReadOptions>(config->read_options)
-                     : nullptr;
   *read_func = config->read_func;
   *state = config->read_func != nullptr ? config->read_state : nullptr;
-  *read_options = options.release();
   return nullptr;
   API_IMPL_END
 }

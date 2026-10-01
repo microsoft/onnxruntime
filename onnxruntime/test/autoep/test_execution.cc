@@ -35,12 +35,8 @@ namespace test {
 
 namespace {
 
-constexpr size_t kEpContextTestMaxDataSize = size_t{1} << 30;
-
 void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
-  Ort::EpContextDataReadOptions read_options;
-  read_options.SetMaxDataSize(kEpContextTestMaxDataSize);
-  ASSERT_NO_THROW(session_options.SetEpContextDataReadFunc(read_func, state, read_options));
+  ASSERT_NO_THROW(session_options.SetEpContextDataReadFunc(read_func, state));
 }
 
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,

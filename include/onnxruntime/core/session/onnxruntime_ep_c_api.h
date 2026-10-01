@@ -2126,26 +2126,22 @@ struct OrtEpApi {
    */
   ORT_CLASS_RELEASE(EpContextConfig);
 
-  /** \brief Get the EPContext data read callback, application state, and an owned copy of its read options.
+  /** \brief Get the EPContext data read callback and application state.
    *
-   * If no callback is configured, all three outputs are set to NULL. On failure, all outputs are unchanged.
+   * If no callback is configured, both outputs are set to NULL. On failure, both outputs are unchanged.
    * The returned state is application-owned and remains
    * subject to the lifetime and synchronization requirements documented by SessionOptionsSetEpContextDataReadFunc.
    *
    * \param[in] config EPContext configuration handle.
    * \param[out] read_func Configured callback, or NULL.
    * \param[out] state Configured application state, or NULL.
-   * \param[out] read_options Newly allocated copy of the snapshotted read options, or NULL when no callback is
-   *                         configured. Release with OrtApi::ReleaseEpContextDataReadOptions. The copy remains valid
-   *                         after releasing `config`; modifying it does not change the configuration.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.31.
    */
   ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
-                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
-                  _Outptr_result_maybenull_ OrtEpContextDataReadOptions** read_options);
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
 
   /** \brief Get the EPContext data write callback and application state.
    *
@@ -2776,8 +2772,8 @@ struct OrtEp {
    *
    * If the EP advertises READ or WRITE support and the corresponding callback is registered, the EP must use the
    * callback or return an error. It must not fall back to another method such as filesystem I/O. Callback errors
-   * must be returned to ORT. The EP must enforce the read options before consuming a returned buffer; ORT does not
-   * invoke the callback or validate its result.
+   * must be returned to ORT. The EP is responsible for validating the returned data and imposing deserialization
+   * limits before consuming it; ORT does not invoke the callback or validate its result.
    *
    * These flags cover provider-owned EPContext artifacts only. They do not describe temporary files that an EP's
    * backend or driver may create internally.

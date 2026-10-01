@@ -322,7 +322,6 @@ ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(EpContextConfig);
-ORT_RUNTIME_CLASS(EpContextDataReadOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -7657,70 +7656,20 @@ struct OrtApi {
    * callback and its state. If an external EPContext node is assigned to an EP that does not advertise READ support,
    * session initialization fails before that EP's Compile() call.
    *
-   * ORT copies the read options but does not invoke the callback or validate its returned payload. The application
-   * and EP enforce the configured size limit; it is not an ORT-enforced allocation or deserialization guarantee.
+   * ORT does not invoke the callback or validate its returned payload. The application is responsible for imposing
+   * allocation limits in its callback, and the EP is responsible for validating the returned data and imposing
+   * deserialization limits before consuming it. This API does not configure or enforce a payload-size limit.
    *
    * \param[in] options Session options used to create the session and execution providers.
    * \param[in] read_func Read callback, or NULL to clear a previously registered callback.
    * \param[in] state Application-owned state passed to `read_func`. Ignored when `read_func` is NULL.
-   * \param[in] read_options Required read policy when `read_func` is non-NULL. Copied during registration and may be
-   *                         released afterward. Ignored when clearing the callback.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.31.
    */
   ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state,
-                  _In_opt_ const OrtEpContextDataReadOptions* read_options);
-
-  /** \brief Create options for reading external EPContext binary data.
-   *
-   * The returned options must be configured with EpContextDataReadOptionsSetMaxDataSize before they are used to
-   * register a callback.
-   *
-   * \param[out] read_options Newly allocated options. Must be released with ReleaseEpContextDataReadOptions.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(CreateEpContextDataReadOptions, _Outptr_ OrtEpContextDataReadOptions** read_options);
-
-  /** \brief Set the maximum external EPContext payload size.
-   *
-   * The application must retain the same limit in its callback state and reject an oversized artifact before
-   * allocating its output buffer. The EP must independently check the returned size before deserialization.
-   * ORT stores the limit but does not invoke the callback or enforce either check.
-   *
-   * \param[in,out] read_options Options created by CreateEpContextDataReadOptions.
-   * \param[in] max_data_size Maximum payload size in bytes. Must be greater than zero. Zero is reserved for an
-   *                         unconfigured options object. SIZE_MAX permits any representable payload size.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(EpContextDataReadOptionsSetMaxDataSize, _Inout_ OrtEpContextDataReadOptions* read_options,
-                  _In_ size_t max_data_size);
-
-  /** \brief Release EPContext data read options. May be called with NULL.
-   *
-   * \since Version 1.31.
-   */
-  ORT_CLASS_RELEASE(EpContextDataReadOptions);
-  /** \brief Get the maximum external EPContext payload size from read options.
-   *
-   * \param[in] read_options Options created by CreateEpContextDataReadOptions or returned by
-   *                         OrtEpApi::EpContextConfigGetEpContextDataReadFunc.
-   * \param[out] max_data_size Maximum payload size in bytes, or zero if not configured. Unchanged on failure.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.31.
-   */
-  ORT_API2_STATUS(EpContextDataReadOptionsGetMaxDataSize, _In_ const OrtEpContextDataReadOptions* read_options,
-                  _Out_ size_t* max_data_size);
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 };
 
 /*

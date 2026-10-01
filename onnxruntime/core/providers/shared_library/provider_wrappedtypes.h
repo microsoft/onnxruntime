@@ -1772,9 +1772,8 @@ struct OrtSessionOptions final {
   }
 
   void GetEpContextDataCallbacks(OrtReadNamedBufferFunc* read_func, void** read_state,
-                                 size_t* read_max_data_size,
                                  OrtWriteNamedBufferFunc* write_func, void** write_state) const {
-    onnxruntime::g_host->SessionOptions__GetEpContextDataCallbacks(this, read_func, read_state, read_max_data_size,
+    onnxruntime::g_host->SessionOptions__GetEpContextDataCallbacks(this, read_func, read_state,
                                                                    write_func, write_state);
   }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)

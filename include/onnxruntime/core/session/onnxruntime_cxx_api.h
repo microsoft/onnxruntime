@@ -659,7 +659,6 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
-ORT_DEFINE_RELEASE(EpContextDataReadOptions);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -789,7 +788,6 @@ struct AllocatedFree {
 struct AllocatorWithDefaultOptions;
 struct Env;
 struct EpContextConfig;
-struct EpContextDataReadOptions;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1669,8 +1667,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
-  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state,
-                                               const EpContextDataReadOptions& read_options);
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state = nullptr);
   /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& ClearEpContextDataReadFunc();
 
@@ -1762,23 +1759,9 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(const SessionOptions& session_options);  ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
   explicit EpContextConfig(ConstSessionOptions session_options);    ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
 
-  /// Return an owned copy of the read options, or an empty handle if no callback is configured.
   /// Wraps OrtEpApi::EpContextConfigGetEpContextDataReadFunc.
-  EpContextDataReadOptions GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
   void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;  ///< Wraps OrtEpApi::EpContextConfigGetEpContextDataWriteFunc.
-};
-
-/** \brief Options controlling EPContext data reads.
- *
- * Wraps ::OrtEpContextDataReadOptions.
- */
-struct EpContextDataReadOptions : detail::Base<OrtEpContextDataReadOptions> {
-  using Base = detail::Base<OrtEpContextDataReadOptions>;
-  using Base::Base;
-
-  EpContextDataReadOptions();                                      ///< Wraps OrtApi::CreateEpContextDataReadOptions.
-  EpContextDataReadOptions& SetMaxDataSize(size_t max_data_size);  ///< Wraps OrtApi::EpContextDataReadOptionsSetMaxDataSize.
-  size_t GetMaxDataSize() const;                                   ///< Wraps OrtApi::EpContextDataReadOptionsGetMaxDataSize.
 };
 
 /** \brief Options object used when compiling a model.

@@ -1379,29 +1379,12 @@ inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
   ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
 }
 
-inline EpContextDataReadOptions EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
-  OrtEpContextDataReadOptions* read_options = nullptr;
-  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state, &read_options));
-  return EpContextDataReadOptions{read_options};
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state));
 }
 
 inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
   ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
-}
-
-inline EpContextDataReadOptions::EpContextDataReadOptions() {
-  ThrowOnError(GetApi().CreateEpContextDataReadOptions(&this->p_));
-}
-
-inline EpContextDataReadOptions& EpContextDataReadOptions::SetMaxDataSize(size_t max_data_size) {
-  ThrowOnError(GetApi().EpContextDataReadOptionsSetMaxDataSize(this->p_, max_data_size));
-  return *this;
-}
-
-inline size_t EpContextDataReadOptions::GetMaxDataSize() const {
-  size_t max_data_size = 0;
-  ThrowOnError(GetApi().EpContextDataReadOptionsGetMaxDataSize(this->p_, &max_data_size));
-  return max_data_size;
 }
 
 namespace detail {
@@ -1568,14 +1551,14 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
-    OrtReadNamedBufferFunc read_func, void* state, const EpContextDataReadOptions& read_options) {
-  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state, read_options));
+    OrtReadNamedBufferFunc read_func, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
   return *this;
 }
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::ClearEpContextDataReadFunc() {
-  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr, nullptr));
+  ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, nullptr, nullptr));
   return *this;
 }
 
