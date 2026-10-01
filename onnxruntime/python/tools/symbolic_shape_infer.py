@@ -2754,11 +2754,11 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(node.output[output_index], dtype, get_shape_from_sympy_shape(shape))
             )
 
-        copy_state_output(2, 11, output_dtype)  # present_key_state <- past_key_state
-        copy_state_output(3, 12, output_dtype)  # present_kv_buffer <- past_kv_buffer
+        copy_state_output(2, 12, output_dtype)  # present_key_state <- past_key_state
+        copy_state_output(3, 13, output_dtype)  # present_kv_buffer <- past_kv_buffer
         if policy_mode != "qsa":
-            copy_state_output(4, 13, output_dtype)  # present_gate_buffer <- past_gate_buffer
-        copy_state_output(5, 14, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
+            copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
+        copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

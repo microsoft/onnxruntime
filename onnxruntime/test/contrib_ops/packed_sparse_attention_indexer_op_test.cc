@@ -553,15 +553,27 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
-    const int req_len = std::max(req_end - req_start, 0);
-    const int old_key_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 0], 0, p.state_capacity);
-    const int old_buf_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, p.compress_ratio - 1);
+    const int raw_key_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 0];
+    const int raw_buf_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 1];
+    const int past_sequence_length = p.past_sequence_lengths[static_cast<size_t>(b)];
+    const bool invalid_metadata =
+        p.cumulative_sequence_lengths[0] != 0 ||
+        p.cumulative_sequence_lengths[static_cast<size_t>(p.batch_size)] != total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > total_tokens ||
+        past_sequence_length < 0 || raw_key_len < 0 || raw_key_len > p.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len >= p.compress_ratio ||
+        raw_key_len != past_sequence_length / p.compress_ratio ||
+        raw_buf_len != past_sequence_length % p.compress_ratio;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = std::clamp(raw_key_len, 0, p.state_capacity);
+    const int old_buf_len = std::clamp(raw_buf_len, 0, p.compress_ratio - 1);
     const int pending = old_buf_len + req_len;
     const int full_new_block_count = pending / p.compress_ratio;
-    overflowed[static_cast<size_t>(b)] = full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
+    overflowed[static_cast<size_t>(b)] =
+        invalid_metadata || full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
     if (overflowed[static_cast<size_t>(b)]) {
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
       continue;
     }
@@ -814,6 +826,16 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
 }
 
+TEST(PackedSparseAttentionIndexerTest, QsaMalformedStateLengthsAreClamped) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, -1};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+}
+
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
@@ -830,6 +852,16 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected)
   problem.past_sequence_lengths = {4};
   problem.state_capacity = 2;
   problem.past_state_lengths = {2, 0};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaMalformedStateLengthsAreClamped) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, -1};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
 }
 #endif
@@ -899,17 +931,27 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
-    const int req_len = std::max(req_end - req_start, 0);
-    const int old_key_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 0], 0, p.state_capacity);
-    const int old_buf_len =
-        std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, buffer_capacity);
+    const int raw_key_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 0];
+    const int raw_buf_len = p.past_state_lengths[static_cast<size_t>(b) * 2 + 1];
+    const bool invalid_metadata =
+        p.cumulative_sequence_lengths[0] != 0 ||
+        p.cumulative_sequence_lengths[static_cast<size_t>(p.batch_size)] != total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > total_tokens ||
+        p.past_sequence_lengths[static_cast<size_t>(b)] < 0 ||
+        raw_key_len < 0 || raw_key_len > p.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len > buffer_capacity;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = std::clamp(raw_key_len, 0, p.state_capacity);
+    const int old_buf_len = std::clamp(raw_buf_len, 0, buffer_capacity);
     const int overlap_length = old_buf_len >= p.compress_ratio ? p.compress_ratio : 0;
     const int leftover_length = old_buf_len - overlap_length;
     const int pending = leftover_length + req_len;
     const int full_new_window_count = pending / p.compress_ratio;
-    overflowed[static_cast<size_t>(b)] = full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
+    overflowed[static_cast<size_t>(b)] =
+        invalid_metadata || full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
     if (overflowed[static_cast<size_t>(b)]) {
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 0] = old_key_len;
+      out.present_state_lengths[static_cast<size_t>(b) * 2 + 1] = old_buf_len;
       key_len_after[static_cast<size_t>(b)] = old_key_len;
       continue;
     }
@@ -1200,6 +1242,16 @@ TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
 }
 
+TEST(PackedSparseAttentionIndexerTest, CsaMalformedStateLengthsAreClamped) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {0};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, 8};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
+
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
@@ -1215,6 +1267,16 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected)
   problem.cumulative_sequence_lengths = {0, 4};
   problem.state_capacity = 1;
   problem.past_state_lengths = {1, 0};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaMalformedStateLengthsAreClamped) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 1};
+  problem.past_sequence_lengths = {0};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {3, 8};
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
 }
 #endif

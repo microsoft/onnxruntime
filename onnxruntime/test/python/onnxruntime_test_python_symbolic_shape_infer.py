@@ -374,6 +374,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -403,8 +404,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             token_budget=8,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["total_tokens", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["total_tokens", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["total_tokens", 8]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [64, 8]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, [64, 8]),
@@ -433,6 +435,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             [
                 "query",
                 "key",
+                "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
                 "sin_cache",
@@ -462,8 +465,9 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             index_topk=3,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 2, 8]),
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 16]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
             helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
