@@ -1,3 +1,4 @@
+# Experimental unified-wheel build; used only by the CUDA 13 test pipeline.
 parameters:
 - name: arch
   type: string
@@ -23,18 +24,9 @@ parameters:
 
 - name: cuda_version
   type: string
-  default: '12.8'
+  default: '13.0'
   values:
-   - 12.8
-   - 13.0
-
-- name: python_version
-  type: string
-  displayName: 'Python version label (e.g. 3.12, 3.13t)'
-
-- name: docker_python_exe_path
-  type: string
-  displayName: 'Full path to the Python executable inside the Docker image'
+   - '13.0'
 
 - name: stage_name
   type: string
@@ -57,7 +49,7 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.stage_name }}
-    timeoutInMinutes: 360
+    timeoutInMinutes: 600
     workspace:
       clean: all
     pool:
@@ -86,8 +78,6 @@ stages:
           value: ${{ variables.aarch64_trt_version }}
         ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
           value: ${{ variables.linux_trt_version_cuda13 }}
-        ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
-          value: ${{ variables.linux_trt_version_cuda12 }}
       - name: trt_download_url
         ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
           value: ${{ variables.aarch64_trt_download_url_cuda13 }}
@@ -113,7 +103,7 @@ stages:
 
 
       - task: Bash@3
-        displayName: 'Build Python Wheel - ${{ parameters.python_version }}'
+        displayName: 'Build unified Python wheel'
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
@@ -121,11 +111,38 @@ stages:
             -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
             -d "GPU"
             -c ${{ parameters.cmake_build_type }}
-            -p "${{ parameters.docker_python_exe_path }}"
+            -m
             $(extra_build_args)
         env:
           CUDA_VERSION: ${{ parameters.cuda_version }}
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+      # Use the same interpreters as build_linux_python_package.sh, including free-threaded Python.
+      # Import from an isolated environment so a build-tree package cannot mask a broken wheel.
+      - bash: |
+          set -euo pipefail
+          docker run --rm -i \
+            --volume "$(Build.BinariesDirectory)/dist:/wheels:ro" \
+            -e PIP_INDEX_URL \
+            -w /tmp \
+            onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} \
+            /bin/bash -s <<'SCRIPT'
+          set -euo pipefail
+          wheels=(/wheels/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ] || [ ! -f "${wheels[0]}" ]; then
+            echo "Expected exactly one unified wheel"
+            exit 1
+          fi
+          for abi in 311 312 313 313t 314 314t; do
+            python_tag=${abi%t}
+            python_exe="/opt/python/cp${python_tag}-cp${abi}/bin/python3.${python_tag:1}"
+            test_env="/tmp/ort-wheel-test-cp${abi}"
+            "$python_exe" -m venv "$test_env"
+            "$test_env/bin/python" -m pip install --disable-pip-version-check "${wheels[0]}"
+            "$test_env/bin/python" -c 'import sysconfig; import onnxruntime as ort; from onnxruntime.capi import onnxruntime_pybind11_state as binding; print(binding.__file__); assert binding.__file__.endswith(sysconfig.get_config_var("EXT_SUFFIX")); assert "CUDAExecutionProvider" in ort.get_available_providers()'
+          done
+          SCRIPT
+        displayName: 'Install and import the unified wheel on every Python ABI'
 
       - script: |
           set -e -x

@@ -1,4 +1,7 @@
+# Experimental CUDA 13 wheels for CPython 3.11-3.14 (including Linux free-threaded builds).
+# Queue this pipeline manually; wheels are published only as pipeline artifacts.
 trigger: none
+pr: none
 # The `resources` specify the location and version of the 1ES PT.
 resources:
   repositories:
@@ -8,11 +11,6 @@ resources:
     ref: refs/tags/release
 
 parameters:
-  - name: is_nightly_build
-    displayName: 'Nightly or Release Candidate build. Set to false if Release build.'
-    type: boolean
-    default: true
-
   - name: cmake_build_type
     type: string
     default: 'Release'
@@ -23,16 +21,10 @@ parameters:
       - MinSizeRel
 
 variables:
-  # Magic env-var used by CI build scripts & piped around several docker containers.
-  # This should also be set to `1` for release candidates, despite the name. RCs do not yet have proper handling, so
-  # wheels can only be nightly or full release.
-  # FUTURE WORK: Add proper RC handling/suffix for wheels. Replace this w/ nightly/RC/release options.
-  NIGHTLY_BUILD: ${{ iif(parameters.is_nightly_build, '1', '0') }}
+  NIGHTLY_BUILD: '1'
 
 extends:
-  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
-  # For non-production pipelines, use "Unofficial" as defined below.
-  # For productions pipelines, use "Official".
+  # Keep the existing packaging pipeline's 1ES and native-library signing configuration.
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     sdl:
@@ -59,10 +51,31 @@ extends:
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
 
     stages:
-      - template: stages/py-gpu-packaging-stage.yml
+      - template: stages/py-win-gpu-unified-stage.yml
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: '12.8'
-          cudnn_folder: ''
-          cmake_cuda_archs: '61-real;75-real;86-real;89-real;120-real;120-virtual'
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+          CudaVersion: '13.0'
+          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v13.0 --cudnn_home=$(Agent.TempDirectory)\9.14.0.64_cuda13 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
+          use_tensorrt: true
+
+      - template: stages/py-linux-gpu-unified-stage.yml
+        parameters:
+          stage_name: Linux_py_GPU_Unified_Wheel_x86_64
+          arch: 'x86_64'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          cuda_version: '13.0'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          wheel_artifact_name: onnxruntime_gpu_unified_x86_64
+          build_intermediates_artifact_name: linux_gpu_unified_wheel_x86_64
+
+      - template: stages/py-linux-gpu-unified-stage.yml
+        parameters:
+          stage_name: Linux_py_GPU_Unified_Wheel_aarch64
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          cuda_version: '13.0'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/public/azureml/onnxruntime_build_cuda13_aarch64_almalinux9_gcc14:20260323.1'
+          wheel_artifact_name: onnxruntime_gpu_unified_aarch64
+          build_intermediates_artifact_name: linux_gpu_unified_wheel_aarch64

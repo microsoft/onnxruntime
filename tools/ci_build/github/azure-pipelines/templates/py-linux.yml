@@ -34,13 +34,6 @@ parameters:
   type: string
   default: ''
 
-- name: multi_python_wheel
-  displayName: >
-    Build the native libraries once, recompile only onnxruntime_pybind11_state for every Python
-    version and publish a single wheel that carries all of them.
-  type: boolean
-  default: false
-
 - name: is1ES
   displayName: 'Whether the pipeline is running in 1ES'
   type: boolean
@@ -76,11 +69,6 @@ jobs:
       value: '-p ${{ parameters.python_exe_path }}'
     ${{ if eq(parameters.python_exe_path, '') }}:
       value: ''
-  - name: multi_python_wheel_arg
-    ${{ if eq(parameters.multi_python_wheel, true) }}:
-      value: '-m'
-    ${{ else }}:
-      value: ''
 
   steps:
   - checkout: self
@@ -96,9 +84,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu/Dockerfile
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
-      # The secret is only forwarded when the agent defines PIP_INDEX_URL, so pools without an
-      # internal mirror keep working unchanged.
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) ${PIP_INDEX_URL:+--secret id=PIP_INDEX_URL}"
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
   - task: Bash@3
@@ -108,4 +94,4 @@ jobs:
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-      arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path) $(multi_python_wheel_arg)
+      arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)
