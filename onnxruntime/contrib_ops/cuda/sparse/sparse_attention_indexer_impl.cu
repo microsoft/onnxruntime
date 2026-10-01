@@ -14,7 +14,6 @@
 #include <cub/block/block_radix_sort.cuh>
 
 #include <algorithm>
-
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 #include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
@@ -56,6 +55,20 @@ __device__ __forceinline__ float4 LoadQsaVector4(const T* source) {
 
 // Thin, same-signature aliases over the device math shared with the packed indexer implementation
 // (sparse_attention_indexer_device_math.cuh), so the kernels below are unchanged.
+template <typename Kernel>
+Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* kernel_name) {
+  int device = 0;
+  int max_bytes = 0;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+  CUDA_RETURN_IF_ERROR(
+      cudaDeviceGetAttribute(&max_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
+  ORT_RETURN_IF(bytes > static_cast<size_t>(max_bytes),
+                "SparseAttentionIndexer: ", kernel_name, " requires ", bytes,
+                " bytes of dynamic shared memory, but the device supports at most ", max_bytes);
+  return CUDA_CALL(
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(bytes)));
+}
+
 __device__ __forceinline__ float NegativeInfinity() { return SaiNegativeInfinity(); }
 
 int GridForElements(int64_t count) { return SaiGridForElements(count, kThreads); }
@@ -64,8 +77,8 @@ bool UseDistributedQsaTopK(const SparseAttentionIndexerParams& params, bool has_
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   return !has_mask && rows > 0 && rows <= kDistributedTopKMaxRows &&
          params.max_block_count >= kDistributedTopKMinBlocks &&
-      params.head_size == kQwenHeadSize && params.compress_ratio == kQwenCompressRatio &&
-      params.num_heads == kQwenNumHeads &&
+         params.head_size == kQwenHeadSize && params.compress_ratio == kQwenCompressRatio &&
+         params.num_heads == kQwenNumHeads &&
          params.block_topk > kSaiFastTopKMax && params.block_topk <= kBoundedTopKMax;
 }
 
@@ -256,11 +269,13 @@ __global__ void QsaBuildBlockRepresentativesKernel(const T* past_key, const T* k
         if (position < params.past_sequence_length) {
           const int cache_position = representative_capacity + position % kQwenCompressRatio;
           sum += to_float<T>(past_key[(static_cast<int64_t>(batch) * params.past_key_capacity + cache_position) *
-                                         kQwenHeadSize + d]);
+                                          kQwenHeadSize +
+                                      d]);
         } else {
           const int key_token = position - params.past_sequence_length;
           sum += to_float<T>(key[(static_cast<int64_t>(batch) * params.sequence_length + key_token) *
-                                     params.key_row_stride + d]);
+                                     params.key_row_stride +
+                                 d]);
         }
       }
       pooled[d] = sum * (1.0f / static_cast<float>(kQwenCompressRatio));
@@ -671,7 +686,7 @@ __global__ void QsaBlockScoreQwenCachedKernel(const float* query_rotated, const 
     const int d = lane * 4;
     const int64_t query_base = (row * kQwenNumHeads + warp) * kQwenHeadSize;
     const int64_t key_base =
-      (static_cast<int64_t>(batch) * params.key_cache_capacity + block_index) *
+        (static_cast<int64_t>(batch) * params.key_cache_capacity + block_index) *
         kQwenHeadSize;
     const float4 query_value = LoadQsaVector4(query_rotated + query_base + d);
     const float4 key_value = LoadQsaVector4(present_key + key_base + d);
@@ -702,8 +717,8 @@ __global__ void QsaBlockScoreQwenCachedKernel(const float* query_rotated, const 
 
 template <typename T>
 __global__ void QsaScoreTileTopKKernel(const float* query_rotated, const T* present_key,
-                                      const int32_t* visible_count, uint64_t* tile_keys,
-                                      int tile_count, SparseAttentionIndexerParams params) {
+                                       const int32_t* visible_count, uint64_t* tile_keys,
+                                       int tile_count, SparseAttentionIndexerParams params) {
   __shared__ uint64_t keys[kHierarchicalTileBlocks];
   __shared__ float head_scores[kHierarchicalTileBlocks][kQwenNumHeads];
 
@@ -795,7 +810,7 @@ __device__ __forceinline__ uint64_t QsaMergeRank(const uint64_t* left, int left_
 
 __global__ void QsaMergeTileTopKKernel(const uint64_t* input_keys, uint64_t* output_keys,
                                        int key_stride, int list_width,
-                                      SparseAttentionIndexerParams params) {
+                                       SparseAttentionIndexerParams params) {
   const int pairs_per_row = (key_stride + 2 * list_width - 1) / (2 * list_width);
   const int64_t total_pairs =
       static_cast<int64_t>(params.batch_size) * params.sequence_length * pairs_per_row;
@@ -997,7 +1012,7 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visibl
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     int32_t* out_row = selected_indices + row * params.capacity;
-    for (int position = threadIdx.x; position < params.capacity; position += blockDim.x) {
+    for (int64_t position = threadIdx.x; position < params.capacity; position += blockDim.x) {
       out_row[position] = -1;
     }
     __syncthreads();
@@ -1226,7 +1241,8 @@ template <typename T>
 __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_buffer,
                                   const T* past_gate_buffer, const T* position_bias,
                                   const T* key_norm_weight, const T* cos_cache, const T* sin_cache,
-                                  T* present_compressed_key, SparseAttentionIndexerParams params) {
+                                  T* present_compressed_key, float* new_compressed_key,
+                                  SparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
   float* pooled = shared;
   float* reduction = shared + params.head_size;
@@ -1299,9 +1315,13 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
         (static_cast<int64_t>(batch) * params.rotary_cache_batch_stride + position) * params.rotary_width;
     const int64_t out_base =
         (static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) * params.head_size;
+    const int64_t workspace_base =
+        (static_cast<int64_t>(batch) * params.new_window_count + window) * params.head_size;
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
-      present_compressed_key[out_base + d] = from_float<T>(TrailingRope<T>(
-          pooled, params.head_size, params.rotary_width, cos_cache + cache_offset, sin_cache + cache_offset, d));
+      const float rotated = TrailingRope<T>(
+          pooled, params.head_size, params.rotary_width, cos_cache + cache_offset, sin_cache + cache_offset, d);
+      new_compressed_key[workspace_base + d] = rotated;
+      present_compressed_key[out_base + d] = from_float<T>(rotated);
     }
     __syncthreads();
   }
@@ -1350,6 +1370,7 @@ __global__ void CsaCopyBufferKernel(const T* key, const T* gate, const T* past_k
 // kernel only has to read scores.
 template <typename T>
 __global__ void CsaScoreKernel(const float* query_rotated, const T* present_compressed_key,
+                               const float* new_compressed_key,
                                const T* head_weights, const int64_t* position_ids, float* scores,
                                SparseAttentionIndexerParams params) {
   const int64_t total = static_cast<int64_t>(params.batch_size) * params.sequence_length *
@@ -1368,12 +1389,18 @@ __global__ void CsaScoreKernel(const float* query_rotated, const T* present_comp
 
     const int64_t key_base =
         (static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) * params.head_size;
+    const bool is_new_entry = entry >= params.past_compressed_length;
+    const int64_t new_key_base =
+        (static_cast<int64_t>(batch) * params.new_window_count + entry - params.past_compressed_length) *
+        params.head_size;
     float total_score = 0.0f;
     for (int head = 0; head < params.num_heads; ++head) {
       const float* query_head = query_rotated + (row * params.num_heads + head) * params.head_size;
       float dot = 0.0f;
       for (int d = 0; d < params.head_size; ++d) {
-        dot += query_head[d] * to_float<T>(present_compressed_key[key_base + d]);
+        const float key_value =
+            is_new_entry ? new_compressed_key[new_key_base + d] : to_float<T>(present_compressed_key[key_base + d]);
+        dot += query_head[d] * key_value;
       }
       total_score += fmaxf(dot, 0.0f) * to_float<T>(head_weights[row * params.num_heads + head]);
     }
@@ -1390,7 +1417,7 @@ __global__ void CsaSelectKernel(const float* scores, const int64_t* position_ids
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     int32_t* out_row = selected_indices + row * params.capacity;
-    for (int position = threadIdx.x; position < params.capacity; position += blockDim.x) {
+    for (int64_t position = threadIdx.x; position < params.capacity; position += blockDim.x) {
       out_row[position] = -1;
     }
     __syncthreads();
@@ -1449,7 +1476,9 @@ size_t GetQsaWorkspaceIntCount(const SparseAttentionIndexerParams& params, bool 
 
 size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
   const size_t rows = static_cast<size_t>(params.batch_size) * params.sequence_length;
-  return rows * params.num_heads * params.head_size + rows * std::max(params.present_compressed_length, 1);
+  return rows * params.num_heads * params.head_size +
+         rows * std::max(params.present_compressed_length, 1) +
+         static_cast<size_t>(params.batch_size) * params.new_window_count * params.head_size;
 }
 
 template <typename T>
@@ -1517,11 +1546,11 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
                                                                    alignof(uint64_t) - 1) &
                                                                   ~(alignof(uint64_t) - 1))
                                     : nullptr;
-                          const size_t hierarchical_key_count = use_hierarchical_topk
-                                        ? static_cast<size_t>(rows) * GetHierarchicalTileCount(params) *
-                                          kHierarchicalTileBlocks
-                                        : 0;
-                          uint64_t* hierarchical_scratch = use_hierarchical_topk ? hierarchical_keys + hierarchical_key_count : nullptr;
+  const size_t hierarchical_key_count = use_hierarchical_topk
+                                            ? static_cast<size_t>(rows) * GetHierarchicalTileCount(params) *
+                                                  kHierarchicalTileBlocks
+                                            : 0;
+  uint64_t* hierarchical_scratch = use_hierarchical_topk ? hierarchical_keys + hierarchical_key_count : nullptr;
   int32_t* candidate_indices = use_distributed_topk && !use_hierarchical_topk ? topk_indices : nullptr;
   uint32_t* radix_histogram = use_distributed_topk && !use_hierarchical_topk
                                   ? reinterpret_cast<uint32_t*>(candidate_indices + rows * params.max_block_count)
@@ -1535,6 +1564,10 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   int32_t* candidate_counts = radix_remaining ? radix_remaining + rows : nullptr;
 
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t rotate_shared_bytes = value_bytes + kThreads * sizeof(float);
+  const size_t score_shared_bytes = 2 * value_bytes + kThreads * sizeof(float);
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(RotateQueryKernel<T, true>, rotate_shared_bytes, "RotateQueryKernel"));
 
   const int row_blocks = static_cast<int>(std::min<int64_t>(rows, kMaxGridDimX));
   if (mask == nullptr) {
@@ -1547,7 +1580,7 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
 
   const int64_t query_rows = rows * params.num_heads;
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(query_rows, kMaxGridDimX));
-  RotateQueryKernel<T, true><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  RotateQueryKernel<T, true><<<rotate_blocks, kThreads, rotate_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, nullptr, query_rotated, params);
 
   if (params.max_block_count > 0) {
@@ -1559,13 +1592,13 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
       const int tile_count = GetHierarchicalTileCount(params);
       const int64_t tile_work = rows * tile_count;
       const int tile_blocks = static_cast<int>(std::min<int64_t>(tile_work, kMaxGridDimX));
-        QsaScoreTileTopKKernel<T><<<tile_blocks, kHierarchicalScoreThreads, 0, stream>>>(
+      QsaScoreTileTopKKernel<T><<<tile_blocks, kHierarchicalScoreThreads, 0, stream>>>(
           query_rotated, present_key, visible_count, hierarchical_keys, tile_count, params);
     } else {
       const int64_t block_work = rows * params.max_block_count;
       const int score_blocks = static_cast<int>(std::min<int64_t>(block_work, kMaxGridDimX));
       if (params.head_size == kQwenHeadSize && params.compress_ratio == kQwenCompressRatio &&
-        params.num_heads == kQwenNumHeads) {
+          params.num_heads == kQwenNumHeads) {
         if (params.use_block_representatives) {
           QsaBlockScoreQwenCachedKernel<T><<<score_blocks, kThreads, 0, stream>>>(
               query_rotated, present_key, visible_count, block_scores, radix_histogram, params);
@@ -1575,7 +1608,9 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
               block_scores, radix_histogram, params);
         }
       } else {
-        QsaBlockScoreKernel<T><<<score_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
+        ORT_RETURN_IF_ERROR(
+            ConfigureDynamicSharedMemory(QsaBlockScoreKernel<T>, score_shared_bytes, "QsaBlockScoreKernel"));
+        QsaBlockScoreKernel<T><<<score_blocks, kThreads, score_shared_bytes, stream>>>(
             query_rotated, present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
             block_scores, params);
       }
@@ -1597,23 +1632,23 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
       std::swap(merge_input, merge_output);
     }
     QsaEmitHierarchicalTopKKernel<<<row_blocks, kThreads, 0, stream>>>(
-      merge_input, visible_count, block_count, selected_indices, params);
+        merge_input, visible_count, block_count, selected_indices, params);
   } else if (use_distributed_topk) {
     QsaChooseRadixBucketKernel<<<row_blocks, kThreads, 0, stream>>>(
-      radix_histogram, radix_prefixes, radix_remaining, 56, params);
+        radix_histogram, radix_prefixes, radix_remaining, 56, params);
     QsaCompactHighBucketKernel<<<GridForElements(rows * params.max_block_count), kThreads, 0, stream>>>(
-      block_scores, visible_count, radix_prefixes, candidate_counts, candidate_indices, params);
+        block_scores, visible_count, radix_prefixes, candidate_counts, candidate_indices, params);
     for (int shift = 48; shift >= 0; shift -= 8) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(radix_histogram, 0, rows * 256 * sizeof(uint32_t), stream));
       QsaCandidateHistogramKernel<<<GridForElements(rows * params.max_block_count), kThreads, 0, stream>>>(
-        block_scores, candidate_counts, candidate_indices, radix_prefixes, radix_histogram, shift, params);
+          block_scores, candidate_counts, candidate_indices, radix_prefixes, radix_histogram, shift, params);
       QsaChooseRadixBucketKernel<<<row_blocks, kThreads, 0, stream>>>(
-        radix_histogram, radix_prefixes, radix_remaining, shift, params);
+          radix_histogram, radix_prefixes, radix_remaining, shift, params);
     }
     QsaDistributedSelectKernel<<<row_blocks, kThreads, 0, stream>>>(
-      block_scores, visible_count, candidate_counts, candidate_indices, radix_prefixes,
-      selected_indices, params);
-    } else if (use_bounded_topk) {
+        block_scores, visible_count, candidate_counts, candidate_indices, radix_prefixes,
+        selected_indices, params);
+  } else if (use_bounded_topk) {
     QsaPartialTopKKernel<<<row_blocks, kThreads, 0, stream>>>(
         block_scores, visible_count, topk_indices, params);
   }
@@ -1643,6 +1678,11 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
                                        T* present_kv_buffer, T* present_gate_buffer, float* float_workspace) {
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
+  const size_t value_shared_bytes = value_bytes + kThreads * sizeof(float);
+
+  float* query_rotated = float_workspace;
+  float* scores = query_rotated + rows * params.num_heads * params.head_size;
+  float* new_compressed_key = scores + rows * std::max(params.present_compressed_length, 1);
 
   // The present state is produced even when there is no query row to score, so that a zero-length step still
   // forwards the incoming cache unchanged.
@@ -1654,11 +1694,13 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   }
 
   if (params.batch_size > 0 && params.new_window_count > 0) {
+    ORT_RETURN_IF_ERROR(
+        ConfigureDynamicSharedMemory(CsaCompressKernel<T>, value_shared_bytes, "CsaCompressKernel"));
     const int compress_blocks = static_cast<int>(
         std::min<int64_t>(static_cast<int64_t>(params.batch_size) * params.new_window_count, kMaxGridDimX));
-    CsaCompressKernel<T><<<compress_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+    CsaCompressKernel<T><<<compress_blocks, kThreads, value_shared_bytes, stream>>>(
         key, gate, past_kv_buffer, past_gate_buffer, position_bias, key_norm_weight, cos_cache, sin_cache,
-        present_compressed_key, params);
+        present_compressed_key, new_compressed_key, params);
   }
 
   const int64_t present_buffer_elements =
@@ -1672,16 +1714,15 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
     return CUDA_CALL(cudaGetLastError());
   }
 
-  float* query_rotated = float_workspace;
-  float* scores = float_workspace + rows * params.num_heads * params.head_size;
-
+  ORT_RETURN_IF_ERROR(
+      ConfigureDynamicSharedMemory(RotateQueryKernel<T, false>, value_shared_bytes, "RotateQueryKernel"));
   const int rotate_blocks = static_cast<int>(std::min<int64_t>(rows * params.num_heads, kMaxGridDimX));
-  RotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
+  RotateQueryKernel<T, false><<<rotate_blocks, kThreads, value_shared_bytes, stream>>>(
       query, query_norm_weight, cos_cache, sin_cache, position_ids, query_rotated, params);
 
   if (params.present_compressed_length > 0) {
     CsaScoreKernel<T><<<GridForElements(rows * params.present_compressed_length), kThreads, 0, stream>>>(
-        query_rotated, present_compressed_key, head_weights, position_ids, scores, params);
+        query_rotated, present_compressed_key, new_compressed_key, head_weights, position_ids, scores, params);
   }
 
   const int row_blocks = static_cast<int>(std::min<int64_t>(rows, kMaxGridDimX));
@@ -1695,7 +1736,7 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,              \
                                                      const T*, const T*, const T*, const T*, const T*, const T*,     \
                                                      const int64_t*, const T*, int32_t*, T*, T*, int32_t*, float*,   \
-                                                     int32_t*);                                                       \
+                                                     int32_t*);                                                      \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                                \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*, const T*, \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);

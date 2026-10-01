@@ -2636,6 +2636,7 @@ class SymbolicShapeInference:
             policy_mode = policy_mode.decode("utf-8")
         compress_ratio = get_attribute(node, "compress_ratio", 0)
         query_shape = self._get_sympy_shape(node, 0)
+        head_size = self._get_sympy_shape(node, 2)[0]
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
 
         if policy_mode == "qsa":
@@ -2666,17 +2667,17 @@ class SymbolicShapeInference:
             return self._get_sympy_shape(node, index)
 
         if policy_mode == "qsa":
-            past_key_shape = past_shape(6)
+            past_key_shape = past_shape(7)
             if past_key_shape is None:
                 return
-            if len(node.input) > 11 and node.input[11]:
+            if len(node.input) > 12 and node.input[12]:
                 set_output(1, past_key_shape)
             else:
-                set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], query_shape[3]])
+                set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], head_size])
             return
 
-        past_compressed_shape = past_shape(6)
-        past_buffer_shape = past_shape(12)
+        past_compressed_shape = past_shape(7)
+        past_buffer_shape = past_shape(13)
         if past_compressed_shape is None or past_buffer_shape is None:
             return
 
@@ -2696,18 +2697,18 @@ class SymbolicShapeInference:
             )
             present_compressed_length = (
                 past_compressed_shape[1]
-                if len(node.input) > 11 and node.input[11]
+                if len(node.input) > 12 and node.input[12]
                 else past_compressed_shape[1] + new_window_count
             )
         else:
             present_compressed_length = (
                 past_compressed_shape[1]
-                if len(node.input) > 11 and node.input[11]
+                if len(node.input) > 12 and node.input[12]
                 else self._new_symbolic_dim_from_output(node, 1, 1)
             )
             present_buffer_length = self._new_symbolic_dim_from_output(node, 2, 2)
 
-        set_output(1, [query_shape[0], present_compressed_length, query_shape[3]])
+        set_output(1, [query_shape[0], present_compressed_length, head_size])
         set_output(2, [2, query_shape[0], present_buffer_length, past_buffer_shape[3]])
 
     def _infer_PackedSparseAttentionIndexer(self, node):  # noqa: N802
@@ -2759,7 +2760,7 @@ class SymbolicShapeInference:
             copy_state_output(4, 14, output_dtype)  # present_gate_buffer <- past_gate_buffer
         copy_state_output(5, 15, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
         if policy_mode == "qsa" and len(node.output) > 6 and node.output[6]:
-            past_key_shape = past_shape(12)
+            past_key_shape = self._get_sympy_shape(node, 12)
             if past_key_shape is not None:
                 state_update_capacity = get_attribute(node, "state_update_capacity", 0)
                 vi = self.known_vi_[node.output[6]]
@@ -2767,9 +2768,7 @@ class SymbolicShapeInference:
                     helper.make_tensor_value_info(
                         node.output[6],
                         output_dtype,
-                        get_shape_from_sympy_shape(
-                            [past_key_shape[0], state_update_capacity, past_key_shape[2]]
-                        ),
+                        get_shape_from_sympy_shape([past_key_shape[0], state_update_capacity, past_key_shape[2]]),
                     )
                 )
 

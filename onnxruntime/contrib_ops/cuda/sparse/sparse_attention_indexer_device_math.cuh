@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
@@ -203,7 +204,12 @@ __device__ __forceinline__ float SaiTrailingRope(const float* value, int head_si
 
 // Highest compressed entry a query at `position` may attend to, matching (position + 1) // ratio.
 __device__ __forceinline__ int64_t SaiCausalThreshold(int64_t position, int compress_ratio) {
-  return position < 0 ? 0 : position / compress_ratio + (position % compress_ratio == compress_ratio - 1);
+  if (position < 0) {
+    return 0;
+  }
+  const int64_t quotient = position / compress_ratio;
+  const bool round_up = position % compress_ratio == compress_ratio - 1;
+  return round_up && quotient < std::numeric_limits<int64_t>::max() ? quotient + 1 : quotient;
 }
 
 __device__ __forceinline__ int SaiClampPosition(int64_t position, int max_rotary_length) {

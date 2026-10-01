@@ -475,6 +475,15 @@ def rotary_options_for_current_os():
     return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
 
 
+def create_webgpu_session(onnx_model_str, sess_options):
+    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+    webgpu_devices = [device for device in get_ep_devices() if device.ep_name == "WebGpuExecutionProvider"]
+    if not webgpu_devices:
+        raise RuntimeError("No WebGPU EP device found.")
+    sess_options.add_provider_for_devices([webgpu_devices[0]], {})
+    return InferenceSession(onnx_model_str, sess_options)
+
+
 def paged_attention_func(
     config,
     query,
@@ -538,17 +547,13 @@ def paged_attention_func(
         ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache_np, config.ort_device, 0)
     sess_options = SessionOptions()
     if config.ep == "WebGpuExecutionProvider":
-        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-        webgpu_devices = [device for device in get_ep_devices() if device.ep_name == config.ep]
-        if not webgpu_devices:
-            raise RuntimeError("No WebGPU EP device found.")
-        sess_options.add_provider_for_devices([webgpu_devices[0]], {})
-        providers = None
-    elif sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
-        providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+        ort_session = create_webgpu_session(onnx_model_str, sess_options)
     else:
-        providers = [config.ep]
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
+        if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+            providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+        else:
+            providers = [config.ep]
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
     io_binding = ort_session.io_binding()
     if key is not None and value is not None:
         ort_inputs["key"] = key.detach().cpu().numpy()
@@ -1553,21 +1558,44 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         config = self._config(is_causal=False, rotary=True, packed=True)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
+    @parameterized.expand(
+        [
+            (f"page{block_size}_{backend}_{step}_{mask}", block_size, sdpa_kernel, cached, local)
+            for block_size, backend, sdpa_kernel in [
+                (16, "mea", SDPA_KERNEL_EFFICIENT_ATTENTION),
+                (32, "mea", SDPA_KERNEL_EFFICIENT_ATTENTION),
+                (64, "mea", SDPA_KERNEL_EFFICIENT_ATTENTION),
+                (64, "default", 0),
+            ]
+            for step, cached in [("prefill", False), ("cached", True)]
+            for mask, local in [("full", False), ("local", True)]
+        ]
+    )
     @unittest.skipIf(
         not has_memory_efficient_attention(),
         reason="MemoryEfficientAttention (fp16) requires sm>=53",
     )
-    def test_non_causal_rejected_without_flash_attention(self):
-        # The CUTLASS and paged-decode kernels hard-code a causal mask, so asking for is_causal=0
-        # on a backend that cannot express it has to fail loudly instead of returning a causal result.
-        with self.assertRaises(Exception) as ctx:
-            parity_check_paged_attention(
-                self._config(is_causal=False),
-                rtol=5e-3,
-                atol=5e-3,
-                sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
-            )
-        self.assertIn("is_causal=0 requires the FlashAttention backend", str(ctx.exception))
+    def test_non_causal_mea(self, _, block_size, sdpa_kernel, cached, local):
+        # Multiple query tiles must retain the left bound at past + query_pos - W + 1,
+        # while every row can still see the rest of its sequence on the right.
+        config = self._config(
+            sequence_length=137,
+            total_sequence_length=384,
+            num_heads=4,
+            head_size=128,
+            paged_kv_block_size=block_size,
+            is_causal=False,
+            local=local,
+        )
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=sdpa_kernel,
+            new_seqlens_override=torch.tensor([137, 67, 0, 9], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([97, 31, 0, 15] if cached else [0, 0, 0, 0], dtype=torch.int32),
+            local_window_size_override=4 if local else None,
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -1636,12 +1664,294 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
     def test_paged_attention_webgpu(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
-    def test_non_causal_rejected(self):
+    def test_non_causal(self):
         config = Config(1, 4, 32, 2, 1, 32, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
         config.is_causal = False
-        with self.assertRaises(Exception) as ctx:
-            parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
-        self.assertIn("PagedAttention (WebGPU): is_causal=0 is not supported yet", str(ctx.exception))
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand(
+        [
+            (f"{name}_{causal}_{metadata}", new_lengths, past_lengths, window, kv_heads, causal, metadata)
+            for name, new_lengths, past_lengths, window, kv_heads in [
+                ("decode", [1, 1, 1], [0, 3, 65], 4, 4),
+                ("short_prefill", [4, 2, 0], [15, 1, 0], 4, 2),
+                ("unit_window", [8, 3, 1], [63, 0, 17], 1, 1),
+                ("wide_window", [4, 2, 1], [0, 1, 3], 16, 2),
+                ("split_boundary", [31, 9, 0], [63, 4, 0], 7, 2),
+                ("prefill_boundary", [32, 17, 1], [31, 0, 3], 4, 2),
+                ("prefill_no_past", [65, 33, 0, 2], [0, 0, 0, 0], 4, 2),
+                ("prefill", [137, 67, 0, 9], [97, 31, 0, 15], 4, 1),
+            ]
+            for causal in [False, True]
+            for metadata in [False, True]
+        ]
+    )
+    def test_local_window_parity(self, _, new_lengths, past_lengths, window, kv_heads, causal, metadata):
+        config = Config(
+            len(new_lengths),
+            max(new_lengths),
+            384,
+            4,
+            kv_heads,
+            64,
+            16,
+            True,
+            False,
+            False,
+            True,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.is_causal = causal
+        config.use_attention_metadata = metadata
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor(new_lengths, dtype=torch.int32),
+            past_seqlens_override=torch.tensor(past_lengths, dtype=torch.int32),
+            local_window_size_override=window,
+        )
+
+    @parameterized.expand([("decode", 1, 65), ("multi_query_prefill", 4, 33)])
+    def test_qwen38_non_causal_local_window(self, _, query_length, past_length):
+        # The 256-wide heads select the Qwen3.8 split-reduce workgroup-storage
+        # specialization for both single-token decode and multi-row prefill.
+        config = Config(
+            1,
+            query_length,
+            128,
+            24,
+            4,
+            256,
+            16,
+            True,
+            False,
+            False,
+            False,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.is_causal = False
+        with torch.random.fork_rng(devices=[torch.cuda.current_device()] if torch.cuda.is_available() else []):
+            torch.manual_seed(0)
+            parity_check_paged_attention(
+                config,
+                rtol=5e-3,
+                atol=5e-3,
+                new_seqlens_override=torch.tensor([query_length], dtype=torch.int32),
+                past_seqlens_override=torch.tensor([past_length], dtype=torch.int32),
+                local_window_size_override=4,
+            )
+
+    def test_qwen38_non_causal_local_window_dense_prefill(self):
+        # Q=32 reaches dense prefill; fp16 head_size=256 selects 16-key tiles.
+        # The query-relative window partially masks the first tile for early
+        # rows and fully masks it for later rows in the same workgroup.
+        query_length, past_length, window = 32, 33, 4
+        total_length = past_length + query_length
+        config = Config(
+            1, query_length, total_length, 24, 4, 256, 16, True, False, False, False, 0.0, ep="WebGpuExecutionProvider"
+        )
+        config.is_causal = False
+        query = torch.zeros(query_length, config.num_heads * config.head_size, dtype=torch.float16)
+        dense_key = torch.zeros(total_length, config.kv_num_heads, config.head_size, dtype=torch.float16)
+        # Equal logits make the output depend only on which distinct values are visible.
+        dense_value = (
+            torch.arange(1, total_length + 1, dtype=torch.float16).reshape(-1, 1, 1).expand_as(dense_key).contiguous()
+        )
+        num_blocks = math.ceil(total_length / config.paged_kv_block_size)
+        block_table = torch.arange(num_blocks - 1, -1, -1, dtype=torch.int32).reshape(1, num_blocks)
+        key_cache = torch.zeros(
+            num_blocks, config.paged_kv_block_size, config.kv_num_heads, config.head_size, dtype=torch.float16
+        )
+        value_cache = torch.zeros_like(key_cache)
+        for position in range(past_length):
+            block = block_table[0, position // config.paged_kv_block_size]
+            value_cache[block, position % config.paged_kv_block_size] = dense_value[position]
+
+        reference, _ = attention_ref(
+            query.reshape(1, query_length, config.num_heads, config.head_size),
+            dense_key.unsqueeze(0),
+            dense_value.unsqueeze(0),
+            causal=False,
+            window_size=(window, total_length),
+        )
+        output, _, _ = paged_attention_func(
+            config,
+            query,
+            dense_key[past_length:].reshape(query_length, -1),
+            dense_value[past_length:].reshape(query_length, -1),
+            key_cache,
+            value_cache,
+            torch.tensor([0, query_length], dtype=torch.int32),
+            torch.tensor([past_length], dtype=torch.int32),
+            block_table,
+            window_size=window,
+        )
+        numpy.testing.assert_allclose(output.numpy(), reference.reshape(output.shape).numpy(), rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand([("split", 4), ("prefill", 65)])
+    def test_non_causal_local_window_query_bounds(self, _, query_length):
+        # Equal logits make each output the mean of the visible key positions.
+        # Unequal Q/KV lengths distinguish query-relative masking from causal,
+        # trailing-window, unwindowed, and batch-max-length masking.
+        config = Config(
+            2,
+            query_length,
+            128,
+            4,
+            2,
+            64,
+            16,
+            True,
+            False,
+            False,
+            False,
+            0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.is_causal = False
+        config.use_attention_metadata = True
+        config.attention_metadata_override = numpy.array([query_length, 128], dtype=numpy.int32)
+        new_lengths = [query_length, 2]
+        past_lengths = [5, 0]
+        cumulative = torch.tensor([0, query_length, query_length + 2], dtype=torch.int32)
+        block_table = torch.arange(15, -1, -1, dtype=torch.int32).reshape(2, 8)
+        key_cache = torch.zeros(16, 16, 2, 64, dtype=torch.float16)
+        value_cache = torch.zeros_like(key_cache)
+        query = torch.zeros(query_length + 2, 4 * 64, dtype=torch.float16)
+        key = torch.zeros(query_length + 2, 2 * 64, dtype=torch.float16)
+        value = torch.zeros_like(key)
+        expected = []
+        for b, (past, length) in enumerate(zip(past_lengths, new_lengths, strict=True)):
+            for position in range(past):
+                value_cache[block_table[b, position // 16], position % 16] = position + 1
+            for q in range(length):
+                position = past + q
+                value[cumulative[b] + q] = position + 1
+                left = max(0, position + 1 - 4)
+                right = past + length
+                expected.append((left + 1 + right) / 2)
+
+        output, _, _ = paged_attention_func(
+            config,
+            query,
+            key,
+            value,
+            key_cache,
+            value_cache,
+            cumulative,
+            torch.tensor(past_lengths, dtype=torch.int32),
+            block_table,
+            window_size=4,
+        )
+        expected = numpy.broadcast_to(numpy.array(expected)[:, None], output.shape)
+        numpy.testing.assert_allclose(output.numpy(), expected, rtol=5e-3, atol=5e-3)
+
+    @parameterized.expand([("causal", True), ("non_causal", False)])
+    def test_local_window_fully_masked_leading_tile(self, _, causal):
+        # With 65 queries in one prefill workgroup, the first 32-key tile is
+        # entirely outside later rows' two-key window.
+        query_length = 65
+        config = Config(
+            1, query_length, 128, 2, 1, 64, 16, True, False, False, False, 0.0, ep="WebGpuExecutionProvider"
+        )
+        config.is_causal = causal
+        config.use_attention_metadata = True
+        config.attention_metadata_override = numpy.array([query_length, 128], dtype=numpy.int32)
+        query = torch.zeros(query_length, 2 * 64, dtype=torch.float16)
+        key = torch.zeros(query_length, 64, dtype=torch.float16)
+        value = torch.ones_like(key)
+        value[:32] = (100 + torch.arange(32, dtype=torch.float16)).unsqueeze(1)
+
+        reference, _ = attention_ref(
+            query.reshape(1, query_length, 2, 64),
+            key.reshape(1, query_length, 1, 64),
+            value.reshape(1, query_length, 1, 64),
+            causal=causal,
+            window_size=(2, 0 if causal else 128),
+        )
+        output, _, _ = paged_attention_func(
+            config,
+            query,
+            key,
+            value,
+            torch.zeros(8, 16, 1, 64, dtype=torch.float16),
+            torch.zeros(8, 16, 1, 64, dtype=torch.float16),
+            torch.tensor([0, query_length], dtype=torch.int32),
+            torch.tensor([0], dtype=torch.int32),
+            torch.arange(7, -1, -1, dtype=torch.int32).reshape(1, 8),
+            window_size=2,
+        )
+        numpy.testing.assert_allclose(
+            output.numpy()[33:], reference.reshape(query_length, -1).numpy()[33:], rtol=5e-3, atol=5e-3
+        )
+
+    def test_flash_attention_fully_masked_tile_with_bias(self):
+        # GQA shares the dense FlashAttention shader and accepts attention_bias.
+        # Keeping visible scores at qk_min_value makes an all-masked leading
+        # tile observable instead of letting later tiles erase its contribution.
+        query_length, past_length, head_size = 64, 32, 64
+        total_length = query_length + past_length
+        shapes = {
+            "query": [1, query_length, 2 * head_size],
+            "key": [1, query_length, head_size],
+            "value": [1, query_length, head_size],
+            "past_key": [1, 1, past_length, head_size],
+            "past_value": [1, 1, past_length, head_size],
+            "seqlens_k": [1],
+            "total_sequence_length": [1],
+            "attention_bias": [1, 1, query_length, total_length],
+        }
+        inputs = [
+            helper.make_tensor_value_info(
+                name, TensorProto.INT32 if name in ("seqlens_k", "total_sequence_length") else TensorProto.FLOAT, shape
+            )
+            for name, shape in shapes.items()
+        ]
+        node = helper.make_node(
+            "GroupQueryAttention",
+            [*list(shapes)[:7], "", "", "", "attention_bias"],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=2,
+            kv_num_heads=1,
+            local_window_size=2,
+            causal=1,
+        )
+        graph = helper.make_graph(
+            [node],
+            "flash_attention_local_window",
+            inputs,
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, query_length, 2 * head_size])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 23), helper.make_opsetid("com.microsoft", 1)],
+            ir_version=10,
+        )
+        feed = {name: numpy.zeros(shape, dtype=numpy.float32) for name, shape in shapes.items()}
+        feed["value"][:] = 1
+        feed["past_value"][0, 0] = numpy.arange(100, 100 + past_length, dtype=numpy.float32)[:, None]
+        feed["seqlens_k"] = numpy.array([total_length - 1], dtype=numpy.int32)
+        feed["total_sequence_length"] = numpy.array([total_length], dtype=numpy.int32)
+        feed["attention_bias"][:] = numpy.finfo(numpy.float32).min
+
+        options = SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        session = create_webgpu_session(model.SerializeToString(), options)
+        output = session.run(["output"], feed)[0]
+        values = torch.ones(1, total_length, 1, head_size)
+        values[0, :past_length] = torch.arange(100, 100 + past_length).reshape(-1, 1, 1)
+        reference, _ = attention_ref(
+            torch.zeros(1, query_length, 2, head_size),
+            torch.zeros_like(values),
+            values,
+            causal=True,
+            window_size=(2, 0),
+        )
+        numpy.testing.assert_allclose(output, reference.reshape(output.shape).numpy(), rtol=5e-3, atol=5e-3)
 
     def test_paged_attention_webgpu_attention_metadata(self):
         config = Config(
@@ -2188,6 +2498,44 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
             new_seqlens_override=new_seqlens,
         )
 
+    @parameterized.expand(
+        [
+            (f"{name}_page{block_size}", new_seqlens, total_length, local, score_transforms, block_size)
+            for name, new_seqlens, total_length, local, score_transforms in [
+                ("ragged", [3, 0, 0, 1], 128, False, False),
+                ("sparse_local", [3, 0, 0, 0], 128, True, False),
+                ("multi_split", [2, 0], 4096, False, False),
+                ("multi_split_local_sink_softcap", [2, 0], 4096, True, True),
+            ]
+            for block_size in [16, 32, 64]
+        ]
+    )
+    def test_decode_non_causal_ragged(self, _, new_seqlens, total_length, local, score_transforms, block_size):
+        # token_count <= batch_size selects portable decode despite multiple queries in a sequence.
+        config = self._config(
+            batch_size=len(new_seqlens),
+            sequence_length=max(new_seqlens),
+            total_sequence_length=total_length,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=128,
+            paged_kv_block_size=block_size,
+            is_causal=False,
+            local=local,
+            use_head_sink=score_transforms,
+            softcap=2.0 if score_transforms else 0.0,
+        )
+        past_seqlens = [total_length - config.sequence_length - 17 * b for b in range(config.batch_size)]
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_DECODER_ATTENTION,
+            new_seqlens_override=torch.tensor(new_seqlens, dtype=torch.int32),
+            past_seqlens_override=torch.tensor(past_seqlens, dtype=torch.int32),
+            local_window_size_override=4 if local else None,
+        )
+
     def test_decode_ragged_int8_cache(self):
         # Auto-selected: a quantized decode-shaped step. XQA cannot serve it (its output layout is
         # one row per batch index), so it must fall through to this kernel and still be correct.
@@ -2309,6 +2657,7 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         k_scale_max_override=None,
         expect_xqa=None,
         per_channel_xqa=None,
+        past_seqlens_override=None,
         **overrides,
     ):
         if kv_cache_type == "fp8":
@@ -2325,7 +2674,13 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         )
 
         def run():
-            parity_check_paged_attention(config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override)
+            parity_check_paged_attention(
+                config,
+                rtol=rtol,
+                atol=atol,
+                k_scale_max_override=k_scale_max_override,
+                past_seqlens_override=past_seqlens_override,
+            )
 
         if expect_xqa is None:
             run()
@@ -2509,6 +2864,30 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         # The live length is not a multiple of 128, so the last page is partially valid.
         self._check_xqa(total_sequence_length=1000)
 
+    @parameterized.expand(
+        [
+            (f"{cache}_{mask}", cache, local)
+            for cache in ["float16", "int8"]
+            for mask, local in [("full", False), ("local", True)]
+        ]
+    )
+    def test_xqa_non_causal(self, _, kv_cache_type, local):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
+            self._check_xqa(
+                kv_cache_type=kv_cache_type,
+                quant_type="NONE" if kv_cache_type == "float16" else "PER_TENSOR",
+                num_heads=6,
+                kv_num_heads=1,
+                head_size=256,
+                total_sequence_length=128,
+                is_causal=False,
+                local=local,
+                local_window_size=4,
+                use_attention_metadata=True,
+                past_seqlens_override=torch.tensor([17, 29, 7, 63], dtype=torch.int32),
+                expect_xqa=True,
+            )
+
     # ---- quantization granularity -------------------------------------------------------
 
     @parameterized.expand(
@@ -2615,6 +2994,7 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
         atol=5e-3,
         expect_xqa=None,
         local_window_size=None,
+        past_seqlens=None,
         **overrides,
     ):
         kwargs = {
@@ -2653,6 +3033,9 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
                 atol=atol,
                 new_seqlens_override=override,
                 local_window_size_override=local_window_size,
+                past_seqlens_override=torch.tensor(past_seqlens, dtype=torch.int32)
+                if past_seqlens is not None
+                else None,
             )
 
         # Output parity alone would still pass if a dispatch regression routed the case to the
@@ -2736,6 +3119,30 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
         # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
         # contribute no token at all.
         self._check(new_seqlens=new_seqlens, expect_xqa=True)
+
+    @parameterized.expand(
+        [
+            (f"{cache}_{mask}", cache, local)
+            for cache in ["float16", "int8"]
+            for mask, local in [("full", False), ("local", True)]
+        ]
+    )
+    def test_spec_dec_non_causal_ragged(self, _, kv_cache_type, local):
+        # Eight tokens at group size six cross XQA's 32-row tile; W=4 must not mask future tokens.
+        quant_type = "NONE" if kv_cache_type == "float16" else "PER_TENSOR"
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
+            self._check(
+                kv_cache_type=kv_cache_type,
+                k_quant_type=quant_type,
+                v_quant_type=quant_type,
+                total_sequence_length=128,
+                new_seqlens=[1, 8, 0, 3],
+                past_seqlens=[17, 29, 7, 0],
+                is_causal=False,
+                local=local,
+                local_window_size=4 if local else None,
+                expect_xqa=True,
+            )
 
     @parameterized.expand([("64", 64), ("256", 256), ("1000", 1000), ("8192", 8192)])
     def test_spec_dec_context_length(self, _, total_sequence_length):
@@ -2953,6 +3360,7 @@ class MLAConfig:
         qk_nope_head_dim=None,
         kv_cache_type="float16",
         k_quant_type="NONE",
+        is_causal=True,
     ):
         self.batch_size = batch_size
         self.num_heads = num_heads
@@ -2968,6 +3376,7 @@ class MLAConfig:
         self.qk_nope_head_dim = qk_nope_head_dim
         self.kv_cache_type = kv_cache_type
         self.k_quant_type = k_quant_type
+        self.is_causal = is_causal
 
     @property
     def softmax_scale(self):
@@ -3015,6 +3424,8 @@ def create_mla_graph(
     }
     if scale is not None:
         attrs["scale"] = scale
+    if not mla_config.is_causal:
+        attrs["is_causal"] = 0
     if do_rotary:
         attrs["do_rotary"] = 1
         attrs["rotary_interleaved"] = 1 if rotary_interleaved else 0
@@ -3171,8 +3582,9 @@ def mla_reference(
     for b in range(mla_config.batch_size):
         start = int(cum_seqlens[b].item())
         for j in range(int(new_seqlens[b].item())):
-            kv_end = int(past_seqlens[b].item()) + j + 1
-            kv_begin = max(0, kv_end - local_window_size) if local_window_size > 0 else 0
+            query_end = int(past_seqlens[b].item()) + j + 1
+            kv_end = query_end if mla_config.is_causal else int((past_seqlens[b] + new_seqlens[b]).item())
+            kv_begin = max(0, query_end - local_window_size) if local_window_size > 0 else 0
             k = latent_cache[b, kv_begin:kv_end].to(torch.float32)  # [L, head_size]
             v = k[:, :v_head_size]
             logits = torch.einsum("nh,lh->nl", q[start + j], k) * scale
@@ -3311,6 +3723,21 @@ class TestPagedAttentionMLA(unittest.TestCase):
         # Mixed batch: one sequence extends an existing cache, one is pure decode, one adds nothing.
         config = self._config(batch_size=3)
         self._run_case(config, past_seqlens=[20, 9, 5], new_seqlens=[6, 1, 0])
+
+    @parameterized.expand(
+        [
+            (f"{step}_{mask}", cached, local)
+            for step, cached in [("prefill", False), ("cached", True)]
+            for mask, local in [("full", False), ("local", True)]
+        ]
+    )
+    def test_non_causal_ragged(self, _, cached, local):
+        self._run_case(
+            self._config(batch_size=4, is_causal=False),
+            past_seqlens=[17, 129, 7, 63] if cached else [0, 0, 0, 0],
+            new_seqlens=[1, 8, 0, 3],
+            local_window_size=4 if local else -1,
+        )
 
     def test_local_window(self):
         config = self._config()

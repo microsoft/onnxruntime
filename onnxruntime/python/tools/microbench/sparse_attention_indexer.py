@@ -5,9 +5,9 @@ import argparse
 import time
 
 import numpy as np
-import onnx
-import onnxruntime as ort
 from onnx import TensorProto, helper
+
+import onnxruntime as ort
 
 
 def create_model(context_length: int, head_size: int, num_heads: int, use_mask: bool) -> bytes:
