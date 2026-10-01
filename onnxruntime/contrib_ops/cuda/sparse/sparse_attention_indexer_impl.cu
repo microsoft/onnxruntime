@@ -491,7 +491,7 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
         accumulator +=
             weight * ExtendedValue<T>(past_kv_buffer, key, batch, current_base + slot, params.head_size + d, params);
       }
-      pooled[d] = denominator > 0.0f ? accumulator / denominator : 0.0f;
+      pooled[d] = denominator > 0.0f && isfinite(denominator) ? accumulator / denominator : 0.0f;
     }
     __syncthreads();
 
