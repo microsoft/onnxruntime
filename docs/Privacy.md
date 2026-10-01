@@ -6,7 +6,7 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Official Builds
-ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other official Windows builds, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
+ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other Windows builds including our official releases, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
 
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
