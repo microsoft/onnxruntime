@@ -29,6 +29,7 @@
 #endif
 
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "test/common/cuda_op_test_utils.h"
 #endif
 
@@ -1037,7 +1038,7 @@ TEST(DynamicSparseAttentionTest, PrefillAndTokenDecodeFixedCapacityCache_CUDA) {
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 namespace {
 
-void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep) {
+void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep, bool enable_cuda_graph = false) {
   ASSERT_NE(ep, nullptr);
 
   constexpr int64_t batch_size = 1;
@@ -1157,7 +1158,24 @@ void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep) {
   ASSERT_STATUS_OK(binding->BindOutput("present_key", past_key_value));
   ASSERT_STATUS_OK(binding->BindOutput("present_value", past_value_value));
   ASSERT_STATUS_OK(binding->SynchronizeInputs());
-  ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
+  RunOptions run_options;
+  if (enable_cuda_graph) {
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry("gpu_graph_id", "1"));
+  }
+  const int run_count = enable_cuda_graph ? 4 : 1;
+  for (int i = 0; i < run_count; ++i) {
+    if (enable_cuda_graph && i == run_count - 1) {
+      std::vector<MLFloat16> replay_value_data(head_size, MLFloat16{7.0f});
+      Tensor replay_value_tensor(DataTypeImpl::GetType<MLFloat16>(), qkv_shape,
+                                 replay_value_data.data(), cpu_allocator->Info());
+      ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(
+          replay_value_tensor, *value_value.GetMutable<Tensor>()));
+    }
+    ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  }
+  if (enable_cuda_graph) {
+    EXPECT_TRUE(ep_ptr->IsGraphCaptured(1));
+  }
   ASSERT_STATUS_OK(binding->SynchronizeOutputs());
 
   const auto& results = binding->GetOutputs();
@@ -1169,8 +1187,9 @@ void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep) {
 
   Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), qkv_shape, cpu_allocator);
   ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(results[0].Get<Tensor>(), cpu_output));
+  const float expected_value = enable_cuda_graph ? 7.0f : 5.0f;
   for (MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
-    EXPECT_FLOAT_EQ(value.ToFloat(), 5.0f);
+    EXPECT_FLOAT_EQ(value.ToFloat(), expected_value);
   }
   Tensor cpu_present_key(DataTypeImpl::GetType<MLFloat16>(), cache_shape, cpu_allocator);
   ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(results[1].Get<Tensor>(), cpu_present_key));
@@ -1180,7 +1199,7 @@ void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep) {
     EXPECT_FLOAT_EQ(cpu_present_key.Data<MLFloat16>()[i].ToFloat(), 0.0f);
     EXPECT_FLOAT_EQ(cpu_present_key.Data<MLFloat16>()[head_size + i].ToFloat(), 2.0f);
     EXPECT_FLOAT_EQ(cpu_present_value.Data<MLFloat16>()[i].ToFloat(), 1.0f);
-    EXPECT_FLOAT_EQ(cpu_present_value.Data<MLFloat16>()[head_size + i].ToFloat(), 5.0f);
+    EXPECT_FLOAT_EQ(cpu_present_value.Data<MLFloat16>()[head_size + i].ToFloat(), expected_value);
   }
 }
 
@@ -1196,6 +1215,19 @@ TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
   }
 
   RunTokenDecodeWithAliasedCache(std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, TokenDecodeCudaGraphCaptureAndReplay_CUDA) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_DYNAMIC_SPARSE_ATTENTION_STRICT_VALIDATION", std::nullopt}}};
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.enable_cuda_graph = true;
+  RunTokenDecodeWithAliasedCache(CudaExecutionProviderWithOptions(&provider_options), true);
 }
 
 TEST(DynamicSparseAttentionTest, RejectsAuxiliaryInputsInMainMode_CUDA) {
