@@ -20,6 +20,13 @@ extern "C" void ortenv_teardown();
 namespace onnxruntime {
 namespace test {
 
+TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
+  const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
+  Ort::Status status{Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, "missing_ep_library",
+                                                                    missing_path.c_str())};
+  ASSERT_FALSE(status.IsOK());
+}
+
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
@@ -72,6 +79,10 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
   // Verify the example plugin's expected os_driver_version value.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_OSDriverVersion), "31.0.101.1000");
+  // Verify the example plugin's advertised GroupQueryAttention Value cache layout preference. It is
+  // "BNSH" because the example EP does not fuse the Transpose -> GQA -> Transpose sequence; only an
+  // EP that does should report "BNHS".
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout), "BNSH");
   // Verify the example plugin reports weightless support for all initializers.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
 
