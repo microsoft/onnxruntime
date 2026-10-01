@@ -65,6 +65,7 @@ bool IsActivationSupported(const Activation& activation) {
     case ActivationKind::HardSigmoid:
     case ActivationKind::LeakyRelu:
     case ActivationKind::Tanh:
+    case ActivationKind::QuickGelu:
       return true;
     default:
       return false;
@@ -99,6 +100,7 @@ static_assert(static_cast<int>(ActivationKind::Clip) == 3, "im2col_matmul.wgsl.t
 static_assert(static_cast<int>(ActivationKind::HardSigmoid) == 4, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::LeakyRelu) == 5, "im2col_matmul.wgsl.template mirrors ActivationKind");
 static_assert(static_cast<int>(ActivationKind::Tanh) == 6, "im2col_matmul.wgsl.template mirrors ActivationKind");
+static_assert(static_cast<int>(ActivationKind::QuickGelu) == 7, "im2col_matmul.wgsl.template mirrors ActivationKind");
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -113,8 +115,10 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
+                             WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_.activation_kind_)),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             // Alpha 1 selects the QuickGelu variant without the multiply or alpha uniform.
+                             WGSL_TEMPLATE_PARAMETER(quick_gelu_unit_alpha, activation_.HasUnitQuickGeluAlpha()),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
@@ -176,8 +180,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   // If the status of this condition is uncertain, the feature must be disabled.
   const bool use_subgroup = false;
   const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
-  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup,
-                                        activation.activation_kind_};
+  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup, activation};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);

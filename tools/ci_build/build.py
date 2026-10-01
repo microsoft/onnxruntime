@@ -43,6 +43,7 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
+from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -146,6 +147,13 @@ def run_subprocess(
     my_env.update(env)
     log.info(" ".join(args))
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
+
+
+def get_onnx_backend_test_environment(_use_cuda):
+    return {
+        "ALLOW_RELEASED_ONNX_OPSET_ONLY": "0",
+        "ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS": "1",
+    }
 
 
 def update_submodules(source_dir):
@@ -302,15 +310,23 @@ def generate_vcpkg_install_options(build_dir, args):
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
+        terrapin_path_candidates = [
+            args.terrapin_retrieval_tool_path,
+            shutil.which("TerrapinRetrievalTool"),
+        ]
+        if is_windows():
+            terrapin_path_candidates.append("C:\\local\\Terrapin\\TerrapinRetrievalTool.exe")
+
+        terrapin_cmd_path = next(
+            (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
+            None,
+        )
+
         if terrapin_cmd_path is not None:
+            quoted_terrapin_cmd_path = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
+                + quoted_terrapin_cmd_path
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
@@ -453,6 +469,13 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
+
+    # VitisAI and OpenVINO providers currently only support the full protobuf option. Resolve this once: the
+    # vcpkg triplets (which decide how the ONNX port is built) and the CMake configure must agree, otherwise
+    # ONNX and ONNX Runtime end up with different protobuf runtimes in the same binary.
+    use_full_protobuf = bool(
+        args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface
+    )
 
     # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
@@ -642,7 +665,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.08.27", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    [
+                        "git",
+                        "clone",
+                        "-b",
+                        get_vcpkg_release_tag(),
+                        "https://github.com/microsoft/vcpkg.git",
+                        "--recursive",
+                    ],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
@@ -705,7 +735,7 @@ def generate_build_tree(
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
                 args.enable_address_sanitizer,
-                args.use_full_protobuf,
+                use_full_protobuf,
             )
         elif args.android:
             generate_android_triplets(
@@ -713,20 +743,20 @@ def generate_build_tree(
                 configs,
                 args.android_cpp_shared,
                 args.android_api,
-                args.use_full_protobuf,
+                use_full_protobuf,
             )
         elif is_windows():
-            generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset, use_full_protobuf)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.use_telemetry)
+            generate_macos_triplets(build_dir, configs, osx_target, use_full_protobuf, args.use_telemetry)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.use_telemetry)
+            generate_linux_triplets(build_dir, configs, use_full_protobuf, args.use_telemetry)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
@@ -882,8 +912,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
+    if use_full_protobuf:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_cuda and not is_windows():
@@ -1906,6 +1935,24 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
 
+            if not args.disable_contrib_ops:
+                log.info("Testing QMoE expert distribution analysis")
+                run_subprocess(
+                    [
+                        sys.executable,
+                        os.path.join(
+                            source_dir,
+                            "onnxruntime",
+                            "test",
+                            "python",
+                            "test_qmoe_expert_distribution.py",
+                        ),
+                    ],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
+
             log.info("Testing Global Thread Pool feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
 
@@ -2026,7 +2073,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
                     if config != "Debug":
-                        run_subprocess([sys.executable, "onnx_backend_test_series.py"], cwd=cwd, dll_path=dll_path)
+                        # Set the opset policy explicitly so the child process does not inherit the CI default.
+                        run_subprocess(
+                            [sys.executable, "onnx_backend_test_series.py"],
+                            cwd=cwd,
+                            dll_path=dll_path,
+                            env=get_onnx_backend_test_environment(args.use_cuda),
+                        )
 
             if not args.skip_keras_test:
                 try:

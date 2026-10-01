@@ -566,56 +566,66 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
+#if defined(ORT_USE_TELEMETRY)
+  const TimePoint tp = std::chrono::high_resolution_clock::now();
+#endif
+  // Windows ETW needs these calls even without ORT_USE_TELEMETRY.
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
-
-  if (ep_libraries_.count(registration_name) > 0) {
-    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
-    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
-    return status;
-  }
+#endif
 
   auto status = Status::OK();
 
   ORT_TRY {
-    // create the EpInfo which loads the library if required
-    std::unique_ptr<EpInfo> ep_info = nullptr;
-    ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
-
-    // add the pointers to the OrtEpDevice instances to our global list
-    execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
-    for (const auto& ed : ep_info->execution_devices) {
-      execution_devices_.push_back(ed.get());
-
-      // add shared allocators so they're available without an inference session being required.
-      // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
-      // to blow away any custom allocators previously added by the user.
-      if (ed->device_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
-                                                      nullptr, /*replace_existing*/ false));
+    // Contain early Status returns so they reach the End event.
+    status = [&]() -> Status {
+      if (ep_libraries_.contains(registration_name)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
       }
 
-      if (ed->host_accessible_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
-                                                      nullptr, nullptr, /*replace_existing*/ false));
+      // create the EpInfo which loads the library if required
+      std::unique_ptr<EpInfo> ep_info = nullptr;
+      ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
+
+      // add the pointers to the OrtEpDevice instances to our global list
+      execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
+      for (const auto& ed : ep_info->execution_devices) {
+        execution_devices_.push_back(ed.get());
+
+        // add shared allocators so they're available without an inference session being required.
+        // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
+        // to blow away any custom allocators previously added by the user.
+        if (ed->device_memory_info != nullptr) {
+          ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
+                                                        nullptr, /*replace_existing*/ false));
+        }
+
+        if (ed->host_accessible_memory_info != nullptr) {
+          ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
+                                                        nullptr, nullptr, /*replace_existing*/ false));
+        }
       }
-    }
 
-    for (auto* factory : ep_info->factories) {
-      std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
-      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*factory, data_transfer));
+      for (auto* factory : ep_info->factories) {
+        std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
+        ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*factory, data_transfer));
 
-      if (data_transfer) {
-        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
-        ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+        if (data_transfer) {
+          ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
+          ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+        }
       }
-    }
 
-    for (const auto& internal_factory : internal_factories) {
-      internal_ep_factories_.insert(internal_factory);
-    }
+      for (const auto& internal_factory : internal_factories) {
+        internal_ep_factories_.insert(internal_factory);
+      }
 
-    ep_libraries_[registration_name] = std::move(ep_info);
+      ep_libraries_[registration_name] = std::move(ep_info);
+      return Status::OK();
+    }();
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -623,8 +633,18 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
     });
   }
+  ORT_CATCH(...) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to register EP library under '", registration_name, "' with unknown exception.");
+    });
+  }
 
-  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+#if defined(ORT_USE_TELEMETRY)
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
+#endif
   return status;
 }
 
@@ -649,10 +669,12 @@ Status Environment::CreateAndRegisterInternalEps() {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
 
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   std::string lib_file_name = PathToUTF8String(std::filesystem::path(lib_path).filename().native());
   Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
+#endif
 
-  std::vector<EpFactoryInternal*> internal_factories = {};
+  std::vector<EpFactoryInternal*> internal_factories;
   std::unique_ptr<EpLibrary> ep_library;
 
   // An application can allow EP libraries to create virtual devices by using an EP library registration name that
@@ -669,8 +691,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
-  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
-                                                 internal_factories));
+  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, internal_factories));
 
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }

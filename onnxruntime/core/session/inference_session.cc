@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <charconv>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -17,6 +18,9 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/json_utils.h"
+#endif
 #include "core/common/parse_string.h"
 #include "core/common/path_string.h"
 #include "core/common/string_utils.h"
@@ -367,6 +371,13 @@ std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
+#endif
+
+#if defined(ORT_USE_TELEMETRY)
+InferenceSession::Telemetry::Telemetry()
+    : time_sent_last_(std::chrono::high_resolution_clock::now()) {}
+#else
+InferenceSession::Telemetry::Telemetry() = default;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -1085,6 +1096,12 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+#define ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status) status = [&]() -> Status {
+#define ORT_TELEMETRY_CAPTURE_STATUS_END() \
+  return Status::OK();                     \
+  }                                        \
+  ()
+
 #if !defined(ORT_MINIMAL_BUILD)
 common::Status InferenceSession::RegisterGraphTransformer(
     std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer, TransformerLevel level) {
@@ -1151,33 +1168,41 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
 common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                                                 const std::string& event_name) {
   Status status = Status::OK();
-  TimePoint tp;
+  TimePoint tp{};
+#if defined(ORT_USE_TELEMETRY)
+  tp = std::chrono::high_resolution_clock::now();
+#endif
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
   ORT_TRY {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
+    ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
-      return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+      return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                            "This session already contains a loaded model.");
     }
 
     std::shared_ptr<onnxruntime::Model> p_tmp_model;
-    status = loader(p_tmp_model);
-    ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    ORT_RETURN_IF_ERROR_SESSIONID_(loader(p_tmp_model));
 
     model_ = p_tmp_model;
 
-    status = DoPostLoadProcessing(*model_);
-    ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    ORT_RETURN_IF_ERROR_SESSIONID_(DoPostLoadProcessing(*model_));
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
     telemetry_.event_name_ = event_name;
+    ORT_TELEMETRY_CAPTURE_STATUS_END();
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1194,7 +1219,11 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
-  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
+#if defined(ORT_USE_TELEMETRY)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
+#endif
 
   return status;
 }
@@ -1212,7 +1241,9 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    ModelOptions model_opts(true, strict_shape_type_inference, check_load_cancellation_fn_);
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+    ModelOptions model_opts(allow_released_opsets_only, strict_shape_type_inference, check_load_cancellation_fn_);
 
     // When set, the external initializers folder overrides the model's own directory as the
     // base for resolving external data. The model bytes are still read from model_uri.
@@ -1308,6 +1339,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1316,7 +1349,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference,
+                                    ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
                                                  check_load_cancellation_fn_));
   };
 
@@ -1343,8 +1376,9 @@ Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layou
 
   if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid value for session option 'session.gqa_value_layout': '", layout,
-                           "'. Expected 'BNSH' or 'BNHS'.");
+                           "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout,
+                           "': '", layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS,
+                           "'.");
   }
 
   return Status::OK();
@@ -1372,6 +1406,8 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
     PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
     if (!external_data_model_path.empty()) {
@@ -1381,7 +1417,7 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference,
+                                    ModelOptions(allow_released_opsets_only, strict_shape_type_inference,
                                                  check_load_cancellation_fn_));
   };
 
@@ -1483,12 +1519,15 @@ common::Status InferenceSession::Load(const OrtModel& model_editor_api_model) {
 
   const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+  const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                              kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
   ORT_RETURN_IF_ERROR(Model::LoadFromModelEditorApiModel(model_editor_api_model,
                                                          HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                                         ModelOptions(true, strict_shape_type_inference,
+                                                         ModelOptions(allow_released_opsets_only,
+                                                                      strict_shape_type_inference,
                                                                       check_load_cancellation_fn_),
                                                          *session_logger_, tmp_model));
 
@@ -1839,11 +1878,63 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+  WorkspaceReservationMap workspace_reservations;
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn));
+                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       &workspace_reservations));
+  graph.SetNodeReplacementCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> source_node_indices,
+                                NodeIndex destination_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it != workspace_reservations.end()) {
+          ConsolidateWorkspaceReservations(
+              graph_it->second, source_node_indices, destination_node_index);
+        }
+      });
+  graph.SetNodeRemovalCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> node_indices) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        for (const NodeIndex node_index : node_indices) {
+          graph_it->second.erase(node_index);
+        }
+
+        if (graph_it->second.empty()) {
+          workspace_reservations.erase(graph_it);
+        }
+      });
+#ifdef ENABLE_TRAINING
+  graph.SetNodeCloneCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                NodeIndex source_node_index,
+                                NodeIndex cloned_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        const auto source_it = graph_it->second.find(source_node_index);
+        if (source_it != graph_it->second.end()) {
+          graph_it->second.insert_or_assign(cloned_node_index, source_it->second);
+        }
+      });
+#endif
+  auto clear_node_mutation_callbacks =
+      gsl::finally([&graph]() {
+        graph.SetNodeReplacementCallback({});
+        graph.SetNodeRemovalCallback({});
+#ifdef ENABLE_TRAINING
+        graph.SetNodeCloneCallback({});
+#endif
+      });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA
@@ -2006,6 +2097,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
   }
 
+  session_state_->SetWorkspaceReservations(std::move(workspace_reservations));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -2095,21 +2187,32 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
+#if defined(ORT_USE_TELEMETRY)
+  const TimePoint tp = std::chrono::high_resolution_clock::now();
+#endif
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
+  Status status = Status::OK();
+  ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
+    const Status load_status(
+        common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+    LOGS(*session_logger_, ERROR) << load_status.ErrorMessage();
+    return load_status;
   }
 
   if (is_inited_) {
-    Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
-    LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-    return status;
+    const Status initialized_status(
+        common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+    LOGS(*session_logger_, ERROR) << initialized_status.ErrorMessage();
+    return initialized_status;
   }
 
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
@@ -2125,7 +2228,17 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-  const auto model_version = std::stoi(fbs_ort_model_version->str());
+  int model_version = -1;
+  const std::string_view model_version_string = fbs_ort_model_version->string_view();
+  int parsed_model_version = 0;
+  const auto [model_version_end, model_version_error] =
+      std::from_chars(model_version_string.data(),
+                      model_version_string.data() + model_version_string.size(),
+                      parsed_model_version);
+  if (model_version_error == std::errc{} &&
+      model_version_end == model_version_string.data() + model_version_string.size()) {
+    model_version = parsed_model_version;
+  }
   const bool is_supported = IsOrtModelVersionSupported(model_version);
 
   OrtFormatLoadOptions load_options{};
@@ -2221,10 +2334,14 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
+  ORT_TELEMETRY_CAPTURE_STATUS_END();
 
-  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, Status::OK());
-
-  return Status::OK();
+#if defined(ORT_USE_TELEMETRY)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, 0);
+#endif
+  return status;
 }
 
 bool InferenceSession::IsInitialized() const {
@@ -2454,8 +2571,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                         gqa_value_layout_explicitly_set));
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Session option 'session.gqa_value_layout' is not supported for ORT format models. "
-                           "Apply the Value layout transform when "
+                           "Session option '", kOrtSessionOptionsGqaValueLayout,
+                           "' is not supported for ORT format models. Apply the Value layout transform when "
                            "converting the model to ORT format and load it without setting this option, or load the "
                            "ONNX model instead.");
   }
@@ -2476,8 +2593,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
         "This ORT format model already carries the BNHS GroupQueryAttention Value layout. "
-        "It cannot be loaded with 'session.gqa_value_layout' set to 'BNSH', because the application "
-        "would bind BNSH buffers to a BNHS boundary. "
+        "It cannot be loaded with '",
+        kOrtSessionOptionsGqaValueLayout, "' set to '", kGqaValueLayoutBNSH,
+        "', because the application would bind BNSH buffers to a BNHS boundary. "
         "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
   }
 #endif
@@ -2589,54 +2707,125 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
-#pragma warning(disable : 26117)
-#endif
 common::Status InferenceSession::Initialize() {
-  if (session_options_.IsLoadCancellationFlagSet()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                           "Session initialization canceled due to user request.");
-  }
+  const auto start_timing = [this]() {
+    TimePoint start_time{};
+#if defined(ORT_USE_TELEMETRY)
+    start_time = std::chrono::high_resolution_clock::now();
+#endif
+    if (session_profiler_.IsEnabled()) {
+      start_time = session_profiler_.Start();
+    }
+#if defined(_WIN32) || defined(ORT_USE_TELEMETRY)
+    Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
+#endif
+    return start_time;
+  };
 
   Status status = Status::OK();
-  TimePoint tp;
-  if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Start();
-  }
-
-  ORT_TRY {
-    LOGS(*session_logger_, INFO) << "Initializing session.";
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
-
-    bool have_cpu_ep = false;
-
-    {
-      std::lock_guard<std::mutex> initial_guard(session_mutex_);
-
-      if (!is_model_loaded_) {
-        LOGS(*session_logger_, ERROR) << "Model was not loaded";
-        return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
-      }
-
-      if (is_inited_) {  // already initialized
-        LOGS(*session_logger_, INFO) << "Session has already been initialized.";
-        return common::Status::OK();
-      }
-
+  bool have_cpu_ep = false;
+  if (session_options_.IsLoadCancellationFlagSet()) {
+    status = ORT_MAKE_STATUS(
+        ONNXRUNTIME, MODEL_LOAD_CANCELED,
+        "Session initialization canceled due to user request.");
+  } else {
+    std::lock_guard<std::mutex> initial_guard(session_mutex_);
+    if (!is_model_loaded_) {
+      LOGS(*session_logger_, ERROR) << "Model was not loaded";
+      status = Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+    } else if (is_inited_) {
+      LOGS(*session_logger_, INFO) << "Session has already been initialized.";
+      return common::Status::OK();
+    } else {
 #if !defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
       for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
         if (key == kOrtSessionOptionsGqaValueLayout) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "GQA layout disabled");
+          status = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "GQA layout disabled");
+          break;
         }
       }
 #endif
-
-      have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
+      if (status.IsOK()) {
+        have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
+      }
     }
+  }
+
+  const TimePoint tp = start_timing();
+  if (!status.IsOK()) {
+    return RecordSessionCreationEndTelemetry(tp, status);
+  }
+
+  ORT_TRY {
+    ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
+    LOGS(*session_logger_, INFO) << "Initializing session.";
+#if defined(ORT_MINIMAL_BUILD)
+    for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
+      const std::string_view option = key;
+      if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
+            option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
+           value != "0") ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
+          option == kOrtSessionOptionsConfigMoeExpertCounterBeta) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
+      }
+    }
+#else
+    const std::string& enable_moe_statistics =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0");
+    if (enable_moe_statistics != "0" && enable_moe_statistics != "1") {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+          " must be set to either \"0\" or \"1\". Received: \"", enable_moe_statistics, "\".");
+    }
+    const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
+    const auto enable_moe_counting =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0");
+    ORT_RETURN_IF_NOT(enable_moe_counting == "0" || enable_moe_counting == "1",
+                      kOrtSessionOptionsConfigEnableMoeExpertCounting, " must be \"0\" or \"1\".");
+    const bool enable_moe_expert_counting = enable_moe_counting == "1";
+    const auto moe_counter_state_file =
+        session_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeExpertCounterStateFile);
+    if (moe_counter_state_file) {
+      ORT_RETURN_IF_NOT(enable_moe_expert_counting || enable_moe_expert_statistics,
+                        kOrtSessionOptionsConfigMoeExpertCounterStateFile,
+                        " requires expert counting or statistics logging to be enabled.");
+      ORT_RETURN_IF(moe_counter_state_file->empty(),
+                    kOrtSessionOptionsConfigMoeExpertCounterStateFile, " must not be empty.");
+    }
+    for (const char* key : {kOrtSessionOptionsConfigMoeExpertCounterAlpha,
+                            kOrtSessionOptionsConfigMoeExpertCounterBeta}) {
+      ORT_RETURN_IF(session_options_.config_options.GetConfigEntry(key).has_value() &&
+                        !enable_moe_expert_counting && !enable_moe_expert_statistics,
+                    key, " requires expert counting or statistics logging to be enabled.");
+    }
+    if (enable_moe_expert_counting) {
+      for (const auto& execution_provider : execution_providers_) {
+        ORT_RETURN_IF(execution_provider->Type() == kCudaExecutionProvider &&
+                          execution_provider->GetOrtEp() != nullptr,
+                      "MoE expert counting is not supported by the CUDA plugin execution provider.");
+        ORT_RETURN_IF(execution_provider->IsGraphCaptureEnabled(),
+                      "MoE expert counting is not supported when graph capture is enabled.");
+      }
+    }
+    if (enable_moe_expert_statistics) {
+      for (const auto& execution_provider : execution_providers_) {
+        if (execution_provider->Type() == kCudaExecutionProvider &&
+            execution_provider->GetOrtEp() != nullptr) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported by the CUDA plugin execution provider.");
+        }
+        if (execution_provider->IsGraphCaptureEnabled()) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported when graph capture is enabled by ", execution_provider->Type(), ".");
+        }
+      }
+    }
+#endif
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
@@ -2793,6 +2982,16 @@ common::Status InferenceSession::Initialize() {
       }
       return false;
     }();
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    ORT_RETURN_IF(
+        loading_ort_format &&
+            session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1",
+        "session.strict_workspace_verification is not supported when loading an ORT format model because "
+        "partition-time workspace reservations are not serialized in the model. Load the ONNX model to use "
+        "strict workspace verification.");
+#endif
 
     if (!loading_ort_format) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -2962,19 +3161,6 @@ common::Status InferenceSession::Initialize() {
       // If the user disabled fallback, but also explicitly added the CPU EP to the session, return an error status.
       // If the user disabled fallback and any graph node is assigned to the CPU EP, return an error status.
       if (disable_cpu_ep_fallback) {
-        // Returns true if any graph nodes have been assigned to the CPU EP.
-        auto are_nodes_assigned_to_cpu_ep = [](const Graph& graph) -> bool {
-          for (const auto& node : graph.Nodes()) {
-            const auto& node_provider = node.GetExecutionProviderType();
-
-            if (node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider) {
-              return true;
-            }
-          }
-
-          return false;
-        };
-
         if (!execution_providers_.GetCpuProviderWasImplicitlyAdded()) {
           const char* err_msg =
               "Conflicting session configuration: explicitly added the CPU EP to the "
@@ -2982,7 +3168,7 @@ common::Status InferenceSession::Initialize() {
 
           LOGS(*session_logger_, ERROR) << err_msg;
           ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, err_msg));
-        } else if (are_nodes_assigned_to_cpu_ep(graph)) {
+        } else if (inference_session_utils::AreAnyNodesAssignedToCpuEp(graph)) {
           const char* err_msg =
               "This session contains graph nodes that are assigned to the default CPU EP, "
               "but fallback to CPU EP has been explicitly disabled by the user.";
@@ -3019,8 +3205,12 @@ common::Status InferenceSession::Initialize() {
     if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
       LOGS(*session_logger_, INFO)
           << "Compile-only session: skipping session-state finalization. The session is not runnable.";
+#if defined(ORT_USE_TELEMETRY)
       LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
+      return Status::OK();
+#else
       return RecordSessionCreationEndTelemetry(tp, status);
+#endif
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -3093,9 +3283,12 @@ common::Status InferenceSession::Initialize() {
     session_state_->PruneRemovableAttributes();
 
     // and log telemetry
+#if defined(ORT_USE_TELEMETRY)
     LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
+#endif
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
+    ORT_TELEMETRY_CAPTURE_STATUS_END();
   }
 
   ORT_CATCH(const NotImplementedException& ex) {
@@ -3123,9 +3316,6 @@ common::Status InferenceSession::Initialize() {
 
   return RecordSessionCreationEndTelemetry(tp, status);
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
@@ -3382,6 +3572,11 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF(session_state_->GetMoeExpertState() != nullptr,
+                  "MoE expert counting and statistics are not supported by the deprecated PartialRun path.");
+#endif
+
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
@@ -3487,6 +3682,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Serialize graph-state checks and replay as well as normal execution. Keep the
+  // lock here so RunImpl's internal capture retries do not acquire it recursively.
+  std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
+  if (!is_concurrent_run_supported_) {
+    sequential_run_lock.emplace(session_mutex_);
+  }
+
   return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
@@ -3511,6 +3713,25 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     }
     run_profiler->StartProfiling(profile_file);
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const bool track_moe_experts =
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+  const bool collect_moe_statistics =
+      session_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
+  KernelPilotMoeExpertState* moe_expert_state = nullptr;
+  bool moe_run_active = false;
+  auto end_moe_run = gsl::finally([&]() {
+    if (moe_run_active) {
+      ORT_IGNORE_RETURN_VALUE(moe_expert_state->EndRun());
+    }
+  });
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  InlinedVector<AllocatorPtr> arenas_to_shrink;
 
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
@@ -3562,8 +3783,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-    InlinedVector<AllocatorPtr> arenas_to_shrink;
-
     ORT_TRY {
       if (!is_inited_) {
         LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -3606,10 +3825,15 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
-      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
-      if (is_concurrent_run_supported_ == false) {
-        sequential_run_lock.emplace(session_mutex_);
+#if !defined(ORT_MINIMAL_BUILD)
+      if (track_moe_experts) {
+        moe_expert_state = session_state_->GetMoeExpertState();
+        ORT_RETURN_IF_NOT(moe_expert_state, "MoE expert state is unavailable.");
+        ORT_RETURN_IF_ERROR_SESSIONID_(moe_expert_state->BeginRun(
+            run_options.run_tag, collect_moe_statistics ? &run_logger : nullptr));
+        moe_run_active = true;
       }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
@@ -3670,6 +3894,16 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
+
+#if !defined(ORT_MINIMAL_BUILD)
+      if (moe_run_active) {
+        const Status moe_run_status = moe_expert_state->EndRun();
+        moe_run_active = false;
+        if (retval.IsOK() && !moe_run_status.IsOK()) {
+          retval = moe_run_status;
+        }
+      }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
       if (run_profiler) {
         run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
@@ -3745,6 +3979,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
               ep_info.ep_version, ep_info.assigned_node_count,
               telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
         }
+
         // reset counters
         telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
         telemetry_.total_runs_since_last_ = 0;
@@ -4522,9 +4757,17 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
     }
   }
 
-  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
+#if defined(ORT_USE_TELEMETRY)
+  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
+      session_id_, status, TimeDiffMicroSeconds(tp));
+#elif defined(_WIN32)
+  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(session_id_, status, 0);
+#endif
   return status;
 }
+
+#undef ORT_TELEMETRY_CAPTURE_STATUS_BEGIN
+#undef ORT_TELEMETRY_CAPTURE_STATUS_END
 
 #if !defined(ORT_MINIMAL_BUILD)
 // assumes model has already been loaded before

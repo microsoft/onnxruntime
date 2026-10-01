@@ -139,10 +139,13 @@ Model::Model(const std::string& graph_name,
 
   model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    ORT_ENFORCE(model_local_functions_.find(function_id) == model_local_functions_.end(),
+                "Duplicate model-local function identifier: ", function_id);
+
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
-                                            func_ptr);
+    model_local_functions_.emplace(std::move(function_id), func_ptr);
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));
@@ -277,7 +280,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
+    auto function_id = function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload());
+    const bool inserted = model_local_functions_.emplace(function_id, &func).second;
+    ORT_ENFORCE(inserted, "Duplicate model-local function identifier: ", function_id);
   }
 
   ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto_));

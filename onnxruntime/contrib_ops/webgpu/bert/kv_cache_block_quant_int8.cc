@@ -27,8 +27,8 @@ Status KvCacheBlockQuantInt8Program::GenerateShaderCode(ShaderHelper& shader) co
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
-  const ShaderVariableHelper* past_key = &key;
-  const ShaderVariableHelper* past_value = &value;
+  const ShaderVariableHelper* past_key = nullptr;
+  const ShaderVariableHelper* past_value = nullptr;
   if (has_past_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -44,8 +44,8 @@ Status KvCacheBlockQuantInt8Program::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_VARIABLE(past_key, *past_key),
-                             WGSL_TEMPLATE_VARIABLE(past_value, *past_value),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
                              WGSL_TEMPLATE_VARIABLE(value, value));
@@ -142,7 +142,8 @@ Status BlockQuantInt8CopyToKvCache(onnxruntime::webgpu::ComputeContext& context,
 
 Status KvCacheBlockQuantInt8FusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& packed_qkv = shader.AddInput("packed_qkv", ShaderUsage::UseUniform);
-  const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = shader.AddInput(
+      "cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
 
   if (use_seqlen_k_) {
@@ -221,7 +222,7 @@ Status BlockQuantInt8ApplyRotaryAndCopyToKvCache(
       multi_rotary_cache_concat_offset};
   program.AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank});
   program.AddInputs({
-      {cos_cache, ProgramTensorMetadataDependency::Rank},
+      {cos_cache, ProgramTensorMetadataDependency::TypeAndRank},
       {sin_cache, ProgramTensorMetadataDependency::Rank},
   });
   if (use_seqlen_k) {

@@ -31,16 +31,16 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // d51983d119d3b947e9a2c0b40e11af364bd2c90b1bbf41252a06152069964f45
+#include "wgsl_template_gen/string_table.h"  // daf7aa96ffddeaaeabed7e8443f06e17d95660758d717a00948a19e7000c7712
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // e69543249c71327ffa53cb03d2477e383184dc395a6c2641272bd994c084014e
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 26616da09d38ec21713de728effdb3b9feb2340091724b4c321ece03188ae37a
-#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 942744930eb0218ea479fb153bbd7c5e3f91e0315953a53da92fe672e645ea78
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 64c6a661a22d14703ce4c7468f1019516666ba0f993694cec324a911f9ae28f8
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ed34e085b157a7a718c45a8b51cc557a3411125736c66e1f4a82e29be867ddad
-#include "wgsl_template_gen/generated/tensor/pad.h"  // e59d9c7ca1a1c92c5fc11e433508260ce2dc5228e3b49c0dfb7d1e76bd43239c
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // c8a570a5d8ff663432f0d9c94c3a5452110aad6d2f19ad4adc7e29fa2c3a4321
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 60101f484a36a2b8a5478f1920633effbf4305cd6d7cb4e2e96cae3b3c961d29
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // e24ca42a283777d0b77674df983786380237dcdee3d874a66193cb54036e09a9
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 716093e16dab78785c901496aba2d83252c582cd160b55f2adf130e63b09007a
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // b51b250b8de40b765a7bbf221549c429ba5667ca0710d1b2693c97bed3ecddec
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 38d233f377317f5321d49575df8f252da49f360d15af6fb3fe3d4ff7f6aaf911
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

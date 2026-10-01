@@ -18,6 +18,20 @@ constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovide
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
+// Accumulate the dot products of the MatMulNBits kernels in f32 instead of in the output element
+// type. The input and weight tensors keep their own type, so global memory traffic is identical
+// either way. Enabling it avoids saturating the f16 maximum (65504) when partial sums along K grow
+// large, at the cost of registers and shared memory.
+// It is not only the accumulator registers: where a fused kernel computes its epilogue on the
+// accumulators, that epilogue runs in the same precision. This applies to the fused MLP decode fast
+// path, which keeps the bias add, the SiLU and the gate/up product in f32 and rounds once at the
+// final store instead of after every step; that is why its test tolerance against the unfused
+// reference is looser with the option on than with it off. Fused MLP shapes that fall back to
+// ApplyUnfusedMlp materialize the gate and up tensors in the output element type before the
+// activation, so their epilogue keeps rounding at the output precision either way.
+// Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
+// as follow-up work under the same option.
+constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -25,6 +39,7 @@ constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackend
 constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";
 
 constexpr const char* kDeviceId = "ep.webgpuexecutionprovider.deviceId";
+constexpr const char* kAdapterIndex = "ep.webgpuexecutionprovider.adapterIndex";
 constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstance";
 constexpr const char* kWebGpuDevice = "ep.webgpuexecutionprovider.webgpuDevice";
 
@@ -42,6 +57,8 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
 constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
+constexpr const char* kMaxStorageBuffersPerShaderStage =
+    "ep.webgpuexecutionprovider.maxStorageBuffersPerShaderStage";
 // Valid range: 1-4096. Larger values are rejected to avoid excessive
 // query buffer sizing and unpredictable memory/performance behavior.
 constexpr const char* kMaxNumPendingDispatches = "ep.webgpuexecutionprovider.maxNumPendingDispatches";
@@ -75,6 +92,9 @@ constexpr const char* kPreserveDevice_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
 constexpr const char* kKvCacheQuantizationBits_8Bit = "8";
+
+constexpr const char* kEnableMatmulFp32Accumulation_ON = "1";
+constexpr const char* kEnableMatmulFp32Accumulation_OFF = "0";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

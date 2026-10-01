@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include <string_view>
 
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -39,6 +40,9 @@ Status ParseDilation(const TKernelInfo& info, int& dilation) {
   const int64_t value = info.template GetAttrOrDefault<int64_t>("dilation", 1);
   if (value < 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "dilation must be >= 1, got ", value);
+  }
+  if (value > std::numeric_limits<int>::max()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "dilation must be <= INT_MAX, got ", value);
   }
   dilation = static_cast<int>(value);
   return Status::OK();
