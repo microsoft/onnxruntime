@@ -6,18 +6,18 @@ The software may collect information about you and your use of the software and 
 ***
 
 ### Official Builds
-ONNX Runtime collects trace events with the goal of improving product quality. On Windows, it uses the platform's built-in ETW telemetry system; on supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, tvOS, visionOS, Mac Catalyst, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
+ONNX Runtime collects trace events with the goal of improving product quality. For builds used in Windows apps and components like Windows ML, it uses the platform's built-in ETW telemetry system; for other official Windows builds, supported Linux architectures, macOS, Android, and iOS, it uses the cross-platform 1DS telemetry SDK that is built into ONNX Runtime. Targets without a supported telemetry provider, including WebAssembly, AIX, and RISC-V, do not include telemetry. In all cases, collection is subject to user consent and handled following Microsoft's privacy practices.
 
 Telemetry is turned **ON** by default in the official builds ([see here](../README.md#binaries)). Both providers are accessed through ONNX Runtime's common telemetry interface (see [telemetry.h](../onnxruntime/core/platform/telemetry.h)).
 
 ### Private Builds
-The build driver enables telemetry by default for supported native platforms. The standard Windows `build.bat` wrapper explicitly passes `--no_telemetry`, so private builds made with that wrapper perform no data collection. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
+The build driver enables telemetry by default for supported native platforms. Targets without a supported provider and builds that disable C++ exceptions automatically exclude telemetry. For information on how to disable telemetry in other builds, see [Disabling Telemetry](#disabling-telemetry) below.
 
 #### Technical Details
 
-**Windows.** The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
+**Windows apps and components.** The Windows provider used the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. Windows ML and ONNX Runtime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
-**Non-Windows (Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
+**Other builds with telemetry (Windows, Linux, macOS, Android, iOS).** These platforms use the cross-platform 1DS SDK (cpp_client_telemetry) to send the same trace events to Microsoft's telemetry backend over HTTPS. Based on user consent, this data is handled following GDPR and privacy regulations for anonymity and data access controls. ONNX Runtime C APIs allow 1DS to be turned on/off (see [API pages](../README.md#api-documentation) for details); there are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetry) section below.
 
@@ -25,10 +25,8 @@ For ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetr
 
 Telemetry can be disabled in any of these ways:
 
-- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from non-Windows builds and disables the Microsoft telemetry configuration on Windows. The standard Windows `build.bat` wrapper does this automatically. Unsupported targets and exception-free builds never include telemetry.
+- **Disable it at build time.** Pass `--no_telemetry` to `build.py` or `build.sh`. This omits the 1DS provider from all builds and disables the Microsoft telemetry configuration on Windows. Unsupported targets and exception-free builds never include telemetry.
 - **Disable all telemetry at runtime (non-Windows).** Set `ORT_DISABLE_TELEMETRY=1` before ONNX Runtime initializes. This prevents the uploader, events, and persistent device identifier from being created for the process lifetime.
-- **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On **Windows**, ETW events are recorded only when an external trace session is collecting.
+- **Disable non-essential events via the API.** The C API (and the C#, Python, and Java bindings) can suppress non-essential telemetry. ONNX Runtime may already have emitted a minimal initialization event before the API can be called. On builds for **Windows apps and components**, ETW events are recorded only when an external trace session is collecting.
 
-Telemetry-enabled static Linux builds use static curl and mbedTLS. FetchContent packages include those archives;
-vcpkg builds resolve them from the same vcpkg installation. A static consumer that links another curl or mbedTLS
-copy into the same final binary must build ORT with `--no_telemetry` to avoid ordinary static-symbol collisions.
+Telemetry-enabled static Linux builds depend on static curl and mbedTLS. FetchContent-built static ORT packages include these archives; vcpkg-built packages resolve them through vcpkg. Consumers should use one compatible curl/mbedTLS dependency set in the final binary. Independently linking additional copies can cause duplicate symbols or incompatible symbol resolution. If a single compatible dependency set cannot be ensured, build ORT with `--no_telemetry`.
