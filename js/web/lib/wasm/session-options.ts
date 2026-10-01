@@ -70,20 +70,28 @@ const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: 
   epOptions.push([keyDataOffset, valueDataOffset]);
 };
 
+// OrtErrorCode values are part of the public C API ABI.
+const ORT_NOT_IMPLEMENTED = 9;
+
 /**
  * Get the OrtEpDevice instances registered with the environment, grouped by execution provider name.
  *
  * An execution provider may register more than one device, e.g. one per GPU, and all of them share its name.
  *
- * @returns a map of execution provider name to the OrtEpDevice pointers registered under it.
+ * @returns a map of execution provider name to the OrtEpDevice pointers registered under it, or undefined if the
+ * build does not support the EP device API.
  */
-const getEpDevicesByEpName = (): Map<string, number[]> => {
+const getEpDevicesByEpName = (): Map<string, number[]> | undefined => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
   try {
     const epDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
     const numEpDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
-    if (wasm._OrtGetEpDevices(epDevicesPtr, numEpDevicesPtr) !== 0) {
+    const errorCode = wasm._OrtGetEpDevices(epDevicesPtr, numEpDevicesPtr);
+    if (errorCode === ORT_NOT_IMPLEMENTED) {
+      return undefined;
+    }
+    if (errorCode !== 0) {
       checkLastError("Can't get execution provider devices.");
     }
     // The array is owned by the environment, so only the pointers are read out here.
@@ -117,8 +125,7 @@ const setExecutionProviders = async (
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
     const epOptions: Array<[number, number]> = [];
-    // True when the EP is selected by OrtEpDevice rather than by ORT's built-in EP name table.
-    let selectByEpDevice = false;
+    let selectedEpDevices: number[] | undefined;
 
     // check EP name
     switch (epName) {
@@ -139,11 +146,18 @@ const setExecutionProviders = async (
         break;
       case 'webgpu':
         if (!BUILD_DEFS.DISABLE_WEBGPU) {
-          // Select by OrtEpDevice, under the EP's canonical name (OrtEpFactory::GetName) rather than the short
-          // 'WebGPU' alias of the built-in EP name table. This is independent of how the paired wasm binary
-          // builds the WebGPU EP: the built-in EP and the plugin EP both register an OrtEpDevice under this name.
-          epName = 'WebGpuExecutionProvider';
-          selectByEpDevice = true;
+          epName = 'WebGPU';
+          const epDevicesByEpName = getEpDevicesByEpName();
+          if (epDevicesByEpName !== undefined) {
+            // Non-minimal builds select by OrtEpDevice under the EP's canonical name. Minimal builds do not support
+            // the EP device API and continue to use the built-in EP name table.
+            epName = 'WebGpuExecutionProvider';
+            selectedEpDevices = epDevicesByEpName.get(epName);
+            if (selectedEpDevices === undefined) {
+              const registered = [...epDevicesByEpName.keys()].join(', ') || '(none)';
+              throw new Error(`no execution provider device is registered for: ${epName}. registered: ${registered}.`);
+            }
+          }
           let customDevice: GPUDevice | undefined;
 
           if (typeof ep !== 'string') {
@@ -252,14 +266,7 @@ const setExecutionProviders = async (
     }
 
     let appendErrorCode: number;
-    if (selectByEpDevice) {
-      const epDevicesByEpName = getEpDevicesByEpName();
-      const epDevices = epDevicesByEpName.get(epName);
-      if (!epDevices) {
-        const registered = [...epDevicesByEpName.keys()].join(', ') || '(none)';
-        throw new Error(`no execution provider device is registered for: ${epName}. registered: ${registered}.`);
-      }
-
+    if (selectedEpDevices !== undefined) {
       // Select a single OrtEpDevice, even though more than one may match the EP name.
       //
       // Necessary: the WebGPU EP backs a session with one Dawn device, so its factory rejects any device
@@ -275,7 +282,7 @@ const setExecutionProviders = async (
       // "selected on a virtual GPU device" error rather than silently running on the wrong device.
       const epDevicesOffset = getInstance()._malloc(getInstance().PTR_SIZE);
       allocs.push(epDevicesOffset);
-      getInstance().setValue(epDevicesOffset, epDevices[0], '*');
+      getInstance().setValue(epDevicesOffset, selectedEpDevices[0], '*');
 
       appendErrorCode = await getInstance()._OrtAppendExecutionProviderV2(
         sessionOptionsHandle,

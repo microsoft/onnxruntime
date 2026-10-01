@@ -2806,7 +2806,9 @@ struct OrtEpFactory {
    *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
    *
    *          Environment configuration entries are populated before any library is registered, so
-   *          OrtEpApi::GetEnvConfigEntries may be called from this function.
+   *          OrtEpApi::GetEnvConfigEntries may be called from this function, but it must be called synchronously on
+   *          the thread invoking GetSupportedDevices. The implementation must not wait for another thread that calls
+   *          OrtEpApi::GetEnvConfigEntries.
    *
    * \since Version 1.22.
    */
