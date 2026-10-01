@@ -1768,6 +1768,61 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeSmallOutputs) {
+  for (const auto& dimensions : {std::vector<int64_t>{}, std::vector<int64_t>{0}, std::vector<int64_t>{2, 3}}) {
+    auto build_model = [&dimensions](ModelTestBuilder& builder) {
+      auto* shape = builder.Make1DInitializer<int64_t>(dimensions);
+      builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+    };
+
+    auto post_graph_checker = [&dimensions](Graph& graph) -> Status {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 0);
+      const auto* output = graph.GetConstantInitializer(graph.GetOutputs()[0]->Name(), false);
+      TEST_RETURN_IF_NOT(output != nullptr);
+      TEST_RETURN_IF_NOT(std::vector<int64_t>(output->dims().begin(), output->dims().end()) == dimensions);
+      return Status::OK();
+    };
+
+    CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                          std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingSkipsOverflowingConstantOfShape) {
+  auto build_model = [](ModelTestBuilder& builder) {
+    auto* shape = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), 2});
+    builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    ONNX_NAMESPACE::TensorShapeProto stale_shape;
+    stale_shape.add_dim()->set_dim_value(1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConstantOfShape") {
+        node.MutableOutputDefs()[0]->SetShape(stale_shape);
+        return Status::OK();
+      }
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ConstantOfShape node not found");
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
 // Verify that ConstantOfShape output size is estimated directly from the input shape
 // initializer (and not just from shape inference) so that excessive constant-folded
 // allocations are blocked before kernel execution. The 'value' attribute uses int64
@@ -8659,6 +8714,64 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightSha
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionUnfusedMatMulGraph));
+}
+
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaOverflowingQkvShapeTest) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  const auto* capturing_sink_raw = capturing_sink.get();
+  logging::LoggingManager logging_manager(std::move(capturing_sink), logging::Severity::kVERBOSE, false,
+                                          logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("MobileClipOverflowTest");
+
+  for (const auto& [num_heads, head_size] :
+       {std::pair{std::numeric_limits<int64_t>::max(), int64_t{2}},
+        std::pair{std::numeric_limits<int64_t>::max() / 3 + 1, int64_t{1}}}) {
+    auto build_test_case = [](ModelTestBuilder& builder) {
+      BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+    };
+
+    auto replace_qkv_shape = [num_heads, head_size](Graph& graph) -> Status {
+      for (const Node& node : graph.Nodes()) {
+        if (node.OpType() != "Reshape" || node.InputDefs().size() < 2) {
+          continue;
+        }
+
+        const auto& shape_name = node.InputDefs()[1]->Name();
+        const ONNX_NAMESPACE::TensorProto* shape = nullptr;
+        if (!graph.GetInitializedTensor(shape_name, shape) ||
+            shape->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+          continue;
+        }
+
+        Initializer shape_data{graph, *shape, graph.ModelPath()};
+        const auto dimensions = shape_data.DataAsSpan<int64_t>();
+        if (dimensions.size() != 5 || dimensions[2] != 3) {
+          continue;
+        }
+
+        ONNX_NAMESPACE::TensorProto overflow_shape(*shape);
+        overflow_shape.clear_raw_data();
+        for (int64_t dimension : dimensions) {
+          overflow_shape.add_int64_data(dimension);
+        }
+        overflow_shape.set_int64_data(3, num_heads);
+        overflow_shape.set_int64_data(4, head_size);
+        graph.RemoveInitializedTensor(shape_name);
+        graph.AddInitializedTensor(overflow_shape);
+        return Status::OK();
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QKV reshape initializer not found");
+    };
+
+    const size_t previous_message_count = capturing_sink_raw->Messages().size();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::make_unique<AttentionFusion>(),
+                                          TransformerLevel::Level2, 1, replace_qkv_shape,
+                                          CheckMobileClipAttentionUnfusedMatMulGraph));
+    const auto& messages = capturing_sink_raw->Messages();
+    EXPECT_THAT(std::vector<std::string>(messages.begin() + previous_message_count, messages.end()),
+                testing::Contains(testing::HasSubstr("unable to derive num_heads/head_size from qkv reshape initializer")));
+  }
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmNonDefaultAttributesTest) {
