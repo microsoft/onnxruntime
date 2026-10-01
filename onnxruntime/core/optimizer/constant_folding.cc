@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <limits>
-#include <optional>
 #include <string>
 
 #include "core/optimizer/constant_folding.h"
@@ -304,23 +303,22 @@ static int64_t EstimateIdentityOutputSizeInBytes(const Node& node) {
 // Compute the output byte size directly from that initializer so we do not have to rely on ONNX
 // shape inference having propagated the shape onto the output NodeArg (which is not guaranteed
 // for all opsets, all shapes-as-initializers, or all build configurations).
-// Returns nullopt if the initializer is unavailable, or -1 if its size is invalid.
-static std::optional<int64_t> EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const Graph& graph) {
+static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const Graph& graph) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.empty() || input_defs[0] == nullptr || !input_defs[0]->Exists()) {
-    return std::nullopt;
+    return -1;
   }
 
   constexpr bool check_outer_scope = true;
   const ONNX_NAMESPACE::TensorProto* shape_init =
       graph.GetConstantInitializer(input_defs[0]->Name(), check_outer_scope);
   if (shape_init == nullptr) {
-    return std::nullopt;
+    return -1;
   }
 
   Initializer shape_data{graph, *shape_init, graph.ModelPath()};
   if (shape_data.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    return std::nullopt;
+    return -1;
   }
 
   int64_t num_elements = 1;
@@ -361,12 +359,7 @@ static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& grap
   }
 
   if (node.OpType() == "ConstantOfShape" && node.Domain().empty()) {
-    const auto size = EstimateConstantOfShapeOutputSizeInBytes(node, graph);
-    if (size.has_value()) {
-      return *size;
-    }
-    // Fall through to the generic estimator if we could not derive a size from the input
-    // initializer (e.g., the shape input is not a recognizable constant initializer).
+    return EstimateConstantOfShapeOutputSizeInBytes(node, graph);
   }
 
   int64_t total_size = 0;

@@ -144,12 +144,8 @@ static bool TryGetMobileClipQkvReshapeInfo(const Graph& graph, const Node& qkv_r
   num_heads = reshape_dims[3];
   head_size = reshape_dims[4];
 
-  if (!SafeMultiply(num_heads, head_size, hidden_size) ||
-      hidden_size > std::numeric_limits<int64_t>::max() / 3) {
-    return false;
-  }
-
-  return hidden_size > 0;
+  return SafeMultiply(num_heads, head_size, hidden_size) &&
+         hidden_size <= std::numeric_limits<int64_t>::max() / 3;
 }
 
 static std::optional<ONNX_NAMESPACE::TypeProto> TryCreateMobileClipMhaOutputType(const NodeArg& qkv_output,

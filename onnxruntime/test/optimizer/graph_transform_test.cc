@@ -1768,6 +1768,30 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeSmallOutputs) {
+  for (const auto& dimensions : {std::vector<int64_t>{}, std::vector<int64_t>{0}, std::vector<int64_t>{2, 3}}) {
+    auto build_model = [&dimensions](ModelTestBuilder& builder) {
+      auto* shape = builder.Make1DInitializer<int64_t>(dimensions);
+      builder.AddNode("ConstantOfShape", {shape}, {builder.MakeOutput()});
+    };
+
+    auto post_graph_checker = [&dimensions](Graph& graph) -> Status {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ConstantOfShape"] == 0);
+      const auto* output = graph.GetConstantInitializer(graph.GetOutputs()[0]->Name(), false);
+      TEST_RETURN_IF_NOT(output != nullptr);
+      TEST_RETURN_IF_NOT(std::vector<int64_t>(output->dims().begin(), output->dims().end()) == dimensions);
+      return Status::OK();
+    };
+
+    CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo()};
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1024"));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                          std::make_unique<ConstantFolding>(cpu_ep, false, config_options),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingSkipsOverflowingConstantOfShape) {
   auto build_model = [](ModelTestBuilder& builder) {
     auto* shape = builder.Make1DInitializer<int64_t>({std::numeric_limits<int64_t>::max(), 2});
