@@ -108,6 +108,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
+  * <a href="#com.microsoft.ResizeArgMax">com.microsoft.ResizeArgMax</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
@@ -6490,6 +6491,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain sequence_token_count and token_offset to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.ResizeArgMax"></a><a name="com.microsoft.resizeargmax">**com.microsoft.ResizeArgMax**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>coordinate_transformation_mode</tt> : string</dt>
+<dd>Resize coordinate mode: half_pixel, align_corners, asymmetric, or pytorch_half_pixel.</dd>
+<dt><tt>keepdims</tt> : int</dt>
+<dd>Keep the channel axis with length one.</dd>
+<dt><tt>select_last_index</tt> : int</dt>
+<dd>Select the last index when maximum values are equal.</dd>
+</dl>
+
+#### Inputs (1 - 3)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd></dd>
+<dt><tt>scales</tt> (optional) : tensor(float)</dt>
+<dd></dd>
+<dt><tt>sizes</tt> (optional) : tensor(int64)</dt>
+<dd></dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : tensor(int64)</dt>
+<dd></dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Input data must be float32.</dd>
 </dl>
 
 
