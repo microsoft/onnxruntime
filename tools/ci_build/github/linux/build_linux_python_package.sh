@@ -169,7 +169,8 @@ do
     # Reuse the native libraries and rebuild only the CPython extension module. Re-running CMake with a
     # different interpreter can relink some of the native libraries, so restore the saved ones before
     # the wheel is packaged.
-    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --target onnxruntime_pybind11_state
+    # Without --build_wheel, build.py would otherwise reconfigure with onnxruntime_ENABLE_PYTHON=OFF.
+    PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --enable_pybind --target onnxruntime_pybind11_state
     cp -a "$NATIVE_LIB_BACKUP"/. "$PACKAGE_CAPI_DIR"/
     PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --build --build_wheel --target onnxruntime_pybind11_state
   fi
