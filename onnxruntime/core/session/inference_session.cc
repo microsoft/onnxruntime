@@ -2762,13 +2762,23 @@ common::Status InferenceSession::Initialize() {
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
+      if (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) {
+        int64_t cpu_offload_expert_count = -1;
+        ORT_RETURN_IF_NOT(
+            TryParseStringWithClassicLocale(value, cpu_offload_expert_count) &&
+                cpu_offload_expert_count >= 0,
+            key, " must be a non-negative integer. Received: \"", value, "\".");
+        if (cpu_offload_expert_count == 0) {
+          continue;
+        }
+      }
       if (((option == kOrtSessionOptionsConfigEnableMoeExpertCounting ||
             option == kOrtSessionOptionsConfigEnableMoeExpertStatistics) &&
            value != "0") ||
           option == kOrtSessionOptionsConfigMoeExpertCounterStateFile ||
           option == kOrtSessionOptionsConfigMoeExpertCounterAlpha ||
           option == kOrtSessionOptionsConfigMoeExpertCounterBeta ||
-          (option == kOrtSessionOptionsConfigMoeCpuOffloadExperts && value != "0")) {
+          option == kOrtSessionOptionsConfigMoeCpuOffloadExperts) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT, key, " is not supported in a minimal build.");
       }
@@ -3721,13 +3731,20 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  const auto moe_cpu_offload_experts = session_options_.config_options.GetConfigOrDefault(
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t moe_cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(
+      TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
+          moe_cpu_offload_expert_count >= 0,
+      kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+      " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
   const bool track_moe_experts =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0") != "0";
+      moe_cpu_offload_expert_count > 0;
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";

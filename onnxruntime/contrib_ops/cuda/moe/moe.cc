@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
+#include "core/common/string_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cpu/moe/moe_cpu_offload.h"
@@ -10,6 +11,7 @@
 #include "contrib_ops/cuda/moe/kernel_pilot_moe_expert_selection_cuda.h"
 #include "core/framework/kernel_pilot.h"
 #endif
+#include "contrib_ops/cuda/moe/moe_kernels.h"
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
@@ -49,9 +51,14 @@ template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    cpu_offload_enabled_ =
-        op_kernel_info.GetConfigOptions().GetConfigOrDefault(
-            kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0") != "0";
+    const auto cpu_offload_experts = op_kernel_info.GetConfigOptions().GetConfigOrDefault(
+        kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+    int64_t cpu_offload_expert_count = -1;
+    ORT_ENFORCE(TryParseStringWithClassicLocale(cpu_offload_experts, cpu_offload_expert_count) &&
+                    cpu_offload_expert_count >= 0,
+                "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                " value: ", cpu_offload_experts);
+    cpu_offload_enabled_ = cpu_offload_expert_count > 0;
 #endif
     cpu_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeCPU);
     cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
@@ -67,7 +74,7 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
     return Status::OK();
   }
 
-  if (input_idx < 2 || input_idx > 7) {
+  if (!cpu_offload_enabled_ || input_idx < 2 || input_idx > 7) {
     return Status::OK();
   }
 
@@ -119,11 +126,19 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
 
   ORT_RETURN_IF_NOT(packed_inputs_[2].present && packed_inputs_[4].present,
                     "FP16 MoE CPU offload requires constant FC1 and FC2 weights.");
+  for (int input_idx : {3, 5, 6, 7}) {
+    const auto& input_defs = Info().node().InputDefs();
+    const bool connected = static_cast<size_t>(input_idx) < input_defs.size() &&
+                           input_defs[static_cast<size_t>(input_idx)]->Exists();
+    ORT_RETURN_IF(connected && !packed_inputs_[static_cast<size_t>(input_idx)].present,
+                  "FP16 MoE CPU offload requires optional expert input ", input_idx,
+                  " to be constant or absent.");
+  }
   ORT_RETURN_IF(packed_inputs_[6].present,
                 "FP16 MoE CPU offload does not yet support separate FC3 weights.");
   ORT_RETURN_IF(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-                    swiglu_fusion_ != 1,
-                "FP16 MoE CPU offload requires swiglu_fusion=1 for SwiGLU.");
+                    swiglu_fusion_ == 2,
+                "FP16 MoE CPU offload does not support chunked SwiGLU.");
 
   const auto& fc1_shape = packed_inputs_[2].shape;
   ORT_RETURN_IF_NOT(fc1_shape.NumDimensions() == 3 && fc1_shape[0] > 0,
