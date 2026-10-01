@@ -647,18 +647,21 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
-#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+#if defined(ENABLE_BF16)
     else {  // BFloat16
       if (use_int_dequant_fallback) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
-      } else if (expert_weight_bits_ == 4) {
+      }
+#if !defined(ORT_QUICK_BUILD)
+      else if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, uint8_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
+#endif
     }
 #endif
   }  // end integer quantization
@@ -1813,8 +1816,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ck::RunInt2MoePrefill(params, prefill_workspace.get());
     if (enable_kernel_debug_info_) {
       PrintQMoEKernelDebugInfo("packed_int_prefill", moe_params.num_rows, moe_params.num_rows,
-                              moe_params.num_rows, packed_int_expanded, packed_int_expanded,
-                              prefill_bytes, SafeInt<size_t>(total_scratch_bytes) + prefill_bytes);
+                               moe_params.num_rows, packed_int_expanded, packed_int_expanded,
+                               prefill_bytes, SafeInt<size_t>(total_scratch_bytes) + prefill_bytes);
     }
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     if (routing_snapshot_) {
@@ -2511,8 +2514,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
 
     return enable_int2_gemv_ && onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
-        sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
-        static_cast<int>(weight_bits), static_cast<int>(block_size_));
+                                    sm_, /*expanded_num_rows=*/1, shape[1], shape[2] * pack_factor,
+                                    static_cast<int>(weight_bits), static_cast<int>(block_size_));
   };
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations

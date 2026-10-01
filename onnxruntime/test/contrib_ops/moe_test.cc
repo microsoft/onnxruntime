@@ -2504,7 +2504,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBFloat16WithoutDecode) {
 
 template <typename ElementType>
 static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_size, int64_t inter_size,
-                                           int64_t top_k, bool skewed, bool scale_initializers = true) {
+                                            int64_t top_k, bool skewed, bool scale_initializers = true) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t block_size = 64;
   constexpr float alpha = 1.5f;
@@ -2588,10 +2588,11 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
                                       round_value(fc1_scale(expert, 2 * (column % inter_size), input_column / block_size)));
         const float gate = std::min(fc1 + fc1_bias[static_cast<size_t>(expert * 2 * inter_size)].ToFloat(), limit);
         const float linear = std::clamp(
-            fc1 + fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 1)].ToFloat(), -limit, limit) + beta;
+                                 fc1 + fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 1)].ToFloat(), -limit, limit) +
+                             beta;
         const float activated = round_value(gate / (1.0f + std::exp(-alpha * gate)) * linear);
         const float fc2 = round_value(activated *
-                    round_value(fc2_scale(expert, column, (column % inter_size) / block_size)));
+                                      round_value(fc2_scale(expert, column, (column % inter_size) / block_size)));
         sum += (fc2 + fc2_bias[static_cast<size_t>(expert * hidden_size + column)].ToFloat()) *
                std::exp(-static_cast<float>(rank)) / denominator;
       }
@@ -2616,11 +2617,11 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
   tester.AddInput<ElementType>("router_probs", {num_rows, num_experts}, router);
   tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, 2 * inter_size, hidden_size / 4}, fc1_weights, true);
   tester.AddInput<ElementType>("fc1_scales", {num_experts, 2 * inter_size, hidden_size / block_size},
-                                fc1_scales, scale_initializers);
+                               fc1_scales, scale_initializers);
   tester.AddInput<ElementType>("fc1_experts_bias", {num_experts, 2 * inter_size}, fc1_bias, true);
   tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / 2}, fc2_weights, true);
   tester.AddInput<ElementType>("fc2_scales", {num_experts, hidden_size, inter_size / block_size},
-                                fc2_scales, scale_initializers);
+                               fc2_scales, scale_initializers);
   tester.AddInput<ElementType>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias, true);
   tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, expected);
   tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.004f : 0.001f);
@@ -2642,7 +2643,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
     for (bool skewed : {false, true}) {
       SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " skewed=" << skewed);
       RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 512, 256, top_k, skewed);
-  #if defined(ENABLE_BF16)
+#if defined(ENABLE_BF16)
       RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 512, 256, top_k, skewed);
 #endif
     }
