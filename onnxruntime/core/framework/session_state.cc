@@ -1931,8 +1931,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // register stream handles from EP instances
 #ifdef ORT_ENABLE_STREAM
   auto& eps = GetExecutionProviders();
+  use_thread_affine_stream_pool_ = false;
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+    use_thread_affine_stream_pool_ = use_thread_affine_stream_pool_ || ep->IsGraphCaptureEnabled();
   }
 #endif
 
@@ -2382,7 +2384,7 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
-    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const auto thread_token = use_thread_affine_stream_pool_ ? GetDeviceStreamPoolThreadToken() : nullptr;
     const void* thread_key = thread_token.get();
 
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
@@ -2410,7 +2412,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
-    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const auto thread_token = use_thread_affine_stream_pool_ ? GetDeviceStreamPoolThreadToken() : nullptr;
     const void* thread_key = thread_token.get();
 
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
@@ -2425,7 +2427,7 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
 
 void SessionState::PruneExpiredDeviceStreamPoolsLocked() const {
   for (auto it = device_stream_pools_.begin(); it != device_stream_pools_.end();) {
-    if (it->second.thread_token.expired()) {
+    if (it->first != nullptr && it->second.thread_token.expired()) {
       auto expired_it = it++;
       device_stream_pools_.erase(expired_it);
     } else {
