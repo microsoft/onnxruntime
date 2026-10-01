@@ -580,6 +580,12 @@ jobs:
             @{ Path = $package; External = "OFF"; Expected = "requires onnxruntime_USE_WEBGPU" },
             @{ Path = $incomplete; External = "ON"; Expected = "Dawn API package file not found" }
           )
+          foreach ($header in @("dawn_version.h", "dawn_thread_dispatch_proc.h")) {
+            $missingHeaderPackage = "${{ runner.temp }}\dawn-api-without-$header"
+            Copy-Item $package $missingHeaderPackage -Recurse
+            Remove-Item "$missingHeaderPackage\include\dawn\$header"
+            $cases += @{ Path = $missingHeaderPackage; External = "ON"; Expected = "include/dawn/$header" }
+          }
           foreach ($case in $cases) {
             $output = & cmake -S cmake -B dawn-package-build\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
             $diagnostic = ($output -join " ") -replace '\s+', ' '

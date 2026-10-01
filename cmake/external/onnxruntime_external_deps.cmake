@@ -706,6 +706,8 @@ if (onnxruntime_USE_WEBGPU)
     foreach(_dawn_required_file IN ITEMS
         "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/webgpu/webgpu_cpp.h"
         "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_proc.h"
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_version.h"
+        "${ONNXRUNTIME_DAWN_PREBUILT_INCLUDE_DIR}/dawn/dawn_thread_dispatch_proc.h"
         ${ONNXRUNTIME_DAWN_PROC_SRC})
       if (NOT EXISTS "${_dawn_required_file}")
         message(FATAL_ERROR "Dawn API package file not found: ${_dawn_required_file}")
