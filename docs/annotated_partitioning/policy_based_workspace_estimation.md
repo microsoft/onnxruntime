@@ -350,6 +350,39 @@ Intent, not mechanism — portable across ops/EPs. `latency` favors high-workspa
 `memory` favors low-workspace routes (more nodes fit on GPU → less offloading); `safe` forces the
 bounded fallback everywhere. Belongs in **session options** (hardware-neutral).
 
+```
+latency : minimize per-kernel time       → larger reservation → fewer resident nodes → more offload
+memory  : minimize per-node workspace     → more resident nodes → less offload
+safe    : minimize + bound worst-case     → predictable, provable, slowest
+```
+
+**`latency` is the zero-config default and the right choice for the common case** — a single
+interactive session whose model comfortably fits in VRAM. The reason the other two intents exist is
+that this knob is **not only** about per-kernel speed: it changes how much workspace each node
+reserves, which changes how many nodes the capacity accountant keeps resident vs. offloads to CPU.
+CPU offload is **asymmetrically expensive** (PCIe round-trip + slow CPU matmul, often 10–100× the
+GPU kernel), and that asymmetry is what flips the choice:
+
+- **Choose `memory` near the VRAM cliff.** If `latency`'s high-workspace routes push even one extra
+  layer to CPU, that layer's offload cost can exceed the aggregate kernel-speed savings across all
+  resident layers, so `memory` is **faster end-to-end** despite each kernel being individually
+  slower. This is the central case the offloading design targets. Also the right pick for
+  **multi-tenant / high-concurrency** GPUs (minimize per-session footprint so more sessions stay
+  resident) and **large-batch / long-context serving** (spend VRAM on batch/KV rather than scratch).
+- **Choose `safe` for a hard no-OOM guarantee.** The bounded fallback has a known, tight,
+  graph-free worst-case envelope — the only route you can *prove* won't blow a strict VRAM ceiling
+  (shared device) or when **max sequence length is unbounded/unknown at config time** (the fast
+  routes, especially cuDNN, have no graph-free oracle). Also for **correctness / reproducibility /
+  debugging** (A/B against a known-good path, work around a per-arch numerical or availability issue)
+  and **portability** (guarantees the always-present route when cuDNN/XQA/Flash may be absent).
+
+Users switch away from `latency` precisely when the **system-level** objective (fit, concurrency,
+no-OOM guarantee) outweighs the **node-level** objective (fastest kernel): interactive-and-fits →
+`latency`; constrained-or-shared → `memory`; must-not-OOM / unbounded / debugging → `safe`. These
+three named intents are the **manual approximation** of the Tier-0 auto-optimizer that consumes the
+`(W_L1, cost)` pair per route and solves the offload frontier automatically; shipping the intents
+first lets most users pick the right bucket by hand without the full cost model.
+
 **Tier 2 — explicit route menu (EP-specific provider option, expert).**
 
 ```
