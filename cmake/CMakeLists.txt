@@ -73,9 +73,6 @@ option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 cmake_dependent_option(onnxruntime_USE_CUDA_DIRECTSTORAGE "Build Microsoft DirectStorage CUDA loading support" OFF "onnxruntime_USE_CUDA;WIN32" OFF)
 cmake_dependent_option(onnxruntime_USE_CUDA_NHWC_OPS "Build CUDA with NHWC op support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_BUILD_CUDA_EP_AS_PLUGIN "Build CUDA EP as a separate plugin shared library instead of the legacy in-tree provider" OFF "onnxruntime_USE_CUDA" OFF)
-if(onnxruntime_USE_CUDA_DIRECTSTORAGE AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-  message(FATAL_ERROR "onnxruntime_USE_CUDA_DIRECTSTORAGE is not supported with onnxruntime_BUILD_CUDA_EP_AS_PLUGIN.")
-endif()
 option(onnxruntime_BUILD_CUDA_QUANT_PREPROCESS "Build CUDA weight-packing module onnxruntime_cuda_quant_preprocess.so" OFF)
 option(onnxruntime_CUDA_MINIMAL "Build CUDA without any operations apart from memcpy ops. Useful for a very minimal TRT build" OFF)
 option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support, generate device code line number information." OFF)
@@ -489,6 +486,12 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+if (onnxruntime_USE_CUDA_DIRECTSTORAGE AND
+    (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN OR onnxruntime_MINIMAL_BUILD OR onnxruntime_CUDA_MINIMAL))
+  message(FATAL_ERROR
+    "onnxruntime_USE_CUDA_DIRECTSTORAGE is not supported with CUDA plugin or minimal builds.")
 endif()
 
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
