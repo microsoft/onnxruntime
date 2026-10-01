@@ -122,14 +122,13 @@ if(onnxruntime_BUILD_SHARED_LIB)
     endif()
 
     if(onnxruntime_USE_TELEMETRY)
+      set(APPLE_SYSTEM_LIBRARIES "\\\"z\\\", \\\"sqlite3\\\"")
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       else()
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       endif()
     endif()
 
@@ -269,7 +268,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph

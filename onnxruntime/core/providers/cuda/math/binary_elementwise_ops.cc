@@ -470,16 +470,15 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Mod, kOnnxDomain, 13, 27, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
-                                                       double, MLFloat16, BFloat16>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float, double, MLFloat16,
+                                                       BFloat16>()),
     Mod);
 
-ONNX_OPERATOR_KERNEL_EX(
-    Mod, kOnnxDomain, 28, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
-                                                       double, MLFloat16, BFloat16>()),
-    Mod);
+ONNX_OPERATOR_KERNEL_EX(Mod, kOnnxDomain, 28, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, uint32_t, uint64_t, float,
+                                                                           double, MLFloat16, BFloat16>()),
+                        Mod);
 
 Status Mod::ComputeInternal(OpKernelContext* context) const {
   namespace on = ONNX_NAMESPACE;
