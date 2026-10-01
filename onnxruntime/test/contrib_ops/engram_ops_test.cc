@@ -1501,6 +1501,9 @@ void RunVarlenNGramHashMappingStateUpdateTest() {
 }
 
 void RunVarlenNGramHashMappingCaptureCountShapeTest() {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Static shape inference failures abort when exceptions are disabled.";
+#endif
   OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
   test.AddAttribute<int64_t>("max_ngram_size", 3);
   test.AddAttribute<int64_t>("n_head_per_ngram", 1);
