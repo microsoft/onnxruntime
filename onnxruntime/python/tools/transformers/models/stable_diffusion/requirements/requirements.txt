@@ -11,7 +11,7 @@ psutil
 sympy
 nvtx==0.2.5
 torchvision==0.15.2
-tensorrt==8.5.1.7
+tensorrt==10.14.1.48.post1
 mediapipe
 controlnet_aux==0.0.9
 # The following are for SDXL
