@@ -19,45 +19,52 @@ namespace onnxruntime {
 
 namespace {
 template <typename T>
-bool IsExactlyRepresentableAsFloat(T value, float converted) {
-  if constexpr (std::is_integral_v<T>) {
-    using U = std::make_unsigned_t<T>;
-    const U unsigned_value = static_cast<U>(value);
-    const U magnitude = [&]() {
-      if constexpr (std::is_signed_v<T>) {
-        return value < 0 ? U{0} - unsigned_value : unsigned_value;
-      } else {
-        return unsigned_value;
-      }
-    }();
-
-    size_t significant_bits = 0;
-    for (U remaining = magnitude; remaining != 0; remaining >>= 1) {
-      ++significant_bits;
+bool IsIntegralExactlyRepresentableAsFloat(T value) {
+  static_assert(std::is_integral_v<T>);
+  using U = std::make_unsigned_t<T>;
+  const U unsigned_value = static_cast<U>(value);
+  const U magnitude = [&]() {
+    if constexpr (std::is_signed_v<T>) {
+      return value < 0 ? U{0} - unsigned_value : unsigned_value;
+    } else {
+      return unsigned_value;
     }
+  }();
 
-    constexpr size_t float_digits = std::numeric_limits<float>::digits;
-    if (significant_bits <= float_digits) {
-      return true;
-    }
+  size_t significant_bits = 0;
+  for (U remaining = magnitude; remaining != 0; remaining >>= 1) {
+    ++significant_bits;
+  }
 
-    const size_t discarded_bits = significant_bits - float_digits;
-    return (magnitude & ((U{1} << discarded_bits) - 1)) == 0;
-  } else if constexpr (std::is_same_v<T, double>) {
-    return static_cast<double>(converted) == value;
-  } else {
+  constexpr size_t float_digits = std::numeric_limits<float>::digits;
+  if (significant_bits <= float_digits) {
     return true;
   }
+
+  const size_t discarded_bits = significant_bits - float_digits;
+  return (magnitude & ((U{1} << discarded_bits) - 1)) == 0;
 }
 
+struct ScalarScale {
+  double value;
+  bool is_double;
+};
+
 template <typename T>
-struct ExtractScalarAsFloatDispatchTarget {
+struct ExtractScalarDispatchTarget {
   Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path,
-                    float& scalar_float, bool& lossless) {
+                    ScalarScale& scale, bool& lossless) {
     T scalar;
     ORT_RETURN_IF_ERROR(utils::UnpackTensor(tensor_proto, model_path, &scalar, 1));
-    scalar_float = static_cast<float>(scalar);
-    lossless = IsExactlyRepresentableAsFloat(scalar, scalar_float);
+    const float scalar_float = static_cast<float>(scalar);
+    if constexpr (std::is_integral_v<T>) {
+      lossless = IsIntegralExactlyRepresentableAsFloat(scalar);
+    } else {
+      lossless = true;
+    }
+    scale = {std::is_same_v<T, double> ? static_cast<double>(scalar)
+                                       : static_cast<double>(scalar_float),
+             std::is_same_v<T, double>};
     return Status::OK();
   }
 };
@@ -77,7 +84,7 @@ std::optional<TensorShape> GetTensorShape(const NodeArg& node_arg) {
 // if it does not have any broadcasting effect on the Mul or Div output shape.
 // Because the dimension lengths can only be 1, we only need to consider additional leading dimensions being prepended.
 // `max_rank` should be set to the rank of the other Mul or Div input to avoid that.
-std::optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg, size_t max_rank) {
+std::optional<ScalarScale> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg, size_t max_rank) {
   const auto* initializer = graph_utils::GetConstantInitializer(graph, node_arg.Name());
 
   if (!initializer) {
@@ -95,20 +102,20 @@ std::optional<float> GetScalarConstantInitializer(const Graph& graph, const Node
     return {};
   }
 
-  float scalar{};
+  ScalarScale scale{};
   bool lossless = false;
   utils::MLTypeCallDispatcher<
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
   ORT_THROW_IF_ERROR(
-      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(
-          *initializer, graph.ModelPath(), scalar, lossless)));
+      (dispatcher.InvokeRet<Status, ExtractScalarDispatchTarget>(
+          *initializer, graph.ModelPath(), scale, lossless)));
 
-  return lossless ? std::optional<float>{scalar} : std::nullopt;
+  return lossless ? std::optional<ScalarScale>{scale} : std::nullopt;
 }
 
 // gets the scale value and its input index if node is a fusable scale (Mul or Div by scalar constant)
-std::optional<std::pair<float, int>> GetScaleFromNode(
+std::optional<std::pair<ScalarScale, int>> GetScaleFromNode(
     const Graph& graph, const Node& scale_node,
     const InlinedHashSet<std::string>& excluded_initializer_names) {
   const auto is_excluded_initializer =
@@ -133,7 +140,11 @@ std::optional<std::pair<float, int>> GetScaleFromNode(
 
     if (!divisor.has_value()) return std::nullopt;
 
-    return {std::make_pair(1.0f / *divisor, scale_reciprocal_arg_index)};
+    ScalarScale scale = *divisor;
+    scale.value = scale.is_double
+                      ? 1.0 / scale.value
+                      : static_cast<double>(1.0f / static_cast<float>(scale.value));
+    return {std::make_pair(scale, scale_reciprocal_arg_index)};
   }
 
   if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13, 14})) {
@@ -166,7 +177,7 @@ struct ScaleMergeInfo {
   // the edge from the base node to the original node
   Node::EdgeConstIterator node_to_merge_edge;
   // the scale of the original node
-  float scale;
+  ScalarScale scale;
   // the index of the input or output def on the original node
   // this def is moved to the fused node
   // for a leading scale (scale -> MatMul), it will be the unscaled input
@@ -274,15 +285,34 @@ Status ProcessNode(
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];
-    float total_scale = utils::HasFloat(alpha_attr) ? alpha_attr.f() : 1.0f;
-    auto accumulate_scale = [&total_scale](const ScaleMergeInfo& fusion) {
-      total_scale *= fusion.scale;
-    };
+    const bool uses_double_scale =
+        std::any_of(input_node_merges.begin(), input_node_merges.end(),
+                    [](const ScaleMergeInfo& fusion) { return fusion.scale.is_double; }) ||
+        std::any_of(output_node_merges.begin(), output_node_merges.end(),
+                    [](const ScaleMergeInfo& fusion) { return fusion.scale.is_double; });
 
-    std::for_each(input_node_merges.begin(), input_node_merges.end(), accumulate_scale);
-    std::for_each(output_node_merges.begin(), output_node_merges.end(), accumulate_scale);
+    if (uses_double_scale) {
+      double total_scale = utils::HasFloat(alpha_attr) ? static_cast<double>(alpha_attr.f()) : 1.0;
+      auto accumulate_scale = [&total_scale](const ScaleMergeInfo& fusion) {
+        total_scale *= fusion.scale.value;
+      };
+      std::for_each(input_node_merges.begin(), input_node_merges.end(), accumulate_scale);
+      std::for_each(output_node_merges.begin(), output_node_merges.end(), accumulate_scale);
 
-    alpha_attr = ONNX_NAMESPACE::MakeAttribute("alpha", total_scale);
+      const float fused_scale = static_cast<float>(total_scale);
+      if (static_cast<double>(fused_scale) != total_scale) {
+        return Status::OK();
+      }
+      alpha_attr = ONNX_NAMESPACE::MakeAttribute("alpha", fused_scale);
+    } else {
+      float total_scale = utils::HasFloat(alpha_attr) ? alpha_attr.f() : 1.0f;
+      auto accumulate_scale = [&total_scale](const ScaleMergeInfo& fusion) {
+        total_scale *= static_cast<float>(fusion.scale.value);
+      };
+      std::for_each(input_node_merges.begin(), input_node_merges.end(), accumulate_scale);
+      std::for_each(output_node_merges.begin(), output_node_merges.end(), accumulate_scale);
+      alpha_attr = ONNX_NAMESPACE::MakeAttribute("alpha", total_scale);
+    }
   }
 
   auto get_mutable_node_to_merge = [&graph](const ScaleMergeInfo& merge) -> Node& {

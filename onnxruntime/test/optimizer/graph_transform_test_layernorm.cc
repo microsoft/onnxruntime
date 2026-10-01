@@ -243,11 +243,12 @@ TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
 }
 
 void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes = {-1},
-                    std::vector<int64_t> reduce2_axes = {-1}, bool epsilon_input_first = false) {
+                    std::vector<int64_t> reduce2_axes = {-1}, bool epsilon_input_first = false,
+                    float epsilon = 1e-5f) {
   std::vector<int64_t> input_shape = {2, 3, 3, 3};
   auto* data_arg = builder.MakeInput<MLFloat16>(input_shape);
   auto* pow_initializer = builder.MakeInitializer<float>({}, {2.0f});
-  auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
+  auto* add_initializer = builder.MakeInitializer<float>({}, {epsilon});
   std::vector<int64_t> normalized_shape = {};
   int64_t normalized_shape_size = 1;
   auto raxes = reduce1_axes;
@@ -350,12 +351,19 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
 
 TEST_F(GraphTransformationTests, LayerNormFusionAddEpsilonInput0) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildLayerNorm(builder, {-1}, {-1}, true);
+    BuildLayerNorm(builder, {-1}, {-1}, true, 1e-4f);
   };
 
   auto post_graph_checker = [](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        const auto epsilon_it = node.GetAttributes().find("epsilon");
+        TEST_RETURN_IF_NOT(epsilon_it != node.GetAttributes().end());
+        TEST_RETURN_IF_NOT(epsilon_it->second.f() == 1e-4f);
+      }
+    }
     return Status::OK();
   };
 

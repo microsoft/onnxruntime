@@ -132,6 +132,29 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
   }
 }
 
+static bool TryGetScalarInitializerOrFloatCastAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
+  if (TryGetScalarInitializerAsDouble(graph, node_arg, value)) {
+    return true;
+  }
+
+  const Node* cast_node = graph.GetProducerNode(node_arg.Name());
+  if (cast_node == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*cast_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+      cast_node->InputDefs().empty() || cast_node->InputDefs()[0] == nullptr) {
+    return false;
+  }
+
+  const auto to_it = cast_node->GetAttributes().find("to");
+  if (to_it == cast_node->GetAttributes().end() ||
+      to_it->second.i() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      !TryGetScalarInitializerAsDouble(graph, *cast_node->InputDefs()[0], value)) {
+    return false;
+  }
+
+  value = static_cast<double>(static_cast<float>(value));
+  return true;
+}
+
 static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
   const auto& pow_inputs = pow_node.InputDefs();
   if (pow_inputs.size() < 2 || pow_inputs[1] == nullptr) {
@@ -565,7 +588,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const NodeArg* epsilon_input = GetOtherAddInput(add2_node, *reduce_mean2_node.MutableOutputDefs()[0]);
     double epsilon = 0.0;
     if (epsilon_input == nullptr ||
-        !TryGetScalarInitializerAsDouble(graph, *epsilon_input, epsilon) ||
+        !TryGetScalarInitializerOrFloatCastAsDouble(graph, *epsilon_input, epsilon) ||
         static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
       continue;
     }
@@ -816,7 +839,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
 
     double epsilon = 0.0;
-    if (!TryGetScalarInitializerAsDouble(graph, *epsilon_input, epsilon) ||
+    if (!TryGetScalarInitializerOrFloatCastAsDouble(graph, *epsilon_input, epsilon) ||
         static_cast<double>(static_cast<float>(epsilon)) != epsilon) {
       continue;
     }
