@@ -573,18 +573,6 @@ struct SizeOf<void> {
   return true;
 }
 
-template <typename T>
-IConstantBuffer<T>* GetConstOnesBufferForDevice(int device_id) {
-  static std::mutex mutex;
-  static std::unordered_map<int, std::unique_ptr<IConstantBuffer<T>>> buffers;
-  std::lock_guard<std::mutex> lock(mutex);
-  auto& buffer = buffers[device_id];
-  if (!buffer) {
-    buffer = CreateConstantOnes<T>();
-  }
-  return buffer.get();
-}
-
 struct DefaultCudaHandles {
   cublasHandle_t cublas = nullptr;
   cudnnHandle_t cudnn = nullptr;
@@ -1189,14 +1177,6 @@ class CudaKernel : public OpKernel {
   PluginTuningContextStub* GetTuningContext() const {
     static PluginTuningContextStub stub;
     return &stub;
-  }
-
-  // GetConstOnes: returns a device buffer of constant ones.
-  // Delegates to IConstantBuffer from cuda_utils.h (compiled in cuda_utils.cu).
-  template <typename T>
-  const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    auto* buf = detail::GetConstOnesBufferForDevice<T>(device_id_);
-    return buf->GetBuffer(stream, count);
   }
 
   template <typename T>

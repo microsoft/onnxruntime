@@ -36,7 +36,7 @@ std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
     size_t max_m, size_t packed_n, size_t k, int quant_bits,
     size_t group_size, size_t runner_workspace_bytes) {
   if (max_m == 0 || packed_n == 0 || k == 0 ||
-      (quant_bits != INT4_BITS && quant_bits != INT8_BITS) || group_size == 0) {
+      (quant_bits != INT2_BITS && quant_bits != INT4_BITS && quant_bits != INT8_BITS) || group_size == 0) {
     return std::nullopt;
   }
 
@@ -71,7 +71,7 @@ std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
     WeightOnlyGroupwiseQuantGemmPluginProfiler::Config const& tactic, char* workspace, cudaStream_t const& stream) {
-  int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
+  int const originalN = n * (FP16_BITS / mQuantBits);
   half* actPtr = reinterpret_cast<half*>(workspace);
   void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
   half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(half)));
@@ -104,9 +104,12 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
   } else {
     // run CUTLASS kernel
     int const wsSize = static_cast<int>(mRunner->getWorkspaceSize(m, originalN, k));
-    if (mQuantBits == 8) {
+    if (mQuantBits == INT8_BITS) {
       mRunner->gemm(actPtr, reinterpret_cast<int8_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr, outputPtr,
                     m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
+    } else if (mQuantBits == INT2_BITS) {
+      mRunner->gemm(actPtr, reinterpret_cast<cutlass::uint2b_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr,
+                    outputPtr, m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
     } else {
       mRunner->gemm(actPtr, reinterpret_cast<cutlass::uint4b_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr,
                     outputPtr, m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
@@ -116,8 +119,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   maxM = std::max<size_t>(1, maxM);
-  const int original_n =
-      static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
+  const int original_n = static_cast<int>(n * (FP16_BITS / mQuantBits));
   const auto scratch_size = ComputeWeightOnlyGemmProfilerScratchSize(
       maxM, n, k, mQuantBits, mGroupSize,
       mRunner->getWorkspaceSize(static_cast<int>(maxM), original_n, static_cast<int>(k)));
@@ -136,6 +138,26 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
     return m < 16;
   }
   return true;
+}
+
+float GetWeightOnlyGemmSelectionTime(int m, size_t weight_bytes, size_t l2_cache_bytes,
+                                     bool is_cuda_kernel, float time) {
+  // The profiler replays one synthetic weight matrix back to back, so a matrix that fits in L2 is
+  // timed L2-resident. In decode every weight matrix streams from DRAM once per step, where the CUDA
+  // GEMV (a pure weight stream) keeps its measured speed but the CUTLASS kernels lose much of their
+  // L2 advantage. A matrix larger than L2 is already timed from DRAM, so no bias is applied.
+  constexpr float kCutlassPenaltyWhenGemvEligible = 1.1f;
+  if (!is_cuda_kernel && m < 16 && weight_bytes <= l2_cache_bytes) {
+    return time * kCutlassPenaltyWhenGemvEligible;
+  }
+  return time;
+}
+
+float WeightOnlyGroupwiseQuantGemmPluginProfiler::getSelectionTime(int m, int n, int k, Config const& tactic,
+                                                                   float time) const {
+  // n counts the 16-bit elements of one packed weight row (see runTactic).
+  const size_t weight_bytes = SafeInt<size_t>(n) * k * sizeof(half);
+  return GetWeightOnlyGemmSelectionTime(m, weight_bytes, mL2CacheBytes, tactic.enableCudaKernel, time);
 }
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
