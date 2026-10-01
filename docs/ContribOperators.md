@@ -219,6 +219,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain mask index to integer types</dd>
 </dl>
 
+
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
@@ -7778,3 +7779,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

@@ -4,7 +4,7 @@
 namespace onnxruntime {
 class IExecutionFrame;
 #if !defined(ORT_MINIMAL_BUILD)
-class RunInstrumentationContext;
+class KernelPilot;
 #endif
 class Stream;
 namespace concurrency {
@@ -17,21 +17,9 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger
-#if !defined(ORT_MINIMAL_BUILD)
-                  ,
-                  _In_opt_ const RunInstrumentationContext* run_instrumentation_context = nullptr);
-#else
-  );
-#endif
+                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  const RunInstrumentationContext* GetRunInstrumentationContext() const noexcept {
-    return run_instrumentation_context_;
-  }
-#endif
 
   /**
   Return the number of inputs for a variadic argument.
@@ -205,6 +193,7 @@ class OpKernelContext {
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
+  const OpKernel* GetKernel() const noexcept { return kernel_; }
 
   virtual const OrtValue* GetInputMLValue(int index) const;
   virtual const OrtValue* GetImplicitInputMLValue(int index) const;
@@ -221,6 +210,13 @@ class OpKernelContext {
   virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
   virtual int GetOrtValueIndexForOutput(int output_index) const;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ public:
+  // Keep new virtuals after existing declarations to preserve their vtable slots.
+  // Session-owned pilot for this kernel; nullptr when unavailable.
+  virtual KernelPilot* GetKernelPilot() const { return nullptr; }
+#endif
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
@@ -239,9 +235,6 @@ class OpKernelContext {
   int node_output_start_index_{-1};
 
   Stream* stream_;
-#if !defined(ORT_MINIMAL_BUILD)
-  const RunInstrumentationContext* run_instrumentation_context_{};
-#endif
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

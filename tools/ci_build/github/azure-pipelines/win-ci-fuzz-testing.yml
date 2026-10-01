@@ -31,9 +31,9 @@ jobs:
       WithCache: true
       Today: $(Today)
 
-  - task: NodeTool@0
+  - task: UseNode@1
     inputs:
-      versionSpec: '22.x'
+      version: '24.x'
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 6.10.x
