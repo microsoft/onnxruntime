@@ -20,7 +20,7 @@ $MAIN {
   let scale_base = expert_idx * uniforms.scale_n_blocks * uniforms.scale_k_blocks +
                    (col / 128u) * uniforms.scale_k_blocks;
 #else
-  let weight_base = col * uniforms.inner;
+  let weight_base = uniforms.weight_byte_offset + col * uniforms.inner;
   let scale_base = (col / 128u) * uniforms.scale_k_blocks;
 #endif
 #if broadcast_input

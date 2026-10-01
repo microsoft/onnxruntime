@@ -82,7 +82,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
       {"rows", ProgramUniformVariableDataType::Uint32},
       {"cols", ProgramUniformVariableDataType::Uint32},
       {"inner", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32},
+      {"weight_byte_offset", ProgramUniformVariableDataType::Uint32},
       {"scale_n_blocks", ProgramUniformVariableDataType::Uint32},
       {"scale_k_blocks", ProgramUniformVariableDataType::Uint32});
 
@@ -113,6 +113,7 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
 
   const uint32_t scale_n_blocks = (cols + 127) / 128;
   const uint32_t scale_k_blocks = (inner + 127) / 128;
+  uint32_t byte_offset = 0;
   BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input};
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
   if (indirect_experts) {
@@ -124,12 +125,15 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
     program.AddInputs({{indirect_experts, ProgramTensorMetadataDependency::Type}});
   } else {
     const uint32_t weight_elements = cols * inner;
-    ORT_RETURN_IF_NOT(weight_elements % 4 == 0,
-                      "Block-scaled FP8 expert weight slices must be divisible by four elements.");
+    const uint32_t weight_offset = expert_idx * weight_elements;
+    const uint32_t first_word = weight_offset / 4;
+    byte_offset = weight_offset % 4;
+    // Include the shared boundary word when an expert starts inside it.
+    const uint32_t view_words = (byte_offset + weight_elements + 3) / 4;
     program.AddInputs({ProgramInput::BufferView(&raw_weights,
                                                 ProgramTensorMetadataDependency::Type,
-                                                TensorShape({weight_elements / 4}),
-                                                expert_idx * weight_elements / 4,
+                                                TensorShape({view_words}),
+                                                first_word,
                                                 4)})
         .AddInputs({ProgramInput::BufferView(scales,
                                              ProgramTensorMetadataDependency::Type,
@@ -146,7 +150,7 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   program.AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetWorkgroupSize(workgroup_size)
       .SetDispatchGroupSize((cols + workgroup_size - 1) / workgroup_size, rows)
-      .AddUniformVariables({rows, cols, inner, indirect_experts ? expert_idx : 0,
+      .AddUniformVariables({rows, cols, inner, byte_offset,
                             scale_n_blocks, scale_k_blocks})
       .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
   return context.RunProgram(program);
