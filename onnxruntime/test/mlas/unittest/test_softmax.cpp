@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/softmax.h"
@@ -69,6 +71,48 @@ class MlasComputeExpTest : public MlasTestBase {
     }
   }
 
+  // Non-finite and boundary inputs, placed at every offset within an 8-wide fp16
+  // vector and in the scalar tail. The random cases above never produce NaN, Inf
+  // or subnormals, and a lane-position-dependent fault cannot show up in an
+  // otherwise benign buffer -- that is how the Gelu/Erf kernel bugs fixed in
+  // #32631 survived their own random coverage.
+  void TestExpFp16Extreme(size_t N, size_t pos, float value) {
+    MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
+    MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
+
+    for (size_t n = 0; n < N; n++) {
+      Input[n] = MLAS_FP16(0.5f);
+    }
+    Input[pos] = MLAS_FP16(value);
+
+    MlasComputeExp(Input, Output, N);
+
+    constexpr float AbsoluteTolerance = 5e-4f;
+    constexpr float RelativeTolerance = 1e-3f;
+
+    for (size_t n = 0; n < N; n++) {
+      float in = Input[n].ToFloat();
+      float out = Output[n].ToFloat();
+      float ref = std::exp(in);
+      if (std::isnan(ref)) {
+        ASSERT_TRUE(std::isnan(out)) << " @ " << in << ", got: " << out << ", expecting NaN";
+        continue;
+      }
+      // exp() of a large fp16 input overflows the format; both the kernel and the
+      // reference saturate, so compare in fp16 rather than in float.
+      float ref16 = MLAS_FP16(ref).ToFloat();
+      if (std::isinf(ref16)) {
+        ASSERT_TRUE(std::isinf(out) && (out > 0) == (ref16 > 0))
+            << " @ " << in << ", got: " << out << ", expecting: " << ref16;
+        continue;
+      }
+      float diff = std::fabs(out - ref16);
+      ASSERT_TRUE(diff <= AbsoluteTolerance || diff <= std::fabs(ref16) * RelativeTolerance)
+          << " @ " << in << " (lane " << pos << " of " << N << "), got: " << out
+          << ", expecting: " << ref16;
+    }
+  }
+
   void TestSumFp16(size_t N, float MinimumValue, float MaximumValue) {
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
@@ -120,6 +164,29 @@ class MlasComputeExpTest : public MlasTestBase {
       TestSumFp16(n, -10.f, 10.f);
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     }
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+    // fp16 min-normal, min-subnormal, the exp() overflow boundary (exp(11.09) is
+    // the largest representable result) and the non-finite inputs, each placed at
+    // every lane offset of an 8-wide vector, at the first scalar-tail lane, and at
+    // the last lane of the buffer.
+    constexpr float kExtremes[] = {
+        0.0f, -0.0f, 5.9604645e-8f, -5.9604645e-8f, 6.103515625e-5f, -6.103515625e-5f,
+        11.0f, 11.09f, 11.2f, -17.0f, -24.0f, 65504.0f, -65504.0f,
+        std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::quiet_NaN()};
+    for (size_t N : {size_t{1}, size_t{7}, size_t{8}, size_t{9}, size_t{16}, size_t{17}}) {
+      for (float value : kExtremes) {
+        for (size_t pos : {size_t{0}, size_t{1}, size_t{2}, size_t{3}, size_t{4},
+                           size_t{5}, size_t{6}, size_t{7}, size_t{8}}) {
+          if (pos < N) {
+            TestExpFp16Extreme(N, pos, value);
+          }
+        }
+        TestExpFp16Extreme(N, N - 1, value);
+      }
+    }
+#endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
   }
 };
 
