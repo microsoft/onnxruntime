@@ -126,16 +126,17 @@ remain. Enabling these diagnostics adds overhead.
 
 ## Static FP16 CUDA expert placement
 
-Set the session-wide CUDA expert budget with:
+Set the session-wide CPU offload count with:
 
 ```text
-session.moe_cuda_expert_count=<non-negative integer>
+session.moe_cpu_offload_experts=<non-negative integer>
 ```
 
 This first offload implementation applies to built-in CUDA `MoE` nodes with FP16 activations and constant expert
 weights. Before session initialization returns, `KernelPilot` chooses the experts that remain resident in CUDA memory.
 All-zero counters distribute slots round-robin across eligible nodes; initialized counters rank experts by descending
-value with deterministic ties. The budget is global and must not exceed the number of experts in eligible CUDA nodes.
+value with deterministic ties. The offload count is global and must not exceed the number of experts in eligible CUDA
+nodes. The default is `0`, which disables CPU offloading.
 
 Every expert retains canonical CPU weights. Only selected experts are copied to CUDA. During inference, CUDA experts
 run through the existing CUTLASS MoE path and other experts run through the MLAS FP16 CPU path; their weighted outputs

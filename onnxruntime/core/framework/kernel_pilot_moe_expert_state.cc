@@ -54,10 +54,10 @@ Status KernelPilotMoeExpertState::SetCounterParameters(double alpha, double beta
   return Status::OK();
 }
 
-Status KernelPilotMoeExpertState::SetCudaExpertCount(size_t cuda_expert_count) {
-  ORT_RETURN_IF(initialized_, "MoE CUDA expert count cannot change after initialization.");
-  cuda_expert_count_ = cuda_expert_count;
-  cuda_placement_enabled_ = true;
+Status KernelPilotMoeExpertState::SetCpuOffloadExpertCount(size_t cpu_offload_expert_count) {
+  ORT_RETURN_IF(initialized_, "MoE CPU offload expert count cannot change after initialization.");
+  cpu_offload_expert_count_ = cpu_offload_expert_count;
+  cpu_offload_enabled_ = cpu_offload_expert_count > 0;
   return Status::OK();
 }
 
@@ -141,7 +141,7 @@ Status KernelPilotMoeExpertState::Load(std::istream& input) {
 Status KernelPilotMoeExpertState::FinalizeInitialization() {
   ORT_RETURN_IF(initialized_, "MoE expert state is already initialized.");
 
-  if (cuda_placement_enabled_) {
+  if (cpu_offload_enabled_) {
     struct Candidate {
       KernelState* state;
       int expert_id;
@@ -162,9 +162,10 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
         cuda_eligible_expert_count += state.experts.count;
       }
     }
-    ORT_RETURN_IF(cuda_expert_count_ > cuda_eligible_expert_count,
-                  "session.moe_cuda_expert_count is ", cuda_expert_count_,
+    ORT_RETURN_IF(cpu_offload_expert_count_ > cuda_eligible_expert_count,
+                  "session.moe_cpu_offload_experts is ", cpu_offload_expert_count_,
                   ", but CUDA FP16 MoE nodes contain only ", cuda_eligible_expert_count, " experts.");
+    const size_t cuda_expert_count = cuda_eligible_expert_count - cpu_offload_expert_count_;
 
     std::sort(cuda_kernels.begin(), cuda_kernels.end(), [](const KernelState* lhs, const KernelState* rhs) {
       return lhs->key < rhs->key;
@@ -179,16 +180,16 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
 
     if (all_zero) {
       size_t selected = 0;
-      for (size_t expert = 0; selected < cuda_expert_count_; ++expert) {
+      for (size_t expert = 0; selected < cuda_expert_count; ++expert) {
         bool made_progress = false;
         for (auto* state : cuda_kernels) {
-          if (expert < state->experts.count && selected < cuda_expert_count_) {
+          if (expert < state->experts.count && selected < cuda_expert_count) {
             state->cuda_experts.push_back(static_cast<int>(expert));
             ++selected;
             made_progress = true;
           }
         }
-        ORT_ENFORCE(made_progress || selected == cuda_expert_count_);
+        ORT_ENFORCE(made_progress || selected == cuda_expert_count);
       }
     } else {
       InlinedVector<Candidate> candidates;
@@ -208,7 +209,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
         }
         return lhs.state->key < rhs.state->key;
       });
-      for (size_t i = 0; i < cuda_expert_count_; ++i) {
+      for (size_t i = 0; i < cuda_expert_count; ++i) {
         candidates[i].state->cuda_experts.push_back(candidates[i].expert_id);
       }
       for (auto* state : cuda_kernels) {

@@ -661,8 +661,8 @@ TEST(MoeExpertCountingTest, InvalidConfigurationFailsInitialization) {
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterStateFile, "missing.txt"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterAlpha, "0.5"},
            std::pair{kOrtSessionOptionsConfigMoeExpertCounterBeta, "2"},
-           std::pair{kOrtSessionOptionsConfigMoeCudaExpertCount, "-1"},
-           std::pair{kOrtSessionOptionsConfigMoeCudaExpertCount, "invalid"}}) {
+           std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "-1"},
+           std::pair{kOrtSessionOptionsConfigMoeCpuOffloadExperts, "invalid"}}) {
     SessionOptions options;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(entry.first, entry.second));
     InferenceSessionWrapper session(options, GetEnvironment());

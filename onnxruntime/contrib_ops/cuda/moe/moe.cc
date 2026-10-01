@@ -62,7 +62,8 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
   if constexpr (std::is_same_v<T, MLFloat16>) {
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
     cpu_offload_enabled_ =
-        op_kernel_info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsConfigMoeCudaExpertCount).has_value();
+        op_kernel_info.GetConfigOptions().GetConfigOrDefault(
+            kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0") != "0";
 #endif
     cpu_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeCPU);
     cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);

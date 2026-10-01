@@ -1691,9 +1691,16 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1";
   const bool enable_moe_expert_statistics =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";
-  const auto cuda_expert_count_value =
-      sess_options_.config_options.GetConfigEntry(kOrtSessionOptionsConfigMoeCudaExpertCount);
-  if (enable_moe_expert_counting || enable_moe_expert_statistics || cuda_expert_count_value.has_value()) {
+  const auto cpu_offload_expert_count_value =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
+  int64_t cpu_offload_expert_count = -1;
+  ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(cpu_offload_expert_count_value, cpu_offload_expert_count) &&
+                        cpu_offload_expert_count >= 0,
+                    "Invalid ", kOrtSessionOptionsConfigMoeCpuOffloadExperts,
+                    " value: ", cpu_offload_expert_count_value,
+                    ". Expected a non-negative integer.");
+  const bool enable_moe_cpu_offload = cpu_offload_expert_count > 0;
+  if (enable_moe_expert_counting || enable_moe_expert_statistics || enable_moe_cpu_offload) {
     double alpha = 0.0;
     double beta = 0.0;
     auto state = std::make_shared<KernelPilotMoeExpertState>();
@@ -1706,14 +1713,9 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
     ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(beta_value, beta),
                       "Invalid ", kOrtSessionOptionsConfigMoeExpertCounterBeta, " value: ", beta_value);
     ORT_RETURN_IF_ERROR(state->SetCounterParameters(alpha, beta));
-    if (cuda_expert_count_value) {
-      int64_t cuda_expert_count = -1;
-      ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(*cuda_expert_count_value, cuda_expert_count) &&
-                            cuda_expert_count >= 0,
-                        "Invalid ", kOrtSessionOptionsConfigMoeCudaExpertCount,
-                        " value: ", *cuda_expert_count_value,
-                        ". Expected a non-negative integer.");
-      ORT_RETURN_IF_ERROR(state->SetCudaExpertCount(static_cast<size_t>(cuda_expert_count)));
+    if (enable_moe_cpu_offload) {
+      ORT_RETURN_IF_ERROR(
+          state->SetCpuOffloadExpertCount(static_cast<size_t>(cpu_offload_expert_count)));
     }
     ORT_RETURN_IF_ERROR(InitializeMoeExpertState(std::move(state), "main"));
     const auto state_file =

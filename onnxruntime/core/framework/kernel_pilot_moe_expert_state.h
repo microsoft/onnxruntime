@@ -48,9 +48,9 @@ class KernelPilotMoeExpertState {
   // Must be called before registering any MoE kernels.
   Status SetCounterParameters(double alpha, double beta);
 
-  // Enables static CUDA placement and sets the global number of CUDA-resident experts.
+  // Enables static CUDA placement and sets the global number of experts offloaded to CPU.
   // Must be called before FinalizeInitialization().
-  Status SetCudaExpertCount(size_t cuda_expert_count);
+  Status SetCpuOffloadExpertCount(size_t cpu_offload_expert_count);
 
   // Registers one resolved MoE kernel and allocates its contiguous counter range and
   // provider-independent KernelPilot. Registration closes after initialization.
@@ -131,8 +131,8 @@ class KernelPilotMoeExpertState {
   std::atomic<size_t> logging_record_count_{0};
   double alpha_{0.9};
   double beta_{0.1};
-  size_t cuda_expert_count_{0};
-  bool cuda_placement_enabled_{false};
+  size_t cpu_offload_expert_count_{0};
+  bool cpu_offload_enabled_{false};
   bool initialized_{false};
 };
 

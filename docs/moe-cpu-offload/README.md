@@ -58,24 +58,24 @@ The four numerical policy parameters are exposed as session configuration entrie
 
 | Session option | Parameter | Meaning and valid range |
 |---|---|---|
-| `session.moe_cuda_expert_count` | CUDA budget | Global number of experts to keep in VRAM (`>= 0`). |
+| `session.moe_cpu_offload_experts` | Offload count | Global number of experts to execute from CPU (`>= 0`); default `0`. |
 | `session.moe_expert_counter_alpha` | `alpha` | Counter decay coefficient, finite and `>= 0`; default `0.9`. |
 | `session.moe_expert_counter_beta` | `beta` | Increment for a used expert, finite and `>= 0`; default `0.1`. |
 | `session.moe_expert_swap_epsilon` | `epsilon` | Relative swap margin, finite and `>= 0`. |
 
 The optional `session.moe_expert_counter_state_file` path is configured separately from these four numerical parameters.
 
-The CUDA budget has the following meaning:
+The CPU offload count has the following meaning:
 
-- A non-negative integer is the total number of experts to keep in VRAM.
+- A non-negative integer is the total number of experts to offload to CPU.
 - Negative values, non-integer values, and counts larger than the total number of eligible CUDA FP16 `MoE` experts
   are invalid.
-- When the option is absent, expert offloading is disabled.
+- Zero disables expert offloading.
 
-The number of CPU experts is:
+The global CUDA budget is:
 
 ```text
-cpu_expert_count = total_expert_count - cuda_expert_count
+cuda_expert_count = total_expert_count - cpu_offload_expert_count
 ```
 
 One CUDA slot contains all weights required to execute one expert. CUDA slots contain copies only; moving an expert
@@ -220,7 +220,7 @@ regressing the regular CUDA path, an internal graph transformer may insert an ex
 operator. That operator must reuse `MoE`/`QMoE` schema semantics and kernels and must not become part of the exported
 model contract.
 
-When `session.moe_cuda_expert_count` is absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
+When `session.moe_cpu_offload_experts` is `0` or absent, CPU and CUDA `MoE`/`QMoE` behavior remains unchanged.
 
 ## State ownership and concurrency
 
@@ -267,7 +267,7 @@ the tests and documentation for its own scope.
 
 Implemented initially for the built-in CUDA FP16 `MoE` path:
 
-- Parse and validate `session.moe_cuda_expert_count`.
+- Parse and validate `session.moe_cpu_offload_experts`; `0` disables offloading.
 - Use loaded counters to select CUDA experts globally; distribute an all-zero budget round-robin across eligible nodes.
 - Keep canonical constant weights on CPU and materialize only selected expert slices in compact CUDA storage.
 - Keep this initial placement immutable: this step has no swaps or end-of-inference redistribution.
