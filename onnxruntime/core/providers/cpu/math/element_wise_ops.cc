@@ -2195,9 +2195,9 @@ template <class T>
 inline T FMod(T x, T y) {
   if constexpr (std::is_integral_v<T>) {
     return TruncatingRemainder(x, y);
+  } else {
+    return static_cast<T>(std::fmod(x, y));
   }
-
-  return static_cast<T>(std::fmod(x, y));
 }
 
 template <class T>
