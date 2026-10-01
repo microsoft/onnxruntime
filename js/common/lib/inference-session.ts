@@ -283,6 +283,18 @@ export declare namespace InferenceSession {
     enableRobustness?: boolean;
 
     /**
+     * Select accelerated external-weight loading for the native Windows WebGPU execution provider.
+     * - 'off': Disable accelerated weight loading.
+     * - 'preferred': Use D3D12 accelerated loading when available and otherwise use the ordinary loading path.
+     * - 'required': Require D3D12 accelerated loading support.
+     *
+     * This setting is available only in ONNX Runtime (Node.js binding) builds with D3D12 file loading support.
+     *
+     * @default 'off'
+     */
+    weightLoadAcceleration?: 'off' | 'preferred' | 'required';
+
+    /**
      * Specify the cache mode for storage buffers.
      * - 'disabled': Disable buffer cache. Buffers are destroyed when no longer in use.
      * - 'lazyRelease': Buffers are released lazily, at the end of the current run.

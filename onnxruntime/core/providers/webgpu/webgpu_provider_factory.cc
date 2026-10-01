@@ -45,6 +45,24 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
 namespace {
 
+WeightLoadAccelerationMode ParseWeightLoadAccelerationMode(
+    const ConfigOptions& config_options) {
+  std::string value;
+  if (!config_options.TryGetConfigEntry(kWeightLoadAcceleration, value) ||
+      value == kWeightLoadAcceleration_Off) {
+    return WeightLoadAccelerationMode::Off;
+  }
+  if (value == kWeightLoadAcceleration_Preferred) {
+    return WeightLoadAccelerationMode::Preferred;
+  }
+  if (value == kWeightLoadAcceleration_Required) {
+    return WeightLoadAccelerationMode::Required;
+  }
+  ORT_THROW(
+      "Invalid weightLoadAcceleration value: ", value,
+      ". Must be \"off\", \"preferred\", or \"required\".");
+}
+
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
 
@@ -69,6 +87,9 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       ORT_THROW("Invalid enable graph capture: ", enable_graph_capture_str);
     }
   }
+
+  webgpu_ep_config.weight_load_acceleration_mode =
+      ParseWeightLoadAccelerationMode(config_options);
 
   if (std::string pool_generations_str;
       config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
@@ -165,6 +186,8 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP weight load acceleration mode: "
+                        << static_cast<int>(webgpu_ep_config.weight_load_acceleration_mode);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
@@ -177,10 +200,15 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
   WebGpuContextConfig config{};
 
+  config.weight_load_acceleration_mode =
+      ParseWeightLoadAccelerationMode(config_options);
+
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
+    ORT_ENFORCE(config.context_id != kDeviceFreeDefaultContextId,
+                "WebGPU device ID ", kDeviceFreeDefaultContextId, " is reserved for internal use.");
   }
 
   if (std::string adapter_index_str;
@@ -269,6 +297,9 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   // is derived from the session config kOrtSessionOptionCompileOnly, which the Compile API sets
   // automatically -- same signal other EPs use (e.g. NV TensorRT RTX). Not a WebGPU-specific option.
   config.compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
+  if (config.compile_only && config.context_id == 0) {
+    config.context_id = kDeviceFreeDefaultContextId;
+  }
 
   std::string max_storage_buffer_binding_size_str;
   if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {
@@ -518,7 +549,8 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
         auto& context = WebGpuContextFactory::DefaultContext();
 
-        impl.data_transfer_ = std::make_unique<DataTransferImpl>(context.BufferManager(), impl.recording_);
+        impl.data_transfer_ = std::make_unique<DataTransferImpl>(
+            [&context]() -> const BufferManager& { return context.BufferManager(); }, impl.recording_);
       }
     }
 

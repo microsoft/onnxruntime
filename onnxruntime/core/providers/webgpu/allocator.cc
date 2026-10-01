@@ -26,7 +26,7 @@ GpuBufferAllocator::GpuBufferAllocator(
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       recording_getter_{std::move(recording_getter)},
       should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
-      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
+      is_read_only_allocator_{is_read_only_allocator},
       initialize_to_zero_{!is_read_only_allocator} {
 }
 
@@ -49,8 +49,12 @@ void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   stats_.num_allocs++;
 
-  wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
-                                                : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
+  const auto& buffer_manager = buffer_manager_getter_();
+  if (!mapped_at_creation_.has_value()) {
+    mapped_at_creation_ = is_read_only_allocator_ && buffer_manager.SupportsUMA();
+  }
+  wgpu::BufferUsage usage = *mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
+                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   return buffer_manager_getter_().Create(recording, size, usage, initialize_to_zero_,
                                          submit_zero_initialize);
