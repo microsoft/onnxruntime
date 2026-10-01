@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -147,8 +148,8 @@ std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
   const std::vector<NodeArg*> inputs{&query, &key, &value, &past_key};
   const std::vector<NodeArg*> outputs;
   Node node{"gqa", "GroupQueryAttention", "", inputs, outputs, &attributes, kMSDomain};
-  return EstimateGroupQueryAttentionWorkspace(
-      node, input_shapes, Device(), options);
+  return EstimateGroupQueryAttentionWorkspaceForTest(
+      &node, input_shapes, Device(), options);
 }
 
 void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
@@ -297,8 +298,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
     auto shapes = SeparateShapes();
     shapes[11] = Known({8});
-    estimate = EstimateGroupQueryAttentionWorkspace(
-        *node, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+    estimate = EstimateGroupQueryAttentionWorkspaceForTest(
+        node, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
         *cuda_ep->GetAttentionKernelOptions(),
         /*head_sink_is_constant_initializer=*/true);
     ASSERT_TRUE(estimate.has_value());
@@ -495,12 +496,12 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ValidatesQuantizedCacheMetadata) 
     config.kv_cache_bit_width = bit_width;
     config.k_quantization = GQAKvQuantizationType::PerTensor;
     config.v_quantization = GQAKvQuantizationType::PerChannel;
-    auto shapes = SeparateShapes();
-    const int64_t stored_head = bit_width == 4 ? 32 : 64;
+    auto shapes = SeparateShapes(/*sequence=*/4, /*head=*/128);
+    const int64_t stored_head = bit_width == 4 ? 64 : 128;
     shapes[3] = Known({2, 2, 256, stored_head});
     shapes[4] = Known({2, 2, 256, stored_head});
     shapes[12] = Known({1});
-    shapes[13] = Known({1, 2, 1, 64});
+    shapes[13] = Known({1, 2, 1, 128});
     EXPECT_TRUE(EstimateGroupQueryAttentionWorkspace(
                     config, shapes, Device(), options)
                     .has_value());
