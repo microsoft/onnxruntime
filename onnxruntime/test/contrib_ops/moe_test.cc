@@ -2242,7 +2242,7 @@ static std::vector<float> RunQMoEPackedIntGemvParityCase(bool disable_packed_gem
 
   EnvVarMap env_overrides;
   if (disable_packed_gemv) {
-    env_overrides["ORT_ENABLE_QMOE_INT2_GEMV"] = "0";
+    env_overrides["ORT_DISABLE_MOE_GEMV"] = "1";
   }
   ScopedEnvironmentVariables scoped_env_vars{env_overrides};
 
@@ -2466,7 +2466,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDefaultEnabled) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", std::nullopt}, {"ORT_ENABLE_QMOE_INT2_PREFILL", std::nullopt}}};
+      {{"ORT_DISABLE_MOE_GEMV", std::nullopt}, {"ORT_ENABLE_QMOE_INT2_PREFILL", std::nullopt}}};
   for (int64_t num_rows : {1, 33, 257}) {
     SCOPED_TRACE(num_rows);
     RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, num_rows);
@@ -2481,7 +2481,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWithoutDecode) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   for (int64_t num_rows : {1, 33, 257}) {
     SCOPED_TRACE(num_rows);
     RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, num_rows);
@@ -2494,7 +2494,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBFloat16WithoutDecode) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   for (int64_t num_rows : {1, 33, 257}) {
     SCOPED_TRACE(num_rows);
     RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, num_rows);
@@ -2638,7 +2638,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRouting) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   for (int64_t top_k : {1, 2, 4}) {
     for (bool skewed : {false, true}) {
       SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " skewed=" << skewed);
@@ -2655,7 +2655,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRuntimeScales) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 128, 64, 2, false, false);
   RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 64, 128, 4, true, false);
 #if defined(ENABLE_BF16)
@@ -2669,7 +2669,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillFallback) {
     GTEST_SKIP() << "SM80 or SM86 is required for packed INT2 prefill.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, true, false, 64, 512, 512, true, true, 33);
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 128, 512, 512, true, true, 33);
   RunQMoEMixedWidthCudaIdentityTest(4, 2, 1, true, false, false, 64, 512, 512, true, true, 33);
@@ -2682,7 +2682,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
   }
   ScopedEnvironmentVariables scoped_env_vars{
-      {{"ORT_ENABLE_QMOE_INT2_GEMV", "0"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "0"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 1);
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 33);
 }
 
