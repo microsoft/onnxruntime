@@ -133,6 +133,7 @@ class PackedSparseAttentionIndexerCsaSelectProgram final
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
       {"capacity", ProgramUniformVariableDataType::Uint32},
       {"index_topk", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32},
       {"scale", ProgramUniformVariableDataType::Float32},
       {"head_weight_scale", ProgramUniformVariableDataType::Float32});
 
