@@ -76,7 +76,9 @@ Status BranchwiseRMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& c
   if (groups == 0) return Status::OK();
 
   const bool shared_scale = scale != nullptr && scale->Shape().Size() == params.hidden;
-  if (shared_scale && scale->GetElementType() == x->GetElementType()) {
+  if (shared_scale &&
+      x->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      scale->GetElementType() == x->GetElementType()) {
     return onnxruntime::webgpu::RunLayerNormProgram(
         context, x, scale, nullptr, epsilon_, groups, params.hidden, true, y, nullptr, nullptr);
   }

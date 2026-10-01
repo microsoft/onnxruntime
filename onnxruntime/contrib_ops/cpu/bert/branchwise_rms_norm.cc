@@ -71,18 +71,17 @@ Status BranchwiseRMSNorm<T>::Compute(OpKernelContext* context) const {
   }
 
   auto* y = context->Output(0, x->Shape());
-  if (scale != nullptr && scale->GetElementType() == x->GetElementType()) {
+  if (scale != nullptr &&
+      scale->Shape().Size() == params.hidden &&
+      scale->GetElementType() == x->GetElementType()) {
     TensorShapeVector grouped_dims(x->Shape().GetDims().begin(),
                                    x->Shape().GetDims().begin() + params.prefix_rank);
     grouped_dims.push_back(params.branches);
     grouped_dims.push_back(params.hidden);
-    TensorShapeVector scale_dims{params.branches, params.hidden};
-    const TensorShape normalized_scale_shape =
-        scale->Shape().Size() == params.hidden ? scale->Shape() : TensorShape(scale_dims);
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     return ComputeWithoutContext<T, float>(
-        x->Data<T>(), TensorShape(grouped_dims), scale->Data<T>(), normalized_scale_shape,
+        x->Data<T>(), TensorShape(grouped_dims), scale->Data<T>(), scale->Shape(),
         nullptr, TensorShape(), y->MutableData<T>(), nullptr, nullptr,
         context->GetOperatorThreadPool(), -1, epsilon_, true, allocator);
   }
