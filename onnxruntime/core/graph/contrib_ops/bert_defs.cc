@@ -2056,13 +2056,6 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
                          expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
   }
-  for (size_t index = 0; index < expected_outputs; ++index) {
-    if (ctx.getOutputType(index) == nullptr) {
-      fail_shape_inference("SparseAttentionIndexer: output ", index, " is required for policy_mode '",
-                           policy_mode, "'");
-    }
-  }
-
   updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
 
   const bool has_key = SparseAttentionIndexerHasInput(ctx, sai::kKey);

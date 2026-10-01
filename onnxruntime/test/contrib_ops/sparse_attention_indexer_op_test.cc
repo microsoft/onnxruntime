@@ -159,7 +159,6 @@ struct CsaGraphOptions {
   int64_t output_count = sai::kCsaOutputCount;
   bool add_token_budget = false;
   bool share_cache = false;
-  bool omit_present_proj_buffer = false;
 };
 
 void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
@@ -189,9 +188,7 @@ void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
 
   std::vector<NodeArg*> outputs;
   for (int64_t slot = 0; slot < options.output_count; ++slot) {
-    outputs.push_back(options.omit_present_proj_buffer && slot == sai::kPresentProjBuffer
-                          ? &empty
-                          : builder.MakeOutput());
+    outputs.push_back(builder.MakeOutput());
   }
 
   Node& node = builder.AddNode("SparseAttentionIndexer", inputs, outputs, kMSDomain);
@@ -1036,13 +1033,6 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithMissingStateOutputs
   options.output_count = 2;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
                        "requires exactly 3 declared outputs");
-}
-
-TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithEmptyStateOutput) {
-  CsaGraphOptions options;
-  options.omit_present_proj_buffer = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
-                       "output 2 is required for policy_mode 'csa'");
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaPresentLengthOverflow) {
