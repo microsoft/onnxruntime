@@ -290,6 +290,12 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertTrue(packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param)
         self.assertFalse(packed_graph.output[1].type.tensor_type.HasField("shape"))
 
+        symbolic_packed_graph = infer("packed_width", True)
+        inferred_width = symbolic_packed_graph.output[0].type.tensor_type.shape.dim[2].dim_param
+        self.assertTrue(inferred_width)
+        self.assertNotEqual(inferred_width, "packed_width")
+        self.assertFalse(symbolic_packed_graph.output[1].type.tensor_type.HasField("shape"))
+
         separate_graph = infer(33, False)
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
         self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))

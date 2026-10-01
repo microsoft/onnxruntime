@@ -265,7 +265,9 @@ DynamicSparseAttentionCase MakeSingleTokenSelectedValueCase(float value = 9.0f) 
 }
 
 Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8,
-                                          int64_t num_heads = 1, int64_t kv_num_heads = 1) {
+                                          int64_t num_heads = 1, int64_t kv_num_heads = 1,
+                                          bool packed_qkv = false, const char* query_width_symbol = nullptr,
+                                          bool* output_width_is_unknown = nullptr) {
   Model model("dynamic_sparse_attention_shape_inference", true, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
               {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
@@ -285,11 +287,22 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
   };
 
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto* query_type = add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, query_width});
+  if (query_width_symbol != nullptr) {
+    auto* width_dim = query_type->mutable_tensor_type()->mutable_shape()->mutable_dim(2);
+    width_dim->clear_dim_value();
+    width_dim->set_dim_param(query_width_symbol);
+  }
   std::vector<NodeArg*> inputs{
-      &graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                         {1, 1, query_width})),
-      &graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
-      &graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      &graph.GetOrCreateNodeArg("query", query_type),
+      packed_qkv
+          ? &empty
+          : &graph.GetOrCreateNodeArg(
+                "key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      packed_qkv
+          ? &empty
+          : &graph.GetOrCreateNodeArg(
+                "value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
       &graph.GetOrCreateNodeArg("past_key",
                                 add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 2, 8})),
       &graph.GetOrCreateNodeArg("past_value",
@@ -319,7 +332,12 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
                              inputs, outputs, nullptr, kMSDomain);
   node.AddAttribute("num_heads", num_heads);
   node.AddAttribute("kv_num_heads", kv_num_heads);
-  return graph.Resolve();
+  auto status = graph.Resolve();
+  if (status.IsOK() && output_width_is_unknown != nullptr) {
+    const auto& width_dim = outputs[0]->Shape()->dim(2);
+    *output_width_is_unknown = !width_dim.has_dim_value() && !width_dim.has_dim_param();
+  }
+  return status;
 }
 
 }  // namespace
@@ -327,6 +345,13 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
 TEST(DynamicSparseAttentionTest, ShapeInferenceSupportsOptionalCacheOutputs_CUDA) {
   ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(1));
   ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(2));
+}
+
+TEST(DynamicSparseAttentionTest, ShapeInferenceDoesNotCopyPackedSymbolicWidth_CUDA) {
+  bool output_width_is_unknown = false;
+  ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(1, 8, 4, 2, true, "packed_width",
+                                                      &output_width_is_unknown));
+  EXPECT_TRUE(output_width_is_unknown);
 }
 
 #ifndef ORT_NO_EXCEPTIONS

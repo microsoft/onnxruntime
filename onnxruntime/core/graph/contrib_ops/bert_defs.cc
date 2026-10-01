@@ -504,6 +504,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
     auto output_shape = query_shape;
     if (ctx.getInputType(2) == nullptr) {
+      output_shape.mutable_dim(2)->Clear();
       if (query_dims[2].has_dim_value()) {
         const int64_t packed_heads = num_heads + 2 * kv_num_heads;
         const int64_t packed_hidden_size = query_dims[2].dim_value();
