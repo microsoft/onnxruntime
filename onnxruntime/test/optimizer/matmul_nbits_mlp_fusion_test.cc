@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -57,6 +59,27 @@ enum class SkipNormVariant {
   kWithBiasInput,
   kAxisZero,
 };
+
+constexpr int64_t kAppleTileTestK = 256;  // Larger than the existing K=32 result cases.
+constexpr int64_t kAppleTileTestN = 65;   // Two complete 32-column tiles and a one-column tail.
+constexpr int64_t kAppleTileTestBlockSize = 32;
+constexpr int64_t kAppleTileTestBlocks = kAppleTileTestK / kAppleTileTestBlockSize;
+constexpr int64_t kAppleTileTestBlobSize = kAppleTileTestBlockSize / 2;
+constexpr float kAppleTileTestEpsilon = 1e-6f;
+
+std::vector<float> MakeAppleTileTestMlpReference() {
+  const auto gate = MakeFusedNBitsTestMatMulReference(
+      kAppleTileTestN, kAppleTileTestK, kAppleTileTestBlockSize, kAppleTileTestEpsilon, 1);
+  const auto up = MakeFusedNBitsTestMatMulReference(
+      kAppleTileTestN, kAppleTileTestK, kAppleTileTestBlockSize, kAppleTileTestEpsilon, 7);
+  std::vector<float> output(static_cast<size_t>(kAppleTileTestN));
+  for (int64_t n = 0; n < kAppleTileTestN; ++n) {
+    const float gate_value = gate[static_cast<size_t>(n)];
+    output[static_cast<size_t>(n)] =
+        MLFloat16(gate_value / (1.0f + std::exp(-gate_value)) * up[static_cast<size_t>(n)]).ToFloat();
+  }
+  return output;
+}
 
 void SetWebGpuProvider(Node& node) {
   node.SetExecutionProviderType(kWebGpuExecutionProvider);
@@ -349,6 +372,47 @@ void BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero(ModelTestBuilder
                                        SkipNormVariant::kAxisZero);
 }
 
+void BuildMatMulNBitsMlpAppleTileTestPattern(ModelTestBuilder& builder) {
+  const auto input_values = MakeFusedNBitsTestInput(kAppleTileTestK);
+  const auto norm_scale_values = MakeFusedNBitsTestNormScale(kAppleTileTestK);
+  const auto gate = MakeFusedNBitsTestProjection(
+      kAppleTileTestN, kAppleTileTestK, kAppleTileTestBlockSize, 1);
+  const auto up = MakeFusedNBitsTestProjection(
+      kAppleTileTestN, kAppleTileTestK, kAppleTileTestBlockSize, 7);
+
+  NodeArg* input = builder.MakeInput<MLFloat16>({1, kAppleTileTestK}, input_values);
+  NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({kAppleTileTestK}, norm_scale_values);
+  NodeArg* gate_weight = builder.MakeInitializer<uint8_t>(
+      {kAppleTileTestN, kAppleTileTestBlocks, kAppleTileTestBlobSize}, gate.weights);
+  NodeArg* gate_scale = builder.MakeInitializer<MLFloat16>({kAppleTileTestN, kAppleTileTestBlocks}, gate.scales);
+  NodeArg* up_weight = builder.MakeInitializer<uint8_t>(
+      {kAppleTileTestN, kAppleTileTestBlocks, kAppleTileTestBlobSize}, up.weights);
+  NodeArg* up_scale = builder.MakeInitializer<MLFloat16>({kAppleTileTestN, kAppleTileTestBlocks}, up.scales);
+  NodeArg* optional = builder.MakeOptionalTensor();
+
+  NodeArg* normalized = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestK});
+  NodeArg* gate_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestN});
+  NodeArg* up_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestN});
+  NodeArg* sigmoid_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestN});
+  NodeArg* activated_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestN});
+  NodeArg* output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kAppleTileTestN});
+
+  Node& norm = builder.AddNode("SimplifiedLayerNormalization", {input, norm_scale}, {normalized});
+  norm.AddAttribute("epsilon", kAppleTileTestEpsilon);
+  const auto attrs = MakeMatMulNBitsAttrs(kAppleTileTestK, kAppleTileTestN,
+                                          kAppleTileTestBlockSize, 4, 0);
+  Node& gate_matmul = builder.AddNode("MatMulNBits", {normalized, gate_weight, gate_scale, optional, optional, optional},
+                                     {gate_out}, kMSDomain, &attrs);
+  Node& up_matmul = builder.AddNode("MatMulNBits", {normalized, up_weight, up_scale, optional, optional, optional},
+                                   {up_out}, kMSDomain, &attrs);
+  Node& sigmoid = builder.AddNode("Sigmoid", {gate_out}, {sigmoid_out});
+  Node& silu = builder.AddNode("Mul", {gate_out, sigmoid_out}, {activated_out});
+  Node& final_mul = builder.AddNode("Mul", {activated_out, up_out}, {output});
+  for (Node* node : {&norm, &gate_matmul, &up_matmul, &sigmoid, &silu, &final_mul}) {
+    SetWebGpuProvider(*node);
+  }
+}
+
 }  // namespace
 
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedWebGpuPattern) {
@@ -406,6 +470,39 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWeb
       1e-3,
       std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionAppleDecodeGeometryMatchesHostReference) {
+  auto make_ep = []() { return DefaultWebGpuExecutionProvider(); };
+  if (!make_ep()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  const auto expected = MakeAppleTileTestMlpReference();
+  auto check_target_fetches = [expected](const std::vector<OrtValue>& fetches) {
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto actual = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+    ASSERT_EQ(actual.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(actual[i].ToFloat(), expected[i], 0.02f) << "output index " << i;
+    }
+  };
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSimplifiedFusedGraph(session.GetGraph()));
+  };
+
+  RunWebGpuFusionTransformerTest(
+      BuildMatMulNBitsMlpAppleTileTestPattern,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      0.02,
+      0.02,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      make_ep,
+      {},
+      check_target_fetches);
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuResults) {
