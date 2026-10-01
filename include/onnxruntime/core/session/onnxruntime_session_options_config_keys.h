@@ -474,6 +474,18 @@ static const char* const kOrtSessionOptionsCudaFpAIntBProfileM = "ep.cuda.fpa_in
 static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength =
     "ep.cuda.gqa_workspace_max_total_sequence_length";
 
+/// Intent-level attention dispatch policy for Level-1 workspace estimation (Tier 1,
+/// hardware-neutral). Selects which route set the estimator assumes when bounding workspace,
+/// trading peak memory against latency:
+///   "latency" - favor high-workspace fast routes (e.g. Flash/XQA); larger estimate.
+///   "memory"  - favor low-workspace routes so more nodes fit on GPU; smaller estimate.
+///   "safe"    - assume the bounded fallback route everywhere; smallest guaranteed estimate.
+/// Unset (default) or any unrecognized value means "auto": the estimator keeps its current
+/// route-aware behavior. Session-scoped because the intent is hardware-neutral and shared by all
+/// attention nodes. Currently plumbed to the CUDA GroupQueryAttention estimator but not yet
+/// consumed; a follow-up PR biases route selection on it.
+static const char* const kOrtSessionOptionsAttentionDispatchPolicy = "session.attention_dispatch_policy";
+
 /// Maximum number of rows of input A per CUDA MatMulNBits fpA_intB GEMM launch. Values below 8192 are
 /// rounded down to a supported tactic-profiler M bucket. Chunking requires M to exceed this limit
 /// and the 256 MiB estimated A/C row-size gate; ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses that gate.

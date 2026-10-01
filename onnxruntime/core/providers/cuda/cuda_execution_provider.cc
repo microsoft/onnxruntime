@@ -3651,10 +3651,20 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
             gqa_workspace_max_total_sequence_length = parsed;
           }
         }
+        // Intent-level dispatch policy (session.attention_dispatch_policy). Hardware-neutral
+        // selection of which route set the workspace estimate assumes. Unset or unrecognized maps
+        // to Auto, which keeps the current route-aware behavior.
+        contrib::cuda::AttentionDispatchPolicy attention_dispatch_policy =
+            contrib::cuda::AttentionDispatchPolicy::Auto;
+        if (const auto& policy = resource_accountant->GetWorkspaceEstimatorConfig()
+                                     .attention_dispatch_policy;
+            policy.has_value()) {
+          attention_dispatch_policy = contrib::cuda::ParseAttentionDispatchPolicy(*policy);
+        }
         const auto ws = contrib::cuda::EstimateGroupQueryAttentionWorkspace(
             *node, gsl::make_span(input_shapes), GetDeviceProp(),
             *GetAttentionKernelOptions(), head_sink_is_constant_initializer,
-            gqa_workspace_max_total_sequence_length);
+            gqa_workspace_max_total_sequence_length, attention_dispatch_policy);
         if (ws.has_value()) {
           Level1MemoryEstimate estimate;
           contrib::cuda::SetGroupQueryAttentionLevel1MemoryEstimate(*ws, estimate);
