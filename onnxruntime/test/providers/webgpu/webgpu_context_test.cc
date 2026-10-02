@@ -732,6 +732,10 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     if (!support_status.IsOK()) {
       GTEST_SKIP() << support_status.ErrorMessage();
     }
+    EXPECT_TRUE(context.DeviceHasFeature(
+        wgpu::FeatureName::SharedBufferMemoryD3D12Resource));
+    EXPECT_TRUE(context.DeviceHasFeature(
+        wgpu::FeatureName::SharedFenceDXGISharedHandle));
 
     auto loader = required_ep->GetExternalDataLoader();
     ASSERT_NE(loader, nullptr);

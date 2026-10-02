@@ -1110,17 +1110,19 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
       wgpu::FeatureName::SharedBufferMemoryD3D12Resource,
       wgpu::FeatureName::SharedFenceDXGISharedHandle,
   };
-  if (IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_)) {
-    for (auto feature : d3d12_import_features) {
-      if (adapter.HasFeature(feature)) {
-        required_features.push_back(feature);
-      } else {
-        ORT_ENFORCE(!IsWeightLoadAccelerationRequired(
-                        weight_load_acceleration_mode_),
-                    "The selected Dawn D3D12 adapter does not support a feature required by "
-                    "weightLoadAcceleration: ",
-                    static_cast<uint32_t>(feature));
-      }
+  // The default context can outlive the provider that first initialized it
+  // (for example, through the shared Env allocator). Request supported import
+  // features up front so a later provider can enable accelerated loading on
+  // that same Dawn device.
+  for (auto feature : d3d12_import_features) {
+    if (adapter.HasFeature(feature)) {
+      required_features.push_back(feature);
+    } else {
+      ORT_ENFORCE(!IsWeightLoadAccelerationRequired(
+                      weight_load_acceleration_mode_),
+                  "The selected Dawn D3D12 adapter does not support a feature required by "
+                  "weightLoadAcceleration: ",
+                  static_cast<uint32_t>(feature));
     }
   }
 #endif
