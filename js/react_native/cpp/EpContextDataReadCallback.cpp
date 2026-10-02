@@ -142,7 +142,7 @@ EpContextDataReadCallback::createAndRegister(Runtime& runtime,
   // Publish the state only once ONNX Runtime accepted it. If the setter throws, `state` is
   // destroyed here on the JS thread and nothing observed a half-registered callback.
   sessionOptions.SetEpContextDataReadFunc(&EpContextDataReadCallback::read,
-                                          state.get(), maxDataSize.value);
+                                          state.get());
 
   env->addTeardownListener(state);
   return state;

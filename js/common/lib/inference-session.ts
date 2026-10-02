@@ -59,6 +59,9 @@ export declare namespace InferenceSession {
      * another type, or returns more bytes than this limit. ONNX Runtime does not fall back to loading the data from disk
      * after a callback failure.
      *
+     * The binding retains and enforces this limit in its callback state before allocating the native output buffer.
+     * It is not configured in the native API and does not constrain allocations made inside the JavaScript callback.
+     *
      * This setting is available only in the Node.js and React Native bindings. ONNX Runtime Web rejects it because a
      * JavaScript callback cannot currently be registered safely through the WebAssembly ABI.
      *

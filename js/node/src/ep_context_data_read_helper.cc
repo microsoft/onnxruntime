@@ -364,8 +364,7 @@ void ParseEpContextDataReadOptions(const Napi::Object options, Ort::SessionOptio
   // native setter succeeded.
   auto newState = EpContextDataReadState::Create(env, callbackValue.As<Napi::Function>(), maxDataSizeBytes);
   try {
-    sessionOptions.SetEpContextDataReadFunc(&EpContextDataReadState::ReadNamedBuffer, newState.get(),
-                                            maxDataSizeBytes);
+    sessionOptions.SetEpContextDataReadFunc(&EpContextDataReadState::ReadNamedBuffer, newState.get());
   } catch (...) {
     newState->Release();
     throw;
