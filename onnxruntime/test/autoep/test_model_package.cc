@@ -907,6 +907,33 @@ TEST(ModelPackageTest, VariantSessionOption_RejectsOptimizedModelPath) {
   std::filesystem::remove_all(package_root, ec);
 }
 
+TEST(ModelPackageTest, VariantSessionOption_RejectsEmbeddedNulInKey) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_embedded_nul_session_option";
+  std::string embedded_nul_key = kOrtSessionOptionsConfigOptimizedModelFilePath;
+  embedded_nul_key.push_back('\0');
+  embedded_nul_key.append("suffix");
+
+  std::vector<VariantSpec> variants;
+  variants.push_back(VariantSpec{
+      "variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx", std::unordered_map<std::string, std::string>{{std::move(embedded_nul_key), "optimized.onnx"}}, {}});
+  BuildPackage(package_root, "model_1", variants);
+
+  const auto& pkg_api = GetModelPackageFns();
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+
+  OrtModelPackageContext* raw_context = nullptr;
+  OrtStatus* status = pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context);
+  EXPECT_NE(status, nullptr);
+  EXPECT_EQ(raw_context, nullptr);
+  if (status != nullptr) {
+    EXPECT_THAT(Ort::GetApi().GetErrorMessage(status), ::testing::HasSubstr("embedded NUL"));
+    Ort::GetApi().ReleaseStatus(status);
+  }
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
 // GetSelectedVariantFolderPath returns the correct path even when the variant
 // declares no executor_info (i.e., no `file` descriptor for the variant).
 TEST(ModelPackageApiTest, FolderPath_ReturnsCorrectPath_WhenExecutorInfoAbsent) {
