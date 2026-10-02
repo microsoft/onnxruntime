@@ -198,20 +198,23 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     const size_t requested_end = SafeInt<size_t>(offset) + length;
     ORT_RETURN_IF(file_size < requested_end, "RandomAccessFile::Map: requested range exceeds file size.");
 
-    static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
+    const long system_page_size = sysconf(_SC_PAGESIZE);
+    ORT_RETURN_IF_NOT(system_page_size > 0, "sysconf(_SC_PAGESIZE) failed.");
+    const size_t page_size = narrow<size_t>(system_page_size);
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
-        mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
+        mmap(nullptr, mapped_length, PROT_READ, MAP_PRIVATE, descriptor_.Get(), mapped_offset);
     if (mapped_base == MAP_FAILED) {
       return ReportSystemError("mmap", path_);
     }
 
-    mapped_memory = MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
-                                    [mapped_base, mapped_length](void*) {
-                                      UnmapFile(mapped_base, mapped_length);
-                                    }};
+    mapped_memory = MappedMemoryPtr{
+        reinterpret_cast<char*>(mapped_base) + offset_to_page,
+        MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t mapped_size) noexcept {
+                              UnmapFile(base, mapped_size);
+                            }}};
     return Status::OK();
   }
 

@@ -117,7 +117,21 @@ std::pair<int, std::string> GetErrnoInfo();
  */
 class RandomAccessFile {
  public:
-  using MappedMemoryPtr = std::unique_ptr<char[], std::function<void(void*)>>;
+  struct MappedMemoryDeleter {
+    using UnmapFn = void (*)(void* mapped_base, size_t mapped_length) noexcept;
+
+    void* mapped_base{};
+    size_t mapped_length{};
+    UnmapFn unmap{};
+
+    void operator()(char*) const noexcept {
+      if (unmap != nullptr) {
+        unmap(mapped_base, mapped_length);
+      }
+    }
+  };
+
+  using MappedMemoryPtr = std::unique_ptr<char[], MappedMemoryDeleter>;
 
   virtual ~RandomAccessFile() = default;
 

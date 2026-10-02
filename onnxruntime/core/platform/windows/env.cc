@@ -449,8 +449,11 @@ class WindowsRandomAccessFile final : public RandomAccessFile {
                                             mapped_length);
     ORT_RETURN_IF(mapped_base == nullptr, "MapViewOfFile failed: ", GetLastError());
 
-    mapped_memory = MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
-                                    [mapped_base](void*) { UnmapViewOfFile(mapped_base); }};
+    mapped_memory = MappedMemoryPtr{
+        reinterpret_cast<char*>(mapped_base) + offset_to_granularity,
+        MappedMemoryDeleter{mapped_base, mapped_length, [](void* base, size_t) noexcept {
+                              UnmapViewOfFile(base);
+                            }}};
     return Status::OK();
   }
 

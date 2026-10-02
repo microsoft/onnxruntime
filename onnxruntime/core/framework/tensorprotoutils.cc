@@ -568,8 +568,8 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
-static Status ValidateOpenedExternalDataPath(const std::filesystem::path& model_path,
-                                             const std::filesystem::path& opened_path) {
+[[maybe_unused]] static Status ValidateOpenedExternalDataPath(const std::filesystem::path& model_path,
+                                                              const std::filesystem::path& opened_path) {
   const std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
                                               ? std::filesystem::path{"."}
                                               : model_path.parent_path();

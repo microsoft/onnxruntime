@@ -37,15 +37,17 @@ class IExternalDataLoader {
                                     [[maybe_unused]] FileOffsetType data_offset,
                                     [[maybe_unused]] SafeInt<size_t> data_length,
                                     [[maybe_unused]] Tensor& tensor) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 #else
   virtual common::Status LoadTensor([[maybe_unused]] const RandomAccessFile& file,
                                     [[maybe_unused]] FileOffsetType data_offset,
                                     [[maybe_unused]] SafeInt<size_t> data_length,
                                     [[maybe_unused]] Tensor& tensor) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 #endif
-      ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
-}
-};  // namespace onnxruntime
+};
 
 #if defined(__wasm__)
 
