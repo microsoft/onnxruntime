@@ -100,11 +100,13 @@ class GraphPartitioner {
   /// <param name="execution_providers">execution providers considered</param>
   /// <param name="kernel_registry_manager">registry manager</param>
   /// <param name="logger">session logger</param>
+  /// <param name="registered_ep_context_data_callbacks">READ/WRITE flags for the session's registered callbacks</param>
   /// <returns></returns>
   Status InlineFunctionsAOT(Model& model,
                             const ExecutionProviders& execution_providers,
                             const KernelRegistryManager& kernel_registry_manager,
-                            const logging::Logger& logger) const;
+                            const logging::Logger& logger,
+                            uint32_t registered_ep_context_data_callbacks) const;
 #endif
 
  private:

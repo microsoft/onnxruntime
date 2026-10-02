@@ -13,7 +13,9 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
+#include "onnxruntime_cxx_api.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/config_options.h"
@@ -35,6 +37,7 @@
 #include "gmock/gmock.h"
 
 #include <limits>
+#include <fstream>
 #include <queue>
 #include <tuple>
 
@@ -164,6 +167,7 @@ struct DirectAssignmentEpContextTestOptions {
   bool drop_after_layout = false;
   bool assigned_to_other_ep = false;
   std::optional<int64_t> embed_mode = 0;
+  bool output_embed_mode = false;
 };
 
 class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider {
@@ -567,6 +571,133 @@ OrtStatus* ORT_API_CALL NoopModelWriteCallback(void*, const void*, size_t) {
   return nullptr;
 }
 
+struct EpContextPreflightTestOptions {
+  bool read_during_discovery = true;
+  bool write_during_compile = false;
+  bool has_context_node = true;
+  int64_t input_embed_mode = 0;
+  bool register_read_callback = true;
+  bool register_write_callback = false;
+  bool generate_context_model = false;
+  bool output_embed_mode = true;
+  uint32_t supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  bool fail_support_query = false;
+};
+
+struct EpContextPreflightTestState {
+  size_t capability_calls = 0;
+  size_t aot_capability_calls = 0;
+  size_t compile_calls = 0;
+  size_t support_queries = 0;
+  size_t file_reads = 0;
+  size_t file_writes = 0;
+  size_t read_callbacks = 0;
+  size_t write_callbacks = 0;
+};
+
+OrtStatus* ORT_API_CALL PreflightReadCallback(void* state, const char*, OrtAllocator*, void** buffer,
+                                              size_t* buffer_size) {
+  ++static_cast<EpContextPreflightTestState*>(state)->read_callbacks;
+  *buffer = nullptr;
+  *buffer_size = 0;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL PreflightWriteCallback(void* state, const char*, const void*, size_t) {
+  ++static_cast<EpContextPreflightTestState*>(state)->write_callbacks;
+  return nullptr;
+}
+
+class EpContextPreflightTestExecutionProvider : public InternalTestingExecutionProvider {
+ public:
+  EpContextPreflightTestExecutionProvider(const EpContextPreflightTestOptions& options,
+                                          EpContextPreflightTestState& state,
+                                          const std::filesystem::path& context_path)
+      : InternalTestingExecutionProvider{{"EPContext", "Identity"}},
+        options_{options},
+        state_{state},
+        context_path_{context_path} {}
+
+  uint32_t GetEpContextDataCallbackRequirements(const GraphViewer& graph_viewer) const override {
+    uint32_t flags = options_.write_during_compile ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                   : OrtEpContextDataCallbackSupportFlags_NONE;
+    if (ReadsExternalContext(graph_viewer)) {
+      flags |= OrtEpContextDataCallbackSupportFlags_READ;
+    }
+    return flags;
+  }
+
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
+    ++state_.support_queries;
+    ORT_RETURN_IF(options_.fail_support_query, "EPContext test support query failed");
+    supported_flags = options_.supported_flags;
+    return Status::OK();
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& optimizer_registry, IResourceAccountant* accountant) const override {
+    ++state_.capability_calls;
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.Domain() == "epcontext.preflight" && node.OpType() == "PreflightIdentity") {
+        ++state_.aot_capability_calls;
+        break;
+      }
+    }
+    if (ReadsExternalContext(graph_viewer)) {
+      if (options_.register_read_callback &&
+          (options_.supported_flags & OrtEpContextDataCallbackSupportFlags_READ) != 0) {
+        Ort::AllocatorWithDefaultOptions allocator;
+        void* buffer = nullptr;
+        size_t buffer_size = 0;
+        Ort::ThrowOnError(PreflightReadCallback(&state_, "context.bin", allocator, &buffer, &buffer_size));
+      } else {
+        ++state_.file_reads;
+        std::ifstream stream(context_path_, std::ios::binary);
+        std::string contents;
+        ORT_ENFORCE(std::getline(stream, contents) && contents == "test context", "Failed to read test context");
+      }
+    }
+    return InternalTestingExecutionProvider::GetCapability(graph_viewer, kernel_lookup, optimizer_registry, accountant);
+  }
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    ++state_.compile_calls;
+    if (options_.write_during_compile) {
+      if (options_.register_write_callback &&
+          (options_.supported_flags & OrtEpContextDataCallbackSupportFlags_WRITE) != 0) {
+        Ort::ThrowOnError(PreflightWriteCallback(&state_, "context.bin", "test context", 12));
+      } else {
+        ++state_.file_writes;
+        std::ofstream stream(context_path_, std::ios::binary);
+        ORT_RETURN_IF_NOT(stream.write("test context", 12), "Failed to write test context");
+      }
+    }
+    return InternalTestingExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+  }
+
+ private:
+  bool ReadsExternalContext(const GraphViewer& graph_viewer) const {
+    if (!options_.read_during_discovery) {
+      return false;
+    }
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.Domain() == kMSDomain && node.OpType() == "EPContext") {
+        const auto embed_mode = node.GetAttributes().find("embed_mode");
+        if (embed_mode != node.GetAttributes().end() && embed_mode->second.i() == 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  const EpContextPreflightTestOptions options_;
+  EpContextPreflightTestState& state_;
+  const std::filesystem::path context_path_;
+};
+
 Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes,
                                                   bool read_callback_registered,
                                                   bool write_callback_required,
@@ -635,7 +766,7 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
   epctx::ModelGenOptions model_gen_options;
   if (write_callback_required) {
     model_gen_options.enable = true;
-    model_gen_options.embed_ep_context_in_model = false;
+    model_gen_options.embed_ep_context_in_model = options.output_embed_mode;
     model_gen_options.ep_context_data_write_func = {NoopEpContextWriteCallback, nullptr};
     model_gen_options.output_model_location =
         epctx::BufferWriteFuncHolder{NoopModelWriteCallback, nullptr};
@@ -863,6 +994,263 @@ TEST(InternalTestingEP, ExternalEpContextWriteCallbackAllowsSupportedNonCompileP
   EXPECT_STATUS_OK(status);
   EXPECT_TRUE(get_ep_context_nodes_called);
 }
+
+TEST(InternalTestingEP, ExternalEpContextNonCompileProducerOverridesCoreEmbedMode) {
+  bool get_ep_context_nodes_called = false;
+  DirectAssignmentEpContextTestOptions options;
+  options.output_embed_mode = true;
+  const auto status = PartitionDirectAssignmentExternalEpContext(
+      true /*produces_ep_context_nodes*/, false /*read_callback_registered*/, true /*write_callback_required*/,
+      GraphPartitioner::Mode::kNormal, &get_ep_context_nodes_called, OrtEpContextDataCallbackSupportFlags_NONE,
+      true /*claims_ep_context_node*/, options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("does not support the registered EPContext data write callback"));
+  EXPECT_FALSE(get_ep_context_nodes_called);
+}
+
+enum class EpContextDiscoveryStage { Onnx,
+                                     OrtFormat,
+                                     Aot };
+
+class EpContextCallbackPreflightTest : public testing::TestWithParam<EpContextDiscoveryStage> {
+ protected:
+  void ConfigureWriter() {
+    options_.read_during_discovery = false;
+    options_.write_during_compile = true;
+    options_.has_context_node = false;
+    options_.register_read_callback = false;
+    options_.register_write_callback = true;
+    options_.generate_context_model = true;
+  }
+
+  Status Partition() {
+    state_ = {};
+    const auto context_path = std::filesystem::path(temp_dir_.Path()) / "context.bin";
+    if (options_.has_context_node) {
+      std::ofstream stream(context_path, std::ios::binary);
+      ORT_RETURN_IF_NOT(stream.write("test context", 12), "Failed to create test context");
+    }
+
+    auto& logger = DefaultLoggingManager().DefaultLogger();
+    const bool aot = GetParam() == EpContextDiscoveryStage::Aot;
+    std::unordered_map<std::string, int> domain_versions{{kOnnxDomain, 13}, {kMSDomain, 1}, {"epcontext.preflight", 1}};
+    std::vector<FunctionProto> functions;
+    if (aot) {
+      FunctionProto function;
+      function.set_name("PreflightIdentity");
+      function.set_domain("epcontext.preflight");
+      function.add_input("X");
+      function.add_output("Y");
+      function.add_opset_import()->set_version(13);
+      auto* node = function.add_node();
+      node->set_op_type("Identity");
+      node->add_input("X");
+      node->add_output("Y");
+      functions.push_back(std::move(function));
+    }
+
+    Model model("EpContextCallbackPreflight", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_versions, functions, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    const std::optional<std::vector<int64_t>> shape{std::vector<int64_t>{1}};
+    auto* input = builder.MakeInput<float>(shape);
+    auto* output = builder.MakeOutput<float>(shape);
+    auto* primary_output = aot ? builder.MakeIntermediate<float>(shape) : output;
+    if (options_.has_context_node) {
+      auto& node = builder.AddNode("EPContext", {input}, {primary_output}, kMSDomain);
+      node.AddAttribute("embed_mode", options_.input_embed_mode);
+      node.AddAttribute("ep_cache_context", "context.bin");
+      node.AddAttribute("partition_name", "preflight_partition");
+      node.AddAttribute("source", kInternalTestingExecutionProvider);
+    } else {
+      builder.AddNode("Identity", {input}, {primary_output});
+    }
+    if (aot) {
+      builder.AddNode("PreflightIdentity", {primary_output}, {output}, "epcontext.preflight");
+    }
+    builder.SetGraphOutputs();
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+
+    auto ep = std::make_unique<EpContextPreflightTestExecutionProvider>(options_, state_, context_path);
+    ep->SetLogger(&logger);
+    epctx::ModelGenOptions model_gen_options;
+    model_gen_options.enable = options_.generate_context_model;
+    model_gen_options.embed_ep_context_in_model = options_.output_embed_mode;
+    model_gen_options.output_model_location = epctx::BufferWriteFuncHolder{NoopModelWriteCallback, nullptr};
+    if (options_.register_write_callback) {
+      model_gen_options.ep_context_data_write_func = {PreflightWriteCallback, &state_};
+    }
+
+    if (aot) {
+      SessionOptions session_options;
+      session_options.graph_optimization_level = TransformerLevel::Default;
+      session_options.ep_context_gen_options = model_gen_options;
+      if (options_.register_read_callback) {
+        session_options.ep_context_data_read_func = PreflightReadCallback;
+        session_options.ep_context_data_read_state = &state_;
+      }
+      InferenceSessionWrapper session(session_options, GetEnvironment());
+      ORT_RETURN_IF_ERROR(session.RegisterExecutionProvider(std::move(ep)));
+      std::string model_data;
+      ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&model_data), "Failed to serialize test model");
+      ORT_RETURN_IF_ERROR(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      const auto status = session.Initialize();
+      if (status.IsOK()) {
+        EXPECT_GT(state_.aot_capability_calls, 0u);
+      }
+      return status;
+    }
+
+    ExecutionProviders providers;
+    const std::string ep_type = ep->Type();
+    ORT_RETURN_IF_ERROR(providers.Add(ep_type, std::move(ep)));
+    KernelRegistryManager krm;
+    ORT_RETURN_IF_ERROR(krm.RegisterKernels(providers));
+    auto optimizer_registry = std::make_unique<GraphOptimizerRegistry>(nullptr, nullptr, &logger);
+    GraphPartitioner partitioner(krm, providers, std::move(optimizer_registry), [] { return false; });
+    FuncManager func_mgr;
+    const auto mode = GetParam() == EpContextDiscoveryStage::OrtFormat
+                          ? GraphPartitioner::Mode::kOrtFormatLoad
+                          : GraphPartitioner::Mode::kNormal;
+    return partitioner.Partition(graph, func_mgr, {}, ConfigOptions{}, logger, nullptr, mode,
+                                 model_gen_options, options_.register_read_callback);
+  }
+
+  EpContextPreflightTestOptions options_;
+  EpContextPreflightTestState state_;
+  TemporaryDirectory temp_dir_{ORT_TSTR("ep_context_callback_preflight_test"), false};
+};
+
+TEST_P(EpContextCallbackPreflightTest, RejectsReadBeforeCapabilityIo) {
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_WRITE}) {
+    SCOPED_TRACE(support);
+    options_.supported_flags = support;
+    const auto status = Partition();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data read callback"));
+    EXPECT_EQ(state_.capability_calls, 0u);
+    EXPECT_EQ(state_.file_reads, 0u);
+    EXPECT_EQ(state_.compile_calls, 0u);
+  }
+}
+
+TEST_P(EpContextCallbackPreflightTest, SupportQueryFailurePreventsCapabilityIo) {
+  options_.fail_support_query = true;
+  const auto status = Partition();
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("EPContext test support query failed"));
+  EXPECT_EQ(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, AdvertisedReadSupportAllowsDiscovery) {
+  options_.supported_flags = OrtEpContextDataCallbackSupportFlags_READ;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_GT(state_.read_callbacks, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, NoReadCallbackPreservesLegacyReads) {
+  options_.register_read_callback = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, WriteCallbackDoesNotRequireReadSupport) {
+  options_.register_read_callback = false;
+  options_.register_write_callback = true;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, EmbeddedContextDoesNotRequireReadSupport) {
+  options_.input_embed_mode = 1;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, OrdinaryGraphDoesNotRequireReadSupport) {
+  options_.has_context_node = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.capability_calls, 0u);
+  EXPECT_EQ(state_.file_reads, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, ProviderExternalModeOverridesCoreEmbedMode) {
+  ConfigureWriter();
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_READ}) {
+    SCOPED_TRACE(support);
+    options_.supported_flags = support;
+    const auto status = Partition();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data write callback"));
+    EXPECT_EQ(state_.capability_calls, 0u);
+    EXPECT_EQ(state_.compile_calls, 0u);
+    EXPECT_EQ(state_.file_writes, 0u);
+    EXPECT_FALSE(std::filesystem::exists(std::filesystem::path(temp_dir_.Path()) / "context.bin"));
+  }
+}
+
+TEST_P(EpContextCallbackPreflightTest, AdvertisedWriteSupportAllowsProviderExternalMode) {
+  ConfigureWriter();
+  options_.supported_flags = OrtEpContextDataCallbackSupportFlags_WRITE;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.compile_calls, 0u);
+  EXPECT_GT(state_.write_callbacks, 0u);
+  EXPECT_EQ(state_.file_writes, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, NoWriteCallbackPreservesProviderExternalMode) {
+  ConfigureWriter();
+  options_.register_write_callback = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_writes, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, ReadCallbackDoesNotRequireWriteSupport) {
+  ConfigureWriter();
+  options_.register_write_callback = false;
+  options_.register_read_callback = true;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.file_writes, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+TEST_P(EpContextCallbackPreflightTest, EmbeddedProviderOutputDoesNotRequireWriteSupport) {
+  ConfigureWriter();
+  options_.write_during_compile = false;
+  EXPECT_STATUS_OK(Partition());
+  EXPECT_GT(state_.compile_calls, 0u);
+  EXPECT_EQ(state_.file_writes, 0u);
+  EXPECT_EQ(state_.write_callbacks, 0u);
+  EXPECT_EQ(state_.support_queries, 0u);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Discovery, EpContextCallbackPreflightTest,
+    testing::Values(EpContextDiscoveryStage::Onnx, EpContextDiscoveryStage::OrtFormat, EpContextDiscoveryStage::Aot),
+    [](const testing::TestParamInfo<EpContextDiscoveryStage>& info) {
+      switch (info.param) {
+        case EpContextDiscoveryStage::Onnx:
+          return "Onnx";
+        case EpContextDiscoveryStage::OrtFormat:
+          return "OrtFormat";
+        case EpContextDiscoveryStage::Aot:
+          return "Aot";
+      }
+      ORT_THROW("Unexpected discovery stage");
+    });
 
 TEST(InternalTestingEP, OrtFormatExternalEpContextReadCallbackRequiresSupportForDirectAssignment) {
   const auto status = PartitionDirectAssignmentExternalEpContext(

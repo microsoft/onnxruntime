@@ -487,6 +487,17 @@ class IExecutionProvider {
     return false;
   }
 
+  /**
+   * Reports provider-specific callback requirements before GetCapability(), including AOT discovery.
+   *
+   * This query must not have side effects. Report READ if capability discovery may read external context data,
+   * and WRITE if the EP's effective configuration produces external context data independently of ORT's embed mode.
+   */
+  virtual uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const {
+    return MayProduceExternalEpContextDataWithoutCompilation() ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                               : OrtEpContextDataCallbackSupportFlags_NONE;
+  }
+
  private:
   const std::string type_;
 

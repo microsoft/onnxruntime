@@ -1628,10 +1628,17 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
       !disable_aot_function_inlining) {
+    uint32_t registered_ep_context_data_callbacks = session_options_.ep_context_data_read_func != nullptr
+                                                        ? OrtEpContextDataCallbackSupportFlags_READ
+                                                        : OrtEpContextDataCallbackSupportFlags_NONE;
+    if (session_options_.ep_context_gen_options.TryGetEpContextDataWriteFunc() != nullptr) {
+      registered_ep_context_data_callbacks |= OrtEpContextDataCallbackSupportFlags_WRITE;
+    }
     ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.InlineFunctionsAOT(*model_,
                                                                   execution_providers_,
                                                                   kernel_registry_manager_,
-                                                                  *session_logger_));
+                                                                  *session_logger_,
+                                                                  registered_ep_context_data_callbacks));
   }
 
   // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
