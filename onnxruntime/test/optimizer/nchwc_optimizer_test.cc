@@ -4,6 +4,7 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/nchwc_transformer.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
@@ -246,37 +247,31 @@ TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
 
-  auto* input = helper.MakeInput<float>({1, 3, 3});
+  auto* first_input = helper.MakeInput<float>({1, 3, 3, 3});
   auto* first_relu = helper.MakeIntermediate();
-  helper.AddNode("Relu", {input}, {first_relu});
+  helper.AddNode("Relu", {first_input}, {first_relu});
 
   auto* first_conv = helper.MakeIntermediate();
   helper.AddConvNode(first_relu, first_conv, {3, 3, 1, 1});
-  auto* second_relu = helper.MakeIntermediate();
-  helper.AddNode("Relu", {first_conv}, {second_relu});
 
-  auto* second_conv = helper.MakeIntermediate();
-  helper.AddConvNode(second_relu, second_conv, {3, 3, 1, 1});
-  auto* branch_conv = helper.MakeIntermediate();
-  helper.AddConvNode(first_relu, branch_conv, {3, 3, 1, 1});
-  helper.AddNode("Add", {second_conv, branch_conv}, {helper.MakeOutput()});
+  auto* later_input = helper.MakeInput<float>({1, 3, 3});
+  auto* later_relu = helper.MakeIntermediate();
+  helper.AddNode("Relu", {later_input}, {later_relu});
+  auto* later_conv = helper.MakeIntermediate();
+  helper.AddConvNode(later_relu, later_conv, {3, 3, 1, 1});
+  helper.AddNode("Add", {first_conv, later_conv}, {helper.MakeOutput()});
 
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
-
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-
-  SessionOptions session_options;
-  session_options.graph_optimization_level = TransformerLevel::Level3;
-  InferenceSessionWrapper session{session_options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
-  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
-
-  const Status status = session.Initialize();
-  if (status.IsOK()) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["Add"], 1);
+  for (auto& node : model.MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
   }
+
+  NchwcTransformer transformer;
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(model.MainGraph(), modified, DefaultLoggingManager().DefaultLogger()));
+  ASSERT_TRUE(modified);
+  auto op_to_count = CountOpsInGraph(model.MainGraph());
+  EXPECT_EQ(op_to_count["Add"], 1);
 }
 
 TEST(NchwcOptimizerTests, ConvNchw) {
