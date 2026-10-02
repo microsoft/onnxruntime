@@ -147,8 +147,8 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
                   "FP16 MoE CPU offload requires optional expert input ", input_idx,
                   " to be constant or absent.");
   }
-  ORT_RETURN_IF(packed_inputs_[6].present,
-                "FP16 MoE CPU offload does not yet support separate FC3 weights.");
+  ORT_RETURN_IF(packed_inputs_[6].present || packed_inputs_[7].present,
+                "FP16 MoE CPU offload does not yet support separate FC3 weights or bias.");
   ORT_RETURN_IF(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
                     swiglu_fusion_ == 2,
                 "FP16 MoE CPU offload does not support chunked SwiGLU.");
@@ -303,85 +303,90 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_awq = false;
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
   const int cuda_runner_num_experts = static_cast<int>(cuda_experts_.size());
+  const bool run_cuda_experts = !cpu_offload_enabled_ || cuda_runner_num_experts > 0;
   const int workspace_num_experts =
       cpu_offload_enabled_
-          ? std::max(static_cast<int>(k_), std::max(1, cuda_runner_num_experts))
+          ? std::max(static_cast<int>(k_), cuda_runner_num_experts)
           : static_cast<int>(moe_params.num_experts);
 
-  if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
-    auto tactics = moe_runner.getTactics();
-    if (!tactics.empty()) {
-      moe_runner.setTactic(tactics[0], tactics[0]);
-    }
-  } else {
-    std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    mGemmProfiler.setAllocator(std::move(allocator));
-    mGemmProfiler.setProfilerParams(workspace_num_experts, static_cast<int>(this->k_),
-                                    static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
-                                    static_cast<int64_t>(this->block_size_), kernel_activation_type,
-                                    false, true, parallelism_config, sm);
-
-    // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
-    // allocates/frees scratch from the temp allocator on the compute stream. All of these are
-    // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
-    // capture. During capture we therefore skip profiling and reuse a config cached from an earlier
-    // non-capturing run, falling back to the default tactic when nothing is cached.
-    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
-
-    onnxruntime::llm::nvinfer::DataType dtype = onnxruntime::llm::nvinfer::DataType::kFLOAT;
-    if constexpr (std::is_same_v<CudaT, half>) {
-      dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
-    } else if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
-      dtype = onnxruntime::llm::nvinfer::DataType::kBF16;
-    }
-
-    using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
-    using onnxruntime::llm::kernels::weight_only::GemmDims;
-
-    // GEMM 1
-    MoeGemmId id1(static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.hidden_size), dtype, MoeGemmId::GemmType::Gemm1);
-    if (!stream_is_capturing) {
-      // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
-      // (small M) and prefill (large M) each profile and select their own best tile shape.
-      GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                    static_cast<int64_t>(moe_params.inter_size), static_cast<int64_t>(moe_params.hidden_size));
-      mGemmProfiler.profileTactics(&moe_runner, dims, id1, stream);
-    }
-    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
-
-    // GEMM 2
-    MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, MoeGemmId::GemmType::Gemm2);
-    if (!stream_is_capturing) {
-      GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                    static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-      mGemmProfiler.profileTactics(&moe_runner, dims, id2, stream);
-    }
-    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
-
-    // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
-    // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
-    // the config unset.
-    if (!config1 || !config2) {
+  if (run_cuda_experts) {
+    if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
       auto tactics = moe_runner.getTactics();
       if (!tactics.empty()) {
-        if (!config1) {
-          config1 = tactics[0];
-        }
-        if (!config2) {
-          config2 = tactics[0];
+        moe_runner.setTactic(tactics[0], tactics[0]);
+      }
+    } else {
+      std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
+      AllocatorPtr allocator;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+      mGemmProfiler.setAllocator(std::move(allocator));
+      mGemmProfiler.setProfilerParams(workspace_num_experts, static_cast<int>(this->k_),
+                                      static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
+                                      static_cast<int64_t>(this->block_size_), kernel_activation_type,
+                                      false, true, parallelism_config, sm);
+
+      // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
+      // allocates/frees scratch from the temp allocator on the compute stream. All of these are
+      // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
+      // capture. During capture we therefore skip profiling and reuse a config cached from an earlier
+      // non-capturing run, falling back to the default tactic when nothing is cached.
+      const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
+
+      onnxruntime::llm::nvinfer::DataType dtype = onnxruntime::llm::nvinfer::DataType::kFLOAT;
+      if constexpr (std::is_same_v<CudaT, half>) {
+        dtype = onnxruntime::llm::nvinfer::DataType::kHALF;
+      } else if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+        dtype = onnxruntime::llm::nvinfer::DataType::kBF16;
+      }
+
+      using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
+      using onnxruntime::llm::kernels::weight_only::GemmDims;
+
+      // GEMM 1
+      MoeGemmId id1(static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.hidden_size), dtype, MoeGemmId::GemmType::Gemm1);
+      if (!stream_is_capturing) {
+        // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
+        // (small M) and prefill (large M) each profile and select their own best tile shape.
+        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
+                      static_cast<int64_t>(moe_params.inter_size), static_cast<int64_t>(moe_params.hidden_size));
+        mGemmProfiler.profileTactics(&moe_runner, dims, id1, stream);
+      }
+      auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
+
+      // GEMM 2
+      MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, MoeGemmId::GemmType::Gemm2);
+      if (!stream_is_capturing) {
+        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
+                      static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
+        mGemmProfiler.profileTactics(&moe_runner, dims, id2, stream);
+      }
+      auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
+
+      // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
+      // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
+      // the config unset.
+      if (!config1 || !config2) {
+        auto tactics = moe_runner.getTactics();
+        if (!tactics.empty()) {
+          if (!config1) {
+            config1 = tactics[0];
+          }
+          if (!config2) {
+            config2 = tactics[0];
+          }
         }
       }
-    }
 
-    moe_runner.setTactic(config1, config2);
+      moe_runner.setTactic(config1, config2);
+    }
   }
 
-  size_t ws_size = moe_runner.getWorkspaceSize(
-      static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
-      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(workspace_num_experts), static_cast<size_t>(k_),
-      kernel_activation_type, parallelism_config, use_awq);
+  size_t ws_size = run_cuda_experts
+                       ? moe_runner.getWorkspaceSize(
+                             static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
+                             static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(workspace_num_experts),
+                             static_cast<size_t>(k_), kernel_activation_type, parallelism_config, use_awq)
+                       : 0;
 
   // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
   // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
@@ -624,7 +629,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // For SwiGLU with separate gates (e.g. Mixtral), we interleave FC1 and FC3 weights.
   // =============================================================================
 
-  if (!cpu_offload_enabled_ || !cuda_experts_.empty()) {
+  if (run_cuda_experts) {
     // Calculate buffer sizes
     size_t fc1_block_size = static_cast<size_t>(moe_params.inter_size) * static_cast<size_t>(moe_params.hidden_size);
     int E = cpu_offload_enabled_ ? cuda_runner_num_experts : static_cast<int>(moe_params.num_experts);
