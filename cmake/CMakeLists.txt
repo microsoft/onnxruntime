@@ -92,6 +92,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
 # Declare both prerequisites before evaluating this dependent option on a fresh configure.
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
 # OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
@@ -1981,6 +1982,19 @@ else()
     if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\
+        ")
+    endif()
+    if(onnxruntime_USE_TELEMETRY AND APPLE
+       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
+      string(APPEND PROJECT_CONFIG_CONTENT
+        "if(NOT TARGET MSTelemetry::sqlite_dependency)\n\
+        add_library(MSTelemetry::sqlite_dependency INTERFACE IMPORTED)\n\
+        set_property(TARGET MSTelemetry::sqlite_dependency PROPERTY INTERFACE_LINK_LIBRARIES sqlite3)\n\
+        endif()\n\
+        if(NOT TARGET MSTelemetry::zlib_dependency)\n\
+        add_library(MSTelemetry::zlib_dependency INTERFACE IMPORTED)\n\
+        set_property(TARGET MSTelemetry::zlib_dependency PROPERTY INTERFACE_LINK_LIBRARIES z)\n\
+        endif()\n\
         ")
     endif()
     if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE

@@ -116,7 +116,14 @@ stages:
 - template: nodejs/templates/test_linux.yml
   parameters:
     AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    StageSuffix: 'Linux_CPU_x64'
+    StageSuffix: 'Linux_CPU_x64_Node24'
+    NodeVersion: '24.x'
+
+- template: nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    StageSuffix: 'Linux_CPU_x64_Node22'
+    NodeVersion: '22.x'
 
 - template: nuget/templates/test_win.yml
   parameters:

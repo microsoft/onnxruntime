@@ -3678,6 +3678,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Serialize graph-state checks and replay as well as normal execution. Keep the
+  // lock here so RunImpl's internal capture retries do not acquire it recursively.
+  std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
+  if (!is_concurrent_run_supported_) {
+    sequential_run_lock.emplace(session_mutex_);
+  }
+
   return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
@@ -3823,11 +3830,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         moe_run_active = true;
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
-      if (is_concurrent_run_supported_ == false) {
-        sequential_run_lock.emplace(session_mutex_);
-      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
