@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <tuple>
+
 #include "core/optimizer/selectors_actions/actions.h"
 
 #include "core/framework/op_kernel.h"
@@ -43,12 +45,14 @@ InlinedVector<NodeIndex> SafelyRemoveNodes(
       // TODO: It's slightly insane we don't support optionally removing the output edges as part of Graph::RemoveNode
       // but to make that change we need to validate a lot of existing code
       const NodeIndex node_index = node->Index();
-      const auto output_edges = node->GetRelationships().output_edges;
-      for (const auto& output_edge : output_edges) {
-        if (output_edge.IsControlEdge()) {
-          graph.RemoveEdge(node_index, output_edge.GetNode().Index(),
-                           output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+      InlinedVector<std::tuple<NodeIndex, int, int>> control_edges;
+      for (auto edge = node->OutputEdgesBegin(); edge != node->OutputEdgesEnd(); ++edge) {
+        if (edge->IsControlEdge()) {
+          control_edges.emplace_back(edge->GetNode().Index(), edge->GetSrcArgIndex(), edge->GetDstArgIndex());
         }
+      }
+      for (const auto& [dst_node_index, src_arg_index, dst_arg_index] : control_edges) {
+        graph.RemoveEdge(node_index, dst_node_index, src_arg_index, dst_arg_index);
       }
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       if (graph.RemoveNode(node_index)) {
