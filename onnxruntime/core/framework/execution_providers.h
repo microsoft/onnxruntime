@@ -79,17 +79,20 @@ class ExecutionProviders {
 
     const auto check_provider_not_registered = [&]() -> common::Status {
       if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
-        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-        return status;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
       }
 
       return Status::OK();
     };
 
+    common::Status duplicate_status;
     {
       std::lock_guard<std::mutex> lock(exec_providers_mutex_);
-      ORT_RETURN_IF_ERROR(check_provider_not_registered());
+      duplicate_status = check_provider_not_registered();
+    }
+    if (!duplicate_status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << duplicate_status.ErrorMessage();
+      return duplicate_status;
     }
 
     ProviderOptions providerOptions = p_exec_provider->GetProviderOptions();
@@ -97,17 +100,22 @@ class ExecutionProviders {
     {
       std::lock_guard<std::mutex> lock(exec_providers_mutex_);
       // make sure there are no issues before we change any internal data structures
-      ORT_RETURN_IF_ERROR(check_provider_not_registered());
+      duplicate_status = check_provider_not_registered();
+      if (duplicate_status.IsOK()) {
+        // index that provider will have after insertion
+        auto new_provider_idx = exec_providers_.size();
 
-      // index that provider will have after insertion
-      auto new_provider_idx = exec_providers_.size();
+        ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
-      ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
-
-      // update execution provider options
-      exec_provider_options_[provider_id] = providerOptions;
-      exec_provider_ids_.push_back(provider_id);
-      exec_providers_.push_back(p_exec_provider);
+        // update execution provider options
+        exec_provider_options_[provider_id] = providerOptions;
+        exec_provider_ids_.push_back(provider_id);
+        exec_providers_.push_back(p_exec_provider);
+      }
+    }
+    if (!duplicate_status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << duplicate_status.ErrorMessage();
+      return duplicate_status;
     }
 
 #ifdef _WIN32
