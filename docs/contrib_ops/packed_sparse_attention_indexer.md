@@ -70,7 +70,7 @@ later slot keeps its fixed index.
 | 8 | `gate` | `(total_tokens, 2*head_size)` | T | csa only |
 | 9 | `position_bias` | `(compress_ratio, 2*head_size)` | T | csa only |
 | 10 | `head_weights` | `(total_tokens, num_heads)` | T | csa only |
-| 11 | `position_ids` | `(total_tokens)` | int64 | optional qsa / required csa |
+| 11 | `position_ids` | `(total_tokens)` | int64 | omitted qsa / required csa |
 | 12 | `past_key_state` | `(batch_size, state_capacity, head_size)` | T | both (generic) |
 | 13 | `past_kv_buffer` | `(batch_size, 2*compress_ratio-1, width)` | T | both (generic) |
 | 14 | `past_gate_buffer` | same shape as `past_kv_buffer` | T | csa only |
@@ -183,7 +183,9 @@ dense `qsa` policy but against fixed-capacity state instead of a growing cache:
 `past_sequence_lengths[b] + local_offset` — i.e. the request's own absolute token position, which
 is exactly what a per-request main paged KV cache is addressed by. The output is therefore directly
 consumable by `SparsePagedAttention` configured with `attention_mode="selected_only"`,
-`selected_kv_source="main"`.
+`selected_kv_source="main"`. `position_ids` must be omitted for `qsa`; allowing an unrelated
+absolute-position space would make these cache indices ambiguous and would rotate queries
+inconsistently with prepared block keys.
 
 ## 6. Policy `csa`
 
@@ -201,8 +203,7 @@ mapping are packed:
    rejects (caps) new windows beyond `state_capacity` as described in [§3](#3-generic-state-shared-by-both-policies).
 2. **Score** (one launch per query token, per compressed entry): every entry is scored with
    `sum_h w_h * ReLU(q_h . k)` and masked by the causal threshold from `position_ids` (required for
-   `csa`, unlike `qsa` where it is an optional override of the default `past_sequence_length +
-   local offset`).
+   `csa`; `qsa` always derives request-local logical positions from `past_sequence_lengths`).
 3. **Select** (one launch per query token): keeps the `index_topk` highest scoring, causally
    visible entries and writes the exact active count to `selected_counts`.
 

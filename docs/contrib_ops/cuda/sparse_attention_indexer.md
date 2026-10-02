@@ -207,7 +207,9 @@ For window `w`, a `2r`-slot pooling window is built from `[B, 2r, D]` values and
 `position_bias[slot % r]` is added to the raw gate (the buffers store the **raw** projection, so
 the bias is re-applied at use time and never accumulates). A softmax over the `2r` slots is taken
 **per channel `d`**, the values are weighted and summed, the result is RMS-normalized with
-`key_norm_weight`, and finally rotated at absolute position `(Pc + w) * r`.
+`key_norm_weight`, and finally rotated at absolute position `(Pc + w) * r`. If the softmax
+denominator is non-positive or non-finite (for example, all logits are `-inf` or any logit is
+`+inf`), the pooled value for that channel is zero.
 
 ### Scoring and selection
 
@@ -301,8 +303,8 @@ larger configured TopK values retain the repeated-scan fallback.
   store is rounded to the tensor element type. This is a deliberate deviation from the reference
   implementations, which for `qsa` run in the model dtype — the operator is strictly more accurate,
   never less.
-- The `2r`-slot softmax is a two-pass (max-subtracted) formulation, so a fully masked slot column
-  cannot produce `NaN`.
+- The `2r`-slot softmax is a two-pass (max-subtracted) formulation. A non-positive or non-finite
+  denominator falls back to a zero pooled value, so non-finite gate columns do not produce `NaN`.
 - Selection order is a total order, so the output is bitwise reproducible for a given input.
 - `float16` and `bfloat16` are supported for all `T` tensors. `bfloat16` uses the conversion
   helpers in `cu_inc/cuda_type_helper.cuh`, which are emulated on pre-`sm_80` devices, so no

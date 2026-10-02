@@ -184,6 +184,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const int64_t head_size = query_norm_shape[0];
   ORT_RETURN_IF_NOT(query_shape[2] > 0 && query_shape[2] % head_size == 0,
                     "SparseAttentionIndexer: query width must be positive and divisible by head_size");
+  ORT_RETURN_IF_ERROR(CheckIntDimension("query width", query_shape[2], false));
   const bool packed_qk = key == nullptr;
   const int64_t packed_head_count = query_shape[2] / head_size;
   ORT_RETURN_IF(packed_qk && packed_head_count < 2,
@@ -327,6 +328,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   const int64_t head_size = query_norm_shape[0];
   ORT_RETURN_IF_NOT(query_shape[2] > 0 && query_shape[2] % head_size == 0,
                     "SparseAttentionIndexer: query width must be positive and divisible by head_size");
+  ORT_RETURN_IF_ERROR(CheckIntDimension("query width", query_shape[2], false));
   const int64_t num_heads = query_shape[2] / head_size;
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
   ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
