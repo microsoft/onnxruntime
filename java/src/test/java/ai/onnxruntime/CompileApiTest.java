@@ -216,13 +216,21 @@ public class CompileApiTest {
             exception.getMessage());
       }
 
+      AtomicInteger oversizedReadCount = new AtomicInteger();
       try (SessionOptions sessionOptions = createPluginSessionOptions(device)) {
-        sessionOptions.setEpContextDataReadCallback(name -> contextData.get(), 1);
+        Assertions.assertTrue(contextData.get().length > 1);
+        sessionOptions.setEpContextDataReadCallback(
+            name -> {
+              oversizedReadCount.incrementAndGet();
+              return contextData.get();
+            },
+            contextData.get().length - 1);
         OrtException exception =
             Assertions.assertThrows(
                 OrtException.class, () -> env.createSession(compiledModel, sessionOptions));
         Assertions.assertTrue(exception.getMessage().contains("configured maximum size"));
       }
+      Assertions.assertEquals(1, oversizedReadCount.get());
 
       AtomicInteger emptyReadCount = new AtomicInteger();
       try (SessionOptions sessionOptions = createPluginSessionOptions(device);

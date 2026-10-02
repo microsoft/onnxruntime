@@ -949,6 +949,10 @@ public class OrtSession implements AutoCloseable {
      * model compilation options created from them are closed. Replacing or clearing the callback
      * does not affect existing sessions or compilation options.
      *
+     * <p>The Java binding retains {@code maxDataSize} in the callback state and checks the returned
+     * array before allocating the native output buffer. The native API stores only the callback and
+     * state; this limit does not constrain allocations made inside the Java callback.
+     *
      * @param callback The callback that supplies named data.
      * @param maxDataSize A finite maximum payload size in bytes. Must be greater than zero. A
      *     callback result larger than this limit fails the ONNX Runtime operation.

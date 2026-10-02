@@ -178,16 +178,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setEp
     return 0;
   }
 
-  OrtEpContextDataReadOptions* readOptions = NULL;
-  OrtStatus* status = api->CreateEpContextDataReadOptions(&readOptions);
-  if (status == NULL) {
-    status = api->EpContextDataReadOptionsSetMaxDataSize(readOptions, (size_t)maxDataSize);
-  }
-  if (status == NULL) {
-    status = api->SessionOptionsSetEpContextDataReadFunc(
-        (OrtSessionOptions*)optionsHandle, javaEpContextDataReadCallback, callbackState, readOptions);
-  }
-  api->ReleaseEpContextDataReadOptions(readOptions);
+  OrtStatus* status = api->SessionOptionsSetEpContextDataReadFunc(
+      (OrtSessionOptions*)optionsHandle, javaEpContextDataReadCallback, callbackState);
 
   if (status != NULL) {
     releaseEpContextDataCallbackState(jniEnv, callbackState);
@@ -210,7 +202,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_clearE
   checkOrtStatus(
       jniEnv, api,
       api->SessionOptionsSetEpContextDataReadFunc(
-          (OrtSessionOptions*)optionsHandle, NULL, NULL, NULL));
+          (OrtSessionOptions*)optionsHandle, NULL, NULL));
 }
 
 /*
