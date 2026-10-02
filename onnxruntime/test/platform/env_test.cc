@@ -103,7 +103,7 @@ class RandomAccessFileTest : public testing::Test {
 };
 
 TEST_F(RandomAccessFileTest, ReadsRangesAndLengthFromOneOpenFile) {
-  size_t length = 0;
+  uint64_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, contents_.size());
   size_t legacy_length = 0;
@@ -119,6 +119,30 @@ TEST_F(RandomAccessFileTest, ReadsRangesAndLengthFromOneOpenFile) {
   ASSERT_STATUS_OK(Env::Default().ReadFileIntoBuffer(path_.c_str(), 7, legacy_output.size(),
                                                      gsl::span<char>(legacy_output)));
   EXPECT_EQ(output, legacy_output);
+}
+
+TEST_F(RandomAccessFileTest, MappingUsesOpenedFileAfterPathReplacement) {
+  PathString replacement_path;
+  ScopedFileDeleter replacement_deleter;
+  const std::string replacement(contents_.size(), 'x');
+  ASSERT_NO_FATAL_FAILURE(WriteRandomAccessTestFile(replacement, replacement_path, replacement_deleter));
+
+  const PathString opened_path = path_ + ORT_TSTR(".opened");
+  ScopedFileDeleter opened_deleter(opened_path);
+  std::error_code ec;
+  std::filesystem::rename(path_, opened_path, ec);
+  ASSERT_FALSE(ec) << ec.message();
+  std::filesystem::rename(replacement_path, path_, ec);
+  ASSERT_FALSE(ec) << ec.message();
+
+  RandomAccessFile::MappedMemoryPtr mapped_memory;
+  ASSERT_STATUS_OK(file_->Map(0, contents_.size(), mapped_memory));
+  ASSERT_NE(mapped_memory, nullptr);
+  EXPECT_EQ(std::memcmp(mapped_memory.get(), contents_.data(), contents_.size()), 0);
+
+  PathString canonical_path;
+  ASSERT_STATUS_OK(file_->GetCanonicalPath(canonical_path));
+  EXPECT_TRUE(std::filesystem::equivalent(canonical_path, opened_path, ec)) << ec.message();
 }
 
 #ifndef __wasm__
@@ -178,7 +202,7 @@ TEST_F(RandomAccessFileTest, EmptyFileHasZeroLength) {
   ScopedFileDeleter empty_deleter;
   ASSERT_NO_FATAL_FAILURE(WriteRandomAccessTestFile({}, empty_path, empty_deleter));
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(empty_path.c_str(), file_));
-  size_t length = 123;
+  uint64_t length = 123;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, 0U);
   ASSERT_STATUS_OK(file_->Read(0, {}));
@@ -242,7 +266,7 @@ TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   ASSERT_FALSE(error) << error.message();
 #endif
 
-  size_t length = 0;
+  uint64_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, contents_.size());
   std::string original_output(contents_.size(), '\0');
@@ -272,7 +296,7 @@ TEST_F(RandomAccessFileTest, HandlesInPlaceTruncationAccordingToPlatformSharingR
   std::error_code error;
   std::filesystem::resize_file(path_, 3, error);
   ASSERT_FALSE(error) << error.message();
-  size_t length = 0;
+  uint64_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, 3U);
   std::array<char, 4> output{};
@@ -330,7 +354,7 @@ TEST_F(RandomAccessFileTest, ReadsSparseFileBeyondFourGiB) {
     ASSERT_FALSE(writer.fail());
   }
   ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path_.c_str(), file_));
-  size_t length = 0;
+  uint64_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, static_cast<size_t>(kOffset + 1));
   std::array<char, 2> output{};
