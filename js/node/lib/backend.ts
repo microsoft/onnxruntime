@@ -34,20 +34,8 @@ const dataTypeStrings = [
 class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
-  constructor(pathOrBuffer: string | Uint8Array, options: InferenceSession.SessionOptions) {
-    initOrt();
-
-    this.#inferenceSession = new binding.InferenceSession();
-    if (typeof pathOrBuffer === 'string') {
-      this.#inferenceSession.loadModel(pathOrBuffer, options);
-    } else {
-      this.#inferenceSession.loadModel(
-        pathOrBuffer.buffer as ArrayBuffer,
-        pathOrBuffer.byteOffset,
-        pathOrBuffer.byteLength,
-        options,
-      );
-    }
+  private constructor(inferenceSession: Binding.InferenceSession) {
+    this.#inferenceSession = inferenceSession;
 
     // prepare input/output names and metadata
     this.inputNames = [];
@@ -100,6 +88,29 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     [this.outputNames, this.outputMetadata] = fillNamesAndMetadata(this.#inferenceSession.outputMetadata);
   }
 
+  static async create(
+    pathOrBuffer: string | Uint8Array,
+    options: InferenceSession.SessionOptions,
+  ): Promise<OnnxruntimeSessionHandler> {
+    initOrt();
+
+    // A callback-enabled session is created asynchronously so the event loop can service synchronous
+    // EPContext reads. The native binding retains the synchronous zero-copy path otherwise.
+    const inferenceSession = new binding.InferenceSession();
+    if (typeof pathOrBuffer === 'string') {
+      await inferenceSession.loadModel(pathOrBuffer, options);
+    } else {
+      await inferenceSession.loadModel(
+        pathOrBuffer.buffer as ArrayBuffer,
+        pathOrBuffer.byteOffset,
+        pathOrBuffer.byteLength,
+        options,
+      );
+    }
+
+    return new OnnxruntimeSessionHandler(inferenceSession);
+  }
+
   async dispose(): Promise<void> {
     this.#inferenceSession.dispose();
   }
@@ -146,16 +157,7 @@ class OnnxruntimeBackend implements Backend {
     pathOrBuffer: string | Uint8Array,
     options?: InferenceSession.SessionOptions,
   ): Promise<InferenceSessionHandler> {
-    return new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          resolve(new OnnxruntimeSessionHandler(pathOrBuffer, options || {}));
-        } catch (e) {
-          // reject if any error is thrown
-          reject(e);
-        }
-      });
-    });
+    return OnnxruntimeSessionHandler.create(pathOrBuffer, options || {});
   }
 }
 
