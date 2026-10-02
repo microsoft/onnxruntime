@@ -391,7 +391,7 @@ TEST(DynamicSparseAttentionTest, ShapeInferenceDoesNotCopyPackedSymbolicWidth_CU
 TEST(DynamicSparseAttentionTest, ShapeInferenceLeavesUnshapedPastCapacityUnknown_CUDA) {
   bool present_capacity_is_unknown = false;
   ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(3, 8, 1, 1, false, nullptr, nullptr,
-                                                       true, true, &present_capacity_is_unknown));
+                                                      true, true, &present_capacity_is_unknown));
   EXPECT_TRUE(present_capacity_is_unknown);
 }
 
