@@ -543,6 +543,10 @@ bool fusedBuildExpertMapsSortFirstTokenBlockSize(const int* token_selected_exper
       func = &fusedBuildExpertMapsSortFirstTokenBlockSize<8, LOG2_NUM_EXPERTS>;
       break;
     }
+    case 10: {
+      func = &fusedBuildExpertMapsSortFirstTokenBlockSize<10, LOG2_NUM_EXPERTS>;
+      break;
+    }
     default: {
       ORT_LLM_LOG_DEBUG(onnxruntime::MakeString("Top-K value ", experts_per_token, " does not have supported fused moe prologues"));
       return false;
@@ -561,12 +565,13 @@ bool fusedBuildExpertMapsSortFirstToken(const int* token_selected_experts, int* 
   // We need enough bits to represent [0, num_experts_per_node+1] (inclusive) i.e. num_experts_per_node + 2 values
   // This is floor(log2(num_experts_per_node+1)) + 1
   int expert_log = static_cast<int>(log2(num_experts_per_node + 1)) + 1;
-  if (expert_log <= 9) {
+  if (expert_log <= 10) {
     auto funcs = std::array{&fusedBuildExpertMapsSortFirstTokenBlockSize<1>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<2>, &fusedBuildExpertMapsSortFirstTokenBlockSize<3>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<4>, &fusedBuildExpertMapsSortFirstTokenBlockSize<5>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<6>, &fusedBuildExpertMapsSortFirstTokenBlockSize<7>,
-                            &fusedBuildExpertMapsSortFirstTokenBlockSize<8>, &fusedBuildExpertMapsSortFirstTokenBlockSize<9>};
+                            &fusedBuildExpertMapsSortFirstTokenBlockSize<8>, &fusedBuildExpertMapsSortFirstTokenBlockSize<9>,
+                            &fusedBuildExpertMapsSortFirstTokenBlockSize<10>};
 
     return funcs[expert_log - 1](token_selected_experts, permuted_row_to_unpermuted_row,
                                  unpermuted_row_to_permuted_row, permuted_token_selected_experts,
@@ -2874,6 +2879,10 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
           fused_routing.normalize_routing_weights, stream);
       token_selected_experts = fused_routing.token_selected_experts;
       token_topk_unpermuted_scales = fused_routing.token_final_scales;
+      if (fused_routing.on_routing_ready != nullptr) {
+        fused_routing.on_routing_ready(fused_routing.routing_context, token_selected_experts,
+                                       static_cast<size_t>(expanded_num_rows), stream);
+      }
     } else if (!use_w4afp8) {
       // WAR: fusedBuildExpertMapsSortFirstToken kernel will lead to illegal memory access for W4AFP8
       fused_prologue_result = fusedBuildExpertMapsSortFirstToken(token_selected_experts,

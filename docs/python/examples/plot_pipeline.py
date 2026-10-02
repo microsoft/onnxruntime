@@ -29,12 +29,10 @@ print(model)
 
 
 #################################
-# Draw a model with ONNX
+# Draw a model with pydot
 # ++++++++++++++++++++++
-# We use `net_drawer.py <https://github.com/onnx/onnx/blob/main/onnx/tools/net_drawer.py>`_
-# included in *onnx* package.
-# We use *onnx* to load the model
-# in a different way than before.
+# We use *onnx* to load the model in a different way than before, then
+# construct a pydot graph from its nodes and values.
 
 
 from onnx import ModelProto  # noqa: E402
@@ -46,18 +44,29 @@ with open(example1, "rb") as fid:
 
 ###################################
 # We convert it into a graph.
-from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph  # noqa: E402
+import pydot  # noqa: E402
 
-pydot_graph = GetPydotGraph(
-    model.graph, name=model.graph.name, rankdir="LR", node_producer=GetOpNodeProducer("docstring")
-)
+pydot_graph = pydot.Dot(model.graph.name, rankdir="LR")
+value_nodes = {}
+for index, node in enumerate(model.graph.node):
+    node_name = node.name or f"{node.op_type}_{index}"
+    op_node = pydot.Node(node_name, label=node.op_type, shape="box")
+    pydot_graph.add_node(op_node)
+    for value_name in node.input:
+        value_node = value_nodes.setdefault(value_name, pydot.Node(value_name, shape="ellipse"))
+        pydot_graph.add_node(value_node)
+        pydot_graph.add_edge(pydot.Edge(value_node, op_node))
+    for value_name in node.output:
+        value_node = pydot.Node(value_name, shape="ellipse")
+        value_nodes[value_name] = value_node
+        pydot_graph.add_node(value_node)
+        pydot_graph.add_edge(pydot.Edge(op_node, value_node))
+
 pydot_graph.write_dot("graph.dot")
 
 #######################################
 # Then into an image
-import os  # noqa: E402
-
-os.system("dot -O -Tpng graph.dot")
+pydot_graph.write_png("graph.dot.png")
 
 ################################
 # Which we display...

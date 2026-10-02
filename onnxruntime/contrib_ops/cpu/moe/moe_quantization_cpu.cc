@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "contrib_ops/moe_profiler.h"
-#endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
@@ -1265,16 +1262,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
 #if !defined(ORT_MINIMAL_BUILD)
-  const size_t routing_element_count =
-      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
-  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
-  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
-  if (instrumentation != nullptr &&
-      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
-    instrumentation = nullptr;
-  }
-  const TimePoint instrumentation_start =
-      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+  const size_t routing_element_count = enable_moe_expert_tracking_
+                                           ? static_cast<size_t>(SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_))
+                                           : 0;
 #endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
@@ -2537,11 +2527,12 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (instrumentation != nullptr) {
-    RecordMoeRoutingEvent(*instrumentation, Node(),
-                          gsl::make_span(route_expert, routing_element_count),
-                          gsl::make_span(route_scale, routing_element_count),
-                          num_tokens, k_, instrumentation_start);
+  if (enable_moe_expert_tracking_) {
+    auto* pilot = context->GetKernelPilot();
+    ORT_RETURN_IF_NOT(pilot, "MoE expert tracking is enabled but its collector is unavailable.");
+    auto& usage = pilot->Moe();
+    ORT_RETURN_IF_ERROR(usage.BeginInvocation(static_cast<size_t>(num_experts)));
+    ORT_RETURN_IF_ERROR(usage.Collect(gsl::make_span(route_expert, routing_element_count)));
   }
 #endif
 

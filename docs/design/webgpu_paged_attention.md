@@ -33,8 +33,6 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 
 - **Quantized KV cache** (`T_CACHE ∈ {int8, fp8e4m3fn}`). Deferred to Phase 3. WebGPU doesn't have an fp8 storage type at all; int8 is doable but not on the v1 critical path.
 - **LATENT / MLA layout.** Deferred to Phase 4. No customer need on WebGPU yet.
-- **QK-Norm** (schema addition in #29912). Deferred to Phase 2. Head-sink support is implemented through the
-  generic FlashAttention fallback and the direct paged split-reduce decode path.
 - **Speculative-decoding `slot_mapping = -1` semantics.** Accepted-but-ignored in v1 (the input is validated, the sentinel branch is a one-line follow-up).
 
 ---
@@ -49,6 +47,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 | `slot_mapping` | v1 rejects any non-null `slot_mapping` input with `ORT_NOT_IMPLEMENTED`. GenAI does not emit this input today. Adding it (and the negative-slot skip-write semantics) is Phase 2 work. |
 | `softcap != 0` | v1 rejects with `ORT_NOT_IMPLEMENTED`. FlashAttention has no softcap today; adding it is a Phase 2 change. |
 | `local_window_size > 0` | Supported through gather-then-flash for correctness. Direct paged prefill and split-reduce decode do not yet apply the local-window mask, so those optimized paths remain disabled. |
+| `is_causal = 0` with `local_window_size = W > 0` | Supported through the same dense fallback. Query `q` in a sequence with `P` past tokens and `Q` new tokens attends to keys `[max(0, P + q + 1 - W), P + Q)`. Only the right causal bound is removed; the left bound remains query-relative. |
 | `T = bfloat16` | v1 rejects (registers `MLFloat16` only). FA has no `bf16` path yet either; both add together in Phase 2 when Dawn's `bf16` support on target adapters stabilizes. |
 
 ---
@@ -391,8 +390,7 @@ traversal still scale with full KV history.
 #### Phase 2 items remaining (future work)
 
 **2. Complete deferred Phase 1 feature support.** Add and test the features
-currently rejected by WebGPU: `softcap`, `use_smooth_softmax`,
-`q_norm_weight`, and `k_norm_weight`. Evaluate
+currently rejected by WebGPU: `softcap` and `use_smooth_softmax`. Evaluate
 `slot_mapping` including negative-slot skip-write semantics, plus
 `rotary_offset` and non-default `v_head_size` when model compatibility
 requires them. Add `bfloat16` only when target WebGPU adapters provide a
@@ -497,6 +495,8 @@ ComputeInternal:
     read and validate cumulative_sequence_length / past_seqlens once
   if max_seqlen_q == 0:
     fill output with zeros; return OK
+  if use_qk_norm:
+    RunLayerNormProgram(simplified=true, fp32_normalization=true) for Q and incoming K
   if do_rotary:
     RunRotaryEmbedding() for Q and K
   RunScatterKVToPagedCache()
@@ -544,11 +544,20 @@ ComputeInternal:
 for current exports. Exact per-request lengths stay on GPU. Older exports
 without metadata use one packed D→H readback per node.
 
+Optional `q_norm_weight` and `k_norm_weight` must be supplied together, each with
+shape `(head_size,)`. Two existing normalization passes apply per-head RMSNorm
+to packed Q and newly appended K, after splitting packed QKV if needed. Reduction
+and gain multiplication stay in FP32 until the final FP16 store, before optional
+RoPE, matching CUDA. `qk_norm_epsilon` defaults to `1e-6` and must be positive and
+finite when normalization is enabled. Previously cached K and all V remain
+unchanged. This adds Q/K scratch tensors and two dispatches but does not change
+paging, masking, or direct-paged attention eligibility.
+
 Feature guards (v1 rejects with `NOT_IMPLEMENTED` and a specific message):
 
 - Any `T_CACHE != T` (quantized).
 - `kv_cache_layout == LATENT`.
-- Non-null `q_norm_weight`, `k_norm_weight`, `k_scale`, `v_scale`.
+- Non-null `k_scale`, `v_scale`.
 - `slot_mapping` containing negative entries.
 
 ---
