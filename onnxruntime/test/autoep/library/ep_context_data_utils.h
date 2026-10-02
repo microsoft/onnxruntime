@@ -637,25 +637,26 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
  * \param out Reset first; receives the bytes on success and is left empty on failure. Access via out.data()/out.size().
  * \param allocator Optional allocator used for the output buffer on both the callback and file paths; null uses ORT's
  *                  default allocator. Not owned: it must outlive `out` (see the low-level overload for details).
+ * \param max_data_size EP-selected maximum payload size, enforced by this sample helper before consumption.
+ *                      This is not an ORT API policy. Callbacks must impose their own limits before allocation.
  * \return nullptr on success, or an OrtStatus* error owned by the caller.
  */
 inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig* ep_context_config,
                                     const char* file_name, const OrtGraph* graph, EpContextData& out,
-                                    OrtAllocator* allocator = nullptr) {
+                                    OrtAllocator* allocator = nullptr,
+                                    size_t max_data_size = std::numeric_limits<size_t>::max()) {
   // Reset up front so the documented "empty on failure" contract also holds for the early returns below, which are
   // reached before the low-level overload (which does its own reset) is ever called.
   out.Reset();
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t max_data_size = std::numeric_limits<size_t>::max();
   if (ep_context_config != nullptr) {
     const OrtEpApi* ep_api = api.GetEpApi();
     if (ep_api == nullptr) {
       return api.CreateStatus(ORT_NOT_IMPLEMENTED, "OrtEpApi is not available");
     }
-    RETURN_IF_ERROR(ep_api->EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, &read_state,
-                                                                    &max_data_size));
+    RETURN_IF_ERROR(ep_api->EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, &read_state));
   }
   return ReadEpContextData(api, read_func, read_state, file_name, graph, out, allocator, max_data_size);
 }

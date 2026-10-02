@@ -10,6 +10,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/run_instrumentation.h"
 #include "core/framework/resource_accountant.h"
 #include "core/providers/shared/common.h"
 
@@ -44,6 +45,8 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class Initializer;
 class IOnnxRuntimeOpSchemaCollection;
+class KernelPilot;
+class RunInstrumentationContext;
 
 struct ModelSavingOptions;
 
@@ -1411,7 +1414,6 @@ struct ProviderHost {
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
-  // Float8E8M0 support — appended at end to preserve vtable ABI compatibility
 #if !defined(DISABLE_FLOAT8_TYPES)
   virtual MLDataType DataTypeImpl__GetType_Float8E8M0() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E8M0() = 0;
@@ -1423,11 +1425,37 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
 
-  // Appended at end to preserve vtable ABI compatibility.
   virtual void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
                                                          OrtReadNamedBufferFunc* read_func, void** read_state,
-                                                         size_t* read_max_data_size,
                                                          OrtWriteNamedBufferFunc* write_func, void** write_state) = 0;
+  // Retained for provider vtable ABI compatibility. Run instrumentation is no longer active.
+  virtual const RunInstrumentationContext* OpKernelContext__GetRunInstrumentationContext(
+      const OpKernelContext* p) = 0;
+  virtual const std::string& RunInstrumentationContext__RequestId(const RunInstrumentationContext* p) = 0;
+  virtual TimePoint RunInstrumentationContext__StartProfiling(const RunInstrumentationContext* p) = 0;
+  virtual uint64_t RunInstrumentationContext__ProfilerStartTimeNs(const RunInstrumentationContext* p) = 0;
+  virtual void RunInstrumentationContext__AddDeferredRecord(
+      const RunInstrumentationContext* p,
+      std::unique_ptr<DeferredRunInstrumentationRecord> record) = 0;
+  virtual bool RunInstrumentationContext__TryReserveMoeRoutingRecord(
+      const RunInstrumentationContext* p, size_t element_count) = 0;
+  virtual void RunInstrumentationContext__RecordMoeRoutingEvent(
+      const RunInstrumentationContext* p,
+      const TimePoint& start_time,
+      const TimePoint& end_time,
+      const std::string& node_name,
+      NodeIndex node_index,
+      const std::string& node_type,
+      std::string expert_ids_json,
+      std::string router_weights_json,
+      int64_t num_rows,
+      int64_t top_k,
+      int execution_device_id,
+      int64_t completion_ns,
+      const std::string& completion_timestamp_source) = 0;
+
+  // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
+  virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

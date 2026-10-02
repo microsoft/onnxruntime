@@ -13,6 +13,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/op.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/inference_session.h"
@@ -112,6 +113,15 @@ static bool RegisterCustomSchemas() {
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
       .TypeAndShapeInferenceFunction([](InferenceContext&) {
         fail_shape_inference("try harder");
+      });
+
+  OPERATOR_SCHEMA(ShapeInferenceInputDataOutOfBoundsOp)
+      .SetDoc("Access input data past the available inputs.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        ORT_ENFORCE(ctx.getInputData(ctx.getNumInputs()) == nullptr);
+        propagateShapeAndTypeFromFirstInput(ctx);
       });
 
   OPERATOR_SCHEMA(Fake_Sub)
@@ -1696,6 +1706,21 @@ TEST_F(GraphTest, ShapeInferenceErrorHandling) {
 
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(),
                                       "Node (node_1) Op (ShapeInferenceThrowsOp) [ShapeInferenceError] try harder");
+}
+
+TEST_F(GraphTest, ShapeInferenceInputDataOutOfBounds) {
+  Model model("graph", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input = graph.GetOrCreateNodeArg("input", &tensor_int32);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  graph.AddNode("node", "ShapeInferenceInputDataOutOfBoundsOp", "", {&input}, {&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
 }
 
 TEST_F(GraphTest, AddTensorAttribute) {
@@ -3357,6 +3382,10 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
 
   const auto& output_graph = output_model_proto.graph();
 
+  ASSERT_EQ(output_graph.input_size(), 1);
+  ASSERT_EQ(output_graph.output_size(), 1);
+  ASSERT_EQ(output_graph.node_size(), 2);
+
   // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
   // and there should be no duplicates.
   ASSERT_EQ(output_graph.initializer_size(), 2) << "Expected both initializers in output without duplication";
@@ -3870,6 +3899,41 @@ TEST_F(GraphTest, DeeplyNestedLoopSubgraphsResolveInReasonableTime) {
   EXPECT_LT(elapsed_seconds, 60) << "Loading the 30-level nested Loop model took " << elapsed_seconds
                                  << "s, which suggests the subgraph type/shape inferencing recursion "
                                     "regression has returned.";
+}
+
+static ModelProto CreateNestedSubgraphModel(size_t depth) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain(kOnnxDomain);
+  opset->set_version(21);
+
+  auto* graph = model_proto.mutable_graph();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = graph->add_node();
+    auto* attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST_F(GraphTest, ExcessiveSubgraphDepthRejected) {
+  auto model_proto = CreateNestedSubgraphModel(kMaxModelSubgraphDepth + 1);
+  std::shared_ptr<Model> model;
+  const auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST_F(GraphTest, ExcessiveSubgraphDepthRejectedFromLvalueProto) {
+  const auto model_proto = CreateNestedSubgraphModel(kMaxModelSubgraphDepth + 1);
+  std::shared_ptr<Model> model;
+  const auto status = Model::Load(model_proto, model, nullptr, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 }  // namespace test

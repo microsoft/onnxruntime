@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <iosfwd>
@@ -231,11 +232,21 @@ struct ProgramInput {
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
+  // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
+  // bound once, provided they have the same storage type and are added after their backing view.
+  static ProgramInput BufferView(const Tensor* backing_tensor,
+                                 ProgramTensorMetadataDependency dependency,
+                                 const TensorShape& shape,
+                                 uint32_t offset_in_elements,
+                                 int component = 1);
+
   const Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool use_override_shape;
   TensorShape override_shape;
+  bool is_buffer_view{false};
+  uint32_t buffer_offset_in_elements{0};
 };
 
 struct ProgramOutput {
@@ -253,12 +264,22 @@ struct ProgramOutput {
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
 
+  // Creates a logical tensor view into a packed backing tensor. Views sharing a backing tensor are
+  // bound once, provided they have the same storage type and are added after their backing view.
+  static ProgramOutput BufferView(Tensor* backing_tensor,
+                                  ProgramTensorMetadataDependency dependency,
+                                  const TensorShape& shape,
+                                  uint32_t offset_in_elements,
+                                  int component = 1);
+
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
   bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
+  bool is_buffer_view{false};
+  uint32_t buffer_offset_in_elements{0};
 };
 
 enum class ValidationMode {
@@ -360,6 +381,10 @@ class ProgramBase {
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
   inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
+  // The input/output that owns the physical buffer for a logical buffer view. A view owner must
+  // occur earlier in the corresponding program list.
+  size_t InputBufferOwner(size_t input_index) const;
+  size_t OutputBufferOwner(size_t output_index) const;
   inline const std::vector<TensorShape>& Indices() const { return indices_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }

@@ -88,6 +88,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsBoolean(), epList.Env(),
                                         "Invalid argument: \"enableRobustness\" must be a boolean.");
             value = valueVar.As<Napi::Boolean>().Value() ? "1" : "0";
+          } else if (name == "enableMatmulFp32Accumulation") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsBoolean(), epList.Env(),
+                                        "Invalid argument: \"enableMatmulFp32Accumulation\" must be a boolean.");
+            value = valueVar.As<Napi::Boolean>().Value() ? "1" : "0";
           } else if (name == "forceCpuNodeNames") {
             ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsArray(), epList.Env(),
                                         "Invalid argument: \"forceCpuNodeNames\" must be a string array.");

@@ -32,15 +32,18 @@ $MAIN {
 
   // Calculate position_id (needed for rotary embedding)
   let seqlen_i = seqlens.getByOffset(batch_idx);
-  let seqlen = u32(seqlen_i);
-  let per_batch_total_seq_length = seqlen + 1u;
+  let raw_total_seqlen = u32(max(seqlen_i, 0)) + 1u;
+  let total_seqlen = min(raw_total_seqlen, uniforms.present_sequence_length);
 
   // Right-padded batches with prompt shorter than sequence_length would underflow u32; clamp to 0.
-  let past_seqlen = per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.sequence_length);
+  let past_seqlen = total_seqlen - min(total_seqlen, uniforms.sequence_length);
   // `position_id` is used to get cos/sin cache and also as the time step index in present_key/present_value
   let position_id = past_seqlen + seq_idx;
+  let valid_cache_position = raw_total_seqlen <= uniforms.present_sequence_length && position_id < raw_total_seqlen;
 #if prepare_indirect_dispatch
-  let global_total_seq_length = u32(total_sequence_length_input[0]);
+  let raw_global_total_seq_length = total_sequence_length_input[0];
+  let global_total_seq_length =
+      min(u32(max(raw_global_total_seq_length, 0)), uniforms.present_sequence_length);
 #else
   let global_total_seq_length = uniforms.total_sequence_length;
 #endif
@@ -49,6 +52,8 @@ $MAIN {
 #else
   let base_position = 0u;
 #endif
+  let max_rotary_position = min(uniforms.cos_cache_shape[0], uniforms.sin_cache_shape[0]);
+  let valid_rotary_position = base_position < max_rotary_position && position_id < max_rotary_position - base_position;
 
 #if prepare_indirect_dispatch
   if (global_idx == 0u) {
@@ -59,9 +64,6 @@ $MAIN {
 
   if (in_head_idx < uniforms.half_rotary_dim) {
     // Process a rotary pair (i, j)
-    let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
-    let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
-
     // Calculate actual indices in the head for i and j
 #if interleaved
     let idx_i = in_head_idx + in_head_idx;
@@ -77,20 +79,32 @@ $MAIN {
     let q_j_offset = q_base + idx_j;
     let q_i = packed_qkv.getByOffset(q_i_offset);
     let q_j = packed_qkv.getByOffset(q_j_offset);
-    let q_re = q_i * cos_v - q_j * sin_v;
-    let q_im = q_i * sin_v + q_j * cos_v;
+    var q_re = q_i;
+    var q_im = q_j;
+    var cos_v = cos_cache_value_t(1);
+    var sin_v = cos_cache_value_t(0);
+    if (valid_rotary_position) {
+      cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      q_re = q_i * cos_v - q_j * sin_v;
+      q_im = q_i * sin_v + q_j * cos_v;
+    }
     query.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_i), q_re);
     query.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_j), q_im);
 
     // Process K and V pairs if within kv_num_heads
-    if (head_idx < uniforms.kv_num_heads) {
+    if (head_idx < uniforms.kv_num_heads && valid_cache_position) {
       let k_base = base_offset + uniforms.hidden_size + head_idx * uniforms.head_size;
       let k_i_offset = k_base + idx_i;
       let k_j_offset = k_base + idx_j;
       let k_i = packed_qkv.getByOffset(k_i_offset);
       let k_j = packed_qkv.getByOffset(k_j_offset);
-      let k_re = k_i * cos_v - k_j * sin_v;
-      let k_im = k_i * sin_v + k_j * cos_v;
+      var k_re = k_i;
+      var k_im = k_j;
+      if (valid_rotary_position) {
+        k_re = k_i * cos_v - k_j * sin_v;
+        k_im = k_i * sin_v + k_j * cos_v;
+      }
       // Write K directly to present_key cache
       present_key.setByIndices(vec4<u32>(batch_idx, head_idx, position_id, idx_i), k_re);
       present_key.setByIndices(vec4<u32>(batch_idx, head_idx, position_id, idx_j), k_im);
@@ -112,7 +126,7 @@ $MAIN {
     query.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + actual_idx), q_data);
 
     // Copy K and V if within kv_num_heads directly to present cache
-    if (head_idx < uniforms.kv_num_heads) {
+    if (head_idx < uniforms.kv_num_heads && valid_cache_position) {
       let k_offset = base_offset + uniforms.hidden_size + head_idx * uniforms.head_size + actual_idx;
       let k_data = packed_qkv.getByOffset(k_offset);
       present_key.setByIndices(vec4<u32>(batch_idx, head_idx, position_id, actual_idx), k_data);

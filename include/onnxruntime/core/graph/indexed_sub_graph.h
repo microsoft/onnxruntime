@@ -91,7 +91,7 @@ struct IndexedSubGraph {
   void AccountForNode(size_t cost_index) const {
     assert(cost_index < nodes_costs.size());
     resource_accountant->AddConsumedAmount(nodes_costs[cost_index]);
-    resource_accountant->CommitWeightsForNode(nodes[cost_index]);
+    resource_accountant->CommitResourcesForNode(nodes[cost_index]);
   }
 
   // Accounts for all constituent nodes by summing their pre-stored costs.
@@ -102,8 +102,16 @@ struct IndexedSubGraph {
     assert(resource_accountant != nullptr);
     for (size_t i = 0; i < nodes_costs.size(); ++i) {
       resource_accountant->AddConsumedAmount(nodes_costs[i]);
-      resource_accountant->CommitWeightsForNode(nodes[i]);
+      resource_accountant->CommitResourcesForNode(nodes[i]);
     }
+  }
+
+  // Accounts for all constituent nodes and moves their workspace reservations
+  // to the fused node that survives graph partitioning.
+  void AccountForAllNodes(const void* graph_identity, NodeIndex fused_node_index) const {
+    AccountForAllNodes();
+    resource_accountant->ConsolidateCommittedWorkspaceReservations(
+        graph_identity, gsl::make_span(nodes), fused_node_index);
   }
 
   // Accounts for a node given its index and a pre-computed resource cost.
@@ -111,7 +119,7 @@ struct IndexedSubGraph {
   void AccountForNode(NodeIndex node_index, const ResourceCount& resource_count) const {
     assert(resource_accountant != nullptr);
     resource_accountant->AddConsumedAmount(resource_count);
-    resource_accountant->CommitWeightsForNode(node_index);
+    resource_accountant->CommitResourcesForNode(node_index);
   }
 
   void SetAccountant(IResourceAccountant* res_accountant) {
