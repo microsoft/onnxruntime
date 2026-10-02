@@ -508,5 +508,51 @@ TEST(PartitioningUtilsTest, MakeComputeCapabilityIgnoresControlEdgeSlots) {
   EXPECT_EQ(meta_def->outputs[0], intermediate->Name());
 }
 
+TEST(PartitioningUtilsTest, NodeUnitPartitioningPreservesControlDependencyOrdering) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 15}};
+  Model model("PartitioningUtils_ControlDependencyOrdering", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* data_input = builder.MakeInput<float>({1}, -1.0f, 1.0f);
+  auto* control_input = builder.MakeInput<float>({1}, -1.0f, 1.0f);
+  auto* d_output = builder.MakeIntermediate();
+  auto* e_output = builder.MakeIntermediate();
+  auto* c_output = builder.MakeIntermediate();
+  auto* control_output = builder.MakeOutput();
+  auto* output = builder.MakeOutput();
+
+  const NodeIndex d_index = builder.AddNode("Identity", {data_input}, {d_output}).Index();
+  const NodeIndex e_index = builder.AddNode("Identity", {d_output}, {e_output}).Index();
+  const NodeIndex c_index = builder.AddNode("Identity", {e_output}, {c_output}).Index();
+  const NodeIndex a_index = builder.AddNode("Identity", {control_input}, {control_output}).Index();
+  const NodeIndex b_index = builder.AddNode("Identity", {c_output}, {output}).Index();
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_TRUE(graph.AddControlEdge(a_index, b_index));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  GraphViewer graph_viewer(graph);
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
+
+  const auto is_node_supported = [c_index](const Node& node) {
+    return node.Index() != c_index;
+  };
+  const auto generate_metadef_name = []() { return "TestMetaDef_ControlDependencyOrdering"; };
+  auto partitions = utils::CreateSupportedPartitions(
+      graph_viewer, is_node_supported, {}, generate_metadef_name,
+      "TEST", kCpuExecutionProvider, &node_unit_map, true);
+
+  ASSERT_EQ(partitions.size(), 2u);
+  EXPECT_THAT(partitions[0]->sub_graph->nodes,
+              ::testing::UnorderedElementsAre(d_index, e_index, a_index));
+  EXPECT_THAT(partitions[1]->sub_graph->nodes,
+              ::testing::ElementsAre(b_index));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
