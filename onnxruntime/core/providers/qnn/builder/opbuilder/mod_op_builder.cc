@@ -46,6 +46,9 @@ Status ModOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                    std::vector<std::string>& input_names,
                                    bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(do_op_validation);
+  ORT_RETURN_IF(node_unit.SinceVersion() >= 28,
+                "QNN Mod does not support opset 28 floor-mod edge semantics.");
+
   NodeAttrHelper node_helper(node_unit);
   int64_t fmod = node_helper.Get("fmod", static_cast<int64_t>(0));  // 0=integer mod. 1=float mod.
   if (1 == fmod) {

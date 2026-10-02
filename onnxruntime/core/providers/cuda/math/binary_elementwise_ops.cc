@@ -485,6 +485,10 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   auto element_type = prepare.lhs_tensor->GetElementType();
+  ORT_ENFORCE(fmod_ || supports_float_floor_mod_ || element_type == on::TensorProto_DataType_INT32 ||
+                  element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
+                  element_type == on::TensorProto_DataType_UINT64,
+              "Non-fmod can support floating point types starting in opset 28.");
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \

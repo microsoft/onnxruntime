@@ -666,6 +666,10 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   const auto& optype = node->OpType();
   const auto& domain = node->Domain();
 
+  if (domain == kOnnxDomain && optype == "Mod" && node->SinceVersion() >= 28) {
+    return false;
+  }
+
   // Three types of checking:
   // 1. Check input and output data types are supported.
   // 2. Check op_type is implemented in migraphx
