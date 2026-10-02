@@ -9,10 +9,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests;
 using Google.Protobuf;
 using Onnx;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -603,6 +606,122 @@ public class CompileApiTests
         {
             output.Allocate(0);
         }
+    }
+}
+
+[CollectionDefinition("Compile API delegate overrides", DisableParallelization = true)]
+public sealed class CompileApiDelegateOverridesCollection
+{
+}
+
+[Collection("Compile API delegate overrides")]
+public class EpContextDataWriteLifetimeTests
+{
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ReplacedWriteRegistrationsSurviveAllActiveCompiles(bool registerAtEntry, bool failCompile)
+    {
+        using var sessionOptions = new SessionOptions();
+        using var compileOptions = new OrtModelCompilationOptions(sessionOptions);
+        var retiredRegistrations = new List<object>();
+        object currentRegistration = null;
+        if (registerAtEntry)
+        {
+            compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+            retiredRegistrations.Add(GetWriteRegistration(compileOptions));
+        }
+
+        var compileApi = NativeMethods.CompileApi;
+        var nativeCompile = compileApi.OrtCompileModel;
+        int compileCount = 0;
+        try
+        {
+            // Substitute only the native compile entry point to control replacements before its snapshot.
+            // Set/Clear still use the real native API. This test checks managed lifetime accounting.
+            compileApi.OrtCompileModel = (_, _) =>
+            {
+                if (Interlocked.Increment(ref compileCount) == 1)
+                {
+                    compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+                    retiredRegistrations.Add(GetWriteRegistration(compileOptions));
+
+                    Task overlappingCompile = Task.Run(() =>
+                    {
+                        if (failCompile)
+                        {
+                            Assert.Throws<InvalidOperationException>(compileOptions.CompileModel);
+                        }
+                        else
+                        {
+                            compileOptions.CompileModel();
+                        }
+                    });
+                    Assert.True(overlappingCompile.Wait(TimeSpan.FromSeconds(10)),
+                        "An overlapping compile that replaces callbacks must not deadlock.");
+
+                    // The second call has exited, but the first may still use any retired snapshot.
+                    Assert.All(retiredRegistrations, registration => Assert.True(IsAllocated(registration)));
+                    Assert.True(IsAllocated(currentRegistration));
+                }
+                else
+                {
+                    compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+                    retiredRegistrations.Add(GetWriteRegistration(compileOptions));
+                    compileOptions.ClearEpContextDataWriteDelegate();
+                    Assert.All(retiredRegistrations, registration => Assert.True(IsAllocated(registration)));
+
+                    compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+                    currentRegistration = GetWriteRegistration(compileOptions);
+                }
+
+                if (failCompile)
+                {
+                    throw new InvalidOperationException("synthetic native compile failure");
+                }
+                return IntPtr.Zero;
+            };
+
+            if (failCompile)
+            {
+                Assert.Throws<InvalidOperationException>(compileOptions.CompileModel);
+            }
+            else
+            {
+                compileOptions.CompileModel();
+            }
+
+            Assert.Equal(2, compileCount);
+            Assert.All(retiredRegistrations, registration => Assert.False(IsAllocated(registration)));
+            Assert.True(IsAllocated(currentRegistration));
+            compileOptions.ClearEpContextDataWriteDelegate();
+            Assert.False(IsAllocated(currentRegistration));
+
+            compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+            object inactiveRegistration = GetWriteRegistration(compileOptions);
+            compileOptions.SetEpContextDataWriteDelegate((_, _) => { });
+            Assert.False(IsAllocated(inactiveRegistration));
+        }
+        finally
+        {
+            compileApi.OrtCompileModel = nativeCompile;
+        }
+    }
+
+    private static object GetWriteRegistration(OrtModelCompilationOptions options)
+    {
+        return typeof(OrtModelCompilationOptions)
+            .GetField("_epContextDataWriteRegistration", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(options);
+    }
+
+    private static bool IsAllocated(object registration)
+    {
+        return ((GCHandle)registration.GetType()
+            .GetField("_connectorHandle", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(registration)).IsAllocated;
     }
 }
 

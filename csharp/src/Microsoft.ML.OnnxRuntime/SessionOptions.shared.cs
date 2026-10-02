@@ -1306,8 +1306,16 @@ namespace Microsoft.ML.OnnxRuntime
                 _nativeDelegate = new NativeMethods.DOrtReadNamedBufferDelegate(
                     EpContextDataReadConnector.ReadEpContextDataDelegateWrapper);
                 _connectorHandle = GCHandle.Alloc(_connector);
-                FunctionPointer = Marshal.GetFunctionPointerForDelegate(_nativeDelegate);
-                State = GCHandle.ToIntPtr(_connectorHandle);
+                try
+                {
+                    FunctionPointer = Marshal.GetFunctionPointerForDelegate(_nativeDelegate);
+                    State = GCHandle.ToIntPtr(_connectorHandle);
+                }
+                catch
+                {
+                    _connectorHandle.Free();
+                    throw;
+                }
             }
 
             internal IntPtr FunctionPointer { get; }

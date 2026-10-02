@@ -4,6 +4,7 @@
 namespace Microsoft.ML.OnnxRuntime
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics;
     using System.Runtime.InteropServices;
 
@@ -47,11 +48,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void CompileModel()
         {
-            EpContextDataWriteRegistration writeRegistration;
             lock (_epContextDataWriteRegistrationLock)
             {
-                writeRegistration = _epContextDataWriteRegistration;
-                writeRegistration?.AddRef();
+                ++_activeCompileCount;
             }
 
             try
@@ -61,7 +60,17 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                writeRegistration?.Release();
+                lock (_epContextDataWriteRegistrationLock)
+                {
+                    if (--_activeCompileCount == 0)
+                    {
+                        foreach (var registration in _retiredEpContextDataWriteRegistrations)
+                        {
+                            registration.Dispose();
+                        }
+                        _retiredEpContextDataWriteRegistrations.Clear();
+                    }
+                }
                 GC.KeepAlive(this);
             }
         }
@@ -199,8 +208,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             var newRegistration = new EpContextDataWriteRegistration(writeDelegate);
-            EpContextDataWriteRegistration previousRegistration;
-
             try
             {
                 lock (_epContextDataWriteRegistrationLock)
@@ -210,8 +217,9 @@ namespace Microsoft.ML.OnnxRuntime
                             _handle,
                             newRegistration.FunctionPointer,
                             newRegistration.State));
-                    previousRegistration = _epContextDataWriteRegistration;
+                    var previousRegistration = _epContextDataWriteRegistration;
                     _epContextDataWriteRegistration = newRegistration;
+                    RetireEpContextDataWriteRegistration(previousRegistration);
                 }
             }
             catch
@@ -219,8 +227,6 @@ namespace Microsoft.ML.OnnxRuntime
                 newRegistration.Dispose();
                 throw;
             }
-
-            previousRegistration?.Dispose();
         }
 
         /// <summary>
@@ -228,17 +234,34 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void ClearEpContextDataWriteDelegate()
         {
-            EpContextDataWriteRegistration previousRegistration;
             lock (_epContextDataWriteRegistrationLock)
             {
                 NativeApiStatus.VerifySuccess(
                     NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextDataWriteFunc(
                         _handle, IntPtr.Zero, IntPtr.Zero));
-                previousRegistration = _epContextDataWriteRegistration;
+                var previousRegistration = _epContextDataWriteRegistration;
                 _epContextDataWriteRegistration = null;
+                RetireEpContextDataWriteRegistration(previousRegistration);
+            }
+        }
+
+        private void RetireEpContextDataWriteRegistration(EpContextDataWriteRegistration registration)
+        {
+            if (registration == null)
+            {
+                return;
             }
 
-            previousRegistration?.Dispose();
+            // Native compilation snapshots the callback after entering CompileModel, so any registration
+            // replaced during an active call may still be used by that call.
+            if (_activeCompileCount > 0)
+            {
+                _retiredEpContextDataWriteRegistrations.Add(registration);
+            }
+            else
+            {
+                registration.Dispose();
+            }
         }
 
         /// <summary>
@@ -382,11 +405,6 @@ namespace Microsoft.ML.OnnxRuntime
             internal IntPtr FunctionPointer { get; }
 
             internal IntPtr State { get; }
-
-            internal void AddRef()
-            {
-                System.Threading.Interlocked.Increment(ref _referenceCount);
-            }
 
             internal void Release()
             {
@@ -657,13 +675,12 @@ namespace Microsoft.ML.OnnxRuntime
                 _epContextDataReadRegistration = null;
             }
 
-            EpContextDataWriteRegistration writeRegistration;
             lock (_epContextDataWriteRegistrationLock)
             {
-                writeRegistration = _epContextDataWriteRegistration;
+                var writeRegistration = _epContextDataWriteRegistration;
                 _epContextDataWriteRegistration = null;
+                RetireEpContextDataWriteRegistration(writeRegistration);
             }
-            writeRegistration?.Dispose();
 
             if (disposing)
             {
@@ -703,6 +720,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         private readonly object _epContextDataWriteRegistrationLock = new object();
         private EpContextDataWriteRegistration _epContextDataWriteRegistration = null;
+        private int _activeCompileCount;
+        private readonly List<EpContextDataWriteRegistration> _retiredEpContextDataWriteRegistrations =
+            new List<EpContextDataWriteRegistration>();
 
         /// <summary>
         /// Stores delegate state for the "get initializer location" delegate.
