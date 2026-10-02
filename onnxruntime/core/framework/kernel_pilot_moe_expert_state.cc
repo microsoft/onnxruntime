@@ -155,7 +155,7 @@ Status KernelPilotMoeExpertState::FinalizeInitialization() {
                                    ? nullptr
                                    : kernel->Node().InputDefs()[0]->TypeAsProto();
       if (kernel->Node().GetExecutionProviderType() == kCudaExecutionProvider &&
-          kernel->Node().OpType() == "MoE" && input_type != nullptr &&
+          kernel->Node().Domain() == kMSDomain && kernel->Node().OpType() == "MoE" && input_type != nullptr &&
           input_type->has_tensor_type() &&
           input_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         cuda_kernels.push_back(&state);

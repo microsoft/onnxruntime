@@ -3731,20 +3731,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const auto moe_cpu_offload_experts = session_options_.config_options.GetConfigOrDefault(
-      kOrtSessionOptionsConfigMoeCpuOffloadExperts, "0");
-  int64_t moe_cpu_offload_expert_count = -1;
-  ORT_RETURN_IF_NOT(
-      TryParseStringWithClassicLocale(moe_cpu_offload_experts, moe_cpu_offload_expert_count) &&
-          moe_cpu_offload_expert_count >= 0,
-      kOrtSessionOptionsConfigMoeCpuOffloadExperts,
-      " must be a non-negative integer. Received: \"", moe_cpu_offload_experts, "\".");
   const bool track_moe_experts =
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertCounting, "0") == "1" ||
-      session_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1" ||
-      moe_cpu_offload_expert_count > 0;
+      session_state_->GetMoeExpertState() != nullptr;
   const bool collect_moe_statistics =
       session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigEnableMoeExpertStatistics, "0") == "1";

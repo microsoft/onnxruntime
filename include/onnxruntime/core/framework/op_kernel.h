@@ -29,13 +29,12 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-namespace onnxruntime {
-class OpKernelContext;
-class KernelPilot;
-}  // namespace onnxruntime
 #endif
 
 namespace onnxruntime {
+
+class KernelPilot;
+class OpKernelContext;
 
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info);
 

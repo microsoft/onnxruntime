@@ -15,6 +15,10 @@
 #include "core/mlas/inc/mlas.h"
 #include "contrib_ops/cpu/moe/moe_base_cpu.h"
 
+#ifdef SHARED_PROVIDER
+#include "core/providers/shared_library/provider_wrappedtypes.h"
+#endif
+
 namespace onnxruntime::contrib {
 
 inline float ApplyMoeCpuOffloadActivation(float value, ActivationType activation_type) {
@@ -70,6 +74,8 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     gsl::span<MLFloat16> output,
     concurrency::ThreadPool* thread_pool) {
   const int64_t fc1_output_size = parameters.fused_swiglu ? 2 * inter_size : inter_size;
+  ORT_RETURN_IF(parameters.activation_type == ActivationType::SwiGLU && !parameters.fused_swiglu,
+                "FP16 MoE CPU offload requires fused_swiglu for SwiGLU activation.");
   ORT_RETURN_IF_NOT(input.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * hidden_size) &&
                         route_experts.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * experts_per_token) &&
                         route_scales.size() == route_experts.size() &&
@@ -88,30 +94,54 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
                     "Invalid FP16 MoE CPU-offload buffer sizes.");
 
   std::vector<float> accumulated(output.size(), 0.0f);
+  std::vector<size_t> route_counts(static_cast<size_t>(num_experts), 0);
+  for (size_t route = 0; route < route_experts.size(); ++route) {
+    const int expert = route_experts[route];
+    if (expert >= 0 && expert < num_experts &&
+        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+      ++route_counts[static_cast<size_t>(expert)];
+    }
+  }
+
+  std::vector<size_t> route_offsets(static_cast<size_t>(num_experts) + 1, 0);
+  size_t max_route_count = 0;
+  for (size_t expert = 0; expert < static_cast<size_t>(num_experts); ++expert) {
+    route_offsets[expert + 1] = route_offsets[expert] + route_counts[expert];
+    max_route_count = std::max(max_route_count, route_counts[expert]);
+  }
+
+  std::vector<int64_t> routes(route_offsets.back());
+  std::vector<size_t> route_cursors(route_offsets.begin(), route_offsets.end() - 1);
+  for (size_t route = 0; route < route_experts.size(); ++route) {
+    const int expert = route_experts[route];
+    if (expert >= 0 && expert < num_experts &&
+        cuda_expert_map[static_cast<size_t>(expert)] < 0 && route_scales[route] > 0.0f) {
+      routes[route_cursors[static_cast<size_t>(expert)]++] = static_cast<int64_t>(route);
+    }
+  }
+
+  std::vector<MLFloat16> gathered(max_route_count * static_cast<size_t>(hidden_size));
+  std::vector<MLFloat16> fc1_output(max_route_count * static_cast<size_t>(fc1_output_size));
+  std::vector<MLFloat16> activated(max_route_count * static_cast<size_t>(inter_size));
+  std::vector<MLFloat16> expert_output(max_route_count * static_cast<size_t>(hidden_size));
+
   for (int64_t expert = 0; expert < num_experts; ++expert) {
     if (cuda_expert_map[static_cast<size_t>(expert)] >= 0) {
       continue;
     }
 
-    std::vector<int64_t> routes;
-    for (size_t route = 0; route < route_experts.size(); ++route) {
-      if (route_experts[route] == expert && route_scales[route] > 0.0f) {
-        routes.push_back(static_cast<int64_t>(route));
-      }
-    }
-    if (routes.empty()) {
+    const size_t route_begin = route_offsets[static_cast<size_t>(expert)];
+    const size_t route_count = route_counts[static_cast<size_t>(expert)];
+    if (route_count == 0) {
       continue;
     }
 
-    const size_t route_count = routes.size();
-    std::vector<MLFloat16> gathered(route_count * static_cast<size_t>(hidden_size));
     for (size_t row = 0; row < route_count; ++row) {
-      const int64_t token = routes[row] / experts_per_token;
+      const int64_t token = routes[route_begin + row] / experts_per_token;
       std::copy_n(input.data() + token * hidden_size, hidden_size,
                   gathered.data() + row * static_cast<size_t>(hidden_size));
     }
 
-    std::vector<MLFloat16> fc1_output(route_count * static_cast<size_t>(fc1_output_size));
     MLAS_HALF_GEMM_DATA_PARAMS fc1_params{};
     fc1_params.A = gathered.data();
     fc1_params.lda = static_cast<size_t>(hidden_size);
@@ -133,7 +163,6 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
       }
     }
 
-    std::vector<MLFloat16> activated(route_count * static_cast<size_t>(inter_size));
     if (parameters.fused_swiglu) {
       for (size_t row = 0; row < route_count; ++row) {
         const MLFloat16* source = fc1_output.data() + row * static_cast<size_t>(fc1_output_size);
@@ -157,7 +186,6 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
       }
     }
 
-    std::vector<MLFloat16> expert_output(route_count * static_cast<size_t>(hidden_size));
     MLAS_HALF_GEMM_DATA_PARAMS fc2_params{};
     fc2_params.A = activated.data();
     fc2_params.lda = static_cast<size_t>(inter_size);
@@ -171,7 +199,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     const MLFloat16* expert_fc2_bias =
         fc2_bias.empty() ? nullptr : fc2_bias.data() + expert * hidden_size;
     for (size_t row = 0; row < route_count; ++row) {
-      const int64_t route = routes[row];
+      const int64_t route = routes[route_begin + row];
       const int64_t token = route / experts_per_token;
       const float scale = route_scales[static_cast<size_t>(route)];
       for (int64_t column = 0; column < hidden_size; ++column) {
