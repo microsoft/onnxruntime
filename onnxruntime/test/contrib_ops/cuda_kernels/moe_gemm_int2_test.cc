@@ -70,8 +70,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
     int device = 0;
     ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
     ASSERT_EQ(cudaGetDeviceProperties(&properties_, device), cudaSuccess);
-    if (properties_.major != 8) {
-      GTEST_SKIP() << "INT2 grouped GEMM tests require SM8x";
+    if (properties_.major < 8) {
+      GTEST_SKIP() << "INT2 grouped GEMM tests require SM80 or later";
     }
     ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking), cudaSuccess);
   }
@@ -183,7 +183,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     params.num_columns = num_columns;
     params.reduction_size = reduction_size;
     params.num_experts = num_experts;
-    params.sm = 80;
+    params.sm = properties_.major * 10 + properties_.minor;
     params.tile_rows = tile_rows;
     params.multiprocessor_count = properties_.multiProcessorCount;
     params.stream = stream_;
@@ -395,7 +395,7 @@ class Int2GroupedGemmTest : public ::testing::Test {
     params.reduction_size = reduction_size;
     params.num_experts = num_experts;
     params.tile_rows = tile_rows;
-    params.sm = 80;
+    params.sm = properties_.major * 10 + properties_.minor;
     params.multiprocessor_count = properties_.multiProcessorCount;
     params.stream = stream_;
     ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
@@ -671,6 +671,16 @@ TEST(Int2GroupedGemmValidationTest, RejectsMisalignedBf16Buffers) {
 }
 #endif
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+TEST(Int2GroupedGemmValidationTest, Fc2RunnerUsesProvidedArchitecture) {
+  using llm::kernels::cutlass_kernels::MoeGemmRunner;
+  for (int sm : {80, 86, 89, 90, 100, 120, 121}) {
+    MoeGemmRunner<half, cutlass::uint4b_t, half> runner(sm, 1);
+    EXPECT_EQ(runner.getSM(), sm);
+  }
+}
+#endif
+
 TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   Int2GroupedGemmParams params;
   params.num_rows = 128;
@@ -681,7 +691,11 @@ TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   params.multiprocessor_count = 108;
   ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
   EXPECT_THROW(RunInt2GroupedGemm(params), OnnxRuntimeException);
-  for (int sm : {70, 75, 86, 89, 90, 100, 120}) {
+  for (int sm : {80, 86, 89, 90, 100, 103, 110, 120, 121}) {
+    params.sm = sm;
+    EXPECT_TRUE(IsInt2GroupedGemmSupported(params));
+  }
+  for (int sm : {0, 70, 75}) {
     params.sm = sm;
     EXPECT_FALSE(IsInt2GroupedGemmSupported(params));
   }
