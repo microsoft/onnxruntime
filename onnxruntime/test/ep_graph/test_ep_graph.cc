@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -211,6 +212,41 @@ static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& ou
   // Return output data.
   const float* output_values = ort_output.GetTensorData<float>();
   output_data.assign(output_values, output_values + num_output_elems);
+}
+
+TEST(EpGraphTest, ByteOrderConversionPreservesByteSizedAndPackedTypes) {
+  const ONNXTensorElementDataType element_types[] = {
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,
+  };
+
+  for (auto element_type : element_types) {
+    SCOPED_TRACE(element_type);
+    size_t element_size = 0;
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::GetTensorElementSize(element_type, element_size));
+    ASSERT_EQ(element_size, 1u);
+
+    std::array<uint8_t, 4> data{0x01, 0x23, 0x89, 0xef};
+    const auto original_data = data;
+    OrtEpUtils::SwapByteOrderInplace(data.data(), data.size(), element_size);
+    EXPECT_EQ(data, original_data);
+  }
+}
+
+TEST(EpGraphTest, ByteOrderConversionRejectsUnsupportedTypes) {
+  for (auto element_type : {ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING}) {
+    SCOPED_TRACE(element_type);
+    size_t element_size = 0;
+    Ort::Status status = OrtEpUtils::GetTensorElementSize(element_type, element_size);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+    EXPECT_EQ(element_size, 0u);
+  }
 }
 
 TEST(EpGraphTest, SerializeToProto_PreservesTensorElementTypes) {
