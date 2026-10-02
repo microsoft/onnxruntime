@@ -14,6 +14,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -1639,6 +1640,186 @@ static ONNX_NAMESPACE::FunctionProto MakeIdentityFunction(
   node->add_input("x");
   node->add_output("y");
   return function;
+}
+
+static ONNX_NAMESPACE::NodeProto MakeFunctionCallNodeProto() {
+  ONNX_NAMESPACE::NodeProto call_node;
+  call_node.add_input("actual_x");
+  call_node.add_output("actual_y");
+  return call_node;
+}
+
+static NodeAttributes CreateDefaultAttributeMap(const ONNX_NAMESPACE::FunctionProto& function) {
+  NodeAttributes attr_map;
+  for (const auto& attribute_proto : function.attribute_proto()) {
+    ORT_IGNORE_RETURN_VALUE(attr_map.emplace(attribute_proto.name(), attribute_proto));
+  }
+
+  return attr_map;
+}
+
+static Status SpecializeWithDefaultAttributes(ONNX_NAMESPACE::FunctionProto& function) {
+  return function_utils::Specialize(function, MakeFunctionCallNodeProto(), CreateDefaultAttributeMap(function),
+                                    "test_inliner");
+}
+
+static ONNX_NAMESPACE::AttributeProto MakeGraphRefAttribute(const std::string& name, const std::string& ref_attr_name,
+                                                            ONNX_NAMESPACE::AttributeProto_AttributeType type) {
+  ONNX_NAMESPACE::AttributeProto attr;
+  attr.set_name(name);
+  attr.set_ref_attr_name(ref_attr_name);
+  attr.set_type(type);
+  return attr;
+}
+
+static ONNX_NAMESPACE::GraphProto MakeRecursiveDefaultGraph(const std::string& ref_attr_name) {
+  ONNX_NAMESPACE::GraphProto graph;
+  graph.set_name("default_graph");
+
+  auto* node = graph.add_node();
+  node->set_name("body_node");
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  *node->add_attribute() = MakeGraphRefAttribute("nested", ref_attr_name, ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+
+  return graph;
+}
+
+static ONNX_NAMESPACE::GraphProto MakeNonRecursiveDefaultGraph() {
+  ONNX_NAMESPACE::GraphProto graph;
+  graph.set_name("default_graph");
+
+  auto* node = graph.add_node();
+  node->set_name("body_node");
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  node->add_attribute()->mutable_g()->set_name("leaf_graph");
+
+  return graph;
+}
+
+static ONNX_NAMESPACE::FunctionProto MakeFunctionWithDefaultGraphAttributes(
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& default_attrs,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& body_attrs) {
+  ONNX_NAMESPACE::FunctionProto function;
+  function.set_domain("local");
+  function.set_name("myfun");
+  function.add_input("x");
+  function.add_output("y");
+
+  for (const auto& default_attr : default_attrs) {
+    function.add_attribute(default_attr.name());
+    *function.add_attribute_proto() = default_attr;
+  }
+
+  auto* node = function.add_node();
+  node->set_name("body_root");
+  node->set_op_type("Identity");
+  node->add_input("x");
+  node->add_output("y");
+  for (const auto& body_attr : body_attrs) {
+    *node->add_attribute() = body_attr;
+  }
+
+  return function;
+}
+
+static ONNX_NAMESPACE::FunctionProto MakeFunctionWithDefaultGraphAttribute(const ONNX_NAMESPACE::AttributeProto& default_attr) {
+  return MakeFunctionWithDefaultGraphAttributes(
+      {default_attr},
+      {MakeGraphRefAttribute("body_attr", default_attr.name(), default_attr.type())});
+}
+
+TEST(FunctionTest, SpecializeRejectsRecursiveDefaultGraphAttributeExpansion) {
+  ONNX_NAMESPACE::AttributeProto default_attr;
+  default_attr.set_name("body");
+  default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *default_attr.mutable_g() = MakeRecursiveDefaultGraph(default_attr.name());
+
+  auto function = MakeFunctionWithDefaultGraphAttribute(default_attr);
+  const auto status = SpecializeWithDefaultAttributes(function);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Function attribute graph expansion is recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("body -> body"));
+}
+
+TEST(FunctionTest, SpecializeRejectsRecursiveDefaultGraphsAttributeExpansion) {
+  ONNX_NAMESPACE::AttributeProto default_attr;
+  default_attr.set_name("body_list");
+  default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS);
+  *default_attr.add_graphs() = MakeRecursiveDefaultGraph(default_attr.name());
+
+  auto function = MakeFunctionWithDefaultGraphAttribute(default_attr);
+  const auto status = SpecializeWithDefaultAttributes(function);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Function attribute graph expansion is recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("body_list -> body_list"));
+}
+
+TEST(FunctionTest, SpecializeRejectsRecursiveDefaultGraphAttributeExpansionAcrossDefaults) {
+  ONNX_NAMESPACE::AttributeProto first_default_attr;
+  first_default_attr.set_name("first");
+  first_default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *first_default_attr.mutable_g() = MakeRecursiveDefaultGraph("second");
+
+  ONNX_NAMESPACE::AttributeProto second_default_attr;
+  second_default_attr.set_name("second");
+  second_default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *second_default_attr.mutable_g() = MakeRecursiveDefaultGraph("first");
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      {first_default_attr, second_default_attr},
+      {MakeGraphRefAttribute("body_attr", first_default_attr.name(), first_default_attr.type())});
+  const auto status = SpecializeWithDefaultAttributes(function);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Function attribute graph expansion is recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("first -> second -> first"));
+}
+
+TEST(FunctionTest, SpecializeAllowsNonRecursiveDefaultGraphAttributeExpansion) {
+  ONNX_NAMESPACE::AttributeProto default_attr;
+  default_attr.set_name("body");
+  default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *default_attr.mutable_g() = MakeNonRecursiveDefaultGraph();
+
+  auto function = MakeFunctionWithDefaultGraphAttribute(default_attr);
+  auto status = SpecializeWithDefaultAttributes(function);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto& attr = function.node(0).attribute(0);
+  EXPECT_EQ(attr.name(), "body_attr");
+  EXPECT_TRUE(attr.ref_attr_name().empty());
+  EXPECT_TRUE(attr.has_g());
+}
+
+TEST(FunctionTest, SpecializeAllowsSequentialReuseOfNonRecursiveDefaultGraphAttribute) {
+  ONNX_NAMESPACE::AttributeProto default_attr;
+  default_attr.set_name("body");
+  default_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  *default_attr.mutable_g() = MakeNonRecursiveDefaultGraph();
+
+  auto function = MakeFunctionWithDefaultGraphAttributes(
+      {default_attr},
+      {
+          MakeGraphRefAttribute("body_attr_0", default_attr.name(), default_attr.type()),
+          MakeGraphRefAttribute("body_attr_1", default_attr.name(), default_attr.type()),
+      });
+  const auto status = SpecializeWithDefaultAttributes(function);
+
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto& attrs = function.node(0).attribute();
+  ASSERT_EQ(attrs.size(), 2);
+  for (const auto& attr : attrs) {
+    EXPECT_TRUE(attr.ref_attr_name().empty());
+    EXPECT_TRUE(attr.has_g());
+  }
 }
 
 TEST(FunctionTest, RejectDuplicateFunctionIdentifiersFromModelProto) {
