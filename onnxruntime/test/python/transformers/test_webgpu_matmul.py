@@ -96,7 +96,7 @@ def matmul_session(model, device, *, capture=False, robustness=True):
 @contextmanager
 def capture_native_stderr():
     # ORT's native logger writes to fd 2, not Python's redirected sys.stderr.
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log:
+    with tempfile.TemporaryFile(mode="w+b") as log:
         sys.stderr.flush()
         original = os.dup(2)
         try:
@@ -163,7 +163,7 @@ class TestWebGpuMatMul(unittest.TestCase):
                 robustness=robustness,
             )
             log.seek(0)
-            initialization_log = log.read()
+            initialization_log = log.read().decode("utf-8", errors="replace")
         # A still-live shared context can otherwise silently ignore a changed robustness option.
         self.assertNotIn("initialized with enableRobustness=", initialization_log)
         self.assertNotIn("enableRobustness cannot affect", initialization_log)
@@ -180,7 +180,7 @@ class TestWebGpuMatMul(unittest.TestCase):
                 with capture_native_stderr() as log:
                     session.run_with_iobinding(binding)
                     log.seek(0)
-                    run_log = log.read()
+                    run_log = log.read().decode("utf-8", errors="replace")
                 programs = re.findall(r'Starting program "(\w+)', run_log)
                 if capture and iteration:
                     # Replay uses the recorded commands without selecting/encoding new programs.
