@@ -15,6 +15,9 @@
 #include <wrl/client.h>
 
 #include "core/providers/webgpu/d3d12_external_data_loader.h"
+#if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/native/D3D12Backend.h"
+#endif
 #endif
 
 #if defined(__GNUC__)
@@ -120,7 +123,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       RequestAdapterOptionsLuid luid_options{};
       const bool preselect_weight_loading_adapter =
           IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_) &&
-          requested_backend_type_ == wgpu::BackendType::D3D12;
+          requested_backend_type_ == wgpu::BackendType::D3D12 &&
+          !config.adapter_index;
       if (preselect_weight_loading_adapter) {
         LUID selected_luid{};
         const auto selection_start = std::chrono::steady_clock::now();
@@ -450,6 +454,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING) && !defined(USE_EXTERNAL_DAWN)
+  if (IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode) &&
+      requested_backend_type_ == wgpu::BackendType::D3D12 &&
+      device_ != nullptr &&
+      weight_loading_d3d12_device_ == nullptr) {
+    weight_loading_d3d12_device_ =
+        dawn::native::d3d12::GetD3D12Device(device_.Get());
+  }
+#endif
 
   if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
     LOGS_DEFAULT(WARNING)

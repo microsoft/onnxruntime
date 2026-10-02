@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -39,6 +40,7 @@
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include "core/platform/windows/d3d12_file_loader/d3d12_file_buffer_loader.h"
 #include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
 
@@ -628,11 +630,56 @@ TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport)
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
 TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
-  auto off_factory = WebGpuProviderFactoryCreator::Create(
-      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));
-  auto off_ep = off_factory->CreateProvider();
-  ASSERT_NE(off_ep, nullptr);
+  RunWithFreshDefaultContext([]() {
+    auto off_factory = WebGpuProviderFactoryCreator::Create(
+        WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));
+    auto off_ep = off_factory->CreateProvider();
+    ASSERT_NE(off_ep, nullptr);
 
+    auto required_factory = WebGpuProviderFactoryCreator::Create(
+        WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
+    auto required_ep = required_factory->CreateProvider();
+    ASSERT_NE(required_ep, nullptr);
+
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    const auto support_status =
+        webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
+    if (!support_status.IsOK()) {
+      GTEST_SKIP() << support_status.ErrorMessage();
+    }
+
+    auto loader = required_ep->GetExternalDataLoader();
+    ASSERT_NE(loader, nullptr);
+    EXPECT_STATUS_OK(loader->BeginLoad());
+    loader->AbortLoad();
+  });
+}
+
+TEST(WebGpuContextTest, D3D12FileLoaderReusesUploadSlotAcrossChunks) {
+  constexpr uint64_t kSlotSize = 64 * 1024;
+  constexpr size_t kDataSize = 3 * kSlotSize;
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_upload_slot_reuse_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+
+  std::vector<uint8_t> expected(kDataSize);
+  for (size_t index = 0; index < expected.size(); ++index) {
+    expected[index] = static_cast<uint8_t>((index * 37) & 0xff);
+  }
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(expected.data()),
+                 static_cast<std::streamsize>(expected.size()));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                WeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Required))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
   auto& context = webgpu::WebGpuContextFactory::GetContext(0);
   const auto support_status =
       webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
@@ -640,14 +687,74 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     GTEST_SKIP() << support_status.ErrorMessage();
   }
 
-  auto required_factory = WebGpuProviderFactoryCreator::Create(
-      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
-  auto required_ep = required_factory->CreateProvider();
-  ASSERT_NE(required_ep, nullptr);
-  auto loader = required_ep->GetExternalDataLoader();
-  ASSERT_NE(loader, nullptr);
-  EXPECT_STATUS_OK(loader->BeginLoad());
-  loader->AbortLoad();
+  windows::d3d12::D3D12FileBufferLoader::Config config;
+  config.upload_slot_count = 2;
+  config.upload_slot_size = kSlotSize;
+  std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> loader;
+  ASSERT_STATUS_OK(windows::d3d12::D3D12FileBufferLoader::Create(
+      context.WeightLoadingD3D12Device(), loader, config));
+
+  windows::d3d12::D3D12FileBufferLoader::Batch batch;
+  ASSERT_STATUS_OK(loader->Load(
+      {{data_path.native(), 0, kDataSize}}, batch));
+  ASSERT_EQ(batch.buffers.size(), 1u);
+
+  auto* device = context.WeightLoadingD3D12Device();
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
+  D3D12_COMMAND_QUEUE_DESC queue_desc{};
+  queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandQueue(
+      &queue_desc, IID_PPV_ARGS(&queue))));
+
+  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandAllocator(
+      D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&allocator))));
+  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandList(
+      0, D3D12_COMMAND_LIST_TYPE_COPY, allocator.Get(), nullptr,
+      IID_PPV_ARGS(&command_list))));
+
+  D3D12_HEAP_PROPERTIES readback_heap{};
+  readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+  D3D12_RESOURCE_DESC readback_desc{};
+  readback_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  readback_desc.Width = kDataSize;
+  readback_desc.Height = 1;
+  readback_desc.DepthOrArraySize = 1;
+  readback_desc.MipLevels = 1;
+  readback_desc.SampleDesc.Count = 1;
+  readback_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  Microsoft::WRL::ComPtr<ID3D12Resource> readback;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommittedResource(
+      &readback_heap, D3D12_HEAP_FLAG_NONE, &readback_desc,
+      D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+      IID_PPV_ARGS(&readback))));
+
+  command_list->CopyBufferRegion(
+      readback.Get(), 0, batch.buffers[0].resource.Get(), 0, kDataSize);
+  ASSERT_TRUE(SUCCEEDED(command_list->Close()));
+  ID3D12CommandList* command_lists[]{command_list.Get()};
+  queue->ExecuteCommandLists(1, command_lists);
+
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+  ASSERT_TRUE(SUCCEEDED(device->CreateFence(
+      0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))));
+  ASSERT_TRUE(SUCCEEDED(queue->Signal(fence.Get(), 1)));
+  if (fence->GetCompletedValue() < 1) {
+    HANDLE event_handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    ASSERT_NE(event_handle, nullptr);
+    ASSERT_TRUE(SUCCEEDED(
+        fence->SetEventOnCompletion(1, event_handle)));
+    EXPECT_EQ(WaitForSingleObject(event_handle, INFINITE), WAIT_OBJECT_0);
+    CloseHandle(event_handle);
+  }
+
+  void* mapped = nullptr;
+  const D3D12_RANGE read_range{0, kDataSize};
+  ASSERT_TRUE(SUCCEEDED(readback->Map(0, &read_range, &mapped)));
+  EXPECT_EQ(std::memcmp(mapped, expected.data(), expected.size()), 0);
+  const D3D12_RANGE written_range{0, 0};
+  readback->Unmap(0, &written_range);
 }
 
 TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
@@ -891,6 +998,8 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
   }
 
   SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
   InferenceSession session{session_options, GetEnvironment()};
   auto provider = WebGpuProviderFactoryCreator::Create(
                       WeightLoadAccelerationOptions(mode))
@@ -936,7 +1045,7 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
 TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalInitializerThroughSession) {
   auto probe_provider = WebGpuProviderFactoryCreator::Create(
                             WeightLoadAccelerationOptions(
-                                kWeightLoadAcceleration_Off))
+                                kWeightLoadAcceleration_Required))
                             ->CreateProvider();
   ASSERT_NE(probe_provider, nullptr);
   const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
