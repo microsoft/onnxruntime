@@ -2449,6 +2449,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
     dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
 
+    ORT_RETURN_IF_NOT(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
+                      "QMoE FP4/NVFP4 dequant fallback requires valid raw expert-weight tensors.");
     dequantize_fp4 = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts,
                       p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale]() {
       // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
@@ -2474,13 +2476,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           }
         }
       };
-      // This dequant fallback is reachable only for the FP4 family (fp4/nvfp4) and the
-      // WFP4AFP8 dequant path -- never for quant_type='int'. Only the int path nulls out
-      // fc*_experts_weights (int_weights_consumed_by_prepack), so the raw weight pointers are
-      // guaranteed live here. Enforce that invariant explicitly so a future mode-guard change
-      // that lets int fall through cannot silently dereference a null weight tensor.
-      ORT_RETURN_IF_NOT(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
-                        "QMoE FP4/NVFP4 dequant fallback requires valid raw expert-weight tensors.");
       dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
               static_cast<const uint8_t*>(p_fc1_block_scales),
               static_cast<const float*>(p_fc1_global_scale),
