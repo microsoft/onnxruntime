@@ -108,7 +108,8 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     const Initializer threshold(graph, *threshold_proto, graph.ModelPath(), check_outer_scope);
-    if (threshold.data_type() != TensorProto_DataType_INT64 || threshold.size() != 1 ||
+    if (threshold_proto->dims_size() != 0 ||
+        threshold.data_type() != TensorProto_DataType_INT64 || threshold.size() != 1 ||
         threshold.DataAsSpan<int64_t>()[0] != 0) {
       continue;
     }

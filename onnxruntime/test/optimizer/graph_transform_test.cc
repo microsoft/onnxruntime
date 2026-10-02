@@ -11249,13 +11249,72 @@ TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
     const auto op_to_count = CountOpsInGraph(graph);
-    EXPECT_EQ(op_to_count.count("IsInf"), should_fuse ? 0U : 1U);
-    EXPECT_EQ(op_to_count.count("ReduceSum"), should_fuse ? 0U : 1U);
-    EXPECT_EQ(op_to_count.count("com.microsoft.IsAllFinite"), should_fuse ? 1U : 0U);
-    EXPECT_EQ(op_to_count.count("Not"), should_fuse ? 1U : 0U);
+    EXPECT_EQ(OpCount(op_to_count, "IsInf"), should_fuse ? 0 : 1);
+    EXPECT_EQ(OpCount(op_to_count, "Cast"), should_fuse ? 0 : 2);
+    EXPECT_EQ(OpCount(op_to_count, "ReduceSum"), should_fuse ? 0 : 1);
+    EXPECT_EQ(OpCount(op_to_count, "Greater"), should_fuse ? 0 : 1);
+    EXPECT_EQ(OpCount(op_to_count, "com.microsoft.IsAllFinite"), should_fuse ? 1 : 0);
+    EXPECT_EQ(OpCount(op_to_count, "Not"), should_fuse ? 1 : 0);
   }
 }
 #endif
+
+TEST_F(GraphTransformationTests, IsInfReduceSum_Guards) {
+  enum class Case {
+    ScalarZero,
+    RankOneZero,
+    ReversedInputs,
+    RuntimeThreshold,
+  };
+
+  for (const auto test_case : {Case::ScalarZero, Case::RankOneZero,
+                               Case::ReversedInputs, Case::RuntimeThreshold}) {
+    const bool should_fuse = test_case == Case::ScalarZero;
+    auto build_test_case = [test_case](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<MLFloat16>({{1, 4}});
+      auto* cast1 = builder.MakeIntermediate();
+      auto* isinf = builder.MakeIntermediate();
+      auto* cast2 = builder.MakeIntermediate();
+      auto* reduced = builder.MakeIntermediate();
+      NodeArg* threshold = nullptr;
+      if (test_case == Case::RankOneZero) {
+        threshold = builder.MakeInitializer<int64_t>({1}, {0});
+      } else if (test_case == Case::RuntimeThreshold) {
+        threshold = builder.MakeInput<int64_t>(std::vector<int64_t>{});
+      } else {
+        threshold = builder.MakeScalarInitializer<int64_t>(0);
+      }
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input}, {cast1})
+          .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+      builder.AddNode("IsInf", {cast1}, {isinf});
+      builder.AddNode("Cast", {isinf}, {cast2})
+          .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_INT64));
+      builder.AddNode("ReduceSum", {cast2}, {reduced}).AddAttribute("keepdims", int64_t{0});
+      if (test_case == Case::ReversedInputs) {
+        builder.AddNode("Greater", {threshold, reduced}, {output});
+      } else {
+        builder.AddNode("Greater", {reduced, threshold}, {output});
+      }
+    };
+
+    auto check_after = [should_fuse](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "IsInf") == (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "Cast") == (should_fuse ? 0 : 2));
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "ReduceSum") == (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "Greater") == (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.IsAllFinite") == (should_fuse ? 1 : 0));
+      TEST_RETURN_IF_NOT(OpCount(op_to_count, "Not") == (should_fuse ? 1 : 0));
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 12, *logger_, std::make_unique<IsInfReduceSumFusion>(),
+        TransformerLevel::Level2, 1, nullptr, check_after));
+  }
+}
 #endif
 
 TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
