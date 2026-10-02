@@ -10,6 +10,7 @@
 #include <limits>
 #include <mutex>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 
 #include <gsl/gsl>
@@ -26,7 +27,10 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr uint64_t kBufferAlignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-constexpr DWORD kCancellationPollMilliseconds = 10;
+// The cancellation token is callback-based and has no waitable handle, so a
+// short timed wait keeps cancellation responsive without adding noticeable
+// fence-completion tail latency.
+constexpr DWORD kCancellationPollMilliseconds = 1;
 
 common::Status HResultError(const char* operation, HRESULT hr) {
   return ORT_MAKE_STATUS(
@@ -542,21 +546,19 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
     std::vector<PreparedFile>& files) {
   // Group ranges by source file so each file is opened once. Later, aligned
   // overlapping ranges are merged to avoid redundant unbuffered reads.
+  std::unordered_map<std::wstring, size_t> file_indices;
+  file_indices.reserve(ranges.size());
   for (size_t range_index = 0;
        range_index < ranges.size(); ++range_index) {
     const auto& range = ranges[range_index];
-    auto file_it = std::find_if(
-        files.begin(), files.end(),
-        [&](const PreparedFile& file) {
-          return file.path == range.path;
-        });
-    if (file_it == files.end()) {
+    const auto [file_index_it, inserted] =
+        file_indices.try_emplace(range.path, files.size());
+    if (inserted) {
       PreparedFile file;
       file.path = range.path;
       files.push_back(std::move(file));
-      file_it = std::prev(files.end());
     }
-    file_it->range_indices.push_back(range_index);
+    files[file_index_it->second].range_indices.push_back(range_index);
   }
 
   for (auto& file : files) {
