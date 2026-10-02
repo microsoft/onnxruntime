@@ -1430,7 +1430,7 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 | [test_moe_cpu.py](onnxruntime/test/python/transformers/test_moe_cpu.py) | Standard MoE on CPU (smoke). |
 | [test_qmoe_cuda.py](onnxruntime/test/python/transformers/test_qmoe_cuda.py) | INT4/INT8 QMoE — primary regression signal for the production QMoE path. Exercises `pack_weights_for_cuda_mixed_gemm` and dequant-then-matmul reference. `TestQMoEIntPrePackSmoke` covers the raw-weight `weights_prepacked=0` in-`PrePack` layout transform (smoke test: asserts finite output, not bit-parity). |
 | [test_qmoe_cpu.py](onnxruntime/test/python/transformers/test_qmoe_cpu.py) | INT4/INT8 QMoE on CPU (smoke). |
-| [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. On SM90+ (including SM120) `TestQMoEFP4Sm80SingleWeightCopy` checks the SM80 grouped GEMM + fused GEMV regime against the dequant fallback. |
+| [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. On SM80+ (including SM120) `TestQMoEFP4Sm80SingleWeightCopy` checks the SM80 grouped GEMM + fused GEMV regime against the dequant fallback. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | FP8 W8A16 QMoE on SM90+ native path and SM<90 dequant fallback. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
 

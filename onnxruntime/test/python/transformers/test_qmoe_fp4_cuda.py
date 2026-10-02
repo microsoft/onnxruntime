@@ -10,7 +10,7 @@
 # Block scaling: group_size=32, scale factors as float_ue8m0_t (uint8, powers of 2).
 # Per-expert float32 global scale.
 #
-# Requires SM90+ (Hopper or newer) and CUDA 12.8+ (ENABLE_FP4 build flag).
+# Requires SM80+ (Ampere or newer) and CUDA 12.8+ (ENABLE_FP4 build flag).
 # --------------------------------------------------------------------------
 
 import contextlib
@@ -336,10 +336,10 @@ class TestQMoEFP4(unittest.TestCase):
     """Tests for W4A16 MXFP4 MoE quantization."""
 
     def _skip_if_no_fp4(self):
-        """Skip if SM < 90 (FP4 requires Hopper+)."""
+        """Skip if SM < 80 (the FP4 GEMV and SM80 grouped GEMM need Ampere+)."""
         sm = _cuda_sm()
-        if sm < 90:
-            self.skipTest(f"FP4 requires SM90+, got SM{sm}")
+        if sm < 80:
+            self.skipTest(f"FP4 requires SM80+, got SM{sm}")
 
     # ----------------------------------------------------------------
     # Core test driver
@@ -939,8 +939,8 @@ class TestQMoEFP4Sm80SingleWeightCopy(unittest.TestCase):
 
     def _skip_unless_sm80_regime(self):
         sm = _cuda_sm()
-        if sm < 90:
-            self.skipTest(f"FP4 requires SM90+, got SM{sm}")
+        if sm < 80:
+            self.skipTest(f"The SM80 MXFP4 grouped GEMM requires SM80+, got SM{sm}")
 
     def _build_model(self, hidden_size, inter_size, num_tokens, onnx_dtype, num_experts=None):
         """SwiGLU MXFP4 MoE model. FC1 is [E, hidden, inter] packed (n = 2 * inter_size)."""

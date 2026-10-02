@@ -450,9 +450,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // set ORT_FP4_SM80_GEMM=0 to fall back to the dequant path.
       // If the user EXPLICITLY
       // requested the native CUTLASS GEMM (ORT_ENABLE_FP4_CUTLASS_GEMM=1) we honor that intent
-      // and do not take the SM80 path — this keeps the kernel-side moeUseSm80Fp4() (which reads
-      // the same two env vars) in lock-step with this decision in every regime, including the
-      // native-requested-but-shape-unsupported fallback (which then uses the dequant path).
+      // and do not take the SM80 path, including the native-requested-but-shape-unsupported
+      // fallback (which then uses the dequant path). The decision is pushed into the runner via
+      // setUseSm80Fp4() below.
       // When enabled we force the GEMV prepack (which also produces the SM80 CUTLASS-interleaved
       // e2m1 weights + activation-dtype group scales) and later override the runner to the FP4 runner so
       // prefill can dispatch to the SM80 DqMma grouped GEMM (see moeUseSm80Fp4 in the kernels).
