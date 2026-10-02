@@ -299,6 +299,7 @@ TEST_F(ExternalDataLoaderLifetimeTest, RecreatesLoaderAfterFactoryFailure) {
 
 #endif
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
 class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
  public:
   enum class FailurePoint {
@@ -392,6 +393,7 @@ TEST(ExternalDataLoaderManagerTest, FinalizeFailureAbortsEveryLoader) {
   EXPECT_EQ(failing_ptr->abort_count, 1);
   EXPECT_EQ(unfinalized_ptr->abort_count, 1);
 }
+#endif
 
 }  // namespace
 }  // namespace test

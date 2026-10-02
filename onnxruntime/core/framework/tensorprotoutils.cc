@@ -1921,6 +1921,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                     raw_data_safe_len, allocator, tensor);
 }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
 Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                               const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                               const IExternalDataLoader& ext_data_loader) {
@@ -1952,6 +1953,7 @@ Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesys
       env, external_data_file_path, tensor_proto.name(), file_offset,
       raw_data_safe_len);
 }
+#endif
 
 #define CASE_PROTO(X, Y)                                                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \

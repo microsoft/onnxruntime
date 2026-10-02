@@ -37,6 +37,7 @@ class IExternalDataLoader {
 
   virtual bool SupportsDataType([[maybe_unused]] int32_t tensor_data_type) const { return true; }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
   // Returns true when the loader creates the tensor's backing allocation instead of
   // writing into a tensor allocated by the framework.
   virtual bool CreatesTensorForDevice([[maybe_unused]] const OrtDevice& target_device) const { return false; }
@@ -94,10 +95,15 @@ class IExternalDataLoader {
   // PrepareTensor(), FinalizeLoad(), or partial tensor consumption, and may be called
   // more than once. Implementations must therefore be noexcept and idempotent.
   virtual void AbortLoad() const noexcept {}
+#endif
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
   // Tensor should be allocated with the correct memory info and size unless
   // CreatesTensorForDevice() returns true. In that case the loader replaces tensor
   // with one backed by memory owned through allocator.
+#else
+  // Tensor should be allocated with the correct memory info and size.
+#endif
   virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
                                     [[maybe_unused]] const std::filesystem::path& data_file_path,
                                     [[maybe_unused]] std::string_view tensor_name,
