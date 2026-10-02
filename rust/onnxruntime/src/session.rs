@@ -494,13 +494,35 @@ impl<'a> SessionBuilder<'a> {
     // TODO: Add all functions changing the options.
     //       See all OrtApi methods taking a `options: *mut OrtSessionOptions`.
 
+    /// Invoke a native session-creation function without holding the environment lock.
+    ///
+    /// ORT may call user callbacks (e.g. the EPContext data read callback) during session
+    /// creation; holding the global environment mutex across that call would deadlock if the
+    /// callback uses any `Environment` API. The copied API table points into the loaded library
+    /// (never unloaded), and `env_ptr` stays valid because `self.env` keeps the environment alive.
+    fn create_native_session<F>(&self, create: F) -> Result<*mut sys::OrtSession>
+    where
+        F: FnOnce(&sys::OrtApi, *mut sys::OrtEnv, *mut *mut sys::OrtSession) -> *mut sys::OrtStatus,
+    {
+        let (api, env_ptr) = {
+            let env = self.env.env();
+            (unsafe { env.api() }, env.env_ptr)
+        };
+        let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
+        let status = create(&api, env_ptr, ptr::addr_of_mut!(session_ptr));
+
+        status_to_result(status).map_err(OrtError::Session)?;
+        assert_null_pointer(status, "SessionStatus")?;
+        assert_not_null_pointer(session_ptr, "Session")?;
+        Ok(session_ptr)
+    }
+
     /// Load an ONNX graph from a file and commit the session
     pub fn with_model_from_file<P>(self, model_filepath_ref: P) -> Result<Session>
     where
         P: AsRef<Path> + 'a,
     {
         let model_filepath = model_filepath_ref.as_ref();
-        let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
 
         if !model_filepath.exists() {
             return Err(OrtError::FileDoesNotExists {
@@ -523,20 +545,14 @@ impl<'a> SessionBuilder<'a> {
             .map(|b| *b as std::os::raw::c_char)
             .collect();
 
-        unsafe {
-            let api = self.env.env().api();
-
-            let status = api.CreateSession.unwrap()(
-                self.env.env().env_ptr,
+        let session_ptr = self.create_native_session(|api, env_ptr, session_ptr| unsafe {
+            api.CreateSession.unwrap()(
+                env_ptr,
                 model_path.as_ptr(),
                 self.session_options_ptr,
-                &mut session_ptr,
-            );
-
-            status_to_result(status).map_err(OrtError::Session)?;
-            assert_null_pointer(status, "SessionStatus")?;
-            assert_not_null_pointer(session_ptr, "Session")?;
-        };
+                session_ptr,
+            )
+        })?;
         let session_guard = SessionPointerGuard {
             session_ptr,
             release_session: unsafe { self.env.env().api().ReleaseSession.unwrap() },
@@ -588,24 +604,15 @@ impl<'a> SessionBuilder<'a> {
     }
 
     fn with_model_from_memory_monomorphized(self, model_bytes: &[u8]) -> Result<Session> {
-        let mut session_ptr: *mut sys::OrtSession = std::ptr::null_mut();
-        unsafe {
-            let api = self.env.env().api();
-
-            let model_data = model_bytes.as_ptr().cast::<std::ffi::c_void>();
-            let model_data_length = model_bytes.len();
-            let status = api.CreateSessionFromArray.unwrap()(
-                self.env.env().env_ptr,
-                model_data,
-                model_data_length,
+        let session_ptr = self.create_native_session(|api, env_ptr, session_ptr| unsafe {
+            api.CreateSessionFromArray.unwrap()(
+                env_ptr,
+                model_bytes.as_ptr().cast::<std::ffi::c_void>(),
+                model_bytes.len(),
                 self.session_options_ptr,
-                &mut session_ptr,
-            );
-
-            status_to_result(status).map_err(OrtError::Session)?;
-            assert_null_pointer(status, "SessionStatus")?;
-            assert_not_null_pointer(session_ptr, "Session")?;
-        };
+                session_ptr,
+            )
+        })?;
         let session_guard = SessionPointerGuard {
             session_ptr,
             release_session: unsafe { self.env.env().api().ReleaseSession.unwrap() },
@@ -1521,6 +1528,43 @@ mod tests {
         assert!(weak.upgrade().is_some());
         drop(session);
         assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn native_session_creation_releases_environment_lock() {
+        use std::{sync::mpsc, time::Duration};
+
+        let builder = test_environment().new_session_builder().unwrap();
+        let model_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../onnxruntime/test/testdata/mul_1.onnx");
+        let model_bytes = std::fs::read(model_path).unwrap();
+
+        let session_ptr = builder
+            .create_native_session(|api, env_ptr, session_ptr| {
+                // Stands in for an ORT callback running during session creation. Probe from
+                // another thread first so a held lock fails the test instead of self-deadlocking.
+                let (sender, receiver) = mpsc::channel();
+                thread::spawn(move || {
+                    let _guard = test_environment().env();
+                    let _ = sender.send(());
+                });
+                receiver
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("environment lock held during native session creation");
+                assert!(!test_environment().name().is_empty());
+
+                unsafe {
+                    api.CreateSessionFromArray.unwrap()(
+                        env_ptr,
+                        model_bytes.as_ptr().cast::<c_void>(),
+                        model_bytes.len(),
+                        builder.session_options_ptr,
+                        session_ptr,
+                    )
+                }
+            })
+            .unwrap();
+        unsafe { test_environment().env().api().ReleaseSession.unwrap()(session_ptr) };
     }
 }
 
