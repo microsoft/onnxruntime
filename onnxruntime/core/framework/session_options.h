@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include <limits>
 #include <codecvt>
 #include <filesystem>
 #include <functional>
@@ -230,7 +229,6 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
-  size_t ep_context_data_read_max_size = std::numeric_limits<size_t>::max();
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

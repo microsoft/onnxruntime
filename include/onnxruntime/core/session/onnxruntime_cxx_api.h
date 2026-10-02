@@ -659,7 +659,6 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
-ORT_DEFINE_RELEASE(EpContextDataReadOptions);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -789,7 +788,6 @@ struct AllocatedFree {
 struct AllocatorWithDefaultOptions;
 struct Env;
 struct EpContextConfig;
-struct EpContextDataReadOptions;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1668,9 +1666,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
-  ///< Register or clear the callback that supplies external EPContext data during session initialization.
-  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state,
-                                               size_t max_data_size);
+  /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);
+  /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& ClearEpContextDataReadFunc();
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
@@ -1758,23 +1756,12 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   using Base::Base;
 
   explicit EpContextConfig(std::nullptr_t) noexcept {}
-  explicit EpContextConfig(const SessionOptions& session_options);
-  explicit EpContextConfig(ConstSessionOptions session_options);
+  explicit EpContextConfig(const SessionOptions& session_options);  ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
+  explicit EpContextConfig(ConstSessionOptions session_options);    ///< Wraps OrtEpApi::SessionOptionsGetEpContextConfig.
 
-  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state, size_t& max_data_size) const;
-  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
-};
-
-/** \brief Options controlling EPContext data reads.
- *
- * Wraps ::OrtEpContextDataReadOptions.
- */
-struct EpContextDataReadOptions : detail::Base<OrtEpContextDataReadOptions> {
-  using Base = detail::Base<OrtEpContextDataReadOptions>;
-  using Base::Base;
-
-  EpContextDataReadOptions();
-  EpContextDataReadOptions& SetMaxDataSize(size_t max_data_size);
+  /// Wraps OrtEpApi::EpContextConfigGetEpContextDataReadFunc.
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;  ///< Wraps OrtEpApi::EpContextConfigGetEpContextDataWriteFunc.
 };
 
 /** \brief Options object used when compiling a model.
@@ -1809,8 +1796,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
 
-  ///< Register or clear the callback that receives external EPContext data during compilation.
-  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
+  /// Register or clear the external EPContext write callback. Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
@@ -3072,6 +3059,7 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
   OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;

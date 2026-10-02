@@ -28,6 +28,7 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kMinSequenceLengthFlashAttention = 385;
+constexpr int kFusedMhaMaxHeadSize = 256;
 
 class MHARunner {
  public:
@@ -67,6 +68,13 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   ~FusedMHARunnerFP16v2() = default;  // for impl_
 
   static bool IsSupported(int sm, int head_size, int sequence_length, bool enable_flash_attention);
+
+  // Uses IsSupported as the authority while bounding the search to the head
+  // sizes for which this runner has kernels.
+  static bool IsAnySupportedHeadSize(int sm,
+                                     int max_head_size,
+                                     int sequence_length,
+                                     bool enable_flash_attention);
 
   static std::unique_ptr<MHARunner> Create(int num_heads,
                                            int head_size,

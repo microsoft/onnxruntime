@@ -90,8 +90,6 @@ OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* file_nam
 }  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)
-constexpr size_t kEpContextApiTestMaxDataSize = size_t{1} << 20;
-
 TEST(EpContextDataApiTest, ReadFuncIsReturnedByEpApi) {
   Ort::SessionOptions session_options;
 
@@ -100,17 +98,14 @@ TEST(EpContextDataApiTest, ReadFuncIsReturnedByEpApi) {
       {},
       {'e', 'p', 'c', 't', 'x'},
   };
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state,
-                                           kEpContextApiTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
 
   Ort::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = nullptr;
   void* callback_state_out = nullptr;
-  size_t max_data_size = 0;
-  ep_context_config.GetReadFunc(read_func, callback_state_out, max_data_size);
+  ep_context_config.GetReadFunc(read_func, callback_state_out);
   ASSERT_EQ(read_func, EpContextReadCallback);
   ASSERT_EQ(callback_state_out, &callback_state);
-  ASSERT_EQ(max_data_size, kEpContextApiTestMaxDataSize);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = nullptr;
@@ -140,33 +135,10 @@ TEST(EpContextDataApiTest, ApiRejectsInvalidArguments) {
   ExpectFailureOrtStatus(ep_api.SessionOptionsGetEpContextConfig(session_options, nullptr), ORT_INVALID_ARGUMENT,
                          "Output OrtEpContextConfig is NULL");
 
-  OrtEpContextDataReadOptions* valid_read_options = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.CreateEpContextDataReadOptions(&valid_read_options));
-  auto release_read_options =
-      gsl::finally([&]() { ort_api.ReleaseEpContextDataReadOptions(valid_read_options); });
-  ASSERT_ORTSTATUS_OK(
-      ort_api.EpContextDataReadOptionsSetMaxDataSize(valid_read_options, kEpContextApiTestMaxDataSize));
   ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             nullptr, EpContextReadCallback, nullptr, valid_read_options),
+                             nullptr, EpContextReadCallback, nullptr),
                          ORT_INVALID_ARGUMENT,
                          "'options' parameter must not be NULL");
-  ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             session_options, EpContextReadCallback, nullptr, nullptr),
-                         ORT_INVALID_ARGUMENT, "read options must be provided");
-  ExpectFailureOrtStatus(ort_api.CreateEpContextDataReadOptions(nullptr), ORT_INVALID_ARGUMENT,
-                         "Output read_options is NULL");
-  ExpectFailureOrtStatus(
-      ort_api.EpContextDataReadOptionsSetMaxDataSize(nullptr, kEpContextApiTestMaxDataSize),
-      ORT_INVALID_ARGUMENT, "OrtEpContextDataReadOptions is NULL");
-  Ort::EpContextDataReadOptions invalid_read_options;
-  ExpectFailureOrtStatus(ort_api.SessionOptionsSetEpContextDataReadFunc(
-                             session_options, EpContextReadCallback, nullptr, invalid_read_options),
-                         ORT_INVALID_ARGUMENT, "max_data_size must be finite and greater than zero");
-  ExpectFailureOrtStatus(ort_api.EpContextDataReadOptionsSetMaxDataSize(invalid_read_options, 0), ORT_INVALID_ARGUMENT,
-                         "max_data_size must be finite and greater than zero");
-  ExpectFailureOrtStatus(ort_api.EpContextDataReadOptionsSetMaxDataSize(
-                             invalid_read_options, std::numeric_limits<size_t>::max()),
-                         ORT_INVALID_ARGUMENT, "max_data_size must be finite and greater than zero");
 
   ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetEpContextConfig(session_options, &ep_context_config));
   auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
@@ -174,23 +146,15 @@ TEST(EpContextDataApiTest, ApiRejectsInvalidArguments) {
   OrtReadNamedBufferFunc read_func = nullptr;
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* state = nullptr;
-  size_t max_data_size = 0;
-  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(nullptr, &read_func, &state,
-                                                                        &max_data_size),
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(nullptr, &read_func, &state),
                          ORT_INVALID_ARGUMENT,
                          "OrtEpContextConfig is NULL");
-  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(ep_context_config, nullptr, &state,
-                                                                        &max_data_size),
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(ep_context_config, nullptr, &state),
                          ORT_INVALID_ARGUMENT,
                          "Output read_func is NULL");
-  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, nullptr,
-                                                                        &max_data_size),
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, nullptr),
                          ORT_INVALID_ARGUMENT,
                          "Output state is NULL");
-  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, &state,
-                                                                        nullptr),
-                         ORT_INVALID_ARGUMENT,
-                         "Output max_data_size is NULL");
   ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataWriteFunc(nullptr, &write_func, &state),
                          ORT_INVALID_ARGUMENT,
                          "OrtEpContextConfig is NULL");
@@ -220,12 +184,9 @@ TEST(EpContextDataApiTest, AccessorsReturnNullWhenCallbacksUnset) {
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   OrtWriteNamedBufferFunc write_func = EpContextWriteCallback;
   void* state = reinterpret_cast<void*>(0x1);
-  size_t max_data_size = 0;
-
-  ep_context_config.GetReadFunc(read_func, state, max_data_size);
+  ep_context_config.GetReadFunc(read_func, state);
   EXPECT_EQ(read_func, nullptr);
   EXPECT_EQ(state, nullptr);
-  EXPECT_EQ(max_data_size, std::numeric_limits<size_t>::max());
 
   state = reinterpret_cast<void*>(0x1);
   ep_context_config.GetWriteFunc(write_func, state);
@@ -237,18 +198,15 @@ TEST(EpContextDataApiTest, ConfigReturnsConfiguredCallbacks) {
   Ort::SessionOptions session_options;
 
   EpContextReadCallbackState callback_state{};
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state,
-                                           kEpContextApiTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
 
   Ort::EpContextConfig ep_context_config{session_options};
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t max_data_size = 0;
-  ep_context_config.GetReadFunc(read_func, read_state, max_data_size);
+  ep_context_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, EpContextReadCallback);
   EXPECT_EQ(read_state, &callback_state);
-  EXPECT_EQ(max_data_size, kEpContextApiTestMaxDataSize);
 
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
@@ -262,48 +220,75 @@ TEST(EpContextDataApiTest, ConfigIsAnImmutableSnapshotOfSessionOptions) {
   EpContextReadCallbackState first_state{};
   EpContextReadCallbackState second_state{};
 
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &first_state,
-                                           kEpContextApiTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &first_state);
   Ort::EpContextConfig first_config{session_options};
 
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &second_state,
-                                           kEpContextApiTestMaxDataSize / 2);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &second_state);
   Ort::EpContextConfig second_config{session_options};
   session_options.ClearEpContextDataReadFunc();
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t max_data_size = 0;
-  first_config.GetReadFunc(read_func, read_state, max_data_size);
+  first_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, EpContextReadCallback);
   EXPECT_EQ(read_state, &first_state);
-  EXPECT_EQ(max_data_size, kEpContextApiTestMaxDataSize);
 
   read_func = nullptr;
   read_state = nullptr;
-  max_data_size = 0;
-  second_config.GetReadFunc(read_func, read_state, max_data_size);
+  second_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, EpContextReadCallback);
   EXPECT_EQ(read_state, &second_state);
-  EXPECT_EQ(max_data_size, kEpContextApiTestMaxDataSize / 2);
 }
 
 TEST(EpContextDataApiTest, ReadFuncCanBeClearedWithSetter) {
   Ort::SessionOptions session_options;
 
   EpContextReadCallbackState callback_state{};
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state,
-                                           kEpContextApiTestMaxDataSize);
-  session_options.SetEpContextDataReadFunc(nullptr, &callback_state, 0);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
+  session_options.SetEpContextDataReadFunc(nullptr, &callback_state);
 
   Ort::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   void* read_state = reinterpret_cast<void*>(0x1);
-  size_t max_data_size = 0;
-  ep_context_config.GetReadFunc(read_func, read_state, max_data_size);
+  ep_context_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, nullptr);
   EXPECT_EQ(read_state, nullptr);
-  EXPECT_EQ(max_data_size, std::numeric_limits<size_t>::max());
+}
+
+TEST(EpContextDataApiTest, FailedReadAccessorLeavesOutputsUnchanged) {
+  Ort::SessionOptions session_options;
+  Ort::EpContextConfig config{session_options};
+  OrtReadNamedBufferFunc read_func = EpContextReadCallback;
+  void* state = &session_options;
+  const auto& ep_api = Ort::GetEpApi();
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(nullptr, &read_func, &state),
+                         ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  EXPECT_EQ(read_func, EpContextReadCallback);
+  EXPECT_EQ(state, &session_options);
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(config, &read_func, nullptr),
+                         ORT_INVALID_ARGUMENT, "Output state is NULL");
+  EXPECT_EQ(read_func, EpContextReadCallback);
+  ExpectFailureOrtStatus(ep_api.EpContextConfigGetEpContextDataReadFunc(config, nullptr, &state),
+                         ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  EXPECT_EQ(state, &session_options);
+}
+
+TEST(EpContextDataApiTest, ClonedRegistrationAndSnapshotOutliveSessionOptions) {
+  EpContextReadCallbackState callback_state{};
+  Ort::EpContextConfig config{nullptr};
+  {
+    Ort::SessionOptions options;
+    options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
+    auto clone = options.Clone();
+    options.ClearEpContextDataReadFunc();
+    config = Ort::EpContextConfig{clone};
+  }
+
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* state = nullptr;
+  config.GetReadFunc(read_func, state);
+  EXPECT_EQ(read_func, EpContextReadCallback);
+  EXPECT_EQ(state, &callback_state);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -364,17 +349,14 @@ TEST(EpContextDataApiTest, ReturnedReadFuncAllowsEmptyPayloads) {
   Ort::SessionOptions session_options;
 
   EpContextReadCallbackState callback_state{};
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state,
-                                           kEpContextApiTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
 
   Ort::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t max_data_size = 0;
-  ep_context_config.GetReadFunc(read_func, read_state, max_data_size);
+  ep_context_config.GetReadFunc(read_func, read_state);
   ASSERT_EQ(read_func, EpContextReadCallback);
   ASSERT_EQ(read_state, &callback_state);
-  ASSERT_EQ(max_data_size, kEpContextApiTestMaxDataSize);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = reinterpret_cast<void*>(0x1);
@@ -402,4 +384,14 @@ TEST(EpContextDataApiTest, ReadCallbackRejectsOversizedArtifactBeforeAllocation)
   EXPECT_FALSE(callback_state.allocation_attempted);
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, callback_state.payload.size());
+}
+
+TEST(EpContextDataApiTest, ReadCallbackRegistrationLifecycle) {
+  const auto& api = Ort::GetApi();
+
+  OrtSessionOptions* session_options = nullptr;
+  ASSERT_ORTSTATUS_OK(api.CreateSessionOptions(&session_options));
+  auto release_session_options = gsl::finally([&]() { api.ReleaseSessionOptions(session_options); });
+  ASSERT_ORTSTATUS_OK(api.SessionOptionsSetEpContextDataReadFunc(session_options, EpContextReadCallback, nullptr));
+  ASSERT_ORTSTATUS_OK(api.SessionOptionsSetEpContextDataReadFunc(session_options, nullptr, nullptr));
 }
