@@ -17,6 +17,11 @@
 #include <math.h>
 #include <type_traits>
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_session_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -4474,6 +4479,71 @@ TEST(ModOpTest, FloorMod_float_edge_cases) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
+
+#ifdef USE_DML
+template <typename T>
+void TestDirectMLFloorModBroadcast() {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  const std::vector<T> x{T(0.0f), T(-0.0f), T(6.0f), T(-6.0f), T(3.0f),
+                         T(-3.0f), T(inf), T(-inf), T(nan), T(1.0f)};
+  const std::vector<T> y{T(2.0f), T(-2.0f), T(inf), T(-inf), T(0.0f), T(-0.0f), T(nan)};
+  const std::vector<float> expected{
+      0.0f, -0.0f, 0.0f, -0.0f, nan, nan, nan,
+      0.0f, -0.0f, 0.0f, -0.0f, nan, nan, nan,
+      0.0f, -0.0f, 6.0f, -inf, nan, nan, nan,
+      0.0f, -0.0f, inf, -6.0f, nan, nan, nan,
+      1.0f, -1.0f, 3.0f, -inf, nan, nan, nan,
+      1.0f, -1.0f, inf, -3.0f, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      nan, nan, nan, nan, nan, nan, nan,
+      1.0f, -1.0f, 1.0f, -inf, nan, nan, nan};
+  std::vector<T> typed_expected;
+  typed_expected.reserve(expected.size());
+  for (float value : expected) {
+    typed_expected.emplace_back(value);
+  }
+  for (bool disable_fusion : {false, true}) {
+    SCOPED_TRACE(disable_fusion ? "standalone kernel" : "fused graph");
+    OpTester test("Mod", 28);
+    test.AddAttribute<int64_t>("fmod", 0);
+    test.AddInput<T>("X", {10, 1}, x);
+    test.AddInput<T>("Y", {1, 7}, y);
+    test.AddOutput<T>("Z", {10, 7}, typed_expected);
+    test.SetCustomOutputVerifier([&expected](const std::vector<OrtValue>& fetches,
+                                             const std::string& provider_type) {
+      ASSERT_EQ(provider_type, kDmlExecutionProvider);
+      ASSERT_EQ(fetches.size(), 1u);
+      const auto& tensor = fetches[0].Get<Tensor>();
+      ASSERT_EQ(tensor.Shape().Size(), static_cast<int64_t>(expected.size()));
+      const T* output = tensor.Data<T>();
+      for (size_t i = 0; i < expected.size(); ++i) {
+        const float actual = static_cast<float>(output[i]);
+        if (std::isnan(expected[i])) {
+          EXPECT_TRUE(std::isnan(actual)) << "output index " << i;
+        } else {
+          EXPECT_EQ(actual, expected[i]) << "output index " << i;
+          EXPECT_EQ(std::signbit(actual), std::signbit(expected[i])) << "output index " << i;
+        }
+      }
+    });
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisableDmlGraphFusion, disable_fusion ? "1" : "0"));
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(options).ConfigEp(DefaultDmlExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(ModOpTest, FloorMod_DirectML_float_broadcast) {
+  TestDirectMLFloorModBroadcast<float>();
+}
+
+TEST(ModOpTest, FloorMod_DirectML_float16_broadcast) {
+  TestDirectMLFloorModBroadcast<MLFloat16>();
+}
+#endif
 
 TEST(ModOpTest, Signed_integer_overflow_case) {
   OpTester test("Mod", ModOp_ver28);
