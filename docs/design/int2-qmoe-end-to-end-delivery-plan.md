@@ -23,6 +23,14 @@ Mixed-width QMoE contract
 
 ## Product Target
 
+### Delivery Status (October 2, 2026)
+
+- Contract, bounded CUDA correctness and packed decode merged in #32697, #32743 and #32761, respectively.
+- PR 4a [#32963](https://github.com/microsoft/onnxruntime/pull/32963) merged on October 1 as `a4d55e2b6f`: SM80 FP16/BF16 INT2 grouped GEMM foundation.
+- PR 4a2 [#33045](https://github.com/microsoft/onnxruntime/pull/33045) merged on October 1 as `78c834918d`: grouped-kernel test coverage, plugin test build footprint and diagnostic follow-up, including QUICK_BUILD-compatible baseline tactics.
+- PR 4b [#33005](https://github.com/microsoft/onnxruntime/pull/33005) merged on October 2 as `2cdff3ca8e`: default-enabled SM80+ FP16/BF16 packed INT2 FC1 / INT4 FC2 prefill, block size 64, symmetric weights and interleaved fused SwiGLU. Eligible prefill uses packed row tiling within a 256 MiB estimated temporary-scratch budget rather than switching long prompts to dense weight dequantization.
+- Implementation merge is not end-to-end qualification. Remaining work includes reproducible fused Olive/Mobius export, CPU/CUDA model parity, target-model quality, controlled benchmarks, exact memory attribution and transition/concurrency/capture qualification. SM80+ dispatch eligibility does not establish execution coverage on every supported GPU architecture.
+
 ### Initial Quantization Recipe
 
 | Tensor class | Initial ONNX target | Rationale |
@@ -38,7 +46,7 @@ The first supported configuration is:
 - FP16 or BF16 activations with FP32 accumulation.
 - Symmetric blockwise integer quantization.
 - FC1 INT2 and FC2 INT4.
-- One selected block size, chosen from 32, 64, or 128 after quality and kernel profiling.
+- Block size 64 for the merged packed prefill path; additional sizes require separate qualification.
 - Interleaved fused SwiGLU (`swiglu_fusion=1`).
 - Top-k routing with multiple tokens and experts.
 - Raw portable model weights plus execution-provider-specific runtime prepacking.
@@ -176,6 +184,14 @@ Exit gate: packed QMoE improves decode latency or throughput over the agreed INT
 
 ### Workstream 4: CUDA Prefill
 
+Status: Native packed implementation merged through PR 4a, PR 4a2 and PR 4b. Product-level quality, performance, memory and supported-platform qualification remain open.
+
+Prefill is enabled by default for eligible configurations; `ORT_ENABLE_QMOE_INT2_PREFILL=0` opts out. Packed decode retains priority, and `ORT_DISABLE_MOE_GEMV=1` disables eligible GEMV dispatch for both INT2 and existing INT4/INT8 paths. Set these environment variables before process startup. Ineligible configurations retain the bounded dense fallback.
+
+The packed scratch planner includes packed workspace, tile-local routing metadata and uncached scale transposes. It honors `ep.cuda.qmoe_row_tile_size` as an upper bound, sizes both full and final partial tiles, and reduces tile rows until the estimate fits 256 MiB. If even one row cannot fit, it reports an error rather than allocating full dense expert weights. This bound is not a whole-process GPU memory cap.
+
+Initial A100 GPT-OSS-20B prefill/decode results are recorded in #33005. They predate the final default-dispatch and packed-tiling changes and are not validation of those revisions or of newer GPU architectures. The following alternatives and engineering estimates record the original design decision, not remaining implementation work.
+
 Long-context prefill must not dequantize every expert into persistent FP16 storage.
 
 Full-model GPT-OSS-20B validation demonstrates why a separate prefill path is required. Its `top_k=4` routing produces 76 expanded rows for a 19-token prompt, outside the packed GEMV gate of eight expanded rows. The correctness fallback then requests 1,592,524,800 bytes to materialize all FC1 and FC2 expert weights, exceeding the default 1 GiB scratch limit. Raising the limit is useful only for bounded diagnosis and is not a production solution.
@@ -219,7 +235,7 @@ Consume packed INT2/INT4 expert weights directly in a grouped GEMM without mater
 
 The preferred review boundary is a separately testable grouped-GEMM kernel followed by QMoE integration. These are PR 4a and PR 4b in the overall delivery sequence, not two separate implementations of prefill.
 
-The first release targets SM80/A100, FP16/BF16 activations, symmetric FC1 gate/up INT2 and FC2 down INT4, block size 64, and the existing interleaved SwiGLU semantics. Keep the portable model contract (`weights_prepacked=0`) and runtime prepacking unchanged. Additional block sizes and bit-width combinations, asymmetric zero points, and architecture-specific tuning are follow-ups. Do not expand the existing packed-GEMV gate of eight total routing-expanded rows merely to serve prefill.
+The initial implementation and profiling targeted SM80/A100; the merged integration accepts SM80+ while retaining the SM80 CUTLASS template and packed layout. Target GPUs require suitable native code or compatible virtual PTX; an SM80 cubin alone is not cross-major compatible. The primary configuration uses FP16/BF16 activations, symmetric FC1 gate/up INT2 and FC2 down INT4, block size 64, and existing interleaved SwiGLU semantics. The portable model contract (`weights_prepacked=0`) and runtime prepacking remain unchanged. Additional block sizes and bit-width combinations, asymmetric zero points, architecture-specific tuning and hardware qualification are follow-ups. The packed-GEMV gate is not expanded merely to serve prefill.
 
 **PR 4a: SM80 packed W2A16 grouped GEMM foundation**
 
@@ -297,7 +313,7 @@ Measure coding, tool-calling, long-generation stability, perplexity or KL diverg
 
 ### PR 1: Mixed-Width Contract - Merged
 
-Merged as [#32697](https://github.com/microsoft/onnxruntime/pull/32697). Mixed-width execution remains intentionally disabled until the projection-aware CPU and provider paths in the following PRs are implemented.
+Merged as [#32697](https://github.com/microsoft/onnxruntime/pull/32697). CUDA mixed-width execution was subsequently enabled by the correctness, decode and prefill PRs below; CPU mixed-width execution remains a separate workstream.
 
 - Schema and inheritance semantics.
 - Shared shape and packing helpers.
@@ -320,17 +336,29 @@ Merged as [#32761](https://github.com/microsoft/onnxruntime/pull/32761) in `a11b
 - FC2 INT4 integration.
 - Correctness and decode benchmarks.
 
-### PR 4a: CUDA Packed Prefill Kernel Foundation
+### PR 4a: CUDA Packed Prefill Kernel Foundation - Merged
+
+Merged as [#32963](https://github.com/microsoft/onnxruntime/pull/32963) on October 1 in `a4d55e2b6f`.
 
 - Option C SM80 FP16/BF16 W2A16 grouped GEMM with block size 64, independent tests, and kernel benchmarks.
 - Verify W4A16 block-64 support for FC2; keep QMoE default dispatch unchanged.
-- Approximately 2-3 engineering weeks, including the initial prototype.
+- Original estimate: approximately 2-3 engineering weeks, including the initial prototype.
 
-### PR 4b: CUDA Mixed-Width Prefill Integration
+### PR 4a2: Grouped GEMM Test and Plugin Follow-Up - Merged
+
+Merged as [#33045](https://github.com/microsoft/onnxruntime/pull/33045) on October 1 in `78c834918d`.
+
+- SM8x test coverage, plugin test build footprint, diagnostic options and file headers.
+- QUICK_BUILD-compatible baseline tactics; the previously reported stages=3 CI failure is no longer an outstanding delivery task.
+
+### PR 4b: CUDA Mixed-Width Prefill Integration - Merged
+
+Merged as [#33005](https://github.com/microsoft/onnxruntime/pull/33005) on October 2 in `2cdff3ca8e`.
 
 - Depends on PR 4a: FC1 INT2 / FC2 INT4 routing, activation/finalization, workspace, prepack lifetime, and dispatch.
-- Approximately 2-3 engineering weeks for integration plus 2-3 for correctness and tuning, totaling 6-9 weeks with PR 4a.
-- GPT-OSS-20B qualification, TTFT, peak-memory, and T=128/512/2048 benchmarks; preserve packed decode and bounded fallback.
+- Default-enabled SM80+ FP16/BF16 packed prefill, bounded packed row tiling and shared GEMV controls; packed decode and unsupported-configuration fallback are preserved.
+- Original estimate: approximately 2-3 engineering weeks for integration plus 2-3 for correctness and tuning, totaling 6-9 weeks with PR 4a.
+- Initial GPT-OSS-20B benchmarks are recorded in #33005. Controlled TTFT/peak-memory measurements and broader model/platform qualification remain follow-up work, not evidence implied by merge.
 - Option B is an optional separate intermediate PR (approximately 4-5 engineering weeks), not a dependency. Option A remains the correctness oracle only.
 
 See Workstream 4 for the support boundary, merge gates, and the condition under which PR 4a/4b should remain one layered PR. Additional dtypes, block sizes, bit-width combinations, architectures, and optional fusion are follow-ups.
@@ -357,6 +385,8 @@ PR 5 and PR 6 can proceed in parallel with the PR 4a/4b prefill effort after the
 - Documentation and support matrix updates.
 
 ## Schedule and Staffing
+
+The schedule below is the original planning baseline. As of October 2, the CUDA contract, correctness, packed decode and native packed prefill implementations have merged. Do not interpret their historical estimates as remaining work; export, CPU parity and product qualification still require tracked owners and evidence.
 
 With one engineer, a production-quality mixed-width QMoE path spanning schema, tooling, CPU, CUDA decode, CUDA prefill, and model qualification is not a credible single eight-week task. A practical schedule uses parallel owners:
 
@@ -408,7 +438,7 @@ Stop production kernel expansion if no mixed affine INT2 recipe meets the frozen
 
 ## Immediate Decisions Needed
 
-1. Select the first block size and CUDA architecture.
+1. Qualify the merged block-64 SM80+ configuration on the intended deployment GPUs and prioritize additional configurations.
 2. Assign owners for ORT CPU execution, Olive/Mobius, CUDA, and model validation.
 3. Freeze quality, memory, decode, and TTFT thresholds before collecting candidate results.
-4. Decide whether native grouped prefill is part of the first committed date or a follow-up performance milestone.
+4. Freeze the end-to-end release scope and qualification date now that native grouped prefill is merged.
