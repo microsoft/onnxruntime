@@ -183,7 +183,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
         // Compare number of elements
         if (existing_shape == *shape) {
           shape_matched = true;
-        } else if (existing_shape.Size() == shape->Size()) {
+        } else if (existing_shape.Size() == 1 &&
+                   shape->Size() == 1 &&
+                   (existing_shape.NumDimensions() == 0 || shape->NumDimensions() == 0)) {
           // Reuse buffer, update shape in-place
           const_cast<Tensor&>(tensor).Reshape(*shape);
           shape_matched = true;

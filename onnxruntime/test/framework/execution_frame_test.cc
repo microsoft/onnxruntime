@@ -794,5 +794,59 @@ TEST(ExecutionFrameTestInit, FetchReusesPreallocatedScalarOutputForSingleElement
   EXPECT_EQ(results[0].Get<Tensor>().DataAsSpan<float>()[0], 5.0f);
 }
 
+TEST(ExecutionFrameTestInit, FetchFailsForEqualCountNonScalarShapeMismatch) {
+  // Regression test to ensure that equal element count but different shapes
+  // are NOT reused. For example, {2,3} vs {3,2} both have 6 elements but
+  // represent different tensor layouts and should not be reused.
+  SessionOptions so;
+  so.enable_mem_pattern = true;
+
+  InferenceSession session(so, GetEnvironment());
+
+  onnxruntime::Model model("equal_count_shape_mismatch_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  graph.AddNode("identity", "Identity", "identity", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  std::array<float, 6> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), input_data.data(),
+                       allocator->Info(), input);
+
+  // Pre-allocate output with shape {3, 2} (same element count as {2,3}, but different shape)
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({3, 2}), allocator, preallocated_output);
+
+  std::vector<OrtValue> results = {preallocated_output};
+
+  RunOptions ro;
+  auto status = session.Run(ro,
+                            AsSpan({std::string("X")}), AsSpan({input}),
+                            AsSpan({std::string("Y")}), &results, nullptr);
+
+  // This should fail because shapes don't match, even though element counts are equal
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("pre-allocated"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
