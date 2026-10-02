@@ -33,6 +33,10 @@ onnxruntime_profile*.json
 /LICENSE.txt
 /csharp/**/obj/
 /csharp/**/bin/
+/plugin-ep-cuda/csharp/**/obj/
+/plugin-ep-cuda/csharp/**/bin/
+/plugin-ep-webgpu/csharp/**/obj/
+/plugin-ep-webgpu/csharp/**/bin/
 /csharp/Directory.Build.props
 docs/python/inference/*.onnx
 *.onnx
