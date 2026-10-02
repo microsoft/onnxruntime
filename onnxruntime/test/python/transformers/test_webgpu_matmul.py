@@ -207,7 +207,6 @@ class TestWebGpuMatMul(unittest.TestCase):
         finally:
             if capture:
                 session.release_captured_graph()
-            del binding, values, session
 
     def test_exact_qwen_shapes(self):
         rng = np.random.default_rng(40)
