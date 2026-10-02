@@ -245,7 +245,8 @@ TEST(NchwcOptimizerTests, BinaryInputsWithUnexpectedRankAreNotTransformed) {
 
   const auto run_case = [](bool mutate_first_operand) {
     SCOPED_TRACE(mutate_first_operand ? "unexpected rank on first operand" : "unexpected rank on later operand");
-    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 14}, {kMSDomain, 1}};
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 14}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
     Model model("nchwc_rank_mismatch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                 domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
     NchwcTestHelper helper(model.MainGraph());
