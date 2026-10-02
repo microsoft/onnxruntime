@@ -156,7 +156,8 @@ Status DetectGpuSysfsPaths(const fs::path& sysfs_class_drm_path,
       const auto status = ReadFileContents(dir_item_path / "device" / "uevent", uevent);
       is_nvidia_platform_gpu = status.IsOK() &&
                                (HasUeventEntry(uevent, "DRIVER=nvgpu") ||
-                                HasUeventEntry(uevent, "DRIVER=nvidia"));
+                                HasUeventEntry(uevent, "DRIVER=nvidia") ||
+                                HasUeventEntry(uevent, "DRIVER=nv_platform"));
       if (!is_nvidia_platform_gpu) {
         LOGS_DEFAULT(VERBOSE) << "Skipping non-PCI DRM card: " << dir_item_path;
         continue;

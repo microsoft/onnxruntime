@@ -53,6 +53,17 @@ TEST_F(DrmDeviceDiscoveryTest, DetectsJetsonGpuAndSkipsOtherPlatformCards) {
   EXPECT_TRUE(gpu_paths[0].is_nvidia_platform_gpu);
 }
 
+TEST_F(DrmDeviceDiscoveryTest, DetectsJetsonOrinPlatformGpu) {
+  CreatePlatformDrmCard(temp_dir_ / "card1", "nv_platform");
+
+  std::vector<drm_device_discovery::GpuSysfsPathInfo> gpu_paths;
+  ASSERT_STATUS_OK(drm_device_discovery::DetectGpuSysfsPaths(temp_dir_, gpu_paths));
+
+  ASSERT_EQ(gpu_paths.size(), 1u);
+  EXPECT_EQ(gpu_paths[0].card_idx, 1u);
+  EXPECT_TRUE(gpu_paths[0].is_nvidia_platform_gpu);
+}
+
 TEST_F(DrmDeviceDiscoveryTest, CreatesIntegratedNvidiaDeviceForJetsonGpu) {
   CreatePlatformDrmCard(temp_dir_ / "card1", "nvgpu");
 
