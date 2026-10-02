@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <future>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <mutex>
@@ -35,7 +36,8 @@ constexpr DWORD kMaximumCancellationPollMilliseconds = 10;
 
 common::Status HResultError(const char* operation, HRESULT hr) {
   return ORT_MAKE_STATUS(
-      ONNXRUNTIME, FAIL, operation, " failed with HRESULT ",
+      ONNXRUNTIME, FAIL, operation, " failed with HRESULT 0x",
+      std::setfill('0'), std::uppercase, std::hex, std::setw(8),
       static_cast<uint32_t>(hr));
 }
 

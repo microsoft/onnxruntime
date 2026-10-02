@@ -21,7 +21,7 @@ namespace webgpu {
 class WebGpuContext;
 struct CommandRecordingState;
 
-common::Status CheckD3D12AcceleratedExternalWeightsSupport(WebGpuContext& context);
+common::Status CheckD3D12AcceleratedExternalWeightsSupport(const WebGpuContext& context);
 
 common::Status ResolveWeightLoadAccelerationMode(
     WeightLoadAccelerationMode mode,

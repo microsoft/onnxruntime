@@ -337,7 +337,7 @@ class WebGpuContext final {
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
   inline bool HasDevice() const { return device_ != nullptr; }
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-  ID3D12Device* WeightLoadingD3D12Device();
+  ID3D12Device* WeightLoadingD3D12Device() const;
   bool D3D12SharedResourceFeaturesAvailable() const {
     return d3d12_shared_resource_features_available_;
   }
