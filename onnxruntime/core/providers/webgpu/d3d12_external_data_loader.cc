@@ -295,7 +295,7 @@ void EndAccessNoThrow(
 }  // namespace
 
 common::Status CheckD3D12AcceleratedExternalWeightsSupport(
-    WebGpuContext& context) {
+    const WebGpuContext& context) {
   ORT_RETURN_IF_NOT(
       context.RequestedBackendType() ==
           wgpu::BackendType::D3D12,

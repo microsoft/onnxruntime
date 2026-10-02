@@ -504,7 +504,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 }
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() {
+ID3D12Device* WebGpuContext::WeightLoadingD3D12Device() const {
   return weight_loading_d3d12_device_.Get();
 }
 #endif
