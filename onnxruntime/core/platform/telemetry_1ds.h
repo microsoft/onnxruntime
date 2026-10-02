@@ -24,6 +24,10 @@ class EventProperties;
 
 namespace onnxruntime {
 
+namespace test {
+class OneDsTelemetryTest;
+}
+
 /**
  * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
  *
@@ -136,6 +140,8 @@ class OneDsTelemetry : public Telemetry {
                                        const std::string& lib_path) const override;
 
  private:
+  friend class test::OneDsTelemetryTest;
+
   // Initialize telemetry SDK logger
   void Initialize();
 

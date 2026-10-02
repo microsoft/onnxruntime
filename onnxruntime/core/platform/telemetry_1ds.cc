@@ -627,9 +627,7 @@ uint64_t OneDsTelemetry::Keyword() const {
 
 void OneDsTelemetry::LogProcessInfo() const {
   RunTelemetryOperation("LogProcessInfo", [&]() {
-    // Runtime API suppression leaves the uploader live, so ProcessInfo still fires. Full process
-    // suppression never creates a logger and returns here.
-    if (logger_.load(std::memory_order_acquire) == nullptr) {
+    if (!IsEnabled()) {
       return;
     }
 

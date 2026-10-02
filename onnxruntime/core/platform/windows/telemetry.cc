@@ -258,8 +258,9 @@ std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<std::mutex> lock(mutex_);
-  // Do not register the ETW provider in test or CI processes.
-  if (IsRunningUnitTests() || IsRunningInCI()) {
+  // ORT_RUNNING_UNIT_TESTS is an internal hard-suppression signal, unlike the user-facing
+  // non-Windows environment opt-out. Do not register the ETW provider in test processes.
+  if (IsRunningUnitTests()) {
     enabled_ = false;
     return;
   }
