@@ -1023,6 +1023,22 @@ and the **fused GEMV decode fast path** ([§4](#4-architecture-dispatch--kernel-
 small-decode shapes. `enable_fp4_gemv_` is on by default for NVFP4 (opt-out `ORT_ENABLE_FP4_GEMV=0`);
 `enable_fp4_sm80_gemm_` stays off (the SM80 grouped-GEMM FP4 prefill path is MXFP4-only).
 
+The NVFP4 dense fallback uses routed-expert compaction, like block-scaled FP8. Each row tile
+retains the original routing IDs for instrumentation, remaps the selected experts to compact IDs,
+and dequantizes only those experts into FP16/BF16 scratch. Packed E2M1 weights, E4M3 block scales,
+FP32 global scales, and optional expert biases are indexed by the original expert ID; outputs
+and gathered biases use the compact ID. The map is rebuilt for every tile, including a short
+final tile, without host synchronization. ONNX weights and scales remain in their native formats.
+
+Weight scratch is bounded by `C * (N1*K1 + N2*K2) * sizeof(activation)`, where
+`C = min(num_experts, rows_per_tile * top_k)`. For Qwen Flash with 512 experts, hidden size
+2560, intermediate size 640, fused SwiGLU, and top-10 routing, single-token decode requires
+93.75 MiB of dequantized weight scratch rather than 4.6875 GiB. Other routing/GEMM workspace
+and persistent prepacked buffers are additional. Compaction does not change the native GEMV
+or grouped-GEMM routes and does not eliminate persistent decode prepacking allocations.
+The fallback also supports `session.disable_prepacking=1`; native routes still require their
+existing prepacking where applicable.
+
 ### 9b.2 Fused GEMV decode (group-16)
 
 The MXFP4 decode GEMV ([§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation)) is

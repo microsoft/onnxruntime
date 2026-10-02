@@ -311,7 +311,10 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    const int* compact_to_expert = nullptr,
+    const half* bias = nullptr,
+    half* output_bias = nullptr);
 
 void LaunchQMoEDequantizeNvfp4Weights(
     const uint8_t* packed_weights,
@@ -321,7 +324,10 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    const int* compact_to_expert = nullptr,
+    const __nv_bfloat16* bias = nullptr,
+    __nv_bfloat16* output_bias = nullptr);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
 // Input shape interpretation: [experts, k, n/2] (col-major packed),

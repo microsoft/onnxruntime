@@ -1671,7 +1671,10 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
     T* output,
     int num_experts,
     int n,
-    int k) {
+    int k,
+    const int* compact_to_expert,
+    const T* bias,
+    T* output_bias) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= total) {
@@ -1679,8 +1682,12 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
   }
 
   int64_t expert_stride = static_cast<int64_t>(n) * k;
-  int expert = static_cast<int>(index / expert_stride);
-  int64_t offset = index - static_cast<int64_t>(expert) * expert_stride;
+  const int output_expert = static_cast<int>(index / expert_stride);
+  const int expert = compact_to_expert ? compact_to_expert[output_expert] : output_expert;
+  if (expert < 0) {
+    return;
+  }
+  int64_t offset = index % expert_stride;
   int row = static_cast<int>(offset / k);
   int col = static_cast<int>(offset - static_cast<int64_t>(row) * k);
 
@@ -1693,6 +1700,9 @@ __global__ void QMoEDequantizeNvfp4WeightsKernel(
   uint8_t scale_code = block_scales[(static_cast<int64_t>(expert) * n + row) * scale_k + col / kNvfp4BlockSize];
   float value = DecodeFp4E2M1(fp4_code) * DecodeFloat8E4M3FN(scale_code) * global_scales[expert];
   output[index] = static_cast<T>(value);
+  if (bias && col == 0) {
+    output_bias[static_cast<int64_t>(output_expert) * n + row] = bias[static_cast<int64_t>(expert) * n + row];
+  }
 }
 
 template <typename T>
@@ -1704,9 +1714,13 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    const int* compact_to_expert,
+    const T* bias,
+    T* output_bias) {
+  ORT_ENFORCE(bias == nullptr || output_bias != nullptr, "QMoE NVFP4 bias gathering requires an output buffer.");
   constexpr int block = 256;
-  if (QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
+  if (!compact_to_expert && !bias && QMoEDequantizeFp4VecApplies<16>(num_experts, n, k)) {
     const dim3 tile_block(kQMoEDequantizeFp4TileK / kQMoEDequantizeFp4VecK, kQMoEDequantizeFp4TileN);
     const dim3 tile_grid((n + kQMoEDequantizeFp4TileN - 1) / kQMoEDequantizeFp4TileN,
                          k / kQMoEDequantizeFp4TileK, num_experts);
@@ -1718,7 +1732,8 @@ void LaunchQMoEDequantizeNvfp4WeightsImpl(
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeNvfp4WeightsKernel<<<grid, block, 0, stream>>>(
-      packed_weights, block_scales, global_scales, output, num_experts, n, k);
+      packed_weights, block_scales, global_scales, output, num_experts, n, k,
+      compact_to_expert, bias, output_bias);
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
@@ -1730,8 +1745,12 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
-  LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, stream);
+    cudaStream_t stream,
+    const int* compact_to_expert,
+    const half* bias,
+    half* output_bias) {
+  LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
+                                       stream, compact_to_expert, bias, output_bias);
 }
 
 void LaunchQMoEDequantizeNvfp4Weights(
@@ -1742,8 +1761,12 @@ void LaunchQMoEDequantizeNvfp4Weights(
     int num_experts,
     int n,
     int k,
-    cudaStream_t stream) {
-  LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, stream);
+    cudaStream_t stream,
+    const int* compact_to_expert,
+    const __nv_bfloat16* bias,
+    __nv_bfloat16* output_bias) {
+  LaunchQMoEDequantizeNvfp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k,
+                                       stream, compact_to_expert, bias, output_bias);
 }
 
 // NVFP4 counterpart of QMoECombineFp4ScalesForGemvKernel. Identical [E, n, k_blocks] ->
