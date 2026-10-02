@@ -240,6 +240,7 @@ static Status InitializeFunctionExpansionModel(
                     "Failed to serialize function expansion model.");
 
   SessionOptions session_options;
+  session_options.use_per_session_threads = true;
   if (options.disable_aot_inlining) {
     ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "1"));
@@ -384,9 +385,47 @@ TEST(FunctionTest, AotInliningIgnoresFunctionMetadataForProtoBytes) {
   model.mutable_functions(0)->set_doc_string(std::string(1024 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
-  const auto status = InitializeFunctionExpansionModel(std::move(model), log_messages);
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 1024 * 1024});
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
+}
+
+TEST(FunctionTest, AotInliningChargesBoundAttributePayloadPerReference) {
+  auto model = CreateFunctionExpansionModel(0, 1);
+  auto* function = model.mutable_functions(0);
+  function->add_attribute("payload");
+  for (size_t i = 0; i < 8; ++i) {
+    auto* node = function->add_node();
+    node->set_op_type("Constant");
+    node->add_output(i + 1 == 8 ? "function_output" : "payload_" + std::to_string(i));
+    auto* attribute = node->add_attribute();
+    attribute->set_name("value");
+    attribute->set_ref_attr_name("payload");
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  }
+
+  auto* payload_attribute = model.mutable_graph()->mutable_node(0)->add_attribute();
+  payload_attribute->set_name("payload");
+  payload_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* payload_tensor = payload_attribute->mutable_t();
+  payload_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  payload_tensor->add_dims(256 * 1024);
+  payload_tensor->set_raw_data(std::string(256 * 1024, 'x'));
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 1024 * 1024});
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
 }
 
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
