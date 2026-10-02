@@ -5,6 +5,15 @@
 
 #include "test_util.h"
 
+// Matches MLAS_SYMM_QGEMM_OPERATION in qgemm.h. Declared here so tests can
+// force Lit vs Big without pulling the QGEMM template header into every TU.
+using MlasSymmQgemmForcedOperation = void (*)(const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+                                              const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
+                                              size_t RangeStartM,
+                                              size_t RangeCountM,
+                                              size_t RangeStartN,
+                                              size_t RangeCountN);
+
 template <bool Threaded>
 class MlasSymmQgemmTestBase : public MlasTestBase {
  protected:
@@ -23,7 +32,8 @@ class MlasSymmQgemmTestBase : public MlasTestBase {
                 const int8_t* B,
                 size_t ldb,
                 int32_t* C,
-                size_t ldc) {
+                size_t ldc,
+                MlasSymmQgemmForcedOperation ForcedOperation = nullptr) {
     MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
@@ -47,7 +57,16 @@ class MlasSymmQgemmTestBase : public MlasTestBase {
       params.B = PackedB + PackedBSize * i;
     }
 
-    MlasSymmQgemmBatch(GemmShape, GemmParameters.data(), BatchSize, threadpool_);
+    if (ForcedOperation != nullptr) {
+      // Call the requested kernel for the full M x N tile. This is the
+      // single-thread path of MlasSymmQgemmBatch without uarch dispatch, so
+      // Lit (Ld64) and Big (SDOT) can both be tested on any dotprod host.
+      for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
+        ForcedOperation(&GemmShape, &GemmParameters[gemm_i], 0, M, 0, N);
+      }
+    } else {
+      MlasSymmQgemmBatch(GemmShape, GemmParameters.data(), BatchSize, threadpool_);
+    }
   }
 
  private:
@@ -60,7 +79,12 @@ class MlasSymmQgemmTest;
 template <typename AType, bool Threaded>
 class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase<Threaded> {
  public:
-  void Test(size_t M, size_t N, size_t K, size_t BatchSize, int32_t offa) {
+  void Test(size_t M,
+            size_t N,
+            size_t K,
+            size_t BatchSize,
+            int32_t offa,
+            MlasSymmQgemmForcedOperation ForcedOperation = nullptr) {
     // Symmetric kernel will have limited buffer overrun when reading the input buffer
     constexpr size_t OVERRUN = 15;
     const uint8_t* A = BufferA.GetBuffer(K * M * BatchSize + OVERRUN);
@@ -68,7 +92,7 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
     int32_t* C = BufferC.GetBuffer(N * M * BatchSize);
     int32_t* CReference = BufferCReference.GetBuffer(N * M * BatchSize);
 
-    Test(M, N, K, BatchSize, A, K, offa, B, N, C, CReference, N);
+    Test(M, N, K, BatchSize, A, K, offa, B, N, C, CReference, N, ForcedOperation);
   }
 
   void Test(size_t M,
@@ -82,11 +106,13 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
             size_t ldb,
             int32_t* C,
             int32_t* CReference,
-            size_t ldc) {
+            size_t ldc,
+            MlasSymmQgemmForcedOperation ForcedOperation = nullptr) {
     std::fill_n(C, M * N * BatchSize, -1);
     std::fill_n(CReference, M * N * BatchSize, -1);
 
-    this->TestGemm(M, N, K, BatchSize, A, lda, offa, std::is_signed<AType>::value, B, ldb, C, ldc);
+    this->TestGemm(M, N, K, BatchSize, A, lda, offa, std::is_signed<AType>::value, B, ldb, C, ldc,
+                   ForcedOperation);
     ReferenceQgemm(M, N, K, BatchSize, (const AType*)A, lda, (AType)offa, B, ldb, (const int8_t)0, CReference, ldc);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
@@ -94,7 +120,8 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
         for (size_t n = 0; n < N; n++, f++) {
           ASSERT_EQ(C[f], CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
                                          << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K
-                                         << ", offa=" << offa << ", offb=--";
+                                         << ", offa=" << offa << ", offb=--"
+                                         << (ForcedOperation != nullptr ? ", forced_kernel" : "");
         }
       }
     }
