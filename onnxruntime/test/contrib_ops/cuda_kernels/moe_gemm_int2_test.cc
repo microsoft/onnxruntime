@@ -70,8 +70,8 @@ class Int2GroupedGemmTest : public ::testing::Test {
     int device = 0;
     ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
     ASSERT_EQ(cudaGetDeviceProperties(&properties_, device), cudaSuccess);
-    if (properties_.major != 8 || (properties_.minor != 0 && properties_.minor != 6)) {
-      GTEST_SKIP() << "INT2 grouped GEMM tests require SM80 or SM86";
+    if (properties_.major < 8) {
+      GTEST_SKIP() << "INT2 grouped GEMM tests require SM80 or later";
     }
     ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking), cudaSuccess);
   }
@@ -681,11 +681,11 @@ TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   params.multiprocessor_count = 108;
   ASSERT_TRUE(IsInt2GroupedGemmSupported(params));
   EXPECT_THROW(RunInt2GroupedGemm(params), OnnxRuntimeException);
-  for (int sm : {80, 86}) {
+  for (int sm : {80, 86, 89, 90, 100, 103, 110, 120, 121}) {
     params.sm = sm;
     EXPECT_TRUE(IsInt2GroupedGemmSupported(params));
   }
-  for (int sm : {70, 75, 89, 90, 100, 120}) {
+  for (int sm : {0, 70, 75}) {
     params.sm = sm;
     EXPECT_FALSE(IsInt2GroupedGemmSupported(params));
   }
