@@ -85,9 +85,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                 "adapterIndex requires a native Dawn build with adapter enumeration support.");
 #endif
     weight_load_acceleration_mode_ = config.weight_load_acceleration_mode;
-#if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-    requested_backend_type_ = static_cast<wgpu::BackendType>(config.backend_type);
-#endif
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -123,7 +120,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       RequestAdapterOptionsLuid luid_options{};
       const bool preselect_weight_loading_adapter =
           IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_) &&
-          requested_backend_type_ == wgpu::BackendType::D3D12 &&
+          static_cast<wgpu::BackendType>(config.backend_type) ==
+              wgpu::BackendType::D3D12 &&
           !config.adapter_index;
       if (preselect_weight_loading_adapter) {
         LUID selected_luid{};
@@ -420,7 +418,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
     // Use the backend selected by Dawn rather than the requested backend. The
     // request can be Undefined when Dawn performs automatic adapter selection.
-    requested_backend_type_ = adapter_info_.backendType;
+    selected_backend_type_ = adapter_info_.backendType;
 #endif
 
     // create buffer manager
@@ -458,7 +456,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING) && !defined(USE_EXTERNAL_DAWN)
   if (IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode) &&
-      requested_backend_type_ == wgpu::BackendType::D3D12 &&
+      selected_backend_type_ == wgpu::BackendType::D3D12 &&
       device_ != nullptr &&
       weight_loading_d3d12_device_ == nullptr) {
     weight_loading_d3d12_device_ =

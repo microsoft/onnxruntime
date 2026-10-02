@@ -341,8 +341,8 @@ class WebGpuContext final {
   bool D3D12SharedResourceFeaturesAvailable() const {
     return d3d12_shared_resource_features_available_;
   }
-  wgpu::BackendType RequestedBackendType() const {
-    return requested_backend_type_;
+  wgpu::BackendType SelectedBackendType() const {
+    return selected_backend_type_;
   }
 #endif
 
@@ -520,7 +520,7 @@ class WebGpuContext final {
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   Microsoft::WRL::ComPtr<ID3D12Device> weight_loading_d3d12_device_;
   bool d3d12_shared_resource_features_available_ = false;
-  wgpu::BackendType requested_backend_type_ = wgpu::BackendType::Undefined;
+  wgpu::BackendType selected_backend_type_ = wgpu::BackendType::Undefined;
 #endif
   uint64_t max_storage_buffer_binding_size_;
   uint32_t max_storage_buffers_per_shader_stage_;

@@ -60,6 +60,15 @@ common::Status Win32Error(const char* operation, DWORD error) {
       std::system_category().message(error));
 }
 
+common::Status Win32FileError(const char* operation,
+                              const std::wstring& path,
+                              DWORD error) {
+  return ORT_MAKE_STATUS(
+      ONNXRUNTIME, FAIL, operation, " failed for \"", ToUTF8String(path),
+      "\", error code ", error, " - ",
+      std::system_category().message(error));
+}
+
 common::Status CancelledStatus() {
   return ORT_MAKE_STATUS(
       ONNXRUNTIME, MODEL_LOAD_CANCELED,
@@ -586,8 +595,8 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
             FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN,
         nullptr));
     if (!file.file) {
-      return Win32Error(
-          "CreateFileW(unbuffered)", GetLastError());
+      return Win32FileError(
+          "CreateFileW(unbuffered)", file.path, GetLastError());
     }
 
     LARGE_INTEGER file_size{};
@@ -630,8 +639,8 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
               FILE_FLAG_SEQUENTIAL_SCAN,
           nullptr));
       if (!file.buffered_tail_file) {
-        return Win32Error(
-            "CreateFileW(buffered tail)", GetLastError());
+        return Win32FileError(
+            "CreateFileW(buffered tail)", file.path, GetLastError());
       }
     }
 
