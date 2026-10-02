@@ -15,7 +15,9 @@ Abstract:
 
 --*/
 
-#if defined(__aarch64__) && defined(__linux__)
+#include "mlas.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 #include <algorithm>
 #include <cstring>
@@ -402,4 +404,4 @@ const MLAS_SBGEMM_DISPATCH MlasSBGemmDispatchNeon = {
     MLAS_SBGEMM_KERNEL_NEON::KernelMaxM,
     32  // kernel may read beyond buffer end by 32 bytes
 };
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

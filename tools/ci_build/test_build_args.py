@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_args
 
 
-class TelemetryBuildArgsTest(unittest.TestCase):
+class BuildArgsTest(unittest.TestCase):
     def _parse(self, *arguments: str, platform_name: str, machine: str = "x86_64"):
         argv = ["build.py", "--build_dir", "build/test", *arguments]
         with (
@@ -53,6 +53,16 @@ class TelemetryBuildArgsTest(unittest.TestCase):
     def test_android_enables_telemetry_by_default(self):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
+
+    def test_use_acl_emits_deprecation_warning(self):
+        with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
+            self._parse("--use_acl", platform_name="linux")
+
+    def test_acl_deprecation_warning_not_emitted_without_use_acl(self):
+        with mock.patch.object(build_args.warnings, "warn") as warn:
+            self._parse(platform_name="linux")
+
+        warn.assert_not_called()
 
 
 if __name__ == "__main__":

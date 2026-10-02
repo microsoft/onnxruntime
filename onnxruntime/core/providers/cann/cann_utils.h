@@ -129,7 +129,5 @@ void GenerateHashValue(const std::string string, HashValue& hash_value);
 bool is_dynamic_shape(const aclmdlIODims& dims);
 std::string MatchFile(const std::string& file_name);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
-bool GetRepeatInitFlag();
-void SetRepeatInitFlag(bool val);
 }  // namespace cann
 }  // namespace onnxruntime

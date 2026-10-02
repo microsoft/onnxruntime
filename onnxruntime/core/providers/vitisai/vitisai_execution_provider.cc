@@ -55,7 +55,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   return ep_context_node_ptrs;
 }
 
-bool VitisAIExecutionProvider::MayProduceEpContextNodesWithoutCompilation() const {
+bool VitisAIExecutionProvider::MayProduceExternalEpContextDataWithoutCompilation() const {
   return ep_ctx_enabled_ && !ep_ctx_embed_mode_;
 }
 
