@@ -77,19 +77,6 @@ stages:
       artifactName: 'onnxruntime-android-full-aar'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
-- stage: Final_AAR_Testing_Android_QNN
-  dependsOn: Setup
-  variables:
-    ReleaseVersionSuffix: $[ stageDependencies.Setup.Restore_And_Use_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
-  jobs:
-  - template: templates/android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-qnn-aar'
-      packageName: 'onnxruntime-android-qnn'
-      #TODO: get this information from the setup stage
-      QnnSDKVersion: '2.42.0.251225'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-VS2022-Latest'
@@ -203,7 +190,8 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-arm64
-    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
+    agentPool:
+      name: onnxruntime-medium-arm64-scus
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
@@ -211,7 +199,8 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-arm64x
-    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
+    agentPool:
+      name: onnxruntime-medium-arm64-scus
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
@@ -231,9 +220,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_cuda_build_artifacts'
@@ -286,9 +273,7 @@ stages:
       pool: onnxruntime-Win2022-GPU-A10
       timeoutInMinutes: 180
       steps:
-        - checkout: self
-          clean: true
-          submodules: none
+        - template: templates/jobs/checkout-and-git-redirect.yml
 
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'

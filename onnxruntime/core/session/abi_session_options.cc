@@ -35,12 +35,10 @@ const onnxruntime::ConfigOptions& OrtSessionOptions::GetConfigOptions() const no
 }
 
 void OrtSessionOptions::GetEpContextDataCallbacks(_Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** read_state,
-                                                  _Out_ size_t* read_max_data_size,
                                                   _Out_ OrtWriteNamedBufferFunc* write_func,
                                                   _Out_ void** write_state) const noexcept {
   *read_func = value.ep_context_data_read_func;
   *read_state = value.ep_context_data_read_func != nullptr ? value.ep_context_data_read_state : nullptr;
-  *read_max_data_size = value.ep_context_data_read_max_size;
   const auto* write_config = value.ep_context_gen_options.TryGetEpContextDataWriteFunc();
   *write_func = write_config != nullptr ? write_config->write_func : nullptr;
   *write_state = write_config != nullptr ? write_config->state : nullptr;
@@ -668,51 +666,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicyDelegate, _In_ Or
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state,
-                    _In_opt_ const OrtEpContextDataReadOptions* read_options) {
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
 
-  if (read_func != nullptr) {
-    ORT_API_RETURN_IF(read_options == nullptr, ORT_INVALID_ARGUMENT,
-                      "EPContext data read options must be provided with a read callback");
-    ORT_API_RETURN_IF(read_options->max_data_size == 0 ||
-                          read_options->max_data_size == std::numeric_limits<size_t>::max(),
-                      ORT_INVALID_ARGUMENT, "EPContext data max_data_size must be finite and greater than zero");
-  }
-
   options->value.ep_context_data_read_func = read_func;
   options->value.ep_context_data_read_state = read_func != nullptr ? state : nullptr;
-  options->value.ep_context_data_read_max_size =
-      read_func != nullptr ? read_options->max_data_size : std::numeric_limits<size_t>::max();
   return nullptr;
   API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateEpContextDataReadOptions,
-                    _Outptr_ OrtEpContextDataReadOptions** read_options) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(read_options == nullptr, ORT_INVALID_ARGUMENT, "Output read_options is NULL");
-  *read_options = new OrtEpContextDataReadOptions();
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::EpContextDataReadOptionsSetMaxDataSize,
-                    _Inout_ OrtEpContextDataReadOptions* read_options,
-                    _In_ size_t max_data_size) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(read_options == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextDataReadOptions is NULL");
-  ORT_API_RETURN_IF(max_data_size == 0 || max_data_size == std::numeric_limits<size_t>::max(),
-                    ORT_INVALID_ARGUMENT, "max_data_size must be finite and greater than zero");
-  read_options->max_data_size = max_data_size;
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API(void, OrtApis::ReleaseEpContextDataReadOptions,
-        _Frees_ptr_opt_ OrtEpContextDataReadOptions* read_options) {
-  delete read_options;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,

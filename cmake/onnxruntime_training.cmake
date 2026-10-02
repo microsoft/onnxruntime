@@ -67,7 +67,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
 
   onnxruntime_add_static_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
-  add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
+  add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx ${onnxruntime_providers_target})
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_training_runner PRIVATE Python::Python)
@@ -110,7 +110,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       ${PROVIDERS_MKLDNN}
       ${PROVIDERS_DML}
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       onnxruntime_util
       onnxruntime_framework
   )

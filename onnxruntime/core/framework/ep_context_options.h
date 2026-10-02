@@ -4,7 +4,6 @@
 #pragma once
 
 #include <filesystem>
-#include <limits>
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
@@ -43,7 +42,6 @@ struct EpContextDataWriteFuncHolder {
 struct EpContextDataCallbacks {
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  size_t read_max_data_size = std::numeric_limits<size_t>::max();
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
 };

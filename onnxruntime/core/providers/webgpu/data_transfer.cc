@@ -2,7 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/data_transfer.h"
+
+#include <mutex>
+
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -12,22 +16,27 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             void* dst_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
+  auto& command_state = recording_;
+  std::lock_guard<std::recursive_mutex> recording_lock{command_state.mutex};
   if (bytes > 0) {
     if (dst_is_gpu) {
       if (src_is_gpu) {
         // copy from GPU to GPU
-        buffer_manager_.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+        buffer_manager_.MemCpy(command_state,
+                               static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
                                static_cast<WGPUBuffer>(dst_data),
                                bytes);
       } else {
         // copy from CPU to GPU
-        buffer_manager_.Upload(const_cast<void*>(src_data),
+        buffer_manager_.Upload(command_state,
+                               const_cast<void*>(src_data),
                                static_cast<WGPUBuffer>(dst_data),
                                bytes);
       }
     } else {
       // copy from GPU to CPU
-      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+      buffer_manager_.Download(command_state,
+                               static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
                                dst_data,
                                bytes);
     }
@@ -36,10 +45,23 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
   return Status::OK();
 }
 
-bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+bool DataTransfer::IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device) {
+  // WebGPU allocations carry VendorIds::NONE. A vendor-tagged GPU handle belongs to another EP, and
+  // reinterpreting it as a WGPUBuffer would be unsafe. The plugin EP transfer applies the same rule.
+  if (src_device.Type() == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NONE) {
+    return false;
+  }
+  if (dst_device.Type() == OrtDevice::GPU && dst_device.Vendor() != OrtDevice::VendorIds::NONE) {
+    return false;
+  }
+
   return (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::CPU) ||
          (dst_device.Type() == OrtDevice::GPU && src_device.Type() == OrtDevice::GPU) ||
          (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
+}
+
+bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return IsSupportedDevicePair(src_device, dst_device);
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
