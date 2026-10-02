@@ -179,6 +179,11 @@ def retag_wheel_metadata(text: str, tags: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def comparable_wheel_metadata(text: str) -> str:
+    """A WHEEL file without its Tag lines and the informational Generator line, which pip ignores."""
+    return "\n".join(line for line in text.splitlines() if not line.startswith(("Tag:", "Generator:")))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("wheels", nargs="+", help="the single-CPython wheels to merge")
@@ -218,7 +223,8 @@ def main():
     record_file = f"{dist_info}/RECORD"
 
     # The merged wheel carries a single copy of METADATA, entry_points.txt, etc., so every input has to
-    # agree on them. RECORD is regenerated below and WHEEL is compared after its Tag lines are replaced.
+    # agree on them. RECORD is regenerated below and WHEEL is compared without its Tag and Generator lines;
+    # each interpreter may carry a different setuptools version.
     inconsistent_metadata = [
         path for path in differing if path.startswith(dist_info + "/") and path not in (wheel_file, record_file)
     ]
@@ -227,15 +233,20 @@ def main():
             "the dist-info files must be byte identical across the wheels. These files differ or are missing "
             "from some wheels:\n    " + "\n    ".join(inconsistent_metadata)
         )
-    wheel_texts = set()
+    wheel_texts = []
     for wheel in args.wheels:
         with zipfile.ZipFile(wheel) as archive:
             if wheel_file not in archive.namelist():
                 sys.exit(f"{wheel_file} is missing from {wheel}")
-            wheel_texts.add(retag_wheel_metadata(archive.read(wheel_file).decode("utf-8"), tags))
-    if len(wheel_texts) != 1:
-        sys.exit(f"{wheel_file} differs between the wheels in more than its Tag lines")
-    merged_wheel_text = wheel_texts.pop()
+            wheel_texts.append(archive.read(wheel_file).decode("utf-8"))
+    comparable = [comparable_wheel_metadata(text) for text in wheel_texts]
+    if len(set(comparable)) != 1:
+        details = "\n".join(
+            f"  {os.path.basename(wheel)}:\n    " + text.replace("\n", "\n    ")
+            for wheel, text in zip(args.wheels, comparable, strict=True)
+        )
+        sys.exit(f"{wheel_file} differs between the wheels beyond its Tag and Generator lines:\n{details}")
+    merged_wheel_text = retag_wheel_metadata(wheel_texts[0], tags)
 
     per_interpreter = [path for path in differing if not path.startswith(dist_info + "/")]
     unexpected = [path for path in per_interpreter if not is_pybind_module(path)]
