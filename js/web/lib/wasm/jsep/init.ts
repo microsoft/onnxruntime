@@ -70,6 +70,7 @@ class TensorViewImpl implements TensorView {
 
 class ComputeContextImpl implements ComputeContext {
   readonly adapterInfo: AdapterInfo;
+  readonly deviceLimits: GPUSupportedLimits;
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
   readonly outputCount: number;
@@ -87,6 +88,7 @@ class ComputeContextImpl implements ComputeContext {
     contextDataOffset: number,
   ) {
     this.adapterInfo = backend.adapterInfo;
+    this.deviceLimits = backend.device.limits;
 
     // extract context data
     const ptrSize = module.PTR_SIZE;

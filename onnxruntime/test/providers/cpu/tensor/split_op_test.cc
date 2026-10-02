@@ -156,6 +156,28 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   SplitTestAxis0EqualSplit<std::string>();
 }
 
+#ifdef USE_CUDA
+TEST(SplitOperatorTest, EqualSized33OutputsCuda) {
+  constexpr int kOutputCount = 33;
+  OpTester test("Split", 13);
+  test.AddAttribute("axis", int64_t{0});
+
+  std::vector<float> input;
+  std::vector<int64_t> split_sizes(kOutputCount, 1);
+  input.reserve(kOutputCount);
+  for (int i = 0; i < kOutputCount; ++i) {
+    input.push_back(static_cast<float>(i));
+  }
+  test.AddInput<float>("input", {kOutputCount}, input);
+  test.AddInput<int64_t>("split", {kOutputCount}, split_sizes);
+  for (int i = 0; i < kOutputCount; ++i) {
+    const auto output_name = MakeString("output", i);
+    test.AddOutput<float>(output_name.c_str(), {1}, {input[i]});
+  }
+  test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+#endif
+
 TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
   constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
@@ -399,6 +421,47 @@ TEST(SplitOperatorTest, ZeroSizeInput) {
 
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
+
+#ifdef USE_CUDA
+TEST(SplitOperatorTest, CudaDimensionProductExceedsIntMax) {
+  OpTester test("Split", 13);
+  test.AddAttribute("axis", int64_t{1});
+  test.AddInput<float>("input", {0, 46341, 46341}, {});
+  test.AddInput<int64_t>("split", {2}, {23170, 23171});
+  test.AddOutput<float>("output0", {0, 23170, 46341}, {});
+  test.AddOutput<float>("output1", {0, 23171, 46341}, {});
+
+  test.Config(ExpectResult::kExpectFailure, "narrowing_error")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(SplitOperatorTest, CudaBeforeDimensionProductExceedsIntMax) {
+  OpTester test("Split", 13);
+  test.AddAttribute("axis", int64_t{2});
+  test.AddInput<float>("input", {46341, 46341, 0}, {});
+  test.AddInput<int64_t>("split", {2}, {0, 0});
+  test.AddOutput<float>("output0", {46341, 46341, 0}, {});
+  test.AddOutput<float>("output1", {46341, 46341, 0}, {});
+
+  test.Config(ExpectResult::kExpectFailure, "narrowing_error")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(SplitOperatorTest, CudaAfterDimensionProductExceedsIntMax) {
+  OpTester test("Split", 13);
+  test.AddAttribute("axis", int64_t{1});
+  test.AddInput<float>("input", {1, 0, 46341, 46341}, {});
+  test.AddInput<int64_t>("split", {2}, {0, 0});
+  test.AddOutput<float>("output0", {1, 0, 46341, 46341}, {});
+  test.AddOutput<float>("output1", {1, 0, 46341, 46341}, {});
+
+  test.Config(ExpectResult::kExpectFailure, "narrowing_error")
+      .ConfigEp(DefaultCudaExecutionProvider())
+      .RunWithConfig();
+}
+#endif
 
 TEST(SplitOperatorTest, ZeroSizeOutput) {
   constexpr int64_t axis = 1;
