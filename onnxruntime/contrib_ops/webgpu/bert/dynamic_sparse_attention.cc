@@ -29,6 +29,7 @@ constexpr uint32_t kMaxCacheLength = 65536;
 constexpr uint32_t kMaxSelected = 4096;
 constexpr uint32_t kMaxLocalWindow = 4096;
 constexpr uint32_t kAttentionWorkgroupSize = 64;
+static_assert(kMaxHeadSize % kAttentionWorkgroupSize == 0);
 constexpr uint32_t kAttentionValuesPerInvocation = kMaxHeadSize / kAttentionWorkgroupSize;
 
 DynamicSparseAttentionMode ParseAttentionMode(const std::string& value) {
@@ -576,7 +577,7 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       auxiliary_kv_shared_, attention_mode_, selected_kv_source_, scale_, has_scale_,
       qk_norm_epsilon_, parameters));
   parameters.rotary_interleaved = rotary_interleaved_;
-  parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
+  parameters.use_smooth_softmax = use_smooth_softmax_ && head_sink == nullptr;
 
   if (parameters.batch_size > static_cast<int>(kMaxBatchSize)) {
     return NotImplementedBound("batch_size", parameters.batch_size, kMaxBatchSize);
@@ -791,11 +792,12 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const bool has_selection =
       parameters.max_selected > 0 && (!selected_from_auxiliary || parameters.auxiliary_sequence_length > 0);
   const bool has_auxiliary_value = auxiliary_value != nullptr;
+  const bool use_smooth_softmax = use_smooth_softmax_ && head_sink == nullptr;
   DynamicSparseAttentionProgram attention_program(
       has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-      head_sink != nullptr, use_smooth_softmax_);
+      head_sink != nullptr, use_smooth_softmax);
   attention_program.CacheHint(has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-                              head_sink != nullptr, use_smooth_softmax_)
+                              head_sink != nullptr, use_smooth_softmax)
       .AddInputs({
           {&prepared_query, ProgramTensorMetadataDependency::TypeAndRank},
           {present_key_output, ProgramTensorMetadataDependency::TypeAndRank},

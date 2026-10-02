@@ -18,9 +18,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#endif
-
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "core/graph/model.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
