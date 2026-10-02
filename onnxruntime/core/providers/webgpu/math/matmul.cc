@@ -55,7 +55,6 @@ class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
   static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
                 "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
                 "because the WGSL reduction loop halves workgroup_size_y each iteration.");
-  static constexpr uint32_t kColumnsPerWorkgroup = kWorkgroupSizeX * 4;
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("a", ShaderUsage::None);
