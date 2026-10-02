@@ -109,6 +109,12 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
       }
       kernel_shape.push_back(second_input_shape.dim(i).dim_value());
     }
+    // A longer kernel_shape (W rank > X rank) overruns `dilations` in the loop right below;
+    // a shorter one (W rank < X rank) leaves `effective_kernel_shape` too short for the
+    // output-shape loop further below.
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
   }
 
   std::vector<int64_t> effective_kernel_shape = kernel_shape;
@@ -121,6 +127,10 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   std::vector<int64_t> pads;
 
   // Infer output shape if 'pads' tensor is available
+  if (ctx.getNumInputs() <= 2) {
+    return;
+  }
+
   const auto* pads_initializer = ctx.getInputData(2);
   if (nullptr == pads_initializer) {
     return;
@@ -1402,6 +1412,12 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
       usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. MoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs must contain one corresponding row per
+      token in either form.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1451,6 +1467,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs and optional router_weights must contain
+      one corresponding row per token in either form.
 
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
@@ -1847,6 +1869,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ConvTransposeWithDynamicPads, 1,
                                     "W",
                                     "",
                                     "T")
+                                // Pads is required by the kernels, but v1 published it as optional.
+                                // Keep the schema compatible and reject a missing tensor at runtime.
                                 .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
                                 .Input(3, "B", "", "T", OpSchema::Optional)
                                 .Output(

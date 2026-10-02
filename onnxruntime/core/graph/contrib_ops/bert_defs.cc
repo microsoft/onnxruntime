@@ -12,6 +12,7 @@
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -267,17 +268,19 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
     }
 
-    if (hasInputShape(ctx, 2)) {
+    if (ctx.hasInput(2)) {
       //   Input 0 (query) has shape (batch_size, sequence_length, num_heads * head_size)
       //   Input 1 (key) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
       //   Input 2 (value) has shape (batch_size, kv_sequence_length, kv_num_heads * head_size)
       //   Output 0 has shape (batch_size, sequence_length, num_heads * head_size)
       ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
 
-      auto& value_shape = getInputShape(ctx, 2);
-      auto& value_dims = value_shape.dim();
-      if (value_dims.size() == 3 && value_dims[1].has_dim_value()) {
-        kv_sequence_length = value_dims[1].dim_value();
+      if (hasInputShape(ctx, 2)) {
+        auto& value_shape = getInputShape(ctx, 2);
+        auto& value_dims = value_shape.dim();
+        if (value_dims.size() == 3 && value_dims[1].has_dim_value()) {
+          kv_sequence_length = value_dims[1].dim_value();
+        }
       }
     } else {
       // Packed QKV:
@@ -287,11 +290,24 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       int64_t num_heads = getAttribute(ctx, "num_heads", 0);
       int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
-      int64_t hidden_size = query_dims[2].dim_value();
-      int64_t head_size = hidden_size / (num_heads + 2 * kv_num_heads);
+      if (num_heads <= 0 || kv_num_heads <= 0) {
+        fail_shape_inference("num_heads and kv_num_heads must be positive.");
+      }
+      if (kv_num_heads > (std::numeric_limits<int64_t>::max() - num_heads) / 2) {
+        fail_shape_inference("num_heads + 2 * kv_num_heads must not overflow.");
+      }
+
+      const int64_t grouped_heads = num_heads + 2 * kv_num_heads;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      output_shape.add_dim()->set_dim_value(head_size * num_heads);
+      auto* output_hidden_size = output_shape.add_dim();
+      if (query_dims[2].has_dim_value()) {
+        const int64_t hidden_size = query_dims[2].dim_value();
+        if (hidden_size % grouped_heads != 0) {
+          fail_shape_inference("Packed query hidden size must be divisible by the grouped head count.");
+        }
+        output_hidden_size->set_dim_value((hidden_size / grouped_heads) * num_heads);
+      }
       updateOutputShape(ctx, 0, output_shape);
 
       if (query_dims[1].has_dim_value()) {
@@ -417,7 +433,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         int64_t hidden_size = query_dims[2].dim_value();
         int64_t head_size = 0;
 
-        if (hasInputShape(ctx, 2)) {
+        if (ctx.hasInput(2)) {
           // query shape is (batch_size, sequence_length, num_heads * head_size)
           head_size = hidden_size / num_heads;
         } else {
@@ -467,6 +483,84 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       total_sequence_length_index);
 }
 
+void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+  if (num_heads <= 0 || num_heads > std::numeric_limits<int>::max()) {
+    fail_shape_inference("num_heads must be a positive int");
+  }
+  if (kv_num_heads <= 0 || kv_num_heads > std::numeric_limits<int>::max() ||
+      num_heads % kv_num_heads != 0) {
+    fail_shape_inference("kv_num_heads must be positive and divide num_heads");
+  }
+
+  if (hasInputShape(ctx, 0)) {
+    const auto& query_shape = getInputShape(ctx, 0);
+    const auto& query_dims = query_shape.dim();
+    if (query_dims.size() != 3) {
+      fail_shape_inference("The query input shall be 3 dimensions");
+    }
+
+    auto output_shape = query_shape;
+    if (ctx.getInputType(2) == nullptr) {
+      output_shape.mutable_dim(2)->Clear();
+      if (query_dims[2].has_dim_value()) {
+        const int64_t packed_heads = num_heads + 2 * kv_num_heads;
+        const int64_t packed_hidden_size = query_dims[2].dim_value();
+        if (packed_hidden_size % packed_heads != 0) {
+          fail_shape_inference("Packed QKV hidden size must be divisible by num_heads + 2 * kv_num_heads");
+        }
+        output_shape.mutable_dim(2)->set_dim_value(num_heads * (packed_hidden_size / packed_heads));
+      }
+    } else if (query_dims[2].has_dim_value() && query_dims[2].dim_value() % num_heads != 0) {
+      fail_shape_inference("Query hidden size must be divisible by the number of query heads");
+    }
+    updateOutputShape(ctx, 0, output_shape);
+  }
+
+  for (int output_index = 1; output_index <= 2; ++output_index) {
+    const int input_index = output_index + 2;
+    if (ctx.getNumOutputs() <= static_cast<size_t>(output_index) || !ctx.hasOutput(output_index)) {
+      continue;
+    }
+
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output_index);
+    if (hasInputShape(ctx, input_index)) {
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, input_index, output_index);
+      continue;
+    }
+
+    if (hasInputShape(ctx, 0)) {
+      const auto& query_dims = getInputShape(ctx, 0).dim();
+      if (query_dims.size() == 3 && query_dims[2].has_dim_value()) {
+        const bool is_packed = ctx.getInputType(2) == nullptr;
+        const int64_t divisor = is_packed ? num_heads + 2 * kv_num_heads : num_heads;
+        if (query_dims[2].dim_value() % divisor != 0) {
+          fail_shape_inference("Query hidden size must be divisible by the number of query heads");
+        }
+        const int64_t head_size = query_dims[2].dim_value() / divisor;
+        ONNX_NAMESPACE::TensorShapeProto present_shape;
+        *present_shape.add_dim() = query_dims[0];
+        present_shape.add_dim()->set_dim_value(kv_num_heads);
+        const auto* total_length_data = ctx.getInputData(10);
+        if (total_length_data != nullptr) {
+          const auto total_lengths = ParseData<int32_t>(total_length_data);
+          if (total_lengths.size() != 1) {
+            fail_shape_inference("total_sequence_length must contain exactly one element");
+          }
+          present_shape.add_dim()->set_dim_value(total_lengths[0]);
+        } else {
+          present_shape.add_dim();
+        }
+        present_shape.add_dim()->set_dim_value(head_size);
+        updateOutputShape(ctx, output_index, present_shape);
+      }
+    }
+  }
+}
+
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
@@ -474,6 +568,98 @@ void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index,
                                                total_sequence_length_index);
 }
+
+constexpr const char* DynamicSparseAttention_ver1_doc = R"DOC(
+Model-neutral sparse grouped-query attention with a contiguous main KV cache.
+
+`selected_indices` and `selected_counts` are produced by an external selector. The operator never computes selection
+scores or TopK indices. The first `selected_counts[q]` entries in each selected-index row are valid; remaining entries
+must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
+
+`attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
+normalizes causally valid main-cache entries in `local_window_size` and selected auxiliary entries. An optional
+per-query-head sink can participate in either mode; it contributes to the shared softmax denominator but has no value
+vector. A row with no entries and no sink produces zero output.
+
+Supported mode/source combinations:
+
+- `selected_only` + `main`: Qwen4-Exp QSA-compatible execution.
+- `local_plus_selected` + `auxiliary`: DeepSeek V4 CSA-compatible execution and requires `local_window_size > 0`.
+
+The main cache uses BNSH layout and ordinary contiguous append semantics. Selection changes reads, not cache writes.
+Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
+auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
+the exporter's responsibility.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DynamicSparseAttention, 1,
+    OpSchema()
+        .SetDoc(DynamicSparseAttention_ver1_doc)
+        .Attr("num_heads", "Number of query heads.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of main and auxiliary KV heads.", AttributeProto::INT)
+        .Attr("scale", "Scaling factor applied to QK. Defaults to 1/sqrt(head_size).",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("is_causal", "Must be 1. DynamicSparseAttention version 1 supports causal attention only.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("local_window_size", "Number of causally visible main-cache entries in local_plus_selected mode.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("attention_mode", "One of 'selected_only' or 'local_plus_selected'.",
+              AttributeProto::STRING, std::string("selected_only"))
+        .Attr("selected_kv_source", "Source addressed by selected indices: 'main' or 'auxiliary'.",
+              AttributeProto::STRING, std::string("main"))
+        .Attr("do_rotary", "Whether to apply rotary embedding to Q and newly appended K.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_interleaved", "Whether rotary pairs use interleaved layout.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_offset",
+              "First head channel covered by rotary embedding. Must be nonnegative, a multiple of 8, and leave room "
+              "for the rotary dimensions within head_size.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("qk_norm_epsilon", "Epsilon for optional per-head Q/K RMS normalization.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("smooth_softmax", "Add a zero-valued sink logit when no explicit head_sink is supplied.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "query",
+               "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
+               "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
+               "T")
+        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
+               OpSchema::Optional)
+        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
+               OpSchema::Optional)
+        .Input(3, "past_key", "Main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(4, "past_value", "Main value cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T",
+               OpSchema::Optional)
+        .Input(6, "auxiliary_value", "Read-only auxiliary value sequence in BNSH layout.", "T",
+               OpSchema::Optional)
+        .Input(7, "selected_indices", "Selected request-local source positions [batch * sequence, max_selected].",
+               "M")
+        .Input(8, "selected_counts", "Number of valid entries per selected-index row [batch * sequence].", "M")
+        .Input(9, "seqlens_k", "Total logical main sequence length minus one for each batch entry.", "M")
+        .Input(10, "total_sequence_length", "Maximum total main sequence length, as a scalar or one-element tensor.",
+               "M")
+        .Input(11, "cos_cache", "Rotary cosine cache [max_sequence_length, rotary_dim / 2].", "T",
+               OpSchema::Optional)
+        .Input(12, "sin_cache", "Rotary sine cache [max_sequence_length, rotary_dim / 2].", "T",
+               OpSchema::Optional)
+        .Input(13, "position_ids", "Optional rotary positions [batch, sequence].", "tensor(int64)",
+               OpSchema::Optional)
+        .Input(14, "q_norm_weight", "Optional Q RMSNorm weight [head_size].", "T", OpSchema::Optional)
+        .Input(15, "k_norm_weight", "Optional K RMSNorm weight [head_size].", "T", OpSchema::Optional)
+        .Input(16, "head_sink",
+               "Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.",
+               "T", OpSchema::Optional)
+        .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
+        .Output(1, "present_key", "Updated main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Output(2, "present_value", "Updated main value cache in BNSH layout.", "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain all floating-point inputs and outputs to one element type.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
+        .TypeAndShapeInferenceFunction(DynamicSparseAttentionTypeAndShapeInference));
 
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -1822,6 +2008,89 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PagedAttentionTypeAndShapeInference(ctx);
         }));
 
+constexpr const char* SparsePagedAttention_ver1_doc = R"DOC(
+Selected-index attention over the PagedAttention main K/V cache.
+
+Selection is supplied by an external indexer. selected_only attends selected entries;
+local_plus_selected combines a main-cache local window and selected entries in one softmax.
+Selected indices are request-local logical positions in the main cache or in a contiguous
+auxiliary cache, according to selected_kv_source.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparsePagedAttention, 1,
+    OpSchema()
+        .SetDoc(SparsePagedAttention_ver1_doc)
+        .Attr("num_heads", "Number of query heads.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of main K/V heads.", AttributeProto::INT)
+        .Attr("scale", "Attention scale; defaults to 1/sqrt(head_size).",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("softcap", "Optional tanh softcap for attention logits.",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("is_causal", "Apply causal filtering to main-cache reads.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("local_window_size", "Left main-cache window size; -1 means all visible tokens.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("attention_mode", "'selected_only' or 'local_plus_selected'.",
+              AttributeProto::STRING, std::string("selected_only"))
+        .Attr("selected_kv_source", "'main' or 'auxiliary'.",
+              AttributeProto::STRING, std::string("main"))
+        .Attr("auxiliary_cache_layout", "Version 1 supports only 'contiguous'.",
+              AttributeProto::STRING, std::string("contiguous"))
+        .Attr("auxiliary_kv_shared", "When 1, auxiliary_key supplies both K and V.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("do_rotary", "Apply rotary embedding to current Q/K.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rotary_interleaved", "Use interleaved rotary embedding.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rotary_offset", "First head channel covered by rotary embedding.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("qk_norm_epsilon", "QK RMSNorm epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Attr("k_quant_type", "Main key-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.",
+              AttributeProto::STRING, std::string("NONE"))
+        .Attr("v_quant_type", "Main value-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.",
+              AttributeProto::STRING, std::string("NONE"))
+        .Input(0, "query", "Query or packed QKV, shaped as for PagedAttention.", "T")
+        .Input(1, "key", "Current key.", "T", OpSchema::Optional)
+        .Input(2, "value", "Current value.", "T", OpSchema::Optional)
+        .Input(3, "key_cache", "Paged main key cache.", "T_CACHE")
+        .Input(4, "value_cache", "Paged main value cache.", "T_CACHE")
+        .Input(5, "cumulative_sequence_length", "Packed query offsets.", "S")
+        .Input(6, "past_seqlens", "Past main-cache lengths.", "S")
+        .Input(7, "block_table", "Logical-to-physical main-cache block table.", "S")
+        .Input(8, "slot_mapping", "Optional main-cache write slots; -1 suppresses a write.",
+               "S", OpSchema::Optional)
+        .Input(9, "selected_indices",
+               "Request-local positions, shape (token_count, max_selected_entries); unused entries are -1.", "S")
+        .Input(10, "selected_counts", "Selected entry count per query token.", "S")
+        .Input(11, "auxiliary_key",
+               "Shape (batch_size, capacity, kv_num_heads_or_one, head_size).",
+               "T", OpSchema::Optional)
+        .Input(12, "auxiliary_value", "Same shape as auxiliary_key.", "T", OpSchema::Optional)
+        .Input(13, "auxiliary_lengths", "Valid auxiliary length per request.", "S", OpSchema::Optional)
+        .Input(14, "cos_cache", "Rotary cosine cache.", "T", OpSchema::Optional)
+        .Input(15, "sin_cache", "Rotary sine cache.", "T", OpSchema::Optional)
+        .Input(16, "head_sink", "Optional softmax sink logit per query head.", "T", OpSchema::Optional)
+        .Input(17, "q_norm_weight", "QK-Norm query weight.", "T", OpSchema::Optional)
+        .Input(18, "k_norm_weight", "QK-Norm key weight.", "T", OpSchema::Optional)
+        .Input(19, "k_scale", "Main key-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(20, "v_scale", "Main value-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(21, "attention_metadata",
+               "CPU tensor [max_query_len, max_local_main_len, max_selected_entries, max_auxiliary_len, "
+               "max_combined_attention_len].",
+               "S", OpSchema::Optional)
+        .Output(0, "output", "Shape (token_count, num_heads * head_size).", "T")
+        .Output(1, "key_cache_out", "In-place alias of key_cache.", "T_CACHE", OpSchema::Optional)
+        .Output(2, "value_cache_out", "In-place alias of value_cache.", "T_CACHE", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation type.")
+        .TypeConstraint("T_CACHE", {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
+                        "Main cache storage type.")
+        .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Main cache scale type.")
+        .TypeConstraint("S", {"tensor(int32)"}, "Index and length type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          PagedAttentionTypeAndShapeInference(ctx);
+        }));
+
 constexpr const char* SparseAttention_ver1_doc = R"DOC(
 Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
 
@@ -1937,6 +2206,446 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionTypeAndShapeInference(ctx, 3);
+        }));
+
+namespace sai = ::onnxruntime::contrib::sparse_attention_indexer;
+
+namespace {
+
+bool SparseAttentionIndexerHasInput(ONNX_NAMESPACE::InferenceContext& ctx, int index) {
+  return static_cast<size_t>(index) < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
+}
+
+// Copies a dimension (value or symbolic parameter) from an input shape into an output shape.
+void SparseAttentionIndexerAppendDim(ONNX_NAMESPACE::TensorShapeProto& shape,
+                                     const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
+  *shape.add_dim() = dim;
+}
+
+const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerShape(ONNX_NAMESPACE::InferenceContext& ctx, int index,
+                                                                    int expected_rank) {
+  if (!SparseAttentionIndexerHasInput(ctx, index) || !hasInputShape(ctx, index)) {
+    return nullptr;
+  }
+  const auto& shape = getInputShape(ctx, index);
+  if (shape.dim_size() != expected_rank) {
+    fail_shape_inference("SparseAttentionIndexer: input ", index, " must have rank ", expected_rank,
+                         ", got rank ", shape.dim_size());
+  }
+  return &shape;
+}
+
+}  // namespace
+
+void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  const std::string policy_mode = getAttribute(ctx, "policy_mode", std::string());
+  sai::Policy policy = sai::Policy::kQsa;
+  if (!sai::TryParsePolicy(policy_mode, policy)) {
+    fail_shape_inference("SparseAttentionIndexer: policy_mode must be 'qsa' or 'csa', got '", policy_mode, "'");
+  }
+  const bool is_qsa = policy == sai::Policy::kQsa;
+
+  const int64_t compress_ratio = getAttribute(ctx, "compress_ratio", static_cast<int64_t>(0));
+  if (compress_ratio <= 0 || compress_ratio > std::numeric_limits<int>::max()) {
+    fail_shape_inference("SparseAttentionIndexer: compress_ratio must be in (0, INT_MAX], got ", compress_ratio);
+  }
+
+  const int64_t token_budget = getAttribute(ctx, "token_budget", static_cast<int64_t>(0));
+  const int64_t index_topk = getAttribute(ctx, "index_topk", static_cast<int64_t>(0));
+  if (is_qsa) {
+    if (ctx.getAttribute("index_topk") != nullptr || ctx.getAttribute("head_weight_scale") != nullptr) {
+      fail_shape_inference(
+          "SparseAttentionIndexer: index_topk and head_weight_scale must not be set when policy_mode is 'qsa'");
+    }
+    if (token_budget <= 0 || token_budget % compress_ratio != 0 ||
+        token_budget > std::numeric_limits<int>::max() - compress_ratio + 1) {
+      fail_shape_inference(
+          "SparseAttentionIndexer: policy_mode 'qsa' requires token_budget > 0, divisible by "
+          "compress_ratio, and a selected capacity no greater than INT_MAX, got token_budget=",
+          token_budget, " compress_ratio=", compress_ratio);
+    }
+  } else {
+    if (ctx.getAttribute("token_budget") != nullptr) {
+      fail_shape_inference("SparseAttentionIndexer: token_budget must not be set when policy_mode is 'csa'");
+    }
+    if (index_topk <= 0 || index_topk > std::numeric_limits<int>::max()) {
+      fail_shape_inference("SparseAttentionIndexer: policy_mode 'csa' requires index_topk in (0, INT_MAX], got ",
+                           index_topk);
+    }
+  }
+
+  // Strict policy input validation: every slot of the inactive policy must be omitted, and every
+  // slot of the active policy must be provided.
+  constexpr int kQsaOnlyInputs[] = {sai::kMask};
+  constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+                                    sai::kPositionIds, sai::kPastProjBuffer};
+  for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
+    if (is_qsa && index == sai::kKey) {
+      continue;
+    }
+    if (!SparseAttentionIndexerHasInput(ctx, index)) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index, " is required for every policy_mode");
+    }
+  }
+  if (!SparseAttentionIndexerHasInput(ctx, sai::kPastKey)) {
+    fail_shape_inference("SparseAttentionIndexer: past_key is required for every policy_mode");
+  }
+  for (int index : kQsaOnlyInputs) {
+    if (SparseAttentionIndexerHasInput(ctx, index) != is_qsa) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index,
+                           is_qsa ? " is required when policy_mode is 'qsa'"
+                                  : " must be omitted when policy_mode is 'csa'");
+    }
+  }
+  for (int index : kCsaOnlyInputs) {
+    if (SparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index,
+                           is_qsa ? " must be omitted when policy_mode is 'qsa'"
+                                  : " is required when policy_mode is 'csa'");
+    }
+  }
+  const size_t expected_outputs = is_qsa ? sai::kQsaOutputCount : sai::kCsaOutputCount;
+  if (ctx.getNumOutputs() != expected_outputs) {
+    fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
+                         expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
+  }
+  updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+  const bool has_key = SparseAttentionIndexerHasInput(ctx, sai::kKey);
+  (void)SparseAttentionIndexerShape(ctx, sai::kKey, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kKeyNormWeight, 1);
+  (void)SparseAttentionIndexerShape(ctx, sai::kCosCache, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kSinCache, 3);
+
+  const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 3);
+  if (query_shape == nullptr) {
+    return;
+  }
+  const auto& batch_dim = query_shape->dim(0);
+  const auto& sequence_dim = query_shape->dim(1);
+  const auto& query_width_dim = query_shape->dim(2);
+  const auto* query_norm_shape = SparseAttentionIndexerShape(ctx, sai::kQueryNormWeight, 1);
+  if (query_width_dim.has_dim_value() && query_width_dim.dim_value() <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be > 0, got ", query_width_dim.dim_value());
+  }
+  if (query_width_dim.has_dim_value() && query_width_dim.dim_value() > std::numeric_limits<int>::max()) {
+    fail_shape_inference("SparseAttentionIndexer: query width must be no greater than INT_MAX");
+  }
+  if (query_norm_shape == nullptr) {
+    return;
+  }
+  const auto& head_size_dim = query_norm_shape->dim(0);
+  if (head_size_dim.has_dim_value() && head_size_dim.dim_value() <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: head_size must be > 0, got ", head_size_dim.dim_value());
+  }
+  if (query_width_dim.has_dim_value() && head_size_dim.has_dim_value() && head_size_dim.dim_value() > 0) {
+    const int64_t query_width = query_width_dim.dim_value();
+    const int64_t head_size = head_size_dim.dim_value();
+    if (query_width % head_size != 0) {
+      fail_shape_inference("SparseAttentionIndexer: query width must be divisible by head_size");
+    }
+    if (is_qsa && !has_key && query_width / head_size < 2) {
+      fail_shape_inference("SparseAttentionIndexer: packed QK input must contain at least one query head and one key");
+    }
+  }
+  if (!is_qsa && head_size_dim.has_dim_value() && head_size_dim.dim_value() > std::numeric_limits<int64_t>::max() / 2) {
+    fail_shape_inference("SparseAttentionIndexer: 2 * head_size exceeds INT64_MAX");
+  }
+
+  const int64_t capacity = sai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
+  ONNX_NAMESPACE::TensorShapeProto selected_shape;
+  SparseAttentionIndexerAppendDim(selected_shape, batch_dim);
+  SparseAttentionIndexerAppendDim(selected_shape, sequence_dim);
+  selected_shape.add_dim()->set_dim_value(capacity);
+  updateOutputShape(ctx, sai::kSelectedIndices, selected_shape);
+
+  if (is_qsa) {
+    (void)SparseAttentionIndexerShape(ctx, sai::kMask, 2);
+    // ctx.getNumOutputs() == 2 was enforced above, so index 1 is in range.
+    propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKey);
+    const auto* past_key_shape = SparseAttentionIndexerShape(ctx, sai::kPastKey, 3);
+    if (past_key_shape != nullptr) {
+      (void)SparseAttentionIndexerShape(ctx, sai::kPastSequenceLength, 1);
+      ONNX_NAMESPACE::TensorShapeProto present_shape;
+      SparseAttentionIndexerAppendDim(present_shape, batch_dim);
+      if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength)) {
+        SparseAttentionIndexerAppendDim(present_shape, past_key_shape->dim(1));
+      } else {
+        auto* total_dim = present_shape.add_dim();
+        if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
+          const int64_t past_length = past_key_shape->dim(1).dim_value();
+          const int64_t sequence_length = sequence_dim.dim_value();
+          if (past_length > std::numeric_limits<int64_t>::max() - sequence_length) {
+            fail_shape_inference("SparseAttentionIndexer: present key sequence length exceeds INT64_MAX");
+          }
+          total_dim->set_dim_value(past_length + sequence_length);
+        }
+      }
+      SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
+      updateOutputShape(ctx, sai::kPresentKey, present_shape);
+    }
+    return;
+  }
+
+  // ctx.getNumOutputs() == 3 was enforced above, so indices 1 and 2 are in range.
+  propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKey);
+  propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentProjBuffer);
+
+  const auto* past_compressed_shape = SparseAttentionIndexerShape(ctx, sai::kPastKey, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPastSequenceLength, 1);
+  const auto* past_buffer_shape = SparseAttentionIndexerShape(ctx, sai::kPastProjBuffer, 4);
+  (void)SparseAttentionIndexerShape(ctx, sai::kGate, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPositionBias, 2);
+  (void)SparseAttentionIndexerShape(ctx, sai::kHeadWeights, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPositionIds, 2);
+
+  if (past_buffer_shape != nullptr && past_buffer_shape->dim(0).has_dim_value() &&
+      past_buffer_shape->dim(0).dim_value() != 2) {
+    fail_shape_inference("SparseAttentionIndexer: past_proj_buffer dimension 0 must be 2, got ",
+                         past_buffer_shape->dim(0).dim_value());
+  }
+  if (past_buffer_shape != nullptr && past_buffer_shape->dim(1).has_dim_value() &&
+      batch_dim.has_dim_value() && past_buffer_shape->dim(1).dim_value() != batch_dim.dim_value()) {
+    fail_shape_inference("SparseAttentionIndexer: past_proj_buffer dimension 1 must equal batch_size");
+  }
+  if (past_buffer_shape != nullptr && past_buffer_shape->dim(3).has_dim_value() &&
+      head_size_dim.has_dim_value() &&
+      past_buffer_shape->dim(3).dim_value() != 2 * head_size_dim.dim_value()) {
+    fail_shape_inference("SparseAttentionIndexer: past_proj_buffer dimension 3 must equal 2 * head_size");
+  }
+
+  sai::CsaWindowPlan plan;
+  const bool plan_known = past_buffer_shape != nullptr && past_buffer_shape->dim(2).has_dim_value() &&
+                          sequence_dim.has_dim_value() &&
+                          sai::TryComputeCsaWindowPlan(past_buffer_shape->dim(2).dim_value(),
+                                                       sequence_dim.dim_value(), compress_ratio, plan);
+  if (past_buffer_shape != nullptr && past_buffer_shape->dim(2).has_dim_value() &&
+      sequence_dim.has_dim_value() && !plan_known) {
+    fail_shape_inference(
+        "SparseAttentionIndexer: past_proj_buffer sequence length must be in [0, 2 * compress_ratio), got ",
+        past_buffer_shape->dim(2).dim_value());
+  }
+
+  if (past_compressed_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto present_shape;
+    SparseAttentionIndexerAppendDim(present_shape, batch_dim);
+    auto* entry_dim = present_shape.add_dim();
+    if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength)) {
+      *entry_dim = past_compressed_shape->dim(1);
+    } else if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
+      const int64_t past_length = past_compressed_shape->dim(1).dim_value();
+      if (past_length > std::numeric_limits<int64_t>::max() - plan.new_window_count) {
+        fail_shape_inference("SparseAttentionIndexer: present compressed-key length exceeds INT64_MAX");
+      }
+      entry_dim->set_dim_value(past_length + plan.new_window_count);
+    }
+    SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
+    updateOutputShape(ctx, sai::kPresentKey, present_shape);
+  }
+
+  if (past_buffer_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto buffer_shape;
+    SparseAttentionIndexerAppendDim(buffer_shape, past_buffer_shape->dim(0));
+    SparseAttentionIndexerAppendDim(buffer_shape, batch_dim);
+    auto* buffer_dim = buffer_shape.add_dim();
+    if (plan_known) {
+      buffer_dim->set_dim_value(plan.present_buffer_length);
+    }
+    SparseAttentionIndexerAppendDim(buffer_shape, past_buffer_shape->dim(3));
+    updateOutputShape(ctx, sai::kPresentProjBuffer, buffer_shape);
+  }
+}
+
+constexpr const char* SparseAttentionIndexer_ver1_doc = R"DOC(
+Selects, for every query token, the sparse-attention candidates that the following attention
+operator is allowed to read. It covers the two indexer flavours used by recent sparse-attention
+decoders, chosen with the policy_mode attribute:
+
+  policy_mode = "qsa" ("query sparse attention" token indexer)
+    Groups the tokens that are visible to a query into complete blocks of compress_ratio tokens,
+    mean-pools the indexer keys of every block, normalizes and rotates the pooled key, scores it
+    against the query heads with sum_h ReLU(q_h . k), keeps the token_budget / compress_ratio
+    highest scoring blocks and emits the token indices of those blocks followed by the visible
+    tokens of the trailing incomplete block.
+
+  policy_mode = "csa" ("compressed sparse attention" block indexer)
+    Compresses every compress_ratio consecutive tokens into one entry with a softmax-gated pooling
+    over a window of 2 * compress_ratio slots (the previous window contributes its "Ca" half and
+    the current window its "Cb" half), normalizes and rotates the entry, appends it to the
+    compressed-key state, scores the queries against every compressed entry with
+    sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
+    highest scoring entry indices. If a channel's softmax denominator is non-positive or non-finite
+    (for example, all logits are -inf or any logit is +inf), its pooled value is zero.
+
+Common contract:
+  * selected_indices is int32 with a fixed capacity that only depends on attributes:
+    token_budget + compress_ratio - 1 for "qsa" and index_topk for "csa". Unused entries are -1,
+    so no output size depends on the data and no device-to-host synchronization is required.
+  * All state is explicit in the graph. Nothing is cached inside the operator.
+  * Rotary embeddings reuse the precomputed cos_cache / sin_cache tables, which are indexed by
+    absolute key position. "qsa" applies the half-rotation of the model's (M)RoPE to the leading
+    rotary_dim = cos_cache.shape[2] channels. "csa" applies its trailing rotary to the last
+    2 * cos_cache.shape[2] channels, with each cos/sin entry covering two consecutive channels.
+  * query_norm_weight and key_norm_weight are the effective RMSNorm multipliers. Models that store a zero-centered gamma
+    (the normalized value is multiplied by 1 + gamma) must fold the addition into this initializer.
+  * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
+    result is rounded once to the tensor element type.
+  * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
+    ordered by decreasing score, so the result is deterministic.
+
+State layout for policy_mode = "csa": the two slices of past_proj_buffer hold the key and gate
+projections that have not been folded into a compressed entry yet. When their length is >=
+compress_ratio, the first compress_ratio tokens are the previous complete window (the "Ca" operand
+of the next window) and the remainder is the current incomplete window; when it is < compress_ratio
+there is no previous complete window and the whole buffer is the incomplete window. The length is
+therefore always in [0, 2 * compress_ratio), and the number of compressed entries emitted by a call
+is known from the input shapes alone. position_bias is re-applied to the buffered gates, so the gate
+projection plane stores the raw projection.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparseAttentionIndexer, 1,
+    OpSchema()
+        .SetDoc(SparseAttentionIndexer_ver1_doc)
+        .Attr("policy_mode",
+              "Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).",
+              AttributeProto::STRING)
+        .Attr("compress_ratio",
+              "Number of consecutive tokens folded into one compressed block. Must be > 0.",
+              AttributeProto::INT)
+        .Attr("token_budget",
+              "Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. "
+              "Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("index_topk",
+              "Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. "
+              "Must be omitted when policy_mode is 'qsa'.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("epsilon",
+              "Epsilon of the RMS normalization applied to queries and compressed keys. Default is 1e-6.",
+              AttributeProto::FLOAT,
+              1.0e-6f)
+        .Attr("scale",
+              "Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("head_weight_scale",
+              "Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). "
+              "Must be omitted when policy_mode is 'qsa'.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Indexer queries with shape (batch_size, sequence_length, num_heads * head_size), before "
+               "normalization, logical reshape, and rotary embedding. For policy_mode 'qsa', when key is omitted, "
+               "this input instead packs query followed by key along the last dimension and has shape "
+               "(batch_size, sequence_length, (num_heads + 1) * head_size).",
+               "T")
+        .Input(1,
+               "key",
+               "Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) "
+               "for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', "
+               "where the first head_size channels are the Ca series and the last head_size channels the Cb series. "
+               "May be omitted for policy_mode 'qsa' when query contains packed QK.",
+               "T",
+               OpSchema::Optional)
+        .Input(2,
+               "query_norm_weight",
+               "Effective RMSNorm multiplier of the queries, with shape (head_size).",
+               "T")
+        .Input(3,
+               "key_norm_weight",
+               "Effective RMSNorm multiplier of the compressed keys, with shape (head_size).",
+               "T")
+        .Input(4,
+               "cos_cache",
+               "Cosine rotary table indexed by absolute key position, with shape "
+               "(batch_size, max_rotary_sequence_length, rotary_width).",
+               "T")
+        .Input(5,
+               "sin_cache",
+               "Sine rotary table with the same shape as cos_cache.",
+               "T")
+        .Input(6,
+               "mask",
+               "Only for policy_mode 'qsa': INT64 padding mask with shape "
+               "(batch_size, total_sequence_length). Nonzero entries are visible subject to causal masking. "
+               "total_sequence_length is past_sequence_length + sequence_length.",
+               "TB",
+               OpSchema::Optional)
+        .Input(7,
+               "past_key",
+               "Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed "
+               "keys. Shape is (batch_size, past_sequence_length, head_size), or "
+               "(batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.",
+               "T")
+        .Input(8,
+               "gate",
+               "Only for policy_mode 'csa': gate projection of the new tokens with shape "
+               "(batch_size, sequence_length, 2 * head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(9,
+               "position_bias",
+               "Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(10,
+               "head_weights",
+               "Only for policy_mode 'csa': per-head score weights with shape "
+               "(batch_size, sequence_length, num_heads).",
+               "T",
+               OpSchema::Optional)
+        .Input(11,
+               "position_ids",
+               "Only for policy_mode 'csa': absolute position of every query with shape "
+               "(batch_size, sequence_length).",
+               "I",
+               OpSchema::Optional)
+        .Input(12,
+               "past_sequence_length",
+               "Optional one-element CPU tensor containing the number of valid rows in past_key. For policy_mode "
+               "'csa', the value is the number of compressed keys. When provided, past_key and present_key have "
+               "the same max-capacity shape and may share their buffer.",
+               "M",
+               OpSchema::Optional)
+        .Input(13,
+               "past_proj_buffer",
+               "Only for policy_mode 'csa': buffered key and gate projections packed along dimension 0, with shape "
+               "(2, batch_size, buffer_length, 2 * head_size). Slice 0 contains keys and slice 1 contains gates. "
+               "buffer_length is in [0, 2 * compress_ratio).",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "selected_indices",
+                "Selected entries with shape (batch_size, sequence_length, capacity). capacity is "
+                "token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices "
+                "into the key cache, and index_topk for policy_mode 'csa', where the values are compressed "
+                "entry indices. Unused entries are -1.",
+                "M")
+        .Output(1,
+                "present_key",
+                "Updated raw key cache for policy_mode 'qsa' or compressed-key cache for 'csa'. Without "
+                "past_sequence_length its sequence dimension grows by the entries emitted by this call. When "
+                "past_sequence_length is provided, its shape matches the max-capacity past_key and the two tensors "
+                "may share a buffer.",
+                "T")
+        .Output(2,
+                "present_proj_buffer",
+                "Only for policy_mode 'csa': updated packed key/gate projection buffer with shape "
+                "(2, batch_size, present_buffer_length, 2 * head_size).",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain floating point tensors to float, float16 and bfloat16.")
+        .TypeConstraint("TB", {"tensor(int64)"}, "Constrain the mask to 64-bit integer tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to 64-bit integer tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain indices and cache lengths to 32-bit integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          SparseAttentionIndexerTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
@@ -2599,42 +3308,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
-constexpr const char* CausalConvWithState_ver1_doc = R"DOC(
-Stateful causal depthwise convolution, generalized to N spatial dimensions.
-
-Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
-Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
-
-The convolution is causal (looks only at current and past positions along the last
-spatial dimension) and depthwise (each channel is convolved independently with its own kernel).
-
-Input layout is channels-first: (batch_size, channels, ...).
-Weight layout: (channels, 1, k_1, ...) for depthwise convolution.
-The carry state stores the last (k-1) positions along the causal axis for incremental decode.
-
-The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causality is
-enforced on the last spatial dimension only.
-
-The optional activation attribute supports fused SiLU/Swish activation.
-
-The dilation attribute spaces the kernel taps along the causal axis: output position t reads
-input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
-(k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
-past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
-(the default) is the undilated case and keeps the original state length, so models exported
-before the attribute existed are unaffected.
-
-The channels_last attribute selects a sequence-major layout for the activations and the carry
-state, so a model that already produces channels-last activations does not have to transpose into
-and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
-(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
-(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
-channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
-axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
-(channels) shapes because they have no sequence axis. The computed values are identical to the
-channels-first layout; only the memory layout differs.
-)DOC";
-
 constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
 Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
 
@@ -2752,7 +3425,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             propagateElemTypeFromInputToOutput(ctx, 0, 1);
           }
-
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
           if (max_ngram_size < 2) {
@@ -2831,6 +3503,289 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
           }
         }));
+
+constexpr const char* VarlenNGramHashMapping_ver1_doc = R"DOC(
+Computes Engram n-gram hash ids from pre-compressed tokenizer ids over a packed, token-major batch
+of variable-length sequences.
+
+input_ids has shape (total_tokens) and hash_ids has shape (total_tokens, (max_ngram_size - 1) *
+n_head_per_ngram). cumulative_sequence_length is a device-resident int32 tensor of shape
+(batch_size + 1); request i occupies [cumulative_sequence_length[i], cumulative_sequence_length[i +
+1]) of the packed buffer. Every request contributes at least one token.
+
+For n in [2, max_ngram_size], the op creates causal shifts of each request's own tokens, padding
+positions before that request's start with pad_id (or its own past_ids history, see below), and
+computes mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1]. For every
+head of that n-gram order it emits mix modulo the corresponding head vocabulary size. The n-gram
+window never reads tokens belonging to a different packed request; it is clamped at each request's
+own boundary exactly like VarlenCausalConvWithState clamps its causal convolution.
+
+An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op
+causal across invocations (chunked prefill or autoregressive decode) for every concurrent request in
+the packed batch, the optional past_ids input carries those preceding ids per request and
+present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
+1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
+(batch_size), not by position in the packed buffer. Positions before the start of a request's whole
+sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
+sequences packed together (optionally split into packed chunks with present_ids threaded into
+past_ids) produce identical hash ids.
+
+Optional inputs add Qwen4-Exp-style n-gram embedding support:
+
+- eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+  boundaries. Missing history is also filled with eos_token_id.
+- segment_ids, when provided, additionally resets causal history when adjacent tokens within one
+  packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+  subsequent calls to preserve boundaries across chunked prefill and decode calls.
+- head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
+  in the input id type on overflow.
+- capture_count enables compact prefix state capture when state_update_capacity is positive. For
+  each request, state_update contains the trailing state after each captured prefix token.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    VarlenNGramHashMapping, 1,
+    OpSchema()
+        .SetDoc(VarlenNGramHashMapping_ver1_doc)
+        .Attr("max_ngram_size",
+              "Maximum n-gram order. Must be at least 2.",
+              AttributeProto::INT)
+        .Attr("n_head_per_ngram",
+              "Number of hash heads emitted for each n-gram order.",
+              AttributeProto::INT)
+        .Attr("pad_id",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a request's "
+              "sequence.",
+              AttributeProto::INT)
+        .Attr("reset_on_eos",
+              "When non-zero and eos_token_id is provided, reset causal n-gram history at EOS "
+              "boundaries. Default is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("state_update_capacity",
+              "Static number of compact contiguous-prefix states to expose per request. Valid range "
+              "is [0, 8]. capture_count is required exactly when this is positive.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Input(0,
+               "input_ids",
+               "Token-major packed compressed tokenizer ids with shape (total_tokens).",
+               "M")
+        .Input(1,
+               "multipliers",
+               "Per-shift hash multipliers with at least max_ngram_size elements. Conventionally odd, "
+               "but any value is accepted.",
+               "M")
+        .Input(2,
+               "vocab_sizes",
+               "Per-output-head vocabulary sizes, conventionally prime, with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. "
+               "The CPU implementation rejects a non-positive entry; GPU implementations guard the "
+               "modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.",
+               "M")
+        .Input(3,
+               "cumulative_sequence_length",
+               "Device tensor with shape (batch_size + 1) giving the half-open packed token range "
+               "of each request.",
+               "S")
+        .Input(4,
+               "past_ids",
+               "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
+               "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
+               "slot is the most recent id, and indexed by request rather than by packed position. "
+               "If omitted the history is pad_id, or eos_token_id when provided.",
+               "M",
+               OpSchema::Optional)
+        .Input(5,
+               "head_offsets",
+               "Optional per-output-head additive offset with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo with wrapping "
+               "arithmetic in the input id type.",
+               "M",
+               OpSchema::Optional)
+        .Input(6,
+               "eos_token_id",
+               "Optional scalar end-of-sequence token id. When provided it replaces pad_id for "
+               "missing history and enables reset_on_eos.",
+               "M",
+               OpSchema::Optional)
+        .Input(7,
+               "segment_ids",
+               "Optional token-major segment ids with shape (total_tokens), used to reset causal "
+               "history at segment boundaries within each packed request.",
+               "tensor(int32)",
+               OpSchema::Optional)
+        .Input(8,
+               "past_segment_ids",
+               "Optional segment ids corresponding to past_ids, with shape "
+               "(batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call "
+               "into this input to preserve segment boundaries across calls.",
+               "S",
+               OpSchema::Optional)
+        .Input(9,
+               "capture_count",
+               "Optional device int32 tensor with shape (batch_size). For each request, captures "
+               "that many local prefix states, clamped to the request length and "
+               "state_update_capacity. Required exactly when state_update_capacity is positive.",
+               "S",
+               OpSchema::Optional)
+        .Output(0,
+                "hash_ids",
+                "Token-major packed hash ids with shape (total_tokens, "
+                "(max_ngram_size - 1) * n_head_per_ngram).",
+                "M")
+        .Output(1,
+                "present_ids",
+                "Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, "
+                "with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next "
+                "call.",
+                "M",
+                OpSchema::Optional)
+        .Output(2,
+                "present_segment_ids",
+                "Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.",
+                "S",
+                OpSchema::Optional)
+        .Output(3,
+                "state_update",
+                "Optional trailing id states after each captured prefix token, with shape "
+                "(batch_size, state_update_capacity, max_ngram_size - 1). Unused slots are pad_id.",
+                "M",
+                OpSchema::Optional)
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
+        .TypeConstraint("S",
+                        {"tensor(int32)"},
+                        "Constrain cumulative_sequence_length and segment ids to device int32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 3, 2);
+          }
+          if (ctx.getNumOutputs() > 3) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 3);
+          }
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          const int64_t state_update_capacity = getAttribute(ctx, "state_update_capacity", int64_t{0});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("VarlenNGramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (n_head_per_ngram < 1) {
+            fail_shape_inference("VarlenNGramHashMapping: n_head_per_ngram must be positive");
+          }
+          if (state_update_capacity < 0 || state_update_capacity > 8) {
+            fail_shape_inference("VarlenNGramHashMapping: state_update_capacity must be in [0, 8]");
+          }
+          // max_ngram_size and n_head_per_ngram are model-controlled attributes with only
+          // lower-bound checks above, so (max_ngram_size - 1) * n_head_per_ngram must be
+          // multiplied with an overflow check: e.g. max_ngram_size == INT64_MAX would otherwise
+          // silently wrap this signed multiplication before it ever reaches tensor-shape
+          // validation.
+          const int64_t state_length = max_ngram_size - 1;
+          if (state_length != 0 && n_head_per_ngram > std::numeric_limits<int64_t>::max() / state_length) {
+            fail_shape_inference(
+                "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+          }
+          const int64_t num_heads = state_length * n_head_per_ngram;
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: input_ids must have rank 1");
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            output_shape.add_dim()->set_dim_value(num_heads);
+            updateOutputShape(ctx, 0, output_shape);
+          }
+
+          if (hasInputShape(ctx, 3)) {
+            const auto& cu_seqlen_shape = getInputShape(ctx, 3);
+            if (cu_seqlen_shape.dim_size() != 1) {
+              fail_shape_inference("VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");
+            }
+            const auto& cu_dim = cu_seqlen_shape.dim(0);
+            if (cu_dim.has_dim_value() && cu_dim.dim_value() < 2) {
+              fail_shape_inference(
+                  "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements");
+            }
+            if (ctx.getNumOutputs() > 1) {
+              TensorShapeProto present_shape;
+              if (cu_dim.has_dim_value()) {
+                // Runtime requires at least 2 elements (batch_size >= 1); a declared static shape of
+                // [0] or [1] would otherwise infer a present_ids batch dimension of -1 or 0.
+                present_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
+              } else {
+                present_shape.add_dim();  // unknown batch size
+              }
+              present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_shape);
+              if (ctx.getNumOutputs() > 2) {
+                updateOutputShape(ctx, 2, present_shape);
+              }
+              if (ctx.getNumOutputs() > 3) {
+                TensorShapeProto state_update_shape;
+                *state_update_shape.add_dim() = present_shape.dim(0);
+                state_update_shape.add_dim()->set_dim_value(state_update_capacity);
+                state_update_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+                updateOutputShape(ctx, 3, state_update_shape);
+              }
+            }
+            if (hasInputShape(ctx, 9)) {
+              const auto& capture_count_shape = getInputShape(ctx, 9);
+              if (capture_count_shape.dim_size() != 1) {
+                fail_shape_inference("VarlenNGramHashMapping: capture_count must have rank 1");
+              }
+              if (cu_dim.has_dim_value() && capture_count_shape.dim(0).has_dim_value() &&
+                  capture_count_shape.dim(0).dim_value() != cu_dim.dim_value() - 1) {
+                fail_shape_inference("VarlenNGramHashMapping: capture_count must have shape (batch_size)");
+              }
+            }
+          }
+        }));
+
+constexpr const char* CausalConvWithState_ver1_doc = R"DOC(
+Stateful causal depthwise convolution, generalized to N spatial dimensions.
+
+Used by Gated DeltaNet (Qwen3.5) and Mamba (Jamba, FalconMamba) as a preprocessing step.
+Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
+
+The convolution is causal (looks only at current and past positions along the last
+spatial dimension) and depthwise (each channel is convolved independently with its own kernel).
+
+Input layout is channels-first: (batch_size, channels, ...).
+Weight layout: (channels, 1, k_1, ...) for depthwise convolution.
+The carry state stores the last (k-1) positions along the causal axis for incremental decode.
+
+The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causality is
+enforced on the last spatial dimension only.
+
+The optional activation attribute supports fused SiLU/Swish activation.
+
+The dilation attribute spaces the kernel taps along the causal axis: output position t reads
+input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
+(k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
+past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
+(the default) is the undilated case and keeps the original state length, so models exported
+before the attribute existed are unaffected.
+
+The channels_last attribute selects a sequence-major layout for the activations and the carry
+state, so a model that already produces channels-last activations does not have to transpose into
+and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
+(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
+(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
+channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
+axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
+(channels) shapes because they have no sequence axis. The computed values are identical to the
+channels-first layout; only the memory layout differs.
+)DOC";
 
 constexpr const char* EngramGate_ver1_doc = R"DOC(
 Fuses the Engram gate.
@@ -3506,7 +4461,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
 Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
+with scalar decay, `head_size_qk <= 256`, and compact state updates.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -3514,6 +4469,10 @@ rather than from attributes:
   query [total_tokens, num_heads_q, head_size_qk]
   key   [total_tokens, num_heads_k, head_size_qk]
   value [total_tokens, num_heads_v, head_size_v]
+
+Alternatively, key and value may be omitted and query contains packed QKV with shape
+`[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+`initial_state` is required for packed QKV to determine the head counts and head sizes.
 
 The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
 pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
@@ -3607,9 +4566,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Capacity C for compact contiguous-prefix transition capture, in [0, 8]. "
               "0 (default) disables compact state-update outputs.",
               AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "query", "Query, shape (total_tokens, num_heads_q, head_size_qk)", "T")
-        .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T")
-        .Input(2, "value", "Value, shape (total_tokens, num_heads_v, head_size_v)", "T")
+        .Input(0, "query", "Query or packed QKV, shaped as described above.", "T")
+        .Input(1, "key", "Key, shape (total_tokens, num_heads_k, head_size_qk)", "T",
+               OpSchema::Optional)
+        .Input(2, "value", "Value, shape (total_tokens, num_heads_v, head_size_v)", "T",
+               OpSchema::Optional)
         .Input(3, "cu_seqlens",
                "Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). "
                "Absent means uniform packing.",
@@ -3622,7 +4583,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6, "initial_state",
                "Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), "
-               "V-major. May alias final_state.",
+               "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
                "Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.",
@@ -3665,40 +4626,116 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
           }
 
-          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 2)) {
+          const bool has_key = ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr;
+          const bool has_value = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (has_key != has_value) {
+            fail_shape_inference("GatedDeltaNet: key and value must both be present or both be omitted");
+          }
+          const bool packed_qkv = !has_key;
+          const bool has_state = ctx.getNumInputs() > 6 && ctx.getInputType(6) != nullptr;
+          if (packed_qkv && !has_state) {
+            fail_shape_inference("GatedDeltaNet: initial_state is required for packed QKV");
+          }
+          if (!hasInputShape(ctx, 0)) {
             return;
           }
           const auto& query_shape = getInputShape(ctx, 0);
-          const auto& value_shape = getInputShape(ctx, 2);
           const int rank = query_shape.dim_size();
-          if ((rank != 3 && rank != 4) || value_shape.dim_size() != rank) {
+          const int token_dims = rank - (packed_qkv ? 1 : 2);
+          if ((packed_qkv && rank != 2 && rank != 3) ||
+              (!packed_qkv && rank != 3 && rank != 4)) {
             fail_shape_inference(
-                "GatedDeltaNet: query and value must both have rank 3 or both have rank 4");
+                "GatedDeltaNet: packed QKV must have rank 2 or 3, and separate "
+                "query, key and value inputs must have rank 3 or 4");
           }
-          const int token_dims = rank - 2;
+
+          const ONNX_NAMESPACE::TensorShapeProto* value_shape = nullptr;
+          if (!packed_qkv) {
+            if (!hasInputShape(ctx, 2)) {
+              return;
+            }
+            value_shape = &getInputShape(ctx, 2);
+            if (value_shape->dim_size() != rank) {
+              fail_shape_inference("GatedDeltaNet: query and value must have the same rank");
+            }
+          }
+
+          const ONNX_NAMESPACE::TensorShapeProto* state_shape = nullptr;
+          if (ctx.getNumInputs() > 6 && hasInputShape(ctx, 6)) {
+            state_shape = &getInputShape(ctx, 6);
+            if (state_shape->dim_size() != 4) {
+              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
+            }
+          }
+
+          if (packed_qkv) {
+            if (state_shape == nullptr) {
+              return;
+            }
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                state_shape->dim(1).has_dim_value() && state_shape->dim(2).has_dim_value() &&
+                state_shape->dim(3).has_dim_value()) {
+              const int64_t packed_size = query_shape.dim(token_dims).dim_value();
+              const int64_t num_heads_v = state_shape->dim(1).dim_value();
+              const int64_t head_size_v = state_shape->dim(2).dim_value();
+              const int64_t head_size_qk = state_shape->dim(3).dim_value();
+              constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
+              if (num_heads_v <= 0 || head_size_v <= 0 || head_size_qk <= 0) {
+                fail_shape_inference("GatedDeltaNet: packed QKV head counts and head sizes must be positive");
+              }
+              if (num_heads_v > max_dimension / head_size_v || head_size_qk > max_dimension / 2) {
+                fail_shape_inference("GatedDeltaNet: packed QKV dimensions overflow int64");
+              }
+              const int64_t value_size = num_heads_v * head_size_v;
+              const int64_t query_key_size = 2 * head_size_qk;
+              if (packed_size <= value_size || (packed_size - value_size) % query_key_size != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: packed QKV last dimension must be 2 * num_heads_q * head_size_qk + "
+                    "num_heads_v * head_size_v");
+              }
+              const int64_t num_heads_q = (packed_size - value_size) / query_key_size;
+              if (num_heads_v % num_heads_q != 0) {
+                fail_shape_inference("GatedDeltaNet: num_heads_v must be a positive multiple of num_heads_q");
+              }
+            }
+            const bool has_cu_seqlens = ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr;
+            if (!has_cu_seqlens && token_dims == 1 && query_shape.dim(0).has_dim_value() &&
+                state_shape->dim(0).has_dim_value()) {
+              const int64_t total_tokens = query_shape.dim(0).dim_value();
+              const int64_t batch = state_shape->dim(0).dim_value();
+              if (batch <= 0 || total_tokens <= 0 || total_tokens % batch != 0) {
+                fail_shape_inference(
+                    "GatedDeltaNet: total_tokens must be divisible by batch, with positive token count and batch size");
+              }
+            }
+          }
 
           ONNX_NAMESPACE::TensorShapeProto out_shape;
           for (int i = 0; i < token_dims; ++i) {
             *out_shape.add_dim() = query_shape.dim(i);
           }
-          if (query_shape.dim(token_dims).has_dim_value() &&
-              value_shape.dim(token_dims).has_dim_value()) {
-            out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
-                                                        value_shape.dim(token_dims).dim_value()));
+          if (packed_qkv) {
+            *out_shape.add_dim() = state_shape->dim(1);
+            *out_shape.add_dim() = state_shape->dim(2);
           } else {
-            out_shape.add_dim();
+            if (query_shape.dim(token_dims).has_dim_value() &&
+                value_shape->dim(token_dims).has_dim_value()) {
+              out_shape.add_dim()->set_dim_value(std::max(query_shape.dim(token_dims).dim_value(),
+                                                          value_shape->dim(token_dims).dim_value()));
+            } else {
+              out_shape.add_dim();
+            }
+            *out_shape.add_dim() = value_shape->dim(token_dims + 1);
           }
-          *out_shape.add_dim() = value_shape.dim(token_dims + 1);
           updateOutputShape(ctx, 0, out_shape);
 
           auto add_batch_dim = [&](ONNX_NAMESPACE::TensorShapeProto& shape) {
-            if (hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
+            if (ctx.getNumInputs() > 9 && hasInputShape(ctx, 9) && getInputShape(ctx, 9).dim_size() == 1) {
               *shape.add_dim() = getInputShape(ctx, 9).dim(0);
-            } else if (rank == 4) {
+            } else if (rank == (packed_qkv ? 3 : 4)) {
               *shape.add_dim() = query_shape.dim(0);
-            } else if (hasInputShape(ctx, 6) && getInputShape(ctx, 6).dim_size() >= 4) {
-              const auto& state_shape = getInputShape(ctx, 6);
-              *shape.add_dim() = state_shape.dim(state_shape.dim_size() - 4);
+            } else if (state_shape != nullptr) {
+              *shape.add_dim() = state_shape->dim(0);
             } else {
               shape.add_dim();
             }
@@ -3714,15 +4751,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             ONNX_NAMESPACE::TensorShapeProto capsule_shape;
             add_batch_dim(capsule_shape);
             auto* width = capsule_shape.add_dim();
-            if (query_shape.dim(token_dims).has_dim_value() &&
+            if (!packed_qkv && query_shape.dim(token_dims).has_dim_value() &&
                 query_shape.dim(token_dims + 1).has_dim_value() &&
-                value_shape.dim(token_dims).has_dim_value() &&
-                value_shape.dim(token_dims + 1).has_dim_value()) {
+                value_shape->dim(token_dims).has_dim_value() &&
+                value_shape->dim(token_dims + 1).has_dim_value()) {
               // num_heads_k is constrained to equal num_heads_q, so query supplies it.
               const int64_t num_heads_k = query_shape.dim(token_dims).dim_value();
               const int64_t head_size_qk = query_shape.dim(token_dims + 1).dim_value();
-              const int64_t num_heads_v = value_shape.dim(token_dims).dim_value();
-              const int64_t head_size_v = value_shape.dim(token_dims + 1).dim_value();
+              const int64_t num_heads_v = value_shape->dim(token_dims).dim_value();
+              const int64_t head_size_v = value_shape->dim(token_dims + 1).dim_value();
               if (num_heads_k <= 0 || head_size_qk <= 0 || num_heads_v <= 0 || head_size_v <= 0) {
                 fail_shape_inference(
                     "GatedDeltaNet: head counts and head sizes must be positive");
@@ -3752,13 +4789,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 2, capsule_shape);
           }
 
-          if (hasInputShape(ctx, 6)) {
-            const auto& in_state = getInputShape(ctx, 6);
-            if (in_state.dim_size() != 4) {
-              fail_shape_inference("GatedDeltaNet: initial_state must have rank 4");
-            }
+          if (state_shape != nullptr) {
             if (ctx.getNumOutputs() > 1) {
-              updateOutputShape(ctx, 1, in_state);
+              updateOutputShape(ctx, 1, *state_shape);
             }
           }
         }));
@@ -3883,6 +4916,157 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(
+Applies RMS normalization independently to each branch. X may use grouped shape
+(..., C, H), or flattened shape (..., C * H) when num_branches is specified.
+The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
+performed in float32 and the result is converted to T.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BranchwiseRMSNorm, 1,
+    OpSchema()
+        .SetDoc(BranchwiseRMSNorm_ver1_doc)
+        .Attr("epsilon", "Epsilon added before reciprocal square root.",
+              AttributeProto::FLOAT, 1e-5f)
+        .Attr("num_branches",
+              "Number of branches for flattened input. Omit or set to zero for grouped input.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "X", "Grouped (..., C, H) or flattened (..., C * H) input.", "T")
+        .Input(1, "scale", "Optional scale with shape (C * H), (C, H), or (H).",
+               "M", OpSchema::Optional)
+        .Output(0, "Y", "RMS-normalized output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* ScaledSiLU_ver1_doc = R"DOC(
+Computes SiLU after scaling, with explicit T rounding:
+Z_T = cast_T(effective_scale * X), S_T = cast_T(sigmoid(Z_T)), and
+Y = cast_T(Z_T * S_T). effective_scale is the scalar input when present,
+otherwise it is the alpha attribute.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    ScaledSiLU, 1,
+    OpSchema()
+        .SetDoc(ScaledSiLU_ver1_doc)
+        .Attr("alpha", "Scale used when the optional scale input is absent.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "X", "Input tensor.", "T")
+        .Input(1, "scale", "Optional scalar scale that overrides alpha.", "M", OpSchema::Optional)
+        .Output(0, "Y", "Output with the same shape as X.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain the optional scale to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* HyperConnectionPreMix_ver1_doc = R"DOC(
+Reduces C streams to one feature tensor without applying an activation:
+Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
+pre_mix may have shape (..., C), (..., C, 1), (..., C, H), or (..., C * H)
+for flattened X. X may be grouped (..., C, H), or flattened (..., C * H)
+when num_branches is specified.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionPreMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionPreMix_ver1_doc)
+        .Attr("num_branches",
+              "Number of branches for flattened streams. Omit or set to zero for grouped streams.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("reduction_scale", "Multiplier applied to the branch reduction.",
+              AttributeProto::FLOAT, 1.0f)
+        .Input(0, "streams", "Grouped (..., C, H) or flattened (..., C * H) streams.", "T")
+        .Input(1, "pre_mix", "Branch or feature gates with shape (..., C), (..., C, 1), (..., C, H), or (..., C * H) for flattened streams.", "M")
+        .Output(0, "output", "Reduced feature tensor with shape (..., H).", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain streams and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain mixing weights to floating-point tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& input_shape = getInputShape(ctx, 0);
+          auto* output_shape = getOutputShape(ctx, 0);
+          const auto branches = getAttribute(ctx, "num_branches", 0);
+          const int rank = input_shape.dim_size();
+          if (branches == 0) {
+            if (rank < 2) {
+              fail_shape_inference("Grouped streams must have rank at least 2.");
+            }
+            for (int i = 0; i < rank - 2; ++i) {
+              *output_shape->add_dim() = input_shape.dim(i);
+            }
+            *output_shape->add_dim() = input_shape.dim(rank - 1);
+          } else {
+            if (branches < 1 || rank < 1) {
+              fail_shape_inference("num_branches must be positive for flattened streams.");
+            }
+            for (int i = 0; i < rank - 1; ++i) {
+              *output_shape->add_dim() = input_shape.dim(i);
+            }
+            auto* last = output_shape->add_dim();
+            const auto& input_last = input_shape.dim(rank - 1);
+            if (input_last.has_dim_value()) {
+              if (input_last.dim_value() % branches != 0) {
+                fail_shape_inference("The flattened stream width must be divisible by num_branches.");
+              }
+              last->set_dim_value(input_last.dim_value() / branches);
+            }
+          }
+        }));
+
+constexpr const char* HyperConnectionPostMix_ver1_doc = R"DOC(
+Mixes existing streams and injects one branch output:
+Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
+               + post_mix[..., k, h] * block_output[..., h].
+stream_mix is optional and defaults to the identity. post_mix has shape
+(..., C), (..., C, 1), or (..., C, H). No activation is applied.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    HyperConnectionPostMix, 1,
+    OpSchema()
+        .SetDoc(HyperConnectionPostMix_ver1_doc)
+        .Attr("num_branches",
+              "Number of branches for flattened streams. Omit or set to zero for grouped streams.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "streams", "Grouped (..., C, H) or flattened (..., C * H) streams.", "T")
+        .Input(1, "block_output", "Feature tensor with shape (..., H).", "T")
+        .Input(2, "post_mix", "Branch or feature injection gates.", "M")
+        .Input(3, "stream_mix", "Optional stream matrix with shape (..., C, C).",
+               "M", OpSchema::Optional)
+        .Output(0, "output", "Mixed streams with the same shape as streams.", "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain streams, block output, and output to floating-point tensors.")
+        .TypeConstraint("M",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain mixing weights to floating-point tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);

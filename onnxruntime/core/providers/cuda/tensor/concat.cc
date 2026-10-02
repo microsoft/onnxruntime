@@ -11,8 +11,10 @@
 namespace onnxruntime {
 namespace cuda {
 namespace {
+// Most inputs whose metadata is passed by value. More inputs need pinned host staging, which is not CUDA Graph
+// capturable.
 constexpr int kMaxInlinePointerCount = 32;
-}
+}  // namespace
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
@@ -67,18 +69,35 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
   const bool same_concat_size =
       std::all_of(concat_sizes.begin(), concat_sizes.end(), [&](int64_t size) { return size == concat_sizes[0]; });
-  // Dispatch before allocating the pinned pointer buffer. This path passes pointers by value and
-  // needs no pinned memory, which also keeps it CUDA Graph capturable.
-  if (same_concat_size && input_count <= kMaxInlinePointerCount) {
+  // Dispatch before allocating the pinned pointer buffer. These paths pass metadata by value and
+  // need no pinned memory, which also keeps them CUDA Graph capturable.
+  if (input_count <= kMaxInlinePointerCount) {
     TArray<const void*, kMaxInlinePointerCount> input_ptr_array(input_count);
     for (int i = 0; i < input_count; ++i) {
       input_ptr_array[i] = p.inputs[i].tensor->DataRaw();
     }
 
-    return ConcatSameConcatDimImpl(
-        Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-        p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements));
+    if (same_concat_size) {
+      return ConcatSameConcatDimImpl(
+          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
+          p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements));
+    }
+
+    TArray<int64_t, kMaxInlinePointerCount> concat_sizes_range(input_count);
+    int64_t running = 0;
+    for (int i = 0; i < input_count; ++i) {
+      running += concat_sizes[i];
+      concat_sizes_range[i] = running;
+    }
+    return ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
+                      concat_sizes_range, p.output_tensor->MutableDataRaw(), input_ptr_array,
+                      static_cast<size_t>(p.output_num_elements));
   }
+
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
+  ORT_RETURN_IF(capture_status != cudaStreamCaptureStatusNone, "CUDA Concat supports at most ",
+                kMaxInlinePointerCount, " inputs during CUDA Graph capture, but got ", input_count, " inputs.");
 
   CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
