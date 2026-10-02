@@ -1,3 +1,9 @@
+//
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+//
+// SPDX-License-Identifier: MIT
+//
+
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
@@ -27,14 +33,18 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
-#include <riscv_vector.h>
-#endif
-
 #include <cctype>
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#ifndef COMPAT_HWCAP_ISA_V
+#define COMPAT_HWCAP_ISA_V (1UL << ('V' - 'A'))
+#endif
+#endif
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
@@ -250,6 +260,47 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16],
 };
 
 #endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+namespace {
+
+bool
+MlasStringEqualsIgnoreCase(
+    const char* value,
+    const char* expected
+    )
+{
+    while (*value != '\0' && *expected != '\0') {
+        const auto lhs = static_cast<unsigned char>(*value);
+        const auto rhs = static_cast<unsigned char>(*expected);
+        if (std::tolower(lhs) != std::tolower(rhs)) {
+            return false;
+        }
+        ++value;
+        ++expected;
+    }
+
+    return *value == '\0' && *expected == '\0';
+}
+
+bool
+MlasShouldForceScalarRiscv(
+    const char* value
+    )
+{
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    return MlasStringEqualsIgnoreCase(value, "1") ||
+           MlasStringEqualsIgnoreCase(value, "true") ||
+           MlasStringEqualsIgnoreCase(value, "on") ||
+           MlasStringEqualsIgnoreCase(value, "yes");
+}
+
+}  // namespace
+#endif
+
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -296,39 +347,51 @@ Return Value:
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
 
 #if defined(MLAS_USE_RVV)
-    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
-    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->ErfKernelRoutine = MlasErfKernelRvv;
-    this->LogisticKernelRoutine = MlasLogisticKernelRvv;
-    this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
-    this->SiluKernelRoutine = MlasSiluKernelRvv;
-    this->TanhKernelRoutine = MlasTanhKernelRvv;
-    this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
-    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
-    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
-    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
-    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
-    this->RopeDispatch = &MlasRopeDispatchRvv;
-    this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
-    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+    this->ActivationRoutine = nullptr;
+    bool has_rvv = true;
+#if defined(__linux__)
+    has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
+#endif
+    if (MlasShouldForceScalarRiscv(std::getenv("ORT_MLAS_RISCV_FORCE_SCALAR"))) {
+        has_rvv = false;
+    }
+    if (has_rvv) {
+        this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+        this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->ErfKernelRoutine = MlasErfKernelRvv;
+        this->LogisticKernelRoutine = MlasLogisticKernelRvv;
+        this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
+        this->SiluKernelRoutine = MlasSiluKernelRvv;
+        this->TanhKernelRoutine = MlasTanhKernelRvv;
+        this->ActivationRoutine = MlasActivationRvv;
+        this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelRvv;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+        this->RopeDispatch = &MlasRopeDispatchRvv;
+        this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
-        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
-        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
-    }
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+            this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
+            this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+        }
 #endif
 
-    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
-    if (__riscv_vlenb() >= 16) {
+        // The V extension implies VLEN>=128, which holds the sixteen-float block.
         this->NchwcBlockSize = 16;
         this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
         this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
@@ -518,6 +581,10 @@ Return Value:
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+                if ((Cpuid1[2] & (1u << 29)) != 0) {
+                    this->LayerNormF16Kernel = &MlasLayerNormKernelF16Avx2;
+                }
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -649,6 +716,26 @@ Return Value:
 
 #endif // MLAS_TARGET_AMD64
 
+#if defined(MLAS_TARGET_IX86)
+            //
+            // The LayerNorm kernel is the only AVX2/FMA3 kernel compiled for
+            // 32-bit x86, so keep its feature dispatch separate from AMD64.
+            //
+            unsigned Cpuid7[4];
+#if defined(_WIN32)
+            __cpuidex((int*)Cpuid7, 7, 0);
+#else
+            __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
+#endif
+
+            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+                if ((Cpuid1[2] & (1u << 29)) != 0) {
+                    this->LayerNormF16Kernel = &MlasLayerNormKernelF16Avx2;
+                }
+            }
+#endif  // MLAS_TARGET_IX86
+
         }
     }
 
@@ -721,16 +808,15 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()){
+    const auto& cpuid_info = MLAS_CPUIDINFO::GetCPUIDInfo();
+    const bool has_sme = cpuid_info.HasArm_SME() || cpuid_info.HasArm_SME2();
+    if (has_sme) {
         this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
-        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
-        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
-        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
         this->MlasHalfConvPrepareOverride = ArmKleidiAI::MlasHalfConvPrepare;
         this->MlasHalfConvOverride = ArmKleidiAI::MlasHalfConv;
         this->MlasHalfConvPackWeightsAndBiasSizeOverride = ArmKleidiAI::MlasHalfConvPackWeightsAndBiasSize;
@@ -738,7 +824,7 @@ Return Value:
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){
             this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
@@ -754,6 +840,11 @@ Return Value:
     this->MlasQNBitGemmPackQuantBDataOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBData;
     this->MlasQNBitGemmBatchWorkspaceSizeOverride = ArmKleidiAI::MlasQNBitGemmBatchWorkspaceSize;
     this->MlasQNBitGemmBatchOverride = ArmKleidiAI::MlasQNBitGemmBatch;
+    if (has_sme || cpuid_info.HasArmSVE2p1()) {
+        this->MlasHalfGemmBatchOverride = ArmKleidiAI::MlasHalfGemmBatch;
+        this->MlasHalfGemmPackBSizeOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize;
+        this->MlasHalfGemmPackBOverride = ArmKleidiAI::MlasHalfGemmKleidiAIPackB;
+    }
 #endif
 
 #if defined(MLAS_USE_SVE)
@@ -767,6 +858,12 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        //
+        // Overrides the NEON LinearAttention dispatch registered above. The SVE
+        // driver hands anything outside its envelope straight back to
+        // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
+        //
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;

@@ -47,6 +47,9 @@ void RunMatMulOperatorCase(int m, int n, int k) {
 TEST(MatMulSmallNGemvOpTest, DispatchesEligibleShapesWhenEnabled) {
   RunMatMulOperatorCase(8, 1, 128);
   RunMatMulOperatorCase(8, 1024, 128);
+  RunMatMulOperatorCase(9, 48, 5120);
+  RunMatMulOperatorCase(33, 48, 5120);
+  RunMatMulOperatorCase(64, 48, 5120);
 }
 
 TEST(MatMulSmallNGemvOpTest, FallsBackForIneligibleShapeWhenEnabled) {

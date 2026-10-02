@@ -17,6 +17,20 @@ namespace ep {
 /// A bridge class between the EP API and the WebGPU EP Factory implementation.
 /// </summary>
 class Factory : public OrtEpFactory {
+ public:
+  struct Config {
+    // Allow the WebGPU EP to be advertised against a CPU hardware device when no GPU hardware device is available.
+    // This only makes the WebGPU EP selectable as an EP device; Dawn selects and configures the software adapter
+    // independently.
+    bool allow_software_adapter{false};
+
+    // Allow advertising an additional virtual GPU device for device-free compile-only sessions.
+    bool allow_virtual_devices{false};
+  };
+
+  explicit Factory(Config config);
+  ~Factory();
+
  private:
   // Static C API implementations
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -63,19 +77,14 @@ class Factory : public OrtEpFactory {
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
 
+  const Config config_;
+
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
 
-  // Owned virtual GPU hardware device created on demand by GetSupportedDevices when the environment
-  // allows virtual devices (OrtEnv config "allow_virtual_devices"=1) and no real GPU device was
-  // discovered -- e.g. in a sandboxed process where OS device enumeration is unavailable (such as
-  // Win32k lockdown), so ORT device discovery is skipped. Released in the destructor. nullptr when
-  // no virtual device was made.
+  // Owned virtual GPU hardware device created when the environment allows virtual devices (OrtEnv config
+  // "allow_virtual_devices"=1). Released in the destructor. nullptr when virtual devices are disabled.
   OrtHardwareDevice* virtual_hw_device_ = nullptr;
-
- public:
-  Factory();
-  ~Factory();
 };
 
 }  // namespace ep

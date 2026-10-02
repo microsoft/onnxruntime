@@ -8,12 +8,18 @@
 
 namespace onnxruntime::telemetry_internal {
 
-// Percentage of model-session events retained. Process-scoped events remain at 100%.
+// Keep independent rates so high-volume, model-session, and process events can be tuned separately.
 // 1DS popSample is metadata only; ShouldSampleSession performs the actual client-side sampling.
-inline constexpr double kModelSessionSampleRatePercent = 100.0;
+inline constexpr double kModelSessionSampleRatePercent = 1.0;
+inline constexpr double kHighVolumeEventSampleRatePercent = 1.0;
+inline constexpr double kProcessEventSampleRatePercent = 1.0;
 
 static_assert(kModelSessionSampleRatePercent >= 0.0 &&
               kModelSessionSampleRatePercent <= 100.0);
+static_assert(kHighVolumeEventSampleRatePercent >= 0.0 &&
+              kHighVolumeEventSampleRatePercent <= 100.0);
+static_assert(kProcessEventSampleRatePercent >= 0.0 &&
+              kProcessEventSampleRatePercent <= 100.0);
 
 inline uint64_t HashSamplingKey(std::string_view app_session_guid, uint32_t session_id) {
   uint64_t hash = 14695981039346656037ULL;

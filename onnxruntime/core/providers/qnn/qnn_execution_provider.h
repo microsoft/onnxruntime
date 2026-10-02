@@ -51,8 +51,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
-  Status GetEpContextDataSupport(uint32_t& supported_flags) const override {
-    supported_flags = OrtEpContextDataSupportFlags_READ | OrtEpContextDataSupportFlags_WRITE;
+  Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
+    supported_flags = OrtEpContextDataCallbackSupportFlags_READ | OrtEpContextDataCallbackSupportFlags_WRITE;
     return Status::OK();
   }
 

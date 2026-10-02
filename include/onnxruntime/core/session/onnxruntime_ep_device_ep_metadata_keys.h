@@ -24,6 +24,18 @@ static const char* const kOrtModelMetadata_EpCompatibilityInfoPrefix = "ep_compa
 // Key for the execution provider library path (for dynamically loaded EPs)
 static const char* const kOrtEpDevice_EpMetadataKey_LibraryPath = "library_path";
 
+// Optional metadata key for the execution provider's preferred layout of the Value KV-cache tensors
+// (the past_value input and present_value output) of com.microsoft.GroupQueryAttention.
+// Possible values:
+//  - "BNSH": (batch_size, num_heads, sequence_length, head_size). This is the assumed default value
+//            if this metadata key is not present, and matches the operator schema.
+//  - "BNHS": (batch_size, num_heads, head_size, sequence_length).
+// An EP that reports "BNHS" is expected to fuse the Transpose -> GroupQueryAttention -> Transpose
+// sequence that ORT inserts when the application selects that layout.
+// The application passes the layout it has chosen to the session via the
+// kOrtSessionOptionsGqaValueLayout session option (see onnxruntime_session_options_config_keys.h).
+static const char* const kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout = "gqa_preferred_value_layout";
+
 // Optional metadata key to determine if a OrtHardwareDevice represents a virtual (non-hardware) device.
 // Possible values:
 //  - "0": OrtHardwareDevice is not virtual (i.e., actual hardware device). This is the assumed default value

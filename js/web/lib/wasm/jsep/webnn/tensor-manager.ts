@@ -345,7 +345,7 @@ class TensorIdTracker {
     // Check if the context supports the data type. If not, try to use the fallback data type.
     if (!opLimits?.input.dataTypes.includes(dataType)) {
       fallbackDataType = webnnDataTypeToFallback.get(dataType);
-      if (!fallbackDataType || opLimits?.input.dataTypes.includes(fallbackDataType)) {
+      if (!fallbackDataType || !opLimits?.input.dataTypes.includes(fallbackDataType)) {
         throw new Error(`WebNN backend does not support data type: ${dataType}`);
       }
       LOG_DEBUG(

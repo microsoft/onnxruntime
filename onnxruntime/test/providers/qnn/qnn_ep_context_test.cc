@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,8 +28,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 constexpr size_t kQnnEpContextTestMaxDataSize = size_t{1} << 30;
 
 struct QnnEpContextCallbackState {
@@ -36,6 +35,8 @@ struct QnnEpContextCallbackState {
   bool read_called = false;
   size_t write_count = 0;
   size_t read_count = 0;
+  size_t allocation_count = 0;
+  size_t max_data_size = kQnnEpContextTestMaxDataSize;
   bool fail_write = false;
   bool fail_read = false;
   bool return_empty = false;
@@ -79,6 +80,10 @@ static OrtStatus* ORT_API_CALL LoadQnnEpContextData(void* state, const char* nam
   if (callback_state.return_empty) {
     return nullptr;
   }
+  if (callback_state.payload.size() > callback_state.max_data_size) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                      "QNN application callback rejected payload exceeding its allocation limit");
+  }
   *buffer_size = callback_state.payload.size();
   if (callback_state.return_null_buffer) {
     return nullptr;
@@ -87,12 +92,42 @@ static OrtStatus* ORT_API_CALL LoadQnnEpContextData(void* state, const char* nam
     return nullptr;
   }
 
+  ++callback_state.allocation_count;
   OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, callback_state.payload.size(), buffer);
   if (status == nullptr) {
     std::copy(callback_state.payload.begin(), callback_state.payload.end(), static_cast<char*>(*buffer));
   }
   return status;
 }
+
+TEST(QnnEpContextCallbackTest, ApplicationReadLimitIsCheckedBeforeAllocation) {
+  QnnEpContextCallbackState callback_state;
+  const std::vector<char> payload{'q', 'n', 'n'};
+  Ort::Status write_status{StoreQnnEpContextData(&callback_state, "context.bin", payload.data(), payload.size())};
+  ASSERT_TRUE(write_status.IsOK()) << write_status.GetErrorMessage();
+  callback_state.max_data_size = callback_state.payload.size() - 1;
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = nullptr;
+  size_t buffer_size = 0;
+  Ort::Status status{LoadQnnEpContextData(&callback_state, "context.bin", allocator, &buffer, &buffer_size)};
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("application callback"));
+  EXPECT_EQ(callback_state.allocation_count, 0u);
+  EXPECT_EQ(buffer, nullptr);
+  EXPECT_EQ(buffer_size, 0u);
+
+  callback_state.max_data_size = callback_state.payload.size();
+  status = Ort::Status{LoadQnnEpContextData(&callback_state, "context.bin", allocator, &buffer, &buffer_size)};
+  std::unique_ptr<void, Ort::detail::AllocatedFree> buffer_guard{buffer, Ort::detail::AllocatedFree{allocator}};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(callback_state.allocation_count, 1u);
+  ASSERT_EQ(buffer_size, callback_state.payload.size());
+  ASSERT_NE(buffer, nullptr);
+  EXPECT_EQ(std::vector<char>(static_cast<char*>(buffer), static_cast<char*>(buffer) + buffer_size),
+            callback_state.payload);
+}
+
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
   const auto& attributes = node.GetAttributes();
@@ -550,8 +585,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
   // Test embed mode enabled.
   {
     QnnEpContextCallbackState callback_state;
-    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state,
-                                             kQnnEpContextTestMaxDataSize);
+    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state);
     void* output_model_buffer = nullptr;
     size_t output_model_buffer_size = 0;
 
@@ -622,26 +656,26 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     // Add session option "ep.context_file_path" so that the session can use it to locate the [model_name]_qnn.bin file
     std::string ctx_model = target_dir + model_name;
     session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ctx_model.c_str());
-    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state,
-                                             callback_state.payload.size() - 1);
+    callback_state.max_data_size = callback_state.payload.size() - 1;
+    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state);
 
     std::string oversized_error;
     try {
       Ort::Session session(*ort_env, output_model_buffer, output_model_buffer_size, session_options);
-      FAIL() << "Expected oversized QNN EPContext callback payload rejection";
+      FAIL() << "Expected application callback allocation-limit rejection";
     } catch (const Ort::Exception& ex) {
       oversized_error = ex.what();
       EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_GRAPH);
     }
     EXPECT_TRUE(callback_state.read_called);
     EXPECT_EQ(callback_state.read_count, 1u);
+    EXPECT_EQ(callback_state.allocation_count, 0u);
     EXPECT_THAT(oversized_error,
-                testing::HasSubstr("QNN EPContext read callback exceeded the configured maximum size"));
+                testing::HasSubstr("QNN application callback rejected payload exceeding its allocation limit"));
     EXPECT_FALSE(std::filesystem::exists(target_dir + bin_file_name));
 
     callback_state.read_called = false;
-    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state,
-                                             kQnnEpContextTestMaxDataSize);
+    callback_state.max_data_size = callback_state.payload.size();
 
     callback_state.return_empty = true;
     std::string empty_error;
@@ -697,6 +731,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
 
     EXPECT_TRUE(callback_state.read_called);
     EXPECT_EQ(callback_state.read_count, 5u);
+    EXPECT_EQ(callback_state.allocation_count, 1u);
     EXPECT_EQ(callback_state.read_name, callback_state.write_name);
     EXPECT_FALSE(std::filesystem::exists(target_dir + bin_file_name));
     allocator.Free(output_model_buffer);
@@ -753,8 +788,7 @@ TEST_F(QnnHTPBackendTests, EpContextCallbacksRejectSharedContextConfigurations) 
 
   {
     Ort::SessionOptions session_options;
-    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state,
-                                             kQnnEpContextTestMaxDataSize);
+    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state);
     session_options.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
     ProviderOptions provider_options;
     provider_options["backend_type"] = "htp";
@@ -772,8 +806,7 @@ TEST_F(QnnHTPBackendTests, EpContextCallbacksRejectSharedContextConfigurations) 
 
   {
     Ort::SessionOptions session_options;
-    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state,
-                                             kQnnEpContextTestMaxDataSize);
+    session_options.SetEpContextDataReadFunc(LoadQnnEpContextData, &callback_state);
     ProviderOptions provider_options;
     provider_options["backend_type"] = "htp";
     provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
@@ -1694,8 +1727,10 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options, &so)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  // Verify the return status with code INVALID_GRAPH
-  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+  const auto status = session_object.Initialize();
+  ASSERT_EQ(status.Code(), common::StatusCode::INVALID_GRAPH);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("session.model_external_initializers_file_folder_path"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("ep.context_file_path"));
 }
 
 // Create a model with EPContext node. Set the node property ep_cache_context to empty string

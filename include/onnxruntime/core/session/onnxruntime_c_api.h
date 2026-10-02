@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 30
+#define ORT_API_VERSION 31
 
 #ifdef __cplusplus
 extern "C" {
@@ -322,7 +322,6 @@ ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(EpContextConfig);
-ORT_RUNTIME_CLASS(EpContextDataReadOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -601,7 +600,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  * \param[in] buffer_num_bytes Number of bytes in `buffer`.
  * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
  *
- * \since Version 1.30.
+ * \since Version 1.31.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
                                                           _In_ const char* name,
@@ -621,7 +620,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
  * \param[out] data_size Number of bytes in `buffer`.
  * \return nullptr on success, or an OrtStatus* describing the failure. ORT releases a non-null returned status.
  *
- * \since Version 1.30.
+ * \since Version 1.31.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
                                                          _In_ const char* name,
@@ -631,18 +630,18 @@ typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
 
 /** \brief Flags describing an execution provider's support for application-managed external EPContext data.
  *
- * \since Version 1.30.
+ * \since Version 1.31.
  */
-typedef enum OrtEpContextDataSupportFlags {
+typedef enum OrtEpContextDataCallbackSupportFlags {
   /** The EP does not support application-managed external EPContext data. */
-  OrtEpContextDataSupportFlags_NONE = 0,
+  OrtEpContextDataCallbackSupportFlags_NONE = 0,
 
-  /** The EP honors a configured read callback or rejects an unsupported external format before filesystem I/O. */
-  OrtEpContextDataSupportFlags_READ = 1 << 0,
+  /** The EP will use the read callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_READ = 1 << 0,
 
-  /** The EP honors a configured write callback or rejects an unsupported external format before filesystem I/O. */
-  OrtEpContextDataSupportFlags_WRITE = 1 << 1,
-} OrtEpContextDataSupportFlags;
+  /** The EP will use the write callback if one is configured. */
+  OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
+} OrtEpContextDataCallbackSupportFlags;
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -7618,6 +7617,38 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 
+  /** \brief Get a preallocated output tensor without allocating an output.
+   *
+   * Returns a borrowed OrtValue that is already allocated for this output. The
+   * value may have been supplied by the caller of Run or IoBinding, or
+   * preallocated by ORT for an internal execution such as a control-flow
+   * subgraph. The returned value is valid only while the current kernel Compute
+   * call is executing and must not be released. If the output is unallocated or
+   * optional, `*output` is set to nullptr. This function never allocates,
+   * resizes, or replaces an output value.
+   *
+   * The caller must validate the returned tensor's shape and element type before
+   * writing to it, and must not write to an incompatible tensor. ORT generally
+   * rejects element type, rank, and static-dimension mismatches for top-level
+   * outputs during pre-run validation. For dynamic output dimensions, however,
+   * the shape check that KernelContext_GetOutput performs is skipped on this
+   * path, so a model with dynamic output shapes can yield a buffer smaller than
+   * the computed output. Calling KernelContext_GetOutput with the computed shape
+   * does not resize or replace an incompatible preallocated tensor; because the
+   * output slot is already allocated, ORT returns an error for the mismatch.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[in] output_index Output index in the current kernel.
+   * \param[out] output Borrowed preallocated output, or nullptr when the
+   *              current output is unallocated or optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
+                  _Outptr_result_maybenull_ OrtValue** output);
+
   /** \brief Register a callback that supplies external EPContext binary data during session initialization.
    *
    * Execution providers that support external EPContext data retrieve this callback from an OrtEpContextConfig. The
@@ -7628,50 +7659,13 @@ struct OrtApi {
    * \param[in] options Session options used to create the session and execution providers.
    * \param[in] read_func Read callback, or NULL to clear a previously registered callback.
    * \param[in] state Application-owned state passed to `read_func`. Ignored when `read_func` is NULL.
-   * \param[in] read_options Required read policy when `read_func` is non-NULL. Ignored when clearing the callback.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.30.
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state,
-                  _In_opt_ const OrtEpContextDataReadOptions* read_options);
-
-  /** \brief Create options for reading external EPContext binary data.
-   *
-   * The returned options must be configured with EpContextDataReadOptionsSetMaxDataSize before they are used to
-   * register a callback.
-   *
-   * \param[out] read_options Newly allocated options. Must be released with ReleaseEpContextDataReadOptions.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.30.
-   */
-  ORT_API2_STATUS(CreateEpContextDataReadOptions, _Outptr_ OrtEpContextDataReadOptions** read_options);
-
-  /** \brief Set the maximum external EPContext payload size.
-   *
-   * The application must reject an oversized artifact before allocating its output buffer. The EP independently
-   * checks the returned size before deserialization.
-   *
-   * \param[in,out] read_options Options created by CreateEpContextDataReadOptions.
-   * \param[in] max_data_size Required finite maximum payload size in bytes. Must be greater than zero and less than
-   *                         SIZE_MAX.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.30.
-   */
-  ORT_API2_STATUS(EpContextDataReadOptionsSetMaxDataSize, _Inout_ OrtEpContextDataReadOptions* read_options,
-                  _In_ size_t max_data_size);
-
-  /** \brief Release EPContext data read options. May be called with NULL.
-   *
-   * \since Version 1.30.
-   */
-  ORT_CLASS_RELEASE(EpContextDataReadOptions);
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 };
 
 /*
@@ -8556,7 +8550,7 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.30.
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,

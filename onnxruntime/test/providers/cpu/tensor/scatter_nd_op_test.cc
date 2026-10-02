@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -298,6 +299,14 @@ TEST(ScatterNDOpTest, ScatterND_zero_index_depth_empty_data) {
   test.AddOutput<float>("output", {0, 3}, {});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ScatterNDOpTest, ScatterND_nonempty_indices_reject_indexed_zero_dimension) {
+  const auto status = scatter_nd_internal::ValidateShapes(
+      TensorShape{1, 0, 2}, TensorShape{1, 2}, TensorShape{1, 2});
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
+                                         "indices must be empty when an indexed data dimension has size 0"));
 }
 
 }  // namespace test

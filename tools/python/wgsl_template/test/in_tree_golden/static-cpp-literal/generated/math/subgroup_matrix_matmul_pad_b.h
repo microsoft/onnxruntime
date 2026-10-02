@@ -10,20 +10,20 @@ Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHe
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract variables
-  auto& __var_input_b = *params.var_input_b;
-  auto& __var_output = *params.var_output;
+  auto* __var_input_b = params.var_input_b;
+  auto* __var_output = params.var_output;
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
-//  3 | 
+//  3 |
 //  4 | // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 //  5 | // (N_b >= N), zero-filling columns [N, N_b). One thread per padded-output element.
 //  6 | // Gives B an even row stride so the subgroup-matrix f16 load's 4-byte row-start
 //  7 | // alignment holds for odd N. See EnsurePaddedB in subgroup_matrix_matmul.cc.
-//  8 | 
+//  8 |
 //  9 | #use guardAgainstOutOfBoundsWorkgroupSizes
 // 10 | #use .getByOffset .setByOffset
-// 11 | 
+// 11 |
 // 12 | $MAIN {
 MainFunctionStart();
 ss << "\n";
@@ -41,18 +41,18 @@ ss << "  var v = output_value_t(0);\n";
 ss << "  if (c < uniforms.N) {\n";
 // 18 |     v = output_value_t(input_b.getByOffset(r * uniforms.N + c));
 ss << "    v = output_value_t(";
-ss << __var_input_b.GetByOffset("r * uniforms.N + c");
+ss << __var_input_b->GetByOffset("r * uniforms.N + c");
 ss << ");\n";
 // 19 |   }
 ss << "  }\n";
 // 20 |   output.setByOffset(global_idx, v);
 ss << "  ";
-ss << __var_output.SetByOffset("global_idx", "v");
+ss << __var_output->SetByOffset("global_idx", "v");
 ss << ";\n";
 // 21 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 22 | 
+// 22 |
 
 
   return Status::OK();
