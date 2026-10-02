@@ -1,0 +1,18 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+$MAIN {
+  if (global_idx >= uniforms.size) {
+    return;
+  }
+  let scale = input_scale.getByOffset(0u);
+  let inverse = select(0.0, 1.0 / scale, scale != 0.0);
+  let v = f32(input_a.getByOffset(global_idx)) * inverse;
+  let magnitude = min(abs(v), 448.0);
+  let step = exp2(max(floor(log2(magnitude)), -6.0) - 3.0);
+  let rounded = min(round(magnitude / step) * step, 448.0);
+  let q = select(rounded, -rounded, v < 0.0);
+  output.setByOffset(global_idx, f16(q * scale));
+}
