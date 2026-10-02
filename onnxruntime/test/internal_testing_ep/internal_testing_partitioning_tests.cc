@@ -36,6 +36,7 @@
 
 #include <limits>
 #include <queue>
+#include <tuple>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
@@ -157,36 +158,68 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
   mutable ModelMetadefIdGenerator metadef_id_generator_;
 };
 
+struct DirectAssignmentEpContextTestOptions {
+  DataLayout preferred_layout = DataLayout::Default;
+  bool enable_resource_accountant = false;
+  bool drop_after_layout = false;
+  bool assigned_to_other_ep = false;
+  std::optional<int64_t> embed_mode = 0;
+};
+
 class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider {
  public:
   explicit DirectAssignmentEpContextTestExecutionProvider(bool produces_ep_context_nodes = false,
                                                           bool* get_ep_context_nodes_called = nullptr,
                                                           uint32_t ep_context_data_support = OrtEpContextDataCallbackSupportFlags_NONE,
-                                                          bool claims_ep_context_node = true)
-      : IExecutionProvider{"DirectAssignmentEpContextTestExecutionProvider"},
+                                                          bool claims_ep_context_node = true,
+                                                          const DirectAssignmentEpContextTestOptions& options = {})
+      : IExecutionProvider{options.enable_resource_accountant
+                               ? kCudaExecutionProvider
+                               : "DirectAssignmentEpContextTestExecutionProvider"},
         produces_ep_context_nodes_{produces_ep_context_nodes},
         get_ep_context_nodes_called_{get_ep_context_nodes_called},
         ep_context_data_support_{ep_context_data_support},
-        claims_ep_context_node_{claims_ep_context_node} {
+        claims_ep_context_node_{claims_ep_context_node},
+        options_{options} {
+  }
+
+  DataLayout GetPreferredLayout() const override {
+    return options_.preferred_layout;
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph_viewer,
                 const IKernelLookup&,
                 const GraphOptimizerRegistry&,
-                IResourceAccountant*) const override {
+                IResourceAccountant* resource_accountant) const override {
+    const bool after_layout = get_capability_call_count_++ > 0;
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
     for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
       const auto* node = graph_viewer.GetNode(node_index);
       if (claims_ep_context_node_ && node != nullptr &&
           node->Domain() == kMSDomain && node->OpType() == "EPContext") {
+        if (after_layout && options_.drop_after_layout) {
+          continue;
+        }
+
+        // The accountant retains independently runnable survivors even when the final
+        // budgeted pass omits their capabilities.
+        if (resource_accountant != nullptr && node->GetExecutionProviderType() == Type()) {
+          continue;
+        }
+
         ep_context_node_ = node;
         auto sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node_index);
+        if (resource_accountant != nullptr && node->GetExecutionProviderType().empty()) {
+          sub_graph->SetAccountant(resource_accountant);
+          sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(*node));
+        }
         capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
 
+    last_capability_count_ = capabilities.size();
     return capabilities;
   }
 
@@ -208,16 +241,25 @@ class DirectAssignmentEpContextTestExecutionProvider : public IExecutionProvider
   }
 
   Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override {
+    ++support_query_count_;
     supported_flags = ep_context_data_support_;
     return Status::OK();
   }
+
+  size_t get_capability_call_count() const { return get_capability_call_count_; }
+  size_t last_capability_count() const { return last_capability_count_; }
+  size_t support_query_count() const { return support_query_count_; }
 
  private:
   const bool produces_ep_context_nodes_;
   bool* const get_ep_context_nodes_called_;
   const uint32_t ep_context_data_support_;
   const bool claims_ep_context_node_;
+  const DirectAssignmentEpContextTestOptions options_;
   mutable const Node* ep_context_node_{nullptr};
+  mutable size_t get_capability_call_count_ = 0;
+  mutable size_t last_capability_count_ = 0;
+  mutable size_t support_query_count_ = 0;
 };
 
 // Variant of the two-pass NHWC EP used to validate that the resource accountant
@@ -532,7 +574,8 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
                                                   bool* get_ep_context_nodes_called = nullptr,
                                                   uint32_t ep_context_data_support =
                                                       OrtEpContextDataCallbackSupportFlags_NONE,
-                                                  bool claims_ep_context_node = true) {
+                                                  bool claims_ep_context_node = true,
+                                                  const DirectAssignmentEpContextTestOptions& options = {}) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
   Model model("PartitionDirectAssignmentExternalEpContext",
               false,
@@ -549,20 +592,31 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
   auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto& ep_context_node = builder.AddNode("EPContext", {input}, {output}, kMSDomain);
-  ep_context_node.AddAttribute("embed_mode", int64_t{0});
+  if (options.embed_mode.has_value()) {
+    ep_context_node.AddAttribute("embed_mode", *options.embed_mode);
+  }
   ep_context_node.AddAttribute("ep_cache_context", "external_context.bin");
   ep_context_node.AddAttribute("partition_name", "direct_assignment_partition");
   ep_context_node.AddAttribute("source", "DirectAssignmentEpContextTestExecutionProvider");
+  if (options.assigned_to_other_ep) {
+    ep_context_node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
   builder.SetGraphOutputs();
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
   ExecutionProviders execution_providers;
   auto& default_logger = DefaultLoggingManager().DefaultLogger();
   auto ep = std::make_unique<DirectAssignmentEpContextTestExecutionProvider>(
-      produces_ep_context_nodes, get_ep_context_nodes_called, ep_context_data_support, claims_ep_context_node);
+      produces_ep_context_nodes, get_ep_context_nodes_called, ep_context_data_support, claims_ep_context_node, options);
+  const auto* ep_raw = ep.get();
   ep->SetLogger(&default_logger);
   const std::string ep_type = ep->Type();
   ORT_RETURN_IF_ERROR(execution_providers.Add(ep_type, std::move(ep)));
+
+  ConfigOptions config_options;
+  if (options.enable_resource_accountant) {
+    ORT_RETURN_IF_ERROR(config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  }
 
   KernelRegistryManager krm;
   ORT_RETURN_IF_ERROR(krm.RegisterKernels(execution_providers));
@@ -588,11 +642,28 @@ Status PartitionDirectAssignmentExternalEpContext(bool produces_ep_context_nodes
   }
 
   FuncManager func_mgr;
-  return partitioner.Partition(graph, func_mgr, transform_layout_fn,
-                               ConfigOptions{}, default_logger, nullptr /*layering_index*/,
-                               mode,
-                               model_gen_options,
-                               read_callback_registered);
+  const auto status = partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                                            config_options, default_logger, nullptr /*layering_index*/,
+                                            mode,
+                                            model_gen_options,
+                                            read_callback_registered);
+  if (options.preferred_layout == DataLayout::NHWC && mode != GraphPartitioner::Mode::kAssignOnly &&
+      claims_ep_context_node && !write_callback_required) {
+    EXPECT_EQ(ep_raw->get_capability_call_count(), options.enable_resource_accountant ? 3u : 2u);
+    const std::string expected_ep_type = options.assigned_to_other_ep
+                                             ? kCpuExecutionProvider
+                                             : (options.drop_after_layout ? std::string{} : ep_type);
+    EXPECT_EQ(ep_context_node.GetExecutionProviderType(), expected_ep_type);
+
+    const bool read_support_required = read_callback_registered && options.embed_mode == 0 &&
+                                       !options.drop_after_layout && !options.assigned_to_other_ep;
+    EXPECT_EQ(ep_raw->support_query_count(), read_support_required ? 1u : 0u);
+    if (options.enable_resource_accountant && !options.assigned_to_other_ep) {
+      EXPECT_EQ(ep_raw->last_capability_count(), 0u);
+    }
+  }
+
+  return status;
 }
 
 }  // namespace
@@ -801,6 +872,75 @@ TEST(InternalTestingEP, OrtFormatExternalEpContextReadCallbackRequiresSupportFor
   EXPECT_THAT(status.ErrorMessage(),
               testing::HasSubstr("does not support the registered EPContext data read callback"));
 }
+
+class NhwcEpContextReadCallbackTest
+    : public testing::TestWithParam<std::tuple<GraphPartitioner::Mode, bool>> {
+ protected:
+  void SetUp() override {
+    options_.preferred_layout = DataLayout::NHWC;
+    options_.enable_resource_accountant = std::get<1>(GetParam());
+  }
+
+  Status Partition(uint32_t support = OrtEpContextDataCallbackSupportFlags_NONE,
+                   bool read_callback_registered = true) {
+    return PartitionDirectAssignmentExternalEpContext(
+        false /*produces_ep_context_nodes*/, read_callback_registered, false /*write_callback_required*/,
+        std::get<0>(GetParam()), nullptr /*get_ep_context_nodes_called*/, support,
+        true /*claims_ep_context_node*/, options_);
+  }
+
+  DirectAssignmentEpContextTestOptions options_;
+};
+
+TEST_P(NhwcEpContextReadCallbackTest, RetainedExternalContextRequiresReadSupport) {
+  for (uint32_t support : {OrtEpContextDataCallbackSupportFlags_NONE, OrtEpContextDataCallbackSupportFlags_WRITE}) {
+    SCOPED_TRACE(support);
+    const auto status = Partition(support);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                testing::HasSubstr("does not support the registered EPContext data read callback"));
+  }
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, RetainedExternalContextAcceptsReadSupport) {
+  EXPECT_STATUS_OK(Partition(OrtEpContextDataCallbackSupportFlags_READ));
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, NoReadCallbackDoesNotRequireSupport) {
+  EXPECT_STATUS_OK(Partition(OrtEpContextDataCallbackSupportFlags_NONE, false /*read_callback_registered*/));
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, EmbeddedContextDoesNotRequireReadSupport) {
+  options_.embed_mode = 1;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, DefaultEmbedModeDoesNotRequireReadSupport) {
+  options_.embed_mode = std::nullopt;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, DroppedTentativeContextDoesNotRequireReadSupport) {
+  options_.drop_after_layout = true;
+  EXPECT_STATUS_OK(Partition());
+}
+
+TEST_P(NhwcEpContextReadCallbackTest, OtherProviderContextDoesNotRequireReadSupport) {
+  options_.assigned_to_other_ep = true;
+  EXPECT_STATUS_OK(Partition());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Partitioning, NhwcEpContextReadCallbackTest,
+    testing::Values(std::make_tuple(GraphPartitioner::Mode::kNormal, false),
+                    std::make_tuple(GraphPartitioner::Mode::kOrtFormatLoad, false),
+                    std::make_tuple(GraphPartitioner::Mode::kNormal, true)),
+    [](const testing::TestParamInfo<NhwcEpContextReadCallbackTest::ParamType>& info) {
+      if (std::get<1>(info.param)) {
+        return "OnnxWithAccounting";
+      }
+      return std::get<0>(info.param) == GraphPartitioner::Mode::kNormal ? "Onnx" : "OrtFormat";
+    });
 
 // Validates that the resource accountant is updated correctly across the NHWC two-pass
 // partitioning flow: a node tentatively claimed on the first pass but dropped on the

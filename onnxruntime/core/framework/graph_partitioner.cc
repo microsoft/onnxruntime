@@ -7,6 +7,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -905,19 +906,34 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
   return true;
 }
 
+static bool IsExternalEpContextNode(const Node& node) {
+  if (node.Domain() != kMSDomain || node.OpType() != "EPContext") {
+    return false;
+  }
+
+  const auto& attributes = node.GetAttributes();
+  const auto embed_mode = attributes.find("embed_mode");
+  return embed_mode != attributes.end() && embed_mode->second.i() == 0;
+}
+
 static bool IndexedSubGraphHasExternalEpContextNode(const Graph& graph,
                                                     const IndexedSubGraph& indexed_sub_graph) {
   return std::any_of(indexed_sub_graph.nodes.cbegin(), indexed_sub_graph.nodes.cend(),
                      [&graph](NodeIndex node_index) {
                        const auto* node = graph.GetNode(node_index);
-                       if (node == nullptr || node->Domain() != kMSDomain || node->OpType() != "EPContext") {
-                         return false;
-                       }
-
-                       const auto& attributes = node->GetAttributes();
-                       const auto embed_mode = attributes.find("embed_mode");
-                       return embed_mode != attributes.end() && embed_mode->second.i() == 0;
+                       return node != nullptr && IsExternalEpContextNode(*node);
                      });
+}
+
+static bool GraphHasAssignedExternalEpContextNode(const Graph& graph, std::string_view provider_type) {
+  // NHWC survivors can remain assigned without a returned capability after resource-accountant reconciliation.
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType() == provider_type && IsExternalEpContextNode(node)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 static Status CheckEpContextDataSupport(const IExecutionProvider& ep, uint32_t required_flags) {
@@ -1075,9 +1091,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       layering_index};  // Pass param
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
-  if (capabilities.empty()) {
-    return Status::OK();
-  }
 
   const std::string& type = current_ep.Type();
   auto fusion_style = current_ep.GetFusionStyle();
@@ -1150,11 +1163,16 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_WRITE;
   }
 
-  if (ep_context_data_read_callback_registered && accepted_external_ep_context_capability) {
+  if (ep_context_data_read_callback_registered &&
+      (accepted_external_ep_context_capability || GraphHasAssignedExternalEpContextNode(graph, type))) {
     required_ep_context_data_support |= OrtEpContextDataCallbackSupportFlags_READ;
   }
 
   ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, required_ep_context_data_support));
+
+  if (capabilities.empty()) {
+    return Status::OK();
+  }
 
   // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
   auto graph_viewer_has_non_compiled_node = [](const GraphViewer& graph_viewer) -> bool {
@@ -1690,13 +1708,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   // clang-format on
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
-  if (capabilities.empty()) {
-    return Status::OK();
-  }
 
   const std::string& type = current_ep.Type();
   if (partition_params.ep_context_data_read_callback_registered) {
     const bool accepted_external_ep_context_capability =
+        GraphHasAssignedExternalEpContextNode(graph, type) ||
         std::any_of(capabilities.cbegin(), capabilities.cend(),
                     [&](const std::unique_ptr<ComputeCapability>& capability) {
                       return IsIndexedSubGraphAvailableForAssignment(
@@ -1707,6 +1723,10 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     if (accepted_external_ep_context_capability) {
       ORT_RETURN_IF_ERROR(CheckEpContextDataSupport(current_ep, OrtEpContextDataCallbackSupportFlags_READ));
     }
+  }
+
+  if (capabilities.empty()) {
+    return Status::OK();
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
