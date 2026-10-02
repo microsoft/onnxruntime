@@ -56,13 +56,6 @@ class FirstError {
   std::string message_;
 };
 
-void ThrowOnError(OrtStatus* status_ptr) {
-  Ort::Status status{status_ptr};
-  if (!status.IsOK()) {
-    throw std::runtime_error(status.GetErrorMessage());
-  }
-}
-
 constexpr int kThreads = 4;
 constexpr int kIterations = 20;
 constexpr size_t kElements = 6;
@@ -112,8 +105,8 @@ void CopyTensorRoundTrip(Allocator& allocator, float value) {
   auto cpu_output = Ort::Value::CreateTensor<float>(
       cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
 
-  ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
-  ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_tensor, nullptr));
+  Ort::ThrowOnError(ort_env->CopyTensor(gpu_tensor, cpu_output, nullptr));
   if (output_data != input_data) {
     throw std::runtime_error("CopyTensor round trip returned incorrect data");
   }
@@ -162,7 +155,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
     auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
 
     Ort::IoBinding io_binding(session);
     io_binding.BindInput("X", gpu_input);
@@ -171,7 +164,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     session.Run(Ort::RunOptions{nullptr}, io_binding);
     io_binding.SynchronizeOutputs();
 
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 
@@ -208,7 +201,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     std::array<float, kElements> output_data{};
     auto cpu_output = Ort::Value::CreateTensor<float>(
         cpu_memory_info, output_data.data(), output_data.size(), kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
     VerifyOutput(output_data, value);
   }
 
@@ -220,7 +213,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         cpu_memory_info, input_data.data(), input_data.size(), kShape.data(), kShape.size());
     Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
     auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
 
     const std::array<const char*, 1> input_names{"X"};
     const std::array<const char*, 1> output_names{"Y"};
@@ -317,7 +310,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         cpu_node_data[index] = static_cast<float>(100 + iteration * kElements + index);
       }
       if (use_gpu_feed) {
-        ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
       }
       if (bind_cpu_output_to_gpu) {
         for (size_t index = 0; index < feeds.size(); ++index) {
@@ -337,7 +330,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
             Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()),
             Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())};
         for (auto& cached_tensor : cached_tensors) {
-          ThrowOnError(ort_env->CopyTensor(feeds[reverse_feeds ? 1 : 0], cached_tensor, nullptr));
+          Ort::ThrowOnError(ort_env->CopyTensor(feeds[reverse_feeds ? 1 : 0], cached_tensor, nullptr));
         }
       }
 
@@ -353,7 +346,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
         ASSERT_EQ(outputs[1].GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
         auto cpu_output = Ort::Value::CreateTensor<float>(
             cpu_memory, cpu_output_data.data(), cpu_output_data.size(), kShape.data(), kShape.size());
-        ThrowOnError(ort_env->CopyTensor(outputs[1], cpu_output, nullptr));
+        Ort::ThrowOnError(ort_env->CopyTensor(outputs[1], cpu_output, nullptr));
         outputs[1] = std::move(cpu_output);
         binding.ClearBoundOutputs();
       } else {
@@ -434,7 +427,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     auto gpu_producer = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
     auto gpu_copy = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
     ASSERT_NE(gpu_producer.GetTensorMutableData<float>(), gpu_copy.GetTensorMutableData<float>());
-    ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
     Ort::IoBinding binding(session);
     binding.BindInput("X", gpu_input);
     // Preallocated, distinct graph outputs force the no-op kernel's actual copy branch,
@@ -449,7 +442,7 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     std::array<float, kElements> output_data{};
     auto output = Ort::Value::CreateTensor<float>(cpu_memory, output_data.data(), output_data.size(),
                                                   shape.data(), shape.size());
-    ThrowOnError(ort_env->CopyTensor(gpu_copy, output, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_copy, output, nullptr));
     for (size_t i = 0; i < input_data.size(); ++i) {
       EXPECT_EQ(output_data[i], -input_data[i]);
     }
@@ -758,7 +751,7 @@ TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessio
       auto input = Ort::Value::CreateTensor<float>(
           cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
       auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-      ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
+      Ort::ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
       auto outputs = sessions[thread_id]->Run(Ort::RunOptions{nullptr}, input_names.data(), &gpu_input, 1,
                                               output_names.data(), output_names.size());
       std::array<float, kElements> output_data{};
@@ -783,8 +776,8 @@ TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyIsSubmittedBeforeSessionRun) {
                                                  kShape.data(), kShape.size());
     auto source = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     auto destination = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
-    ThrowOnError(ort_env->CopyTensor(input, source, nullptr));
-    ThrowOnError(ort_env->CopyTensor(source, destination, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(input, source, nullptr));
+    Ort::ThrowOnError(ort_env->CopyTensor(source, destination, nullptr));
     auto result = session->Run(Ort::RunOptions{nullptr}, input_names.data(), &destination, 1,
                                output_names.data(), output_names.size());
     std::array<float, kElements> output{};
