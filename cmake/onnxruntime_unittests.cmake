@@ -1106,6 +1106,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
   if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/qmoe_fp4_to_fp8_kernel_test.cc"
       "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
     )
@@ -1114,6 +1115,14 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
   list(APPEND all_tests ${onnxruntime_test_providers_cuda_plugin_internal_test_src})
 
   if (TARGET onnxruntime_providers_cuda_plugin)
+    if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+        APPEND PROPERTY INCLUDE_DIRECTORIES
+        $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+      set_property(SOURCE "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/moe_gemm_int2_test.cc"
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        BUILD_CUDA_EP_AS_PLUGIN ORT_API_MANUAL_INIT ORT_USE_EP_API_ADAPTERS=1)
+    endif()
     set(onnxruntime_providers_cuda_plugin_ut_impl_src
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
@@ -1129,6 +1138,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
 
     if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
       list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels_fp16_uint2.cu"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
       )
     endif()
@@ -1151,6 +1163,12 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
       ${_cuda_plugin_shared_compile_options}
       "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
       "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+      # The internal INT2 test TU exposes third-party header diagnostics under CUDA 12 with -Werror.
+      target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>")
+    endif()
     add_dependencies(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set(onnxruntime_providers_cuda_plugin_ut_impl_objects $<TARGET_OBJECTS:onnxruntime_providers_cuda_plugin_ut_impl>)
   endif()
@@ -2346,6 +2364,17 @@ endif()
     endif()
     target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
     set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+    if (onnxruntime_RUN_MLAS_TESTS)
+      # The full suite is too slow for per-PR ARM64 CI, so focus on architecture-specific activation and FP16 paths.
+      set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:Exp.*:Softmax*:Activation*")
+      if (onnxruntime_GENERATE_TEST_REPORTS)
+        list(APPEND onnxruntime_mlas_test_args
+          "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:onnxruntime_mlas_test>.$<CONFIG>.results.xml>")
+      endif()
+      add_test(NAME onnxruntime_mlas_test
+        COMMAND onnxruntime_mlas_test ${onnxruntime_mlas_test_args}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_mlas_test>)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
         set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
