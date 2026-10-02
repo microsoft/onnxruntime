@@ -316,6 +316,87 @@ TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {
               testing::HasSubstr("Graph references unknown NodeArg 'nonexistent'"));
 }
 
+TEST(OrtModelTest, RejectsNegativeInputArgCount) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{-1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts contains a negative value"));
+}
+
+TEST(OrtModelTest, RejectsMismatchedInputArgCountTotal) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{2};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("input_arg_counts total (2) does not match"));
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "y", "", CreateFloatTensorTypeInfo(builder, 1)),
+        fbs::CreateValueInfoDirect(builder, "z", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{
+        builder.CreateSharedString("x"), builder.CreateSharedString("y")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("z")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{1, 1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 13, 0, "Sum",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const auto& graph = session_object.GetGraph();
+  const auto* node = graph.GetNode(0);
+  ASSERT_NE(node, nullptr);
+
+  EXPECT_THAT(node->InputArgCount(), testing::ElementsAre(2));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 #if !defined(ORT_MINIMAL_BUILD)
 // Keep the CompareTypeProtos in case we need debug the difference
 /*
