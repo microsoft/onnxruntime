@@ -460,6 +460,66 @@ budget-driven selection safe. Heed vLLM's documented pitfall: profile the *true*
 
 ---
 
+## Offload candidate selection
+
+Workspace estimation (this document) is **one of two independent VRAM levers**; a complete
+capacity-aware offloading design uses both:
+
+- **Persistent weight residency** — where a node's *parameters* live (GPU VRAM vs. host RAM). This
+  is the dominant consumer for most real-world OOMs and the highest-ROI place to start.
+- **Transient workspace / activation** — the per-Run scratch a resident node needs. This is what the
+  route-aware `W_L1` estimate bounds, and it is what lets you *also* fit more **compute-bound** nodes
+  once the weight-side wins are taken.
+
+They are separate accounting: moving a weight to CPU reduces persistent footprint; a tighter `W_L1`
+reduces the transient peak reserved alongside the resident set.
+
+### What makes a node a good offload candidate
+
+A node is a good candidate to push to CPU when it hits all four properties — in which case the VRAM
+freed is large and the CPU penalty is small:
+
+1. **Large weight footprint** → big VRAM savings per offload.
+2. **Low arithmetic intensity (memory-bound)** → the GPU's FLOP advantage is wasted anyway, so the
+   CPU compute penalty is small.
+3. **Low execution frequency** (not every layer, or sparsely activated) → the offload cost amortizes.
+4. **Small activation transfer across PCIe** relative to weight size → cheap I/O.
+
+| Node | Weight size | Compute / byte | Frequency | Offload? |
+|---|---|---|---|---|
+| Embedding / `lm_head` | very large (`vocab × hidden`) | ~0 (gather) | once / token | ✅ best |
+| MoE / QMoE experts | largest block | low (sparse top-`k`) | sparse | ✅ best |
+| Attention (GQA) | small | high | every layer | ❌ keep resident |
+| Dense FFN | medium | high | every layer | ❌ keep resident |
+
+**Embeddings** are a gather (near-zero FLOPs) over a multi-GB `vocab × hidden` table that runs once
+at each I/O boundary; the gathered rows shipped over PCIe are tiny. **MoE/QMoE experts** are the
+largest parameter block (often 80–95% of total params) but each token touches only top-`k`, so stored
+weight dwarfs per-step FLOPs — exactly the "GPU residency wasted" profile. **Attention and dense FFN**
+hit *none* of the four properties (compute-bound, every layer, high activation traffic) and stay
+resident — attention is the critical path these workspace estimates are about.
+
+### The practical knob
+
+The first-cut control is a **node count per VRAM tier**, not a byte budget — e.g. "offload the first
+`N` QMoE layers; `N=8` for an 8 GB GPU, `N=0` for 16 GB+", set from a runtime/GenAI profile. This is
+coarse but effective (a handful of named nodes hold most of the memory), trivial to profile per tier,
+and it **sidesteps the per-op workspace-oracle problem** entirely: keep the compute-bound attention
+resident and offload the cheap-to-move weight-heavy nodes. In ORT the target is the fused
+`com.microsoft.MoE` / `QMoE` node's packed expert-weight **initializer inputs**
+(`fc1/fc2/fc3_experts_weights`) — one node per layer — so "offload `N` MoE layers" is literally
+redirecting the weight inputs of `N` `QMoE` nodes to a CPU allocator. The structure mirrors the
+[three-tier config](#three-tiers): a portable count/intent (`session.offload_moe_layers = N`)
+lowering to an EP-specific tensor-placement rule, profiled per device.
+
+This is well-precedented on the weight lever: llama.cpp's `--n-cpu-moe N` / `--override-tensor`
+(regex `exps=CPU`), the `mixtral-offloading` project, DeepSpeed ZeRO-Inference weight offload, and HF
+`accelerate` `device_map="auto"` all offload exactly these tensors. Ship the weight-placement option
+as the high-ROI starting point; the workspace estimate composes on top to reclaim headroom among the
+nodes that *stay* resident.
+
+---
+
 ## Worked example: GQA policy `π_GQA`
 
 ```
