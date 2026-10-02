@@ -81,7 +81,7 @@ TEST(MathOpTest, MatMulPackedFp16SplitKEligibleCancellationKeepsFloat32Precision
                           std::vector<MLFloat16>(rows * reduction_size, MLFloat16(1.0f)));
   test.AddInput<MLFloat16>("B", {reduction_size, output_columns}, weights);
   test.AddOutput<MLFloat16>("Y", {rows, output_columns},
-                           std::vector<MLFloat16>(rows * output_columns, MLFloat16(1.0f)));
+                            std::vector<MLFloat16>(rows * output_columns, MLFloat16(1.0f)));
   test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
