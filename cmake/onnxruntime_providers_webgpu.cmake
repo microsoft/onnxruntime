@@ -15,6 +15,10 @@
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
   )
+  if(onnxruntime_USE_EXTERNAL_DAWN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    list(REMOVE_ITEM onnxruntime_providers_webgpu_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/webgpu_context_dawn_platform.cc")
+  endif()
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
@@ -240,7 +244,7 @@
       target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
 
-    if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12 AND NOT onnxruntime_DAWN_PREBUILT_DIR)
       # Ensure dxcompiler.dll exists in the output directory $<TARGET_FILE_DIR:dxcompiler>
       # TODO: the following code is used to disable building Dawn using vcpkg temporarily
       # until we figure out how to resolve the packaging pipeline failures

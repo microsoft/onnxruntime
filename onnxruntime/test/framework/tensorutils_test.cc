@@ -61,6 +61,8 @@ constexpr bool TensorProtoElementSizesAreConstexpr() {
       sizeof(uint8_t),   // FLOAT8E8M0
       sizeof(uint8_t),   // UINT2
       sizeof(uint8_t),   // INT2
+      sizeof(uint8_t),   // FLOAT6E2M3
+      sizeof(uint8_t),   // FLOAT6E3M2
   };
 
   for (size_t index = 0; index < expected_sizes.size(); ++index) {
@@ -2017,6 +2019,21 @@ TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataValidFileSizeSucceeds) 
   std::vector<uint8_t> unpacked_tensor;
   ASSERT_STATUS_OK(utils::UnpackInitializerData(tensor_proto, std::filesystem::path{}, unpacked_tensor));
   ASSERT_EQ(unpacked_tensor.size(), sizeof(data));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, UnpackInitializerDataRejectsInlineRawDataShapeMismatch) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("inline_raw_mismatch");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+
+  const float raw_value = 1.0f;
+  utils::SetRawDataInTensorProto(tensor_proto, &raw_value, sizeof(raw_value));
+
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = utils::UnpackInitializerData(tensor_proto, std::filesystem::path{}, unpacked_tensor);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("raw_data size"));
 }
 #endif  // !defined(__wasm__)
 
