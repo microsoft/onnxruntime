@@ -720,9 +720,10 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
       wgpu::BufferDescriptor buffer_descriptor{};
       buffer_descriptor.label =
           tensor.key.name.c_str();
-      buffer_descriptor.size =
-          static_cast<uint64_t>(
-              tensor.key.length);
+      // Expose the initialized 16-byte-aligned resource so WebGPU's
+      // 4-byte-normalized copies can access tensor tail padding safely. The
+      // Tensor retains the logical payload length.
+      buffer_descriptor.size = properties.size;
       buffer_descriptor.usage =
           wgpu::BufferUsage::Storage |
           wgpu::BufferUsage::CopySrc |
