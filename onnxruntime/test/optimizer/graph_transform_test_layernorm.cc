@@ -25,6 +25,7 @@
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/capturing_sink.h"
@@ -48,6 +49,25 @@ static int GetCurrentOnnxOpset() {
   auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
   EXPECT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
   return it != map.end() ? it->second.second : 0;
+}
+
+TEST_F(GraphTransformationTests, Int64InitializerValueCheckRejectsRuntimeInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<int64_t>(std::vector<int64_t>{});
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Identity", {input}, {output});
+  };
+
+  auto check = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(graph.GetInputs().size() == 1);
+    TEST_RETURN_IF(optimizer_utils::IsInitializerWithExpectedValue(
+        graph, *graph.GetInputs()[0], int64_t{0}, true));
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<SkipLayerNormFusion>(),
+      TransformerLevel::Level2, 1, check, check));
 }
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
@@ -302,6 +322,50 @@ void BuildLayerNorm(ModelTestBuilder& builder, std::vector<int64_t> reduce1_axes
       .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
   builder.AddNode("Mul", {cast_out_2, weight_initializer}, {mul_out});
   builder.AddNode("Add", {mul_out, bias_initializer}, {add_out_2});
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionPreservesPublicDuplicateSubOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 4}});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* exponent = builder.MakeScalarInitializer<float>(2.0f);
+    auto* epsilon = builder.MakeScalarInitializer<float>(1e-5f);
+    auto* mean1 = builder.MakeIntermediate();
+    auto* sub_for_pow = builder.MakeIntermediate();
+    auto* public_sub_for_div = builder.MakeOutput();
+    auto* squared = builder.MakeIntermediate();
+    auto* mean2 = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* stddev = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* scaled = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1}, {sub_for_pow});
+    builder.AddNode("Sub", {input, mean1}, {public_sub_for_div});
+    builder.AddNode("Pow", {sub_for_pow, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {mean2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2, epsilon}, {variance});
+    builder.AddNode("Sqrt", {variance}, {stddev});
+    builder.AddNode("Div", {public_sub_for_div, stddev}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {scaled});
+    builder.AddNode("Add", {scaled, bias}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Sub") == 2);
+    TEST_RETURN_IF(op_to_count.count("LayerNormalization") != 0);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> compatible_eps;
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_,
+      std::make_unique<LayerNormFusion>(compatible_eps, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
@@ -1319,6 +1383,32 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
                                         ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
+TEST_F(GraphTransformationTests, SkipLayerNormFusionRejectsNonLastAxis) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 1, 4}});
+    auto* skip = builder.MakeInput<float>({{2, 1, 4}});
+    auto* gamma = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+    auto* sum = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {input, skip}, {sum});
+    builder.AddNode("LayerNormalization", {sum, gamma, beta}, {output})
+        .AddAttribute("axis", int64_t{-2});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Add") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    TEST_RETURN_IF(op_to_count.count("com.microsoft.SkipLayerNormalization") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_, std::make_unique<SkipLayerNormFusion>(),
+      TransformerLevel::Level2, 1, check_not_fused, check_not_fused));
+}
+
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1, 0, logger_.get());
   TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1, 0, logger_.get());
@@ -2035,6 +2125,57 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionPreservesUnsupportedPublicValues) {
+  enum class Case {
+    NonLastAxis,
+    PublicAddOutput,
+    DistilBertPublicAddOutput,
+  };
+
+  for (const auto test_case : {Case::NonLastAxis, Case::PublicAddOutput,
+                               Case::DistilBertPublicAddOutput}) {
+    SCOPED_TRACE(test_case == Case::NonLastAxis
+                     ? "non-last axis"
+                 : test_case == Case::PublicAddOutput ? "public Add output"
+                                                      : "DistilBERT public Add output");
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(
+        test_case == Case::DistilBertPublicAddOutput
+            ? MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx"
+            : MODEL_FOLDER "fusion/embed_layer_norm_format5.onnx",
+        model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+
+    Node* layer_norm = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        layer_norm = &node;
+        break;
+      }
+    }
+    ASSERT_NE(layer_norm, nullptr);
+
+    if (test_case == Case::NonLastAxis) {
+      layer_norm->GetMutableAttributes()["axis"].set_i(-2);
+    } else {
+      const Node* add = graph.GetProducerNode(layer_norm->InputDefs()[0]->Name());
+      ASSERT_NE(add, nullptr);
+      std::vector<const NodeArg*> outputs(graph.GetOutputs().begin(), graph.GetOutputs().end());
+      outputs.push_back(add->OutputDefs()[0]);
+      graph.SetOutputs(outputs);
+      ASSERT_STATUS_OK(graph.Resolve());
+    }
+
+    GraphTransformerManager manager{5};
+    ASSERT_STATUS_OK(manager.Register(std::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(manager.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+    const auto op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count.at("LayerNormalization"), 1);
+    EXPECT_EQ(op_to_count.count("com.microsoft.EmbedLayerNormalization"), 0);
+  }
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {

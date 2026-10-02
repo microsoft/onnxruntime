@@ -111,6 +111,10 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
   Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
