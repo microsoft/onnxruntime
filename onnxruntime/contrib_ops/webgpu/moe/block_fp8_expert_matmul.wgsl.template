@@ -30,13 +30,17 @@ $MAIN {
 #endif
 
   var value = 0.0;
-  for (var inner = 0u; inner < uniforms.inner; inner++) {
-    let weight_offset = weight_base + inner;
-    let packed_word = u32(weights.getByOffset(weight_offset / 4u));
-    let weight_code = unpack4xU8(packed_word)[weight_offset % 4u];
-    let weight = bitcast<f32>(kFp8DequantLutBits[weight_code]);
-    let scale = f32(scales.getByOffset(scale_base + inner / 128u));
-    value += f32(input.getByOffset(input_row * uniforms.inner + inner)) * weight * scale;
+  for (var k_block = 0u; k_block < uniforms.scale_k_blocks; k_block++) {
+    let scale = f32(scales.getByOffset(scale_base + k_block));
+    let start = k_block * 128u;
+    let end = min(start + 128u, uniforms.inner);
+    for (var inner = start; inner < end; inner++) {
+      let weight_offset = weight_base + inner;
+      let packed_word = u32(weights.getByOffset(weight_offset / 4u));
+      let weight_code = unpack4xU8(packed_word)[weight_offset % 4u];
+      let weight = bitcast<f32>(kFp8DequantLutBits[weight_code]);
+      value += f32(input.getByOffset(input_row * uniforms.inner + inner)) * weight * scale;
+    }
   }
 #if has_bias
 #if has_indirect_experts

@@ -26,22 +26,27 @@ using onnxruntime::webgpu::ComputeContext;
 
 namespace {
 
-std::string BuildFp8E4M3DequantLutWgsl() {
-  std::ostringstream oss;
-  oss << "const kFp8DequantLutBits = array<u32, 256>(";
+const std::string& Fp8E4M3DequantLutWgsl() {
+  static const std::string lut = [] {
+    std::ostringstream oss;
+    oss << "const kFp8DequantLutBits = array<u32, 256>(";
+    for (int i = 0; i < 256; ++i) {
+      if (i > 0) {
+        oss << ", ";
+      }
 #if !defined(DISABLE_FLOAT8_TYPES)
-  for (int i = 0; i < 256; ++i) {
-    if (i > 0) {
-      oss << ", ";
-    }
-    const float value = Float8E4M3FN(static_cast<uint8_t>(i), Float8E4M3FN::FromBits()).ToFloat();
-    uint32_t bits;
-    std::memcpy(&bits, &value, sizeof(bits));
-    oss << bits << "u";
-  }
+      const float value = Float8E4M3FN(static_cast<uint8_t>(i), Float8E4M3FN::FromBits()).ToFloat();
+      uint32_t bits;
+      std::memcpy(&bits, &value, sizeof(bits));
+      oss << bits << "u";
+#else
+      oss << "0u";
 #endif
-  oss << ");\n";
-  return oss.str();
+    }
+    oss << ");\n";
+    return oss.str();
+  }();
+  return lut;
 }
 
 class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulProgram> {
@@ -65,7 +70,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
       indirect_experts = &shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
     }
     const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    shader.AdditionalImplementation() << BuildFp8E4M3DequantLutWgsl();
+    shader.AdditionalImplementation() << Fp8E4M3DequantLutWgsl();
     return WGSL_TEMPLATE_APPLY(shader, "moe/block_fp8_expert_matmul.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(broadcast_input, broadcast_input_),
                                WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
@@ -443,6 +448,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                     "WebGPU QMoE does not support explicit zero points on the optimized single-token path.");
 
   if (is_block_fp8_) {
+#if defined(DISABLE_FLOAT8_TYPES)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Block-scaled FP8 QMoE requires a build with float8 types enabled.");
+#endif
     ORT_RETURN_IF_NOT(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
                       "Block-scaled FP8 QMoE does not support zero points.");
     ORT_RETURN_IF_NOT(fc1_global_scale == nullptr && fc2_global_scale == nullptr,
