@@ -22,6 +22,8 @@ typedef struct {
   ONNXTensorElementDataType onnxTypeEnum;
 } JavaTensorTypeShape;
 
+typedef struct EpContextDataCallbackState EpContextDataCallbackState;
+
 jint JNI_OnLoad(JavaVM *vm, void *reserved);
 
 OrtLoggingLevel convertLoggingLevel(jint level);
@@ -89,6 +91,18 @@ jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 jint convertErrorCode(OrtErrorCode code);
 
 OrtErrorCode checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
+
+EpContextDataCallbackState* createEpContextDataCallbackState(
+    JNIEnv* jniEnv, const OrtApi* api, jobject callback, const char* methodName,
+    const char* methodSignature, size_t maxDataSize);
+
+void releaseEpContextDataCallbackState(JNIEnv* jniEnv, EpContextDataCallbackState* state);
+
+OrtStatus* ORT_API_CALL javaEpContextDataReadCallback(
+    void* state, const char* name, OrtAllocator* allocator, void** buffer, size_t* dataSize);
+
+OrtStatus* ORT_API_CALL javaEpContextDataWriteCallback(
+    void* state, const char* name, const void* buffer, size_t bufferSize);
 
 jsize safecast_size_t_to_jsize(size_t v);
 
