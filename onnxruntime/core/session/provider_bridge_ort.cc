@@ -1665,6 +1665,9 @@ struct ProviderHostImpl : ProviderHost {
     MlasHalfGemmBatch(M, N, K, batch_size,
                       static_cast<const MLAS_HALF_GEMM_DATA_PARAMS*>(data), thread_pool);
   }
+  concurrency::ThreadPool* OpKernelContext__GetOperatorThreadPool(const OpKernelContext* p) override {
+    return p->GetOperatorThreadPool();
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

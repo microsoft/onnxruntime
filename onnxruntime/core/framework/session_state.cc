@@ -1926,13 +1926,18 @@ static bool IsMoeExpertInput(const Node& node, const NodeArg& input) {
   }
 
   const auto& input_defs = node.InputDefs();
-  for (size_t input_idx = 2; input_idx < std::min<size_t>(input_defs.size(), 8); ++input_idx) {
-    if (input_defs[input_idx] == &input) {
-      return true;
+  bool found_expert_input = false;
+  for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
+    if (input_defs[input_idx] != &input) {
+      continue;
     }
+    if (input_idx < 2 || input_idx >= 8) {
+      return false;
+    }
+    found_expert_input = true;
   }
 
-  return false;
+  return found_expert_input;
 }
 
 static Status PlaceMoeCpuOffloadInitializersOnCpu(

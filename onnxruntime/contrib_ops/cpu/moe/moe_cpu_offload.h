@@ -35,11 +35,12 @@ inline float ApplyMoeCpuOffloadActivation(float value, ActivationType activation
 
 inline void RunMoeCpuOffloadHalfGemm(
     size_t M, size_t N, size_t K,
-    const MLAS_HALF_GEMM_DATA_PARAMS& parameters) {
+    const MLAS_HALF_GEMM_DATA_PARAMS& parameters,
+    concurrency::ThreadPool* thread_pool) {
 #ifdef SHARED_PROVIDER
-  g_host->MlasHalfGemmBatch__Run(M, N, K, 1, &parameters, nullptr);
+  g_host->MlasHalfGemmBatch__Run(M, N, K, 1, &parameters, thread_pool);
 #else
-  MlasHalfGemmBatch(M, N, K, 1, &parameters, nullptr);
+  MlasHalfGemmBatch(M, N, K, 1, &parameters, thread_pool);
 #endif
 }
 
@@ -66,7 +67,8 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     int64_t num_experts,
     int64_t experts_per_token,
     const MoeCpuOffloadParameters& parameters,
-    gsl::span<MLFloat16> output) {
+    gsl::span<MLFloat16> output,
+    concurrency::ThreadPool* thread_pool) {
   const int64_t fc1_output_size = parameters.fused_swiglu ? 2 * inter_size : inter_size;
   ORT_RETURN_IF_NOT(input.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * hidden_size) &&
                         route_experts.size() == static_cast<size_t>(SafeInt<int64_t>(num_rows) * experts_per_token) &&
@@ -118,7 +120,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     fc1_params.C = fc1_output.data();
     fc1_params.ldc = static_cast<size_t>(fc1_output_size);
     RunMoeCpuOffloadHalfGemm(route_count, static_cast<size_t>(fc1_output_size),
-                             static_cast<size_t>(hidden_size), fc1_params);
+                             static_cast<size_t>(hidden_size), fc1_params, thread_pool);
 
     const MLFloat16* expert_fc1_bias =
         fc1_bias.empty() ? nullptr : fc1_bias.data() + expert * fc1_output_size;
@@ -164,7 +166,7 @@ inline Status ComputeMoeCpuOffloadedExpertsFp16(
     fc2_params.C = expert_output.data();
     fc2_params.ldc = static_cast<size_t>(hidden_size);
     RunMoeCpuOffloadHalfGemm(route_count, static_cast<size_t>(hidden_size),
-                             static_cast<size_t>(inter_size), fc2_params);
+                             static_cast<size_t>(inter_size), fc2_params, thread_pool);
 
     const MLFloat16* expert_fc2_bias =
         fc2_bias.empty() ? nullptr : fc2_bias.data() + expert * hidden_size;

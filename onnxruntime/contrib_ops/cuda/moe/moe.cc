@@ -63,7 +63,6 @@ MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), Mo
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&input_copy_stream_, cudaStreamNonBlocking));
     }
 #endif
-    cpu_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeCPU);
     cuda_allocator_ = op_kernel_info.GetAllocator(OrtMemTypeDefault);
   }
 }
@@ -97,12 +96,13 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   packed.present = true;
 
   if (cpu_offload_enabled_) {
-    packed.cpu_data = IAllocator::MakeUniquePtr<void>(cpu_allocator_, packed.bytes, true);
-    ORT_RETURN_IF_NOT(packed.cpu_data, "Failed to allocate CPU storage for MoE input ", input_idx, ".");
+    ORT_RETURN_IF_NOT(packed.bytes % sizeof(MLFloat16) == 0,
+                      "FP16 MoE input ", input_idx, " has an invalid byte size.");
+    packed.cpu_data.resize(packed.bytes / sizeof(MLFloat16));
     if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      std::memcpy(packed.cpu_data.get(), tensor.DataRaw(), packed.bytes);
+      std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
     } else {
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.get(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
     }
   } else {
     packed.cuda_data = IAllocator::MakeUniquePtr<void>(cuda_allocator_, packed.bytes, true);
@@ -185,7 +185,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     for (size_t index = 0; index < cuda_experts_.size(); ++index) {
       CUDA_RETURN_IF_ERROR(cudaMemcpy(
           static_cast<char*>(packed.cuda_data.get()) + index * expert_bytes,
-          static_cast<const char*>(packed.cpu_data.get()) +
+          reinterpret_cast<const char*>(packed.cpu_data.data()) +
               static_cast<size_t>(cuda_experts_[index]) * expert_bytes,
           expert_bytes, cudaMemcpyHostToDevice));
     }
@@ -565,8 +565,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     auto host_weights = [&](int input_idx) {
       const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
-      return gsl::make_span(static_cast<const MLFloat16*>(packed.cpu_data.get()),
-                            packed.bytes / sizeof(MLFloat16));
+      return gsl::make_span(packed.cpu_data);
     };
     auto optional_host_weights = [&](int input_idx) -> gsl::span<const MLFloat16> {
       const auto& packed = packed_inputs_[static_cast<size_t>(input_idx)];
@@ -585,7 +584,8 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         gsl::make_span(host_expert_scales.get(), expanded_rows), expert_map_,
         host_weights(2), optional_host_weights(3), host_weights(4), optional_host_weights(5),
         moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-        cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count)));
+        cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
+        context->GetOperatorThreadPool()));
 
     cpu_output_device_buffer =
         GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);

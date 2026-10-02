@@ -33,7 +33,7 @@ class MoE final : public CudaKernel, public MoEBase {
  private:
   struct PackedTensor {
     TensorShape shape;
-    IAllocatorUniquePtr<void> cpu_data;
+    std::vector<MLFloat16> cpu_data;
     IAllocatorUniquePtr<void> cuda_data;
     size_t bytes{0};
     bool present{false};
@@ -46,7 +46,6 @@ class MoE final : public CudaKernel, public MoEBase {
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
   bool cpu_offload_enabled_{false};
-  AllocatorPtr cpu_allocator_;
   AllocatorPtr cuda_allocator_;
   std::array<PackedTensor, 8> packed_inputs_;
   InlinedVector<int> cuda_experts_;
