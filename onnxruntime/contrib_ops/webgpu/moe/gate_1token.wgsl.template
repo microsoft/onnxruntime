@@ -61,8 +61,10 @@ $MAIN {
             let stride = (remaining + 1u) / 2u;
             if (local_idx < remaining - stride) {
                 let other = local_idx + stride;
-                if (shared_vals[other] > shared_vals[local_idx] ||
-                    (shared_vals[other] == shared_vals[local_idx] && shared_idxs[other] < shared_idxs[local_idx])) {
+                if (shared_idxs[local_idx] >= cols ||
+                    (shared_idxs[other] < cols &&
+                     (shared_vals[other] > shared_vals[local_idx] ||
+                      (shared_vals[other] == shared_vals[local_idx] && shared_idxs[other] < shared_idxs[local_idx])))) {
                     shared_vals[local_idx] = shared_vals[other];
                     shared_idxs[local_idx] = shared_idxs[other];
                 }
