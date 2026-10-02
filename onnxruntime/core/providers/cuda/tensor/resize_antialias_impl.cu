@@ -559,8 +559,8 @@ FUNC_DEF void SetupUpsampleFilterAnitAliasImpl(
 
   int64_t min_real = static_cast<int64_t>(fmin);
   int64_t max_real = static_cast<int64_t>(fmax);
-  int64_t min_cut = std::max<int64_t>(min_real, 0);
-  int64_t max_cut = std::min(max_real, input_size);
+  int64_t min_cut = std::min(std::max<int64_t>(min_real, 0), input_size);
+  int64_t max_cut = std::min(std::max<int64_t>(max_real, 0), input_size);
 
   int64_t min_val = exclude_outside ? min_cut : min_real;
   int64_t max_val = exclude_outside ? max_cut : max_real;
@@ -579,14 +579,14 @@ FUNC_DEF void SetupUpsampleFilterAnitAliasImpl(
     total_weight += w;
   }
 
-  if (!exclude_outside) {
-    int64_t neg_xsize = min_val < 0 ? -min_val : 0;
+  if (!exclude_outside && min_cut < max_cut) {
+    int64_t neg_xsize = std::min(std::max<int64_t>(-min_val, 0), max_val - 1);
     for (int64_t x = 0; x < neg_xsize; x++) {
       scale_buffer[neg_xsize] += scale_buffer[x];
     }
 
     int64_t bound_size =
-        max_val + min_val > input_size ? max_val + min_val - input_size : 0;
+        std::min(std::max<int64_t>(max_val + min_val - input_size, 0), max_val - 1);
     for (int64_t x = max_val - bound_size; x < max_val; x++) {
       scale_buffer[max_val - bound_size - 1] +=
           scale_buffer[x];
