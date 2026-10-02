@@ -22,6 +22,7 @@ template <typename T>
 class MoE final : public CudaKernel, public MoEBase {
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
+  ~MoE() override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
@@ -51,6 +52,10 @@ class MoE final : public CudaKernel, public MoEBase {
   InlinedVector<int> cuda_experts_;
   InlinedVector<int> expert_map_;
   IAllocatorUniquePtr<void> device_expert_map_;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  cudaStream_t input_copy_stream_{nullptr};
+  mutable std::mutex input_copy_mutex_;
+#endif
 };
 
 }  // namespace cuda
