@@ -154,29 +154,21 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
-  if (split_sizes.size() == 3 && ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
-    // we use (axis + 1) == num_dimensions to check if we are splitting on inner most axis.
-    // only when split on inner axis and output size is 3, we can use Split3Inner.
-    // this kernel is not using pin_memory, so it is ok for using cuda graph.
-    output_dimensions[axis] = split_sizes[0];
-    Tensor* output0 = ctx->Output(0, TensorShape{output_dimensions});
-    output_dimensions[axis] = split_sizes[1];
-    Tensor* output1 = ctx->Output(1, TensorShape{output_dimensions});
-    output_dimensions[axis] = split_sizes[2];
-    Tensor* output2 = ctx->Output(2, TensorShape{output_dimensions});
+  if (num_outputs >= 2 && num_outputs <= kMaxSmallInnerSplitOutputs &&
+      ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
+    TArray<int64_t, kMaxSmallInnerSplitOutputs> split_sizes_array(num_outputs);
+    TArray<void*, kMaxSmallInnerSplitOutputs> output_ptr_array(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      split_sizes_array[i] = split_sizes[i];
+      output_dimensions[axis] = split_sizes[i];
+      output_ptr_array[i] = ctx->Output(i, TensorShape{output_dimensions})->MutableDataRaw();
+    }
 
     // if input tensor is empty, we don't need to launch kernel, but still need to set output tensor.
     if (input_tensor->Shape().Size() <= 0) return Status::OK();
 
-    return Split3Inner(Stream(ctx),
-                       input_tensor->DataType()->Size(),
-                       split_sizes[0], split_sizes[1],
-                       split_sizes[2],
-                       input_tensor->DataRaw(),
-                       output0->MutableDataRaw(),
-                       output1->MutableDataRaw(),
-                       output2->MutableDataRaw(),
-                       input_dims);
+    return SplitSmallInner(Stream(ctx), input_tensor->DataType()->Size(), split_sizes_array,
+                           input_tensor->DataRaw(), output_ptr_array, input_dims);
   }
 
   size_t element_size = input_tensor->DataType()->Size();

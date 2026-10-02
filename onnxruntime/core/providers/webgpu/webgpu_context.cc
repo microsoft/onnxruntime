@@ -6,15 +6,11 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
-// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
-// which trips ORT's -Werror=unused-parameter under GCC.
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
@@ -22,8 +18,7 @@
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
-#include "dawn/platform/DawnPlatform.h"
-#include "dawn/native/DawnNative.h"
+#include "core/providers/webgpu/webgpu_context_dawn_platform.h"
 #endif
 #endif
 #if defined(__GNUC__)
@@ -46,33 +41,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-namespace {
-
-// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
-// thread pools from the core count. Uses half the logical processors (approximating physical
-// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
-uint32_t GetDawnWorkerThreadCount() {
-  return std::max(2u, std::thread::hardware_concurrency() / 2u);
-}
-
-class DawnPlatform final : public dawn::platform::Platform {
- public:
-  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
-    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
-  }
-};
-
-DawnPlatform& GetDawnPlatform() {
-  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
-  // avoid static destruction order issues with Dawn's instance teardown.
-  static DawnPlatform* platform = new DawnPlatform();
-  return *platform;
-}
-
-}  // namespace
-#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
@@ -123,14 +91,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       wgpu::Adapter adapter;
       if (config.adapter_index) {
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-        dawn::native::Instance native_instance(
-            reinterpret_cast<dawn::native::InstanceBase*>(instance_.Get()));
-        const auto adapters = native_instance.EnumerateAdapters(&req_adapter_options);
+        const auto adapters = EnumerateBundledDawnAdapters(instance_.Get(), req_adapter_options);
         ORT_ENFORCE(*config.adapter_index < adapters.size(),
                     "WebGPU adapterIndex ", *config.adapter_index,
                     " is out of range; Dawn enumerated ", adapters.size(),
                     " adapter(s) for the requested backend and power-preference hint.");
-        adapter = wgpu::Adapter(adapters[*config.adapter_index].Get());
+        adapter = adapters[*config.adapter_index];
         LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
                            << " of " << adapters.size()
                            << " adapter(s) for the requested backend and power-preference hint.";
@@ -247,6 +213,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     if (max_storage_buffer_binding_size_ != 0) {
       device_limits_.maxStorageBufferBindingSize =
           std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
+    }
+    if (max_storage_buffers_per_shader_stage_ != 0) {
+      ORT_ENFORCE(max_storage_buffers_per_shader_stage_ <= device_limits_.maxStorageBuffersPerShaderStage,
+                  "maxStorageBuffersPerShaderStage exceeds the device limit");
+      device_limits_.maxStorageBuffersPerShaderStage = max_storage_buffers_per_shader_stage_;
     }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
@@ -654,13 +625,31 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     ORT_RETURN_IF_ERROR(append_shape_uniforms(i + inputs.size() + outputs.size(), program.Indices()[i]));
   }
 
-  const size_t uniform_count = shape_uniforms.size() + program.UniformVariables().size();
+  std::vector<ProgramUniformVariableValue> buffer_view_offset_uniforms;
+  buffer_view_offset_uniforms.reserve(inputs.size() + outputs.size());
+  for (const auto& input : inputs) {
+    if (input.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(input.buffer_offset_in_elements);
+    }
+  }
+  for (const auto& output : outputs) {
+    if (output.is_buffer_view) {
+      buffer_view_offset_uniforms.emplace_back(output.buffer_offset_in_elements);
+    }
+  }
+
+  const size_t uniform_count =
+      shape_uniforms.size() + buffer_view_offset_uniforms.size() + program.UniformVariables().size();
   size_t current_offset = 0;
   std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;
   uniform_and_offsets.reserve(uniform_count);
   for (size_t i = 0; i < uniform_count; i++) {
-    const auto& uniform = i < shape_uniforms.size() ? shape_uniforms[i]
-                                                    : program.UniformVariables()[i - shape_uniforms.size()];
+    const auto& uniform =
+        i < shape_uniforms.size()
+            ? shape_uniforms[i]
+        : i < shape_uniforms.size() + buffer_view_offset_uniforms.size()
+            ? buffer_view_offset_uniforms[i - shape_uniforms.size()]
+            : program.UniformVariables()[i - shape_uniforms.size() - buffer_view_offset_uniforms.size()];
     size_t length = uniform.length;
     if (length == 0) {  // skip zero-length uniform
       continue;
@@ -1331,7 +1320,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #else
 #if !defined(USE_EXTERNAL_DAWN)
     if (dawn_procs == nullptr) {
-      dawn_procs = &dawn::native::GetProcs();
+      dawn_procs = &GetBundledDawnProcs();
     }
 #else
     ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
@@ -1350,11 +1339,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
-    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
-    dawn_instance_desc.platform = &GetDawnPlatform();
-    instance_desc.nextInChain = &dawn_instance_desc;
-#endif
+    default_instance_ = CreateBundledDawnInstance(instance_desc).MoveToCHandle();
+#else
     default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
+#endif
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   }
@@ -1385,7 +1373,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size,
-                                                                    config.test_only_max_storage_buffer_binding_size));
+                                                                    config.test_only_max_storage_buffer_binding_size,
+                                                                    config.max_storage_buffers_per_shader_stage));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
