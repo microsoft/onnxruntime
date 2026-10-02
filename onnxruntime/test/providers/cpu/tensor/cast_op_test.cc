@@ -2344,6 +2344,27 @@ TEST(CastOpTest, Float6RoundingAtEveryMidpoint) {
   TestFloat6RoundingAtEveryMidpoint<Float6E3M2>();
 }
 
+TEST(CastOpTest, DoubleToFloat6RoundingNearMidpoints) {
+  const std::vector<int64_t> shape{3};
+  const double e2_midpoint = 1.1875;
+  const double e3_midpoint = 1.375;
+  const std::vector<double> e2_values{std::nextafter(e2_midpoint, 0.0), e2_midpoint,
+                                      std::nextafter(e2_midpoint, 2.0)};
+  const std::vector<double> e3_values{std::nextafter(e3_midpoint, 0.0), e3_midpoint,
+                                      std::nextafter(e3_midpoint, 2.0)};
+  const std::vector<Float6E2M3> e2_expected{
+      Float6E2M3(0x09, Float6E2M3::FromBits()), Float6E2M3(0x0A, Float6E2M3::FromBits()),
+      Float6E2M3(0x0A, Float6E2M3::FromBits())};
+  const std::vector<Float6E3M2> e3_expected{
+      Float6E3M2(0x0D, Float6E3M2::FromBits()), Float6E3M2(0x0E, Float6E3M2::FromBits()),
+      Float6E3M2(0x0E, Float6E3M2::FromBits())};
+
+  TestCastOp<double, Float6E2M3>(gsl::make_span(e2_values), gsl::make_span(e2_expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 28);
+  TestCastOp<double, Float6E3M2>(gsl::make_span(e3_values), gsl::make_span(e3_expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 28);
+}
+
 TEST(CastOpTest, Float6EncodingBoundaries) {
   const float infinity = std::numeric_limits<float>::infinity();
 

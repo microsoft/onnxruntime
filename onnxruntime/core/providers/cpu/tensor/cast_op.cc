@@ -572,7 +572,11 @@ struct TensorCaster<SrcType, DstType,
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<DstType>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      out_data[i] = DstType(static_cast<float>(in_data[i]));
+      if constexpr (std::is_same_v<SrcType, double> && IsOrtFloat6Type<DstType>::value) {
+        out_data[i] = DstType(in_data[i]);
+      } else {
+        out_data[i] = DstType(static_cast<float>(in_data[i]));
+      }
     }
   }
 };

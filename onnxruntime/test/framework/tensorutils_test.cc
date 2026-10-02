@@ -830,6 +830,40 @@ TEST_F(PathValidationTest, Float6ExternalInitializerRetainsPrepackedWeights) {
   EXPECT_EQ(std::memcmp(restored->buffers_[0].get(), packed_weights_data.data(), packed_weights_data.size()), 0);
 }
 
+TEST_F(PathValidationTest, Float6ExternalInitializerRejectsShortDataBeforeAllocation) {
+  const auto data_path = base_dir_ / "float6_short.bin";
+  {
+    std::ofstream data_file(data_path, std::ios::binary);
+    data_file.put('\x01');
+  }
+  for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    TensorProto proto;
+    proto.set_name("float6_short");
+    proto.set_data_type(data_type);
+    proto.add_dims(sizeof(size_t) == 8 ? int64_t{1} << 40 : int64_t{1} << 28);
+    ExternalDataInfo::SetExternalLocationToProto("float6_short.bin", 0, 0, proto);
+
+    OrtValue value;
+    const Status status = utils::GetExtDataFromTensorProto(Env::Default(), base_dir_ / "model.onnx", proto, value);
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(status, "out of bounds");
+  }
+}
+
+TEST_F(PathValidationTest, Float6EmptyExternalInitializer) {
+  CreateEmptyFile(base_dir_ / "float6_empty.bin");
+  for (const auto data_type : {TensorProto_DataType_FLOAT6E2M3, TensorProto_DataType_FLOAT6E3M2}) {
+    TensorProto proto;
+    proto.set_name("float6_empty");
+    proto.set_data_type(data_type);
+    proto.add_dims(0);
+    ExternalDataInfo::SetExternalLocationToProto("float6_empty.bin", 0, 0, proto);
+
+    OrtValue value;
+    ASSERT_STATUS_OK(utils::GetExtDataFromTensorProto(Env::Default(), base_dir_ / "model.onnx", proto, value));
+    EXPECT_EQ(value.Get<Tensor>().Shape().Size(), 0);
+  }
+}
+
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
   std::filesystem::path model_path = base_dir_ / "model.onnx";

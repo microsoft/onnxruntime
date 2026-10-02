@@ -284,7 +284,9 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
     // The offset is the address of the data.
     // NOTE: this is an exception: data in memory is already in native endian format
     unpacked_tensor.resize(tensor_byte_size);
-    std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
+    if (tensor_byte_size != 0) {
+      std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
+    }
     return Status::OK();
   } else if (external_file_path == kTensorProtoLittleEndianMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
@@ -664,7 +666,12 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
       tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
     const TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
     ORT_RETURN_IF(tensor_shape.Size() < 0, "External initializer has negative dimensions");
-    tensor_byte_size = Float6E2M3::CalcNumFloat6Bytes(gsl::narrow_cast<size_t>(tensor_shape.Size()));
+    ORT_RETURN_IF(static_cast<uint64_t>(tensor_shape.Size()) > std::numeric_limits<size_t>::max(),
+                  "External initializer size exceeds addressable memory");
+    const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
+    tensor_byte_size = location == kTensorProtoNativeEndianMemoryAddressTag
+                           ? num_elements
+                           : Float6E2M3::CalcNumFloat6Bytes(num_elements);
   } else {
     ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   }
@@ -787,14 +794,48 @@ static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
   }
 }
 
+Status ReadFloat6ExternalData(const Env& env, const ONNX_NAMESPACE::TensorProto& tensor,
+                              const std::filesystem::path& tensor_proto_dir,
+                              std::vector<uint8_t>& data, bool& is_native) {
+  PathString external_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> data_size;
+  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor, tensor_proto_dir, external_file_path, file_offset, data_size));
+  is_native = external_file_path == kTensorProtoNativeEndianMemoryAddressTag;
+#if defined(__wasm__)
+  if (external_file_path != kTensorProtoNativeEndianMemoryAddressTag &&
+      external_file_path != kTensorProtoLittleEndianMemoryAddressTag) {
+    SafeInt<FileOffsetType> end_of_read(file_offset);
+    end_of_read += data_size;
+    ORT_RETURN_IF(file_offset < 0 || end_of_read >= 4294967296LL,
+                  "External initializer: ", tensor.name(), " offset: ", file_offset,
+                  " size to read: ", static_cast<size_t>(data_size), " exceeds WASM file range.");
+    data.resize(data_size);
+    return LoadWebAssemblyExternalData(env, external_file_path, file_offset, data_size,
+                                       ExternalDataLoadType::CPU, reinterpret_cast<char*>(data.data()));
+  }
+#else
+  ORT_UNUSED_PARAMETER(env);
+#endif
+  return ReadExternalDataForTensor(tensor, tensor_proto_dir, data);
+}
+
 template <typename FLOAT6_TYPE>
 Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                           const std::filesystem::path& tensor_proto_dir,
                                           size_t expected_num_elements, FLOAT6_TYPE* p_data) {
-  ORT_RETURN_IF(p_data == nullptr, "nullptr == p_data");
-  std::vector<uint8_t> packed_data;
-  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, packed_data));
-  return UnpackFloat6Tensor(tensor, packed_data.data(), packed_data.size(), p_data, expected_num_elements);
+  std::vector<uint8_t> data;
+  bool is_native = false;
+  ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(Env::Default(), tensor, tensor_proto_dir, data, is_native));
+  ORT_RETURN_IF(p_data == nullptr && expected_num_elements != 0, "nullptr == p_data");
+  if (is_native) {
+    ORT_RETURN_IF(data.size() != expected_num_elements, "Unexpected number of native float6 bytes");
+    if (expected_num_elements != 0) {
+      std::memcpy(p_data, data.data(), data.size());
+    }
+    return Status::OK();
+  }
+  return UnpackFloat6Tensor(tensor, data.data(), data.size(), p_data, expected_num_elements);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1851,16 +1892,25 @@ Status GetExtDataFromTensorProto(const Env& env,
   if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
       tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
     const TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+    ORT_RETURN_IF(tensor_shape.Size() < 0, "External initializer has negative dimensions");
+    const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
+    std::vector<uint8_t> data;
+    bool is_native = false;
+    ORT_RETURN_IF_ERROR(ReadFloat6ExternalData(env, tensor_proto, tensor_proto_dir, data, is_native));
+    const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
     const DataTypeImpl* type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     Tensor tensor{type, tensor_shape, CPUAllocator::DefaultInstance()};
-    const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
-    const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
-    if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3) {
-      ORT_RETURN_IF_ERROR(UnpackFloat6TensorWithExternalData(
-          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E2M3>()));
+    if (is_native) {
+      ORT_RETURN_IF(data.size() != num_elements, "Unexpected number of native float6 bytes");
+      if (num_elements != 0) {
+        std::memcpy(tensor.MutableDataRaw(), data.data(), data.size());
+      }
+    } else if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3) {
+      ORT_RETURN_IF_ERROR(UnpackFloat6Tensor(
+          tensor_proto, data.data(), data.size(), tensor.MutableData<Float6E2M3>(), num_elements));
     } else {
-      ORT_RETURN_IF_ERROR(UnpackFloat6TensorWithExternalData(
-          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E3M2>()));
+      ORT_RETURN_IF_ERROR(UnpackFloat6Tensor(
+          tensor_proto, data.data(), data.size(), tensor.MutableData<Float6E3M2>(), num_elements));
     }
     if (prepacked_info != nullptr) {
       ORT_RETURN_IF_ERROR(LoadPrepackedWeightsFromExternalData(env, model_path, tensor_proto, *prepacked_info));
