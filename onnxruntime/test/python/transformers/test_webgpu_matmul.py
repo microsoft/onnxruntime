@@ -120,7 +120,8 @@ def bind_matmul(session, a, weights=None):
         values[name] = value
         binding.bind_ortvalue_input(name, value)
     for output in session.get_outputs():
-        value = session.create_ortvalue_from_shape_and_type(output.shape, a.dtype, "webgpu")
+        output_dtype = {"tensor(float16)": np.float16, "tensor(float)": np.float32}[output.type]
+        value = session.create_ortvalue_from_shape_and_type(output.shape, output_dtype, "webgpu")
         values[output.name] = value
         binding.bind_ortvalue_output(output.name, value)
     return binding, values
