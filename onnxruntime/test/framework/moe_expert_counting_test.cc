@@ -687,6 +687,15 @@ TEST(MoeExpertCountingTest, StaticCpuOffloadDistributesZeroCountersAcrossNodes) 
             (InlinedVector<int>{0, 1, 2}));
   EXPECT_EQ(CudaExperts(*state, session.GetSessionState().GetKernel(1)),
             (InlinedVector<int>{0, 1}));
+
+  const auto& session_state = session.GetSessionState();
+  const auto* execution_plan = session_state.GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr);
+  for (const char* initializer_name : {"w1", "w2"}) {
+    int initializer_index = -1;
+    ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx(initializer_name, initializer_index));
+    EXPECT_EQ(execution_plan->GetLocation(static_cast<size_t>(initializer_index)).Type(), OrtDevice::CPU);
+  }
 }
 
 TEST(MoeExpertCountingTest, StaticCpuOffloadRanksLoadedCountersAcrossNodes) {
