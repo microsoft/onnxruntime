@@ -5,6 +5,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #if defined(USE_CUDA)
 // CUDA_VERSION comes from cuda.h and controls registration of the tests below.
@@ -48,6 +49,50 @@ TEST(GemmFloat8OpTest, Float) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(GemmFloat8OpTest, MissingScalesCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("GemmFloat8", 1, kMSDomain);
+  test.AddAttribute("dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  test.AddInput<float>("A", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("B", {2, 2}, {1.f, 0.f, 0.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(GemmFloat8OpTest, MissingScaleBCUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("GemmFloat8", 1, kMSDomain);
+  test.AddAttribute("dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  test.AddInput<float>("A", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+  test.AddInput<float>("B", {2, 2}, {1.f, 0.f, 0.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("scaleA", {1}, {1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
+
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda_ep));
+  test.Run(options, OpTester::ExpectResult::kExpectFailure, "scaleA and scaleB must both be provided.",
+           {}, nullptr, &providers);
 }
 
 std::vector<MLFloat16> _Cvt(const std::vector<float>& tensor) {
