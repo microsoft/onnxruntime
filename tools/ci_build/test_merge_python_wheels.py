@@ -50,6 +50,7 @@ def write_wheel(
     extra_files: dict[str, bytes] | None = None,
     metadata_extra: str = "",
     generator: str = "bdist_wheel",
+    wheel_version: str = "1.0",
 ) -> str:
     """Write a realistic single-CPython wheel and return its path."""
     # A free-threaded wheel keeps the plain Python tag: cp313-cp313t-<platform>.
@@ -65,7 +66,7 @@ def write_wheel(
         f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n{metadata_extra}"
     ).encode()
     members[f"{dist_info}/WHEEL"] = (
-        "Wheel-Version: 1.0\n"
+        f"Wheel-Version: {wheel_version}\n"
         f"Generator: {generator}\n"
         "Root-Is-Purelib: false\n"
         f"Tag: {python_tag}-{abi_tag}-{platform_tag}\n"
@@ -275,14 +276,32 @@ class TestMergeRejects(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(entry_points, result.stderr)
 
-    def test_rejects_wheel_files_that_differ_beyond_the_tag(self):
+    def test_rejects_wheel_files_that_differ_beyond_tag_and_generator(self):
         wheels = [
-            write_wheel(self.tmp.name, abi_tag="cp311", generator="setuptools (80.9.0)"),
-            write_wheel(self.tmp.name, abi_tag="cp312", generator="setuptools (75.0.0)"),
+            write_wheel(self.tmp.name, abi_tag="cp311", wheel_version="1.0"),
+            write_wheel(self.tmp.name, abi_tag="cp312", wheel_version="1.1"),
         ]
         result = run_merger(self.out, wheels)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("differs between the wheels in more than its Tag lines", result.stderr)
+        self.assertIn("differs between the wheels beyond its Tag and Generator lines", result.stderr)
+        self.assertIn("Wheel-Version: 1.1", result.stderr)
+
+
+class TestMergeAcceptsDifferentGenerators(unittest.TestCase):
+    def test_keeps_the_first_generator(self):
+        """Each manylinux interpreter can ship its own setuptools, which only changes the Generator line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out")
+            wheels = [
+                write_wheel(tmp, abi_tag="cp311", generator="setuptools (80.9.0)"),
+                write_wheel(tmp, abi_tag="cp312", generator="setuptools (75.0.0)"),
+            ]
+            result = run_merger(out, wheels)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with zipfile.ZipFile(os.path.join(out, os.listdir(out)[0])) as archive:
+                wheel_text = archive.read("onnxruntime-1.28.0.dist-info/WHEEL").decode()
+            self.assertIn("Generator: setuptools (80.9.0)", wheel_text)
+            self.assertNotIn("75.0.0", wheel_text)
 
 
 class TestMergeSucceeds(unittest.TestCase):
