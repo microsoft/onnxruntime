@@ -26,8 +26,8 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
 
-  // The enums have the same values through FLOAT4E2M1. The following three entries
-  // differ because ONNX inserted FLOAT8E8M0 before UINT2 and INT2.
+  // The enums have the same values through FLOAT4E2M1. ONNX inserted FLOAT8E8M0 before
+  // UINT2 and INT2, shifting their values and the following FP6 types.
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
@@ -35,6 +35,10 @@ constexpr ONNXTensorElementDataType ToONNXTensorElementDataType(
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
     case ONNX_NAMESPACE::TensorProto_DataType_INT2:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3:
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2:
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2;
     default:
       return static_cast<ONNXTensorElementDataType>(value);
   }
