@@ -1,0 +1,75 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_carry_state
+#param has_initial_state
+#param output_final_state
+#param value_channels_per_workgroup
+#use .getByOffset .setByOffset
+
+const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+
+$MAIN {
+  let value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) /
+                    VALUE_CHANNELS_PER_WORKGROUP;
+  let workgroups_per_batch = uniforms.num_heads_v * value_tiles;
+  if (workgroup_idx >= uniforms.batch_size * workgroups_per_batch) {
+    return;
+  }
+
+  let value_tile = workgroup_idx % value_tiles;
+  let value_head = (workgroup_idx / value_tiles) % uniforms.num_heads_v;
+  let batch = workgroup_idx / workgroups_per_batch;
+  let key_index = local_idx;
+  let value_start = value_tile * VALUE_CHANNELS_PER_WORKGROUP;
+  var state: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+  for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+    state[value_offset] = 0.0;
+  }
+
+  if (key_index < uniforms.head_size_qk) {
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                      uniforms.head_size_qk + key_index);
+#if has_initial_state
+        state[value_offset] = f32(initial_state.getByOffset(offset));
+#endif
+#if has_carry_state
+        state[value_offset] = carry_state.getByOffset(offset);
+#endif
+      }
+    }
+  }
+
+  for (var chunk = 0u; chunk < uniforms.chunks_in_pass; chunk++) {
+    if (key_index < uniforms.head_size_qk) {
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          let state_offset = ((((chunk * uniforms.batch_size + batch) * uniforms.num_heads_v + value_head) *
+                               uniforms.head_size_v + value_index) * uniforms.head_size_qk + key_index);
+          chunk_state.setByOffset(state_offset, state[value_offset]);
+          state[value_offset] += chunk_contribution.getByOffset(state_offset);
+        }
+      }
+    }
+  }
+
+  if (key_index < uniforms.head_size_qk) {
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                      uniforms.head_size_qk + key_index);
+        next_carry_state.setByOffset(offset, state[value_offset]);
+#if output_final_state
+        if (uniforms.is_last_pass != 0u) {
+          final_state.setByOffset(offset, state[value_offset]);
+        }
+#endif
+      }
+    }
+  }
+}

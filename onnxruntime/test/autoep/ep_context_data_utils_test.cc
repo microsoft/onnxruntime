@@ -562,6 +562,21 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataRejectsOversizedPayloads)
                        ORT_INVALID_ARGUMENT, "callback data exceeds the configured maximum size");
   EXPECT_TRUE(callback_owned.empty());
 
+  Ort::SessionOptions session_options;
+  session_options.SetEpContextDataReadFunc(LoadEpContextDataCallback, &callback_state);
+  Ort::EpContextConfig config{session_options};
+  callback_state.read_called = false;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, config, "oversized_callback.bin", nullptr, callback_owned,
+                           nullptr, callback_state.payload.size() - 1),
+                       ORT_INVALID_ARGUMENT, "callback data exceeds the configured maximum size");
+  EXPECT_TRUE(callback_state.read_called);
+  EXPECT_TRUE(callback_owned.empty());
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, config, "at_limit_callback.bin", nullptr, callback_owned, nullptr, callback_state.payload.size()));
+  EXPECT_EQ(callback_owned.size(), callback_state.payload.size());
+  EXPECT_EQ(static_cast<const void*>(callback_owned.data()), callback_state.last_read_buffer);
+
   const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_oversized_test");
   auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
   const std::filesystem::path data_path = test_dir / "oversized_file.bin";

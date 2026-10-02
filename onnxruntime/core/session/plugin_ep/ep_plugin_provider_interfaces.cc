@@ -734,16 +734,16 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   return result;
 }
 
-Status PluginExecutionProvider::GetEpContextDataSupport(uint32_t& supported_flags) const {
-  supported_flags = OrtEpContextDataSupportFlags_NONE;
-  if (ort_ep_->ort_version_supported < 30 || ort_ep_->GetEpContextDataSupport == nullptr) {
+Status PluginExecutionProvider::GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+  supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
+  if (ort_ep_->ort_version_supported < 31 || ort_ep_->GetEpContextDataCallbackSupport == nullptr) {
     return Status::OK();
   }
 
-  OrtStatus* ort_status = ort_ep_->GetEpContextDataSupport(ort_ep_.get(), &supported_flags);
+  OrtStatus* ort_status = ort_ep_->GetEpContextDataCallbackSupport(ort_ep_.get(), &supported_flags);
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_status));
 
-  constexpr uint32_t known_flags = OrtEpContextDataSupportFlags_READ | OrtEpContextDataSupportFlags_WRITE;
+  constexpr uint32_t known_flags = OrtEpContextDataCallbackSupportFlags_READ | OrtEpContextDataCallbackSupportFlags_WRITE;
   ORT_RETURN_IF(supported_flags & ~known_flags, "OrtEp for ", Type(),
                 " returned unknown EPContext data support flags: ", supported_flags, ".");
   return Status::OK();
@@ -910,6 +910,11 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
     // throw or log? start with throw
     if (ort_status != nullptr) {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
+    }
+
+    // A successful callback may return nullptr to request ORT's default CPU allocator.
+    if (ort_allocator_ptr == nullptr) {
+      continue;
     }
 
     if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {

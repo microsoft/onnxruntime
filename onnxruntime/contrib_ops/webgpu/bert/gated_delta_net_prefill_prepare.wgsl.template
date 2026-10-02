@@ -1,0 +1,59 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param value_channels_per_workgroup
+#use .getByOffset .setByOffset
+
+const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+
+$MAIN {
+  let value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) /
+                    VALUE_CHANNELS_PER_WORKGROUP;
+  let workgroups_per_batch = uniforms.num_heads_v * value_tiles * uniforms.chunks_in_pass;
+  if (workgroup_idx >= uniforms.batch_size * workgroups_per_batch) {
+    return;
+  }
+
+  let chunk = workgroup_idx % uniforms.chunks_in_pass;
+  let value_tile = (workgroup_idx / uniforms.chunks_in_pass) % value_tiles;
+  let value_head = (workgroup_idx / (uniforms.chunks_in_pass * value_tiles)) % uniforms.num_heads_v;
+  let batch = workgroup_idx / workgroups_per_batch;
+  let key_index = local_idx;
+  let value_start = value_tile * VALUE_CHANNELS_PER_WORKGROUP;
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
+  let sequence_length = uniforms.total_tokens / uniforms.batch_size;
+  let chunk_start = (uniforms.chunk_base + chunk) * uniforms.chunk_size;
+  let chunk_end = min(chunk_start + uniforms.chunk_size, sequence_length);
+  var contribution: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+  for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+    contribution[value_offset] = 0.0;
+  }
+
+  for (var token_offset = chunk_start; token_offset < chunk_end; token_offset++) {
+    let token = batch * sequence_length + token_offset;
+    if (key_index < uniforms.head_size_qk) {
+      let key_offset = (token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index;
+      let key_value = f32(key.getByOffset(key_offset));
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          let value_offset_in_tensor =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
+          contribution[value_offset] += key_value *
+              f32(value.getByOffset(value_offset_in_tensor));
+        }
+      }
+    }
+  }
+
+  if (key_index < uniforms.head_size_qk) {
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let offset = ((((chunk * uniforms.batch_size + batch) * uniforms.num_heads_v + value_head) *
+                       uniforms.head_size_v + value_index) * uniforms.head_size_qk + key_index);
+        chunk_contribution.setByOffset(offset, contribution[value_offset]);
+      }
+    }
+  }
+}

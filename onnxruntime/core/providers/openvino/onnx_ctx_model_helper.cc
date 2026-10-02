@@ -15,6 +15,19 @@
 
 namespace {
 
+constexpr const char* kPathResolutionGuidance =
+    ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
+    "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
+
+Status ValidateEpContextDataPath(const std::filesystem::path& model_path,
+                                 const std::filesystem::path& data_path) {
+  const auto status = onnxruntime::utils::ValidateExternalDataPath(model_path, data_path);
+  if (!status.IsOK()) {
+    return Status(status.Category(), status.Code(), status.ErrorMessage() + kPathResolutionGuidance);
+  }
+  return Status::OK();
+}
+
 struct OrtAllocatorDeleter {
   OrtAllocator* allocator{};
   void operator()(void* buffer) const noexcept {
@@ -94,7 +107,7 @@ class CallbackBufferIStream final : public std::istream {
 };
 
 Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
-                         size_t max_data_size, const std::string& name,
+                         const std::string& name,
                          std::unique_ptr<CallbackBufferIStream>& stream) {
   OrtAllocator* allocator = nullptr;
   ORT_RETURN_IF_ERROR(onnxruntime::openvino_ep::ConvertAndReleaseCallbackStatus(
@@ -104,10 +117,6 @@ Status ReadEpContextData(OrtReadNamedBufferFunc read_func, void* read_state,
   OrtStatus* callback_status = read_func(read_state, name.c_str(), allocator, &buffer, &buffer_size);
   std::unique_ptr<void, OrtAllocatorDeleter> buffer_guard{buffer, OrtAllocatorDeleter{allocator}};
   ORT_RETURN_IF_ERROR(onnxruntime::openvino_ep::ConvertAndReleaseCallbackStatus(callback_status));
-  if (buffer_size > max_data_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "OpenVINO EPContext read callback exceeded the configured maximum size.");
-  }
   if (buffer_size == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "OpenVINO EPContext read callback returned an empty payload.");
@@ -254,9 +263,11 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
-    ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
+    ORT_THROW_IF_ERROR(ValidateEpContextDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
-    ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
+    ORT_ENFORCE(
+        std::filesystem::exists(blob_filepath),
+        "External EP context file not found: ", blob_filepath.string(), kPathResolutionGuidance);
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
 
@@ -412,12 +423,11 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
             std::unique_ptr<CallbackBufferIStream> stream;
             ORT_THROW_IF_ERROR(ReadEpContextData(session_context.ep_context_data_read_func,
                                                  session_context.ep_context_data_read_state,
-                                                 session_context.ep_context_data_read_max_size,
                                                  ep_cache_context, stream));
             shared_context->Deserialize(*stream);
           }
         } else {
-          ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
+          ORT_THROW_IF_ERROR(ValidateEpContextDataPath(validation_base_path, cache_context_path));
           const std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
           shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
           shared_context->Deserialize();
@@ -425,7 +435,7 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
       } else {
         ORT_ENFORCE(session_context.ep_context_data_read_func == nullptr,
                     "OpenVINO OVIR EPContext does not support EPContext data read callbacks.");
-        ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
+        ORT_THROW_IF_ERROR(ValidateEpContextDataPath(validation_base_path, cache_context_path));
       }
     }
   }

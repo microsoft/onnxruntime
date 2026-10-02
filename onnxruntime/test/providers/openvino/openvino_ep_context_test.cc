@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -56,6 +57,8 @@ struct OpenVINOEpContextCallbackState {
   bool read_called = false;
   size_t write_count = 0;
   size_t read_count = 0;
+  size_t allocation_count = 0;
+  size_t max_data_size = kOpenVINOEpContextTestMaxDataSize;
   bool fail_write = false;
   bool fail_read = false;
   bool return_empty = false;
@@ -91,6 +94,8 @@ OrtStatus* ORT_API_CALL LoadOpenVINOEpContextData(void* state, const char* name,
   callback_state.read_called = true;
   ++callback_state.read_count;
   callback_state.read_names.emplace_back(name);
+  *buffer = nullptr;
+  *buffer_size = 0;
   if (callback_state.fail_read) {
     return Ort::GetApi().CreateStatus(ORT_FAIL, "synthetic OpenVINO EPContext read callback failure");
   }
@@ -106,21 +111,50 @@ OrtStatus* ORT_API_CALL LoadOpenVINOEpContextData(void* state, const char* name,
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Unexpected OpenVINO EPContext data name");
   }
 
-  *buffer = nullptr;
   if (callback_state.return_empty) {
-    *buffer_size = 0;
     return nullptr;
+  }
+  if (payload->size() > callback_state.max_data_size) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                      "OpenVINO application callback rejected payload exceeding its allocation limit");
   }
   *buffer_size = payload->size();
   if (payload->empty()) {
     return nullptr;
   }
 
+  ++callback_state.allocation_count;
   OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, payload->size(), buffer);
   if (status == nullptr) {
     std::copy(payload->begin(), payload->end(), static_cast<char*>(*buffer));
   }
   return status;
+}
+
+TEST(OpenVINOEpContextCallbackTest, ApplicationReadLimitIsCheckedBeforeAllocation) {
+  OpenVINOEpContextCallbackState callback_state;
+  callback_state.name = "context.bin";
+  callback_state.payload = {'o', 'v'};
+  callback_state.max_data_size = callback_state.payload.size() - 1;
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = nullptr;
+  size_t buffer_size = 0;
+  Ort::Status status{LoadOpenVINOEpContextData(&callback_state, "context.bin", allocator, &buffer, &buffer_size)};
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("application callback"));
+  EXPECT_EQ(callback_state.allocation_count, 0u);
+  EXPECT_EQ(buffer, nullptr);
+  EXPECT_EQ(buffer_size, 0u);
+
+  callback_state.max_data_size = callback_state.payload.size();
+  status = Ort::Status{LoadOpenVINOEpContextData(&callback_state, "context.bin", allocator, &buffer, &buffer_size)};
+  std::unique_ptr<void, Ort::detail::AllocatedFree> buffer_guard{buffer, Ort::detail::AllocatedFree{allocator}};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(callback_state.allocation_count, 1u);
+  ASSERT_EQ(buffer_size, callback_state.payload.size());
+  ASSERT_NE(buffer, nullptr);
+  EXPECT_EQ(std::vector<char>(static_cast<char*>(buffer), static_cast<char*>(buffer) + buffer_size),
+            callback_state.payload);
 }
 
 std::string GetExternalEpContextDataName(const std::filesystem::path& model_path) {
@@ -420,8 +454,7 @@ TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModelWithMixedCaseExtension) {
 TEST_F(OVEPEPContextOVIRTests, ReadCallbackIsRejectedBeforeFilesystemFallback) {
   OpenVINOEpContextCallbackState callback_state;
   Ort::SessionOptions session_options;
-  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state,
-                                           kOpenVINOEpContextTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state);
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
@@ -579,8 +612,7 @@ TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
   // --- Load + run the generated EP context model ---
   {
     Ort::SessionOptions session_options;
-    session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state,
-                                             kOpenVINOEpContextTestMaxDataSize);
+    session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state);
     std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
@@ -591,6 +623,50 @@ TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
 
   EXPECT_EQ(callback_state.read_called, !embed_mode);
   EXPECT_EQ(callback_state.read_count, embed_mode ? 0u : 1u);
+
+  if (!embed_mode) {
+    // Restore the sidecar to exercise the independent filesystem-path tests below.
+    {
+      std::ofstream sidecar_stream(epctx_model.parent_path() / callback_state.name, std::ios::binary);
+      ASSERT_TRUE(sidecar_stream);
+      sidecar_stream.write(callback_state.payload.data(), gsl::narrow<std::streamsize>(callback_state.payload.size()));
+      sidecar_stream.close();
+      ASSERT_TRUE(sidecar_stream);
+    }
+
+    const std::filesystem::path external_initializers_dir = out_dir / "external_initializers";
+    std::filesystem::create_directories(external_initializers_dir);
+
+    {
+      Ort::SessionOptions session_options;
+      session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                     external_initializers_dir.string().c_str());
+      std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+      session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+      try {
+        Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
+        FAIL() << "Session creation should fail when the EP context binary is resolved from the initializer folder.";
+      } catch (const Ort::Exception& ex) {
+        EXPECT_THAT(ex.what(), ::testing::HasSubstr("External data path does not exist"));
+        EXPECT_THAT(ex.what(), ::testing::Not(::testing::HasSubstr("validate_status.IsOK()")));
+        EXPECT_THAT(ex.what(), ::testing::HasSubstr("session.model_external_initializers_file_folder_path"));
+        EXPECT_THAT(ex.what(), ::testing::HasSubstr("ep.context_file_path"));
+      }
+    }
+
+    {
+      Ort::SessionOptions session_options;
+      session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                     external_initializers_dir.string().c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, epctx_model.string().c_str());
+      std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+      session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+      Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
+      RunAndValidate(session);
+    }
+  }
 
   std::filesystem::remove_all(out_dir);
 }
@@ -622,25 +698,25 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   ASSERT_FALSE(callback_state.payload.empty());
   ASSERT_FALSE(std::filesystem::exists(epctx_model.parent_path() / callback_state.name));
 
-  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state,
-                                           callback_state.payload.size() - 1);
+  callback_state.max_data_size = callback_state.payload.size() - 1;
+  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state);
   std::string oversized_error;
   try {
     Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
-    FAIL() << "Expected oversized OpenVINO EPContext callback payload rejection";
+    FAIL() << "Expected application callback allocation-limit rejection";
   } catch (const Ort::Exception& ex) {
     oversized_error = ex.what();
     EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
   }
   EXPECT_TRUE(callback_state.read_called);
   EXPECT_EQ(callback_state.read_count, 1u);
+  EXPECT_EQ(callback_state.allocation_count, 0u);
   EXPECT_THAT(oversized_error,
-              testing::HasSubstr("OpenVINO EPContext read callback exceeded the configured maximum size"));
+              testing::HasSubstr("OpenVINO application callback rejected payload exceeding its allocation limit"));
   EXPECT_FALSE(std::filesystem::exists(epctx_model.parent_path() / callback_state.name));
 
   callback_state.read_called = false;
-  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state,
-                                           kOpenVINOEpContextTestMaxDataSize);
+  callback_state.max_data_size = callback_state.payload.size();
   callback_state.return_empty = true;
   std::string empty_error;
   try {
@@ -675,6 +751,7 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, CompileApiExternalDataUsesCallbacks) 
   Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
   EXPECT_TRUE(callback_state.read_called);
   EXPECT_EQ(callback_state.read_count, 4u);
+  EXPECT_EQ(callback_state.allocation_count, 1u);
   RunAndValidate(session);
 
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -742,8 +819,7 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, ReadCallbackUsesDistinctExternalNames
   }
 
   Ort::SessionOptions session_options;
-  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &read_state,
-                                           kOpenVINOEpContextTestMaxDataSize);
+  session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &read_state);
   std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 
@@ -791,8 +867,7 @@ TEST_F(OVEPOVIRModelsExportEPContextTests, EpContextCallbacksRejectSharedContext
 
   {
     Ort::SessionOptions session_options;
-    session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state,
-                                             kOpenVINOEpContextTestMaxDataSize);
+    session_options.SetEpContextDataReadFunc(LoadOpenVINOEpContextData, &callback_state);
     session_options.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
     std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);

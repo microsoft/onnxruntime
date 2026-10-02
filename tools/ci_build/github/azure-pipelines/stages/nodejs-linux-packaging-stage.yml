@@ -30,9 +30,7 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
-    - checkout: self
-      clean: true
-      submodules: recursive
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 

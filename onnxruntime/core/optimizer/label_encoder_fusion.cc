@@ -34,12 +34,41 @@ std::string GetTypename() {
   }
 }
 
+template <typename T>
+size_t GetAttributeElementCount(const ONNX_NAMESPACE::AttributeProto& attribute) {
+  if constexpr (std::is_same_v<T, int64_t>) {
+    return static_cast<size_t>(attribute.ints_size());
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return static_cast<size_t>(attribute.strings_size());
+  } else if constexpr (std::is_same_v<T, float>) {
+    return static_cast<size_t>(attribute.floats_size());
+  } else {
+    static_assert(false_for_T<T>, "Unsupported type");
+  }
+}
+
 template <typename T1, typename T2, typename T3>
 bool LabelEncoderFusion::IsValidForFusion(const Node& node, const Node& next_node) const {
-  return (node.GetAttributes().find(KEYS_ATTR_NAME(T1)) != node.GetAttributes().end() &&
-          node.GetAttributes().find(VALUES_ATTR_NAME(T2)) != node.GetAttributes().end() &&
-          next_node.GetAttributes().find(KEYS_ATTR_NAME(T2)) != next_node.GetAttributes().end() &&
-          next_node.GetAttributes().find(VALUES_ATTR_NAME(T3)) != next_node.GetAttributes().end());
+  const auto& node_attributes = node.GetAttributes();
+  const auto node_keys = node_attributes.find(KEYS_ATTR_NAME(T1));
+  const auto node_values = node_attributes.find(VALUES_ATTR_NAME(T2));
+  const auto& next_node_attributes = next_node.GetAttributes();
+  const auto next_node_keys = next_node_attributes.find(KEYS_ATTR_NAME(T2));
+  const auto next_node_values = next_node_attributes.find(VALUES_ATTR_NAME(T3));
+
+  if (node_keys == node_attributes.end() ||
+      node_values == node_attributes.end() ||
+      next_node_keys == next_node_attributes.end() ||
+      next_node_values == next_node_attributes.end()) {
+    return false;
+  }
+
+  const size_t node_key_count = GetAttributeElementCount<T1>(node_keys->second);
+  const size_t next_node_key_count = GetAttributeElementCount<T2>(next_node_keys->second);
+  return node_key_count > 0 &&
+         next_node_key_count > 0 &&
+         node_key_count == GetAttributeElementCount<T2>(node_values->second) &&
+         next_node_key_count == GetAttributeElementCount<T3>(next_node_values->second);
 }
 
 /**
@@ -104,6 +133,11 @@ Status LabelEncoderFusion::ApplyHelper(
       next_node_helper.GetAttrsOrDefault<T3>(VALUES_ATTR_NAME(T3));
   const T3 next_node_default =
       next_node_helper.GetAttr<T3>(DEFAULT_VALUE_ATTR_NAME(T3));
+
+  ORT_RETURN_IF_NOT(node_keys.size() == node_values.size(),
+                    "LabelEncoder keys and values attributes must have the same number of elements.");
+  ORT_RETURN_IF_NOT(next_node_keys.size() == next_node_values.size(),
+                    "LabelEncoder keys and values attributes must have the same number of elements.");
 
   const auto getFromMapDefault = [](const auto& mp, const auto key, const auto def) {
     return (mp.find(key) == mp.end()) ? def : mp.at(key);

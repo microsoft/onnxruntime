@@ -677,6 +677,22 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+
+          // B-packing chunk-boundary coverage: MLAS_PACK_BLKS_PER_CHUNK is 64, so the
+          // subblock-count-based chunking in PackQuantB/Q8PackQuantB (and the matching
+          // ComputePackBlkSum/Q8ComputePackBlkSum scale reordering) switches from a single
+          // chunk to multiple chunks around 64 subblocks. Choose K as an exact multiple of
+          // BlkLen so BlockCountK lands exactly on the target subblock count (63, 64, 65,
+          // 127, 128, 129), exercising values just below, at, and just above the boundary
+          // (and its second occurrence) regardless of which SubBlkLen the active ISA path
+          // selects.
+          for (const size_t SubBlkCountKTarget : {63, 64, 65, 127, 128, 129}) {
+            const size_t K = SubBlkCountKTarget * BlkLen;
+            for (const size_t N : {1, 3, 4, 5}) {
+              tests_registered += RegisterSingleTest(1, N, K, ComputeType, WithThreadpool, Symmetric, false);
+              tests_registered += RegisterSingleTest(1, N, K, ComputeType, WithThreadpool, Symmetric, true);
+            }
+          }
         }
       }
     }

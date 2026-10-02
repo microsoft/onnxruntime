@@ -371,6 +371,10 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   const auto* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
 
   auto& X_shape = X.Shape();
+  const auto& W_shape = (W != nullptr) ? W->Shape() : pre_packed_input_weights_.shape_;
+  const auto& R_shape = (R != nullptr) ? R->Shape() : pre_packed_recurrent_ZR_.shape_;  // original shape saved
+  ORT_RETURN_IF_ERROR(ValidateCommonRnnInputs(X, W_shape, R_shape, B, 3, sequence_lens, initial_h,
+                                              num_directions_, hidden_size_));
 
   int seq_length = narrow<int>(X_shape[0]);
   int batch_size = narrow<int>(X_shape[1]);
@@ -379,11 +383,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   // #ifdef _DEBUG
   //   std::cout << "GRU: seq_len: " << seq_length << " batch_size: " << batch_size << " input_size: " << input_size << std::endl;
   // #endif
-
-  const auto& W_shape = (W != nullptr) ? W->Shape() : pre_packed_input_weights_.shape_;
-  const auto& R_shape = (R != nullptr) ? R->Shape() : pre_packed_recurrent_ZR_.shape_;  // original shape saved
-  auto status = ValidateCommonRnnInputs(X, W_shape, R_shape, B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
-  ORT_RETURN_IF_ERROR(status);
 
   // GRU outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
@@ -403,7 +402,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   }
 
   AllocatorPtr alloc;
-  status = context.GetTempSpaceAllocator(&alloc);
+  auto status = context.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
   const auto* input_weights = (W != nullptr) ? W->Data<T>() : nullptr;
   const auto recurrent_weights = (R != nullptr) ? R->DataAsSpan<T>() : gsl::span<const T>();

@@ -9,7 +9,6 @@
 #include <unordered_set>
 #include <string>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include "core/common/common.h"
 #include "core/providers/openvino/ov_interface.h"
@@ -66,7 +65,6 @@ struct ProviderInfo {
   fs::path so_context_file_path{};         // ORT session option
   OrtReadNamedBufferFunc ep_context_data_read_func{nullptr};
   void* ep_context_data_read_state{nullptr};
-  size_t ep_context_data_read_max_size{std::numeric_limits<size_t>::max()};
   OrtWriteNamedBufferFunc ep_context_data_write_func{nullptr};
   void* ep_context_data_write_state{nullptr};
   const ConfigOptions* config_options{NULL};

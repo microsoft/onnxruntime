@@ -433,7 +433,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ParseConfigOptions(provider_info);
     session_options.GetEpContextDataCallbacks(&provider_info.ep_context_data_read_func,
                                               &provider_info.ep_context_data_read_state,
-                                              &provider_info.ep_context_data_read_max_size,
                                               &provider_info.ep_context_data_write_func,
                                               &provider_info.ep_context_data_write_state);
 
@@ -450,7 +449,6 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     ProviderInfo provider_info = provider_info_;
     session_options.GetEpContextDataCallbacks(&provider_info.ep_context_data_read_func,
                                               &provider_info.ep_context_data_read_state,
-                                              &provider_info.ep_context_data_read_max_size,
                                               &provider_info.ep_context_data_write_func,
                                               &provider_info.ep_context_data_write_state);
     auto ov_ep = std::make_unique<OpenVINOExecutionProvider>(provider_info);
