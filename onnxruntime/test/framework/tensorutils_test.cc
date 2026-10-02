@@ -2538,12 +2538,25 @@ TEST_F(ExternalDataFileTest, ExplicitExternalDirectoryDoesNotUseAVirtualModelTar
       "escapes model directory");
   SessionOptions options;
   options.intra_op_param.thread_pool_size = 1;
+  options.graph_optimization_level = TransformerLevel::Default;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
       kOrtSessionOptionsModelExternalInitializersFileFolderPath, ToUTF8String(model_dir_.native()).c_str()));
   InferenceSession session(options, GetEnvironment());
   const auto bytes = MakeModel("weights.bin").SerializeAsString();
-  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(bytes.data(), narrow<int>(bytes.size())),
-                                      "escapes model directory");
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "escapes model directory");
+}
+
+TEST_F(ExternalDataFileTest, ExplicitExternalDirectoryRejectsOutsideData) {
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+      kOrtSessionOptionsModelExternalInitializersFileFolderPath, ToUTF8String(model_dir_.native()).c_str()));
+  InferenceSession session(options, GetEnvironment());
+  const auto bytes = MakeModel("../other/data.bin").SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(bytes.data(), narrow<int>(bytes.size())));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "escapes model directory");
 }
 
 TEST_F(ExternalDataFileTest, SubgraphsKeepTheOriginalDirectory) {

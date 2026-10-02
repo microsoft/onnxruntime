@@ -489,6 +489,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status OpenCanonicalFile(const ORTCHAR_T* file_path,
                                    std::unique_ptr<RandomAccessFile>& file) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
@@ -539,6 +540,7 @@ class PosixEnv : public Env {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This platform does not support canonical file opens.");
 #endif
   }
+#endif
 
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {

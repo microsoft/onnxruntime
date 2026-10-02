@@ -25,6 +25,9 @@ consume the framework's file via `LoadTensorFromFile`; WASM loaders retain their
 point. Internal APIs pass `ModelPath` to preserve the captured context; use its `Path()` accessor only when a plain
 filesystem path is needed, not when forwarding an external-tensor read.
 
+WASM model-path capture does not probe the host filesystem. Basic minimal builds, which load only ORT-format
+models, omit canonical ONNX file opening while preserving random-access reads and file mapping.
+
 ## Parallel CPU weight prepacking
 
 Some CPU kernels transform constant weights into a layout that is faster to use during inference. This prepacking

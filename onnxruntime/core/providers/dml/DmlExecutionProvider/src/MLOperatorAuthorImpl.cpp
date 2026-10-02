@@ -1622,7 +1622,8 @@ namespace Windows::AI::MachineLearning::Adapter
         }
     }
 
-    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath) : m_impl(impl)
+    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::ModelPath& modelPath)
+        : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
         if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
@@ -1630,7 +1631,8 @@ namespace Windows::AI::MachineLearning::Adapter
             std::basic_string<ORTCHAR_T> externalFilePath;
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
-            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
+            THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(
+                *impl, modelPath.parent_path(), externalFilePath, fileOffset, safeTensorByteSize));
             if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
             {
                 if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
@@ -3141,7 +3143,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
         const onnx::TensorProto& initializer,
-        const std::filesystem::path& modelPath)
+        const onnxruntime::ModelPath& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;

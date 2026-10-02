@@ -35,17 +35,11 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> af
 Env::Env() = default;
 
 common::Status Env::CaptureModelPath(const std::filesystem::path& path, ModelPath& model_path,
-                                     bool allow_model_symlink) const {
+                                     [[maybe_unused]] bool allow_model_symlink) const {
   ORT_RETURN_IF(path.native().find(ORTCHAR_T{}) != PathString::npos, "Model path contains a null character.");
   ModelPath result{path};
-#if defined(__wasm__)
-  std::error_code current_path_error;
-  std::filesystem::current_path(current_path_error);
-  if (current_path_error) {
-    model_path = std::move(result);
-    return common::Status::OK();
-  }
-#endif
+  // WASM loaders use mounted data; even probing the filesystem can abort a FILESYSTEM=0 build.
+#if !defined(__wasm__)
   auto directories = std::make_shared<ModelPath::ExternalDataDirectories>();
   PathString canonical;
   const auto parent = path.parent_path().empty() ? std::filesystem::path{"."} : path.parent_path();
@@ -62,6 +56,7 @@ common::Status Env::CaptureModelPath(const std::filesystem::path& path, ModelPat
     }
   }
   result.directories_ = std::move(directories);
+#endif
   model_path = std::move(result);
   return common::Status::OK();
 }

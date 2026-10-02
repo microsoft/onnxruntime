@@ -63,8 +63,10 @@ class WindowsEnv : public Env {
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override;
   Status OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
                               std::unique_ptr<RandomAccessFile>& file) const override;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   Status OpenCanonicalFile(_In_z_ const ORTCHAR_T* file_path,
                            std::unique_ptr<RandomAccessFile>& file) const override;
+#endif
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override;
   Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,

@@ -73,6 +73,17 @@ TEST(PlatformEnvTest, GetErrnoInfo) {
 #endif
 }
 
+#if defined(__wasm__)
+TEST(PlatformEnvTest, ModelPathCaptureDoesNotRequireAFileSystem) {
+  for (const auto* path : {"", "models/model.onnx"}) {
+    ModelPath model_path;
+    ASSERT_STATUS_OK(Env::Default().CaptureModelPath(path, model_path));
+    EXPECT_EQ(model_path.Path(), std::filesystem::path(path));
+    EXPECT_EQ(model_path.GetExternalDataDirectories(), nullptr);
+  }
+}
+#endif
+
 namespace {
 
 void WriteRandomAccessTestFile(const std::string& contents, PathString& path, ScopedFileDeleter& deleter) {
@@ -211,6 +222,7 @@ TEST_F(RandomAccessFileTest, DefaultImplementationReportsUnsupportedWithoutRepla
 }
 
 #ifndef __wasm__
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 TEST_F(RandomAccessFileTest, OpensCanonicalPathsWithoutReplacingOutputOnFailure) {
   PathString canonical;
   ASSERT_STATUS_OK(Env::Default().GetWeaklyCanonicalPath(path_, canonical));
@@ -246,6 +258,16 @@ TEST_F(RandomAccessFileTest, ModelOpeningPreservesDirectoriesAndFailureOutputs) 
   ASSERT_STATUS_OK(file_->Read(11, bytes));
   EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(11, bytes.size()));
 }
+#else
+TEST_F(RandomAccessFileTest, BasicMinimalOmitsCanonicalOpening) {
+  const auto* original_file = file_.get();
+  EXPECT_EQ(Env::Default().OpenCanonicalFile(path_.c_str(), file_).Code(), common::NOT_IMPLEMENTED);
+  EXPECT_EQ(file_.get(), original_file);
+  std::array<char, 4> bytes{};
+  ASSERT_STATUS_OK(file_->Read(11, bytes));
+  EXPECT_EQ(std::string(bytes.data(), bytes.size()), contents_.substr(11, bytes.size()));
+}
+#endif
 
 TEST_F(RandomAccessFileTest, ExplicitDirectoryCaptureDoesNotRequireAModelFile) {
   ModelPath model_path;
@@ -293,7 +315,7 @@ TEST_F(RandomAccessFileTest, MappingRejectsInvalidRangesWithoutChangingOutput) {
   ASSERT_STATUS_OK(file_->Map(static_cast<FileOffsetType>(contents_.size()), 0, mapping));
   EXPECT_EQ(mapping, nullptr);
 }
-#endif
+#endif  // !__wasm__
 
 TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   const std::string replacement_contents = "replacement file";

@@ -548,10 +548,12 @@ Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
   return OpenWindowsFile(file_path, false, file);
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status WindowsEnv::OpenCanonicalFile(_In_z_ const ORTCHAR_T* file_path,
                                      std::unique_ptr<RandomAccessFile>& file) const {
   return OpenWindowsFile(file_path, true, file);
 }
+#endif
 
 Status WindowsEnv::ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                                       const gsl::span<char> buffer) const {

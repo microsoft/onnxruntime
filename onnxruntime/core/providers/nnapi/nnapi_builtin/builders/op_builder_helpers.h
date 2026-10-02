@@ -215,7 +215,7 @@ bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& nod
 bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
-                                  const std::filesystem::path& path,
+                                  const onnxruntime::ModelPath& model_path,
                                   float required_scale, int32_t required_zp);
 
 // performs broadcasting operation on two shapes to make them compatible
