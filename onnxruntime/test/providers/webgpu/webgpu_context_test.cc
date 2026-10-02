@@ -1174,19 +1174,106 @@ TEST(WebGpuContextTest, PreferredWeightLoadAccelerationFallsBackWithoutDeviceSup
 }
 
 TEST(WebGpuContextTest, RequiredWeightLoadAccelerationDoesNotExposeLoaderWithoutDevice) {
-  auto factory = WebGpuProviderFactoryCreator::Create(
-      CompileOnlyWeightLoadAccelerationOptions(
-          kWeightLoadAcceleration_Required));
+  RunWithFreshDefaultContext([]() {
+    auto factory = WebGpuProviderFactoryCreator::Create(
+        CompileOnlyWeightLoadAccelerationOptions(
+            kWeightLoadAcceleration_Required));
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-  auto ep = factory->CreateProvider();
-  ASSERT_NE(ep, nullptr);
-  EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+    auto ep = factory->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
 #else
-  EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
+    EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
 #endif
+  },
+                             true);
 }
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+void ExpectD3D12BufferContents(
+    ID3D12Device* device,
+    const windows::d3d12::D3D12FileBufferLoader::Batch& batch,
+    const std::vector<std::vector<uint8_t>>& expected_buffers) {
+  ASSERT_EQ(batch.buffers.size(), expected_buffers.size());
+
+  uint64_t total_size = 0;
+  for (size_t index = 0; index < expected_buffers.size(); ++index) {
+    ASSERT_LE(expected_buffers[index].size(), batch.buffers[index].size);
+    total_size += expected_buffers[index].size();
+  }
+  ASSERT_GT(total_size, 0u);
+
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
+  D3D12_COMMAND_QUEUE_DESC queue_desc{};
+  queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandQueue(
+      &queue_desc, IID_PPV_ARGS(&queue))));
+
+  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandAllocator(
+      D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&allocator))));
+  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommandList(
+      0, D3D12_COMMAND_LIST_TYPE_COPY, allocator.Get(), nullptr,
+      IID_PPV_ARGS(&command_list))));
+
+  D3D12_HEAP_PROPERTIES readback_heap{};
+  readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+  D3D12_RESOURCE_DESC readback_desc{};
+  readback_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  readback_desc.Width = total_size;
+  readback_desc.Height = 1;
+  readback_desc.DepthOrArraySize = 1;
+  readback_desc.MipLevels = 1;
+  readback_desc.SampleDesc.Count = 1;
+  readback_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  Microsoft::WRL::ComPtr<ID3D12Resource> readback;
+  ASSERT_TRUE(SUCCEEDED(device->CreateCommittedResource(
+      &readback_heap, D3D12_HEAP_FLAG_NONE, &readback_desc,
+      D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+      IID_PPV_ARGS(&readback))));
+
+  uint64_t destination_offset = 0;
+  for (size_t index = 0; index < expected_buffers.size(); ++index) {
+    command_list->CopyBufferRegion(
+        readback.Get(), destination_offset,
+        batch.buffers[index].resource.Get(), 0,
+        expected_buffers[index].size());
+    destination_offset += expected_buffers[index].size();
+  }
+  ASSERT_TRUE(SUCCEEDED(command_list->Close()));
+  ID3D12CommandList* command_lists[]{command_list.Get()};
+  queue->ExecuteCommandLists(1, command_lists);
+
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+  ASSERT_TRUE(SUCCEEDED(device->CreateFence(
+      0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))));
+  ASSERT_TRUE(SUCCEEDED(queue->Signal(fence.Get(), 1)));
+  if (fence->GetCompletedValue() < 1) {
+    HANDLE event_handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    ASSERT_NE(event_handle, nullptr);
+    ASSERT_TRUE(SUCCEEDED(
+        fence->SetEventOnCompletion(1, event_handle)));
+    EXPECT_EQ(WaitForSingleObject(event_handle, INFINITE), WAIT_OBJECT_0);
+    CloseHandle(event_handle);
+  }
+
+  void* mapped = nullptr;
+  const D3D12_RANGE read_range{0, static_cast<SIZE_T>(total_size)};
+  ASSERT_TRUE(SUCCEEDED(readback->Map(0, &read_range, &mapped)));
+  size_t source_offset = 0;
+  for (const auto& expected : expected_buffers) {
+    EXPECT_EQ(
+        std::memcmp(
+            static_cast<const uint8_t*>(mapped) + source_offset,
+            expected.data(), expected.size()),
+        0);
+    source_offset += expected.size();
+  }
+  const D3D12_RANGE written_range{0, 0};
+  readback->Unmap(0, &written_range);
+}
+
 TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
   RunWithFreshDefaultContext([]() {
     auto off_factory = WebGpuProviderFactoryCreator::Create(
@@ -1258,61 +1345,61 @@ TEST(WebGpuContextTest, D3D12FileLoaderReusesUploadSlotAcrossChunks) {
   ASSERT_EQ(batch.buffers.size(), 1u);
 
   auto* device = context.WeightLoadingD3D12Device();
-  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue;
-  D3D12_COMMAND_QUEUE_DESC queue_desc{};
-  queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
-  ASSERT_TRUE(SUCCEEDED(device->CreateCommandQueue(
-      &queue_desc, IID_PPV_ARGS(&queue))));
+  ExpectD3D12BufferContents(device, batch, {expected});
+}
 
-  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
-  ASSERT_TRUE(SUCCEEDED(device->CreateCommandAllocator(
-      D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&allocator))));
-  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list;
-  ASSERT_TRUE(SUCCEEDED(device->CreateCommandList(
-      0, D3D12_COMMAND_LIST_TYPE_COPY, allocator.Get(), nullptr,
-      IID_PPV_ARGS(&command_list))));
+TEST(WebGpuContextTest, D3D12FileLoaderUsesMultipleHeapsAndCommittedResources) {
+  constexpr uint64_t kHeapSize = 64 * 1024;
+  const std::vector<std::vector<uint8_t>> expected_buffers{
+      std::vector<uint8_t>(1, 0x19),
+      std::vector<uint8_t>(17, 0x5a),
+      std::vector<uint8_t>(kHeapSize + 1, 0xc3),
+  };
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_destination_allocation_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
 
-  D3D12_HEAP_PROPERTIES readback_heap{};
-  readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
-  D3D12_RESOURCE_DESC readback_desc{};
-  readback_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  readback_desc.Width = kDataSize;
-  readback_desc.Height = 1;
-  readback_desc.DepthOrArraySize = 1;
-  readback_desc.MipLevels = 1;
-  readback_desc.SampleDesc.Count = 1;
-  readback_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  Microsoft::WRL::ComPtr<ID3D12Resource> readback;
-  ASSERT_TRUE(SUCCEEDED(device->CreateCommittedResource(
-      &readback_heap, D3D12_HEAP_FLAG_NONE, &readback_desc,
-      D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-      IID_PPV_ARGS(&readback))));
-
-  command_list->CopyBufferRegion(
-      readback.Get(), 0, batch.buffers[0].resource.Get(), 0, kDataSize);
-  ASSERT_TRUE(SUCCEEDED(command_list->Close()));
-  ID3D12CommandList* command_lists[]{command_list.Get()};
-  queue->ExecuteCommandLists(1, command_lists);
-
-  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
-  ASSERT_TRUE(SUCCEEDED(device->CreateFence(
-      0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence))));
-  ASSERT_TRUE(SUCCEEDED(queue->Signal(fence.Get(), 1)));
-  if (fence->GetCompletedValue() < 1) {
-    HANDLE event_handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    ASSERT_NE(event_handle, nullptr);
-    ASSERT_TRUE(SUCCEEDED(
-        fence->SetEventOnCompletion(1, event_handle)));
-    EXPECT_EQ(WaitForSingleObject(event_handle, INFINITE), WAIT_OBJECT_0);
-    CloseHandle(event_handle);
+  std::vector<windows::d3d12::D3D12FileBufferLoader::FileRange> ranges;
+  uint64_t file_offset = 0;
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    for (const auto& expected : expected_buffers) {
+      ranges.push_back(
+          {data_path.native(), file_offset, expected.size()});
+      stream.write(
+          reinterpret_cast<const char*>(expected.data()),
+          static_cast<std::streamsize>(expected.size()));
+      file_offset += expected.size();
+    }
+    ASSERT_TRUE(stream.good());
   }
 
-  void* mapped = nullptr;
-  const D3D12_RANGE read_range{0, kDataSize};
-  ASSERT_TRUE(SUCCEEDED(readback->Map(0, &read_range, &mapped)));
-  EXPECT_EQ(std::memcmp(mapped, expected.data(), expected.size()), 0);
-  const D3D12_RANGE written_range{0, 0};
-  readback->Unmap(0, &written_range);
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                WeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Required))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  const auto support_status =
+      webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  windows::d3d12::D3D12FileBufferLoader::Config config;
+  config.max_destination_heap_size = kHeapSize;
+  std::unique_ptr<windows::d3d12::D3D12FileBufferLoader> loader;
+  ASSERT_STATUS_OK(windows::d3d12::D3D12FileBufferLoader::Create(
+      context.WeightLoadingD3D12Device(), loader, config));
+
+  windows::d3d12::D3D12FileBufferLoader::Batch batch;
+  ASSERT_STATUS_OK(loader->Load(ranges, batch));
+  ASSERT_EQ(batch.buffers.size(), expected_buffers.size());
+  EXPECT_EQ(batch.heaps.size(), 2u);
+  ExpectD3D12BufferContents(
+      context.WeightLoadingD3D12Device(), batch, expected_buffers);
 }
 
 TEST(WebGpuContextTest, D3D12AcceleratedAllocatorUsesProviderRecording) {
@@ -1569,8 +1656,13 @@ void RunD3D12AcceleratedExternalInitializerSessionTest(
     const auto memory_info = allocators.front()->Info();
     ASSERT_STATUS_OK(session.Load(model_path.native()));
     ASSERT_TRUE(std::filesystem::remove(data_path));
-    const auto status =
+    auto status =
         session.RegisterExecutionProvider(std::move(provider));
+    if (status.IsOK()) {
+      // Some provider configurations defer external initializer loading until
+      // initialization instead of attempting it during late registration.
+      status = session.Initialize();
+    }
     EXPECT_FALSE(status.IsOK());
     EXPECT_EQ(session.GetExternalDataLoaderManager().GetExternalDataLoader(
                   memory_info),
