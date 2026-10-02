@@ -4,7 +4,8 @@
 // SparsePagedAttention — resolve the per-token metadata the sparse stages need,
 // entirely on device:
 //
-//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length)
+//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length,
+//                    cumulative_query_start, past_length)
 //
 // Every value read here is an i32 coming from a caller-owned buffer, so it is
 // sanitized before it is written: negative lengths clamp to zero, the
@@ -67,9 +68,11 @@ $MAIN {
   auxiliary_length = clamp(auxiliary_lengths.getByOffset(batch_idx), 0, i32(uniforms.auxiliary_capacity));
 #endif
 
-  let base = token_idx * 4u;
+  let base = token_idx * 6u;
   token_meta.setByOffset(base, i32(batch_idx));
   token_meta.setByOffset(base + 1u, query_position);
   token_meta.setByOffset(base + 2u, main_length);
   token_meta.setByOffset(base + 3u, auxiliary_length);
+  token_meta.setByOffset(base + 4u, cum_lo);
+  token_meta.setByOffset(base + 5u, past_length);
 }

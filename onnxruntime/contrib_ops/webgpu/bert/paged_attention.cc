@@ -83,6 +83,9 @@ Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContex
   const uint32_t kv_num_heads = static_cast<uint32_t>(parameters.kv_num_heads);
   const uint32_t head_size = static_cast<uint32_t>(parameters.head_size);
   const uint32_t block_size = static_cast<uint32_t>(parameters.block_size);
+  const uint32_t num_blocks = static_cast<uint32_t>(parameters.num_blocks);
+  const uint32_t max_num_blocks_per_seq =
+      static_cast<uint32_t>(parameters.max_num_blocks_per_seq);
   const uint32_t dispatch_size = token_count * kv_num_heads * head_size;
 
   ScatterKVToPagedCacheProgram program{};
@@ -104,6 +107,8 @@ Status RunPagedAttentionScatterKVToPagedCache(onnxruntime::webgpu::ComputeContex
           {kv_num_heads},
           {head_size},
           {block_size},
+          {num_blocks},
+          {max_num_blocks_per_seq},
           {dispatch_size},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

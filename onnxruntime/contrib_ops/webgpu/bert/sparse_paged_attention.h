@@ -63,7 +63,8 @@ class SparsePagedAttentionScatterKVProgram final
 };
 
 // Resolve, on device, the per-token values every sparse stage needs:
-//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length)
+//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length,
+//                    cumulative_query_start, past_length)
 //
 // Keeping this device-resident is what allows the op to run without any host
 // readback of the metadata, selection, or block tables (a hard requirement for
@@ -75,7 +76,7 @@ class SparsePagedAttentionScatterKVProgram final
 //   auxiliary_lengths          : (batch_size,)      [S]  (optional)
 //
 // Output (write):
-//   token_meta : (token_count, 4)                   [S]
+//   token_meta : (token_count, 6)                   [S]
 //
 // Every int32 read is sanitized (negative values clamped, ranges ordered, main
 // lengths clamped to max_num_blocks_per_seq * block_size) before it is written,
@@ -110,7 +111,7 @@ class SparsePagedAttentionTokenMetaProgram final
 //   query            : (token_count, num_heads * head_size)              [T]
 //   key_cache        : (num_blocks, block_size, kv_num_heads, head_size) [T]
 //   value_cache      : same shape as key_cache                           [T]
-//   token_meta       : (token_count, 4)                                  [S]
+//   token_meta       : (token_count, 6)                                  [S]
 //   block_table      : (batch_size, max_num_blocks_per_seq)              [S]
 //   selected_indices : (token_count, max_selected_entries)               [S] (optional)
 //   selected_counts  : (token_count,)                                    [S] (optional)
@@ -130,13 +131,14 @@ class SparsePagedAttentionMainProgram final
     : public Program<SparsePagedAttentionMainProgram> {
  public:
   SparsePagedAttentionMainProgram(int head_size, bool is_causal, bool use_local_window,
-                                  bool use_selected, bool dedup_selected)
+                                  bool use_selected, bool dedup_selected, bool use_slot_mapping)
       : Program{"SparsePagedAttentionMain"},
         head_size_(head_size),
         is_causal_(is_causal),
         use_local_window_(use_local_window),
         use_selected_(use_selected),
-        dedup_selected_(dedup_selected) {}
+        dedup_selected_(dedup_selected),
+        use_slot_mapping_(use_slot_mapping) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -159,6 +161,7 @@ class SparsePagedAttentionMainProgram final
   bool use_local_window_;
   bool use_selected_;
   bool dedup_selected_;
+  bool use_slot_mapping_;
 };
 
 // Partial attention over the contiguous auxiliary cache.
@@ -167,7 +170,7 @@ class SparsePagedAttentionMainProgram final
 //   query            : (token_count, num_heads * head_size)                [T]
 //   auxiliary_key    : (batch_size, capacity, kv_heads_or_one, head_size)  [T_AUX]
 //   auxiliary_value  : same shape as auxiliary_key           [T_AUX] (absent when K=V)
-//   token_meta       : (token_count, 4)                                    [S]
+//   token_meta       : (token_count, 6)                                    [S]
 //   selected_indices : (token_count, max_selected_entries)                 [S]
 //   selected_counts  : (token_count,)                                      [S]
 //
