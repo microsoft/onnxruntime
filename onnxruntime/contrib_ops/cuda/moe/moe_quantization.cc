@@ -735,10 +735,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_weights = weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(5);
   const Tensor* fc2_scales = (is_int && !packed_fc2_scales_) ? context->Input<Tensor>(6) : nullptr;
   if (is_int) {
-    for (const int input_idx : {3, 6}) {
-      const auto* scales = context->Input<Tensor>(input_idx);
+    for (const auto& [input_idx, scales] : std::array{
+             std::pair{3, fc1_scales},
+             std::pair{6, fc2_scales}}) {
       ORT_RETURN_IF(scales && !(is_fp16_ ? scales->IsDataType<MLFloat16>() : scales->IsDataType<BFloat16>()),
-                    "QMoE integer fc", input_idx == 3 ? 1 : 2, "_scales must match the activation type.");
+                    "CUDA QMoE integer fc", input_idx == 3 ? 1 : 2,
+                    "_scales must match the FP16/BF16 activation type.");
     }
   }
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);

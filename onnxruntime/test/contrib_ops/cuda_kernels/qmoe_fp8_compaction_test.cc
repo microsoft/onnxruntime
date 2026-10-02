@@ -22,8 +22,8 @@ struct CudaBuffer {
     CUDA_CALL_THROW(cudaMalloc(&data, bytes));
   }
 
-  ~CudaBuffer() {
-    cudaFree(data);
+  ~CudaBuffer() noexcept(false) {
+    CUDA_CALL_THROW(cudaFree(data));
   }
 
   template <typename T>

@@ -158,7 +158,9 @@ def create_block_fp8_moe_graph(tensors, top_k, onnx_dtype, block_size, fusion=0,
     input_types = {}
     for name, tensor in tensors.items():
         names[indices[name]] = name
-        if "weights" in name or "zero_points" in name:
+        if name.endswith("_zero_points"):
+            dtype = TensorProto.UINT8
+        elif "weights" in name:
             dtype = TensorProto.FLOAT8E4M3FN
         elif name in ("input", "router_probs"):
             dtype = onnx_dtype
