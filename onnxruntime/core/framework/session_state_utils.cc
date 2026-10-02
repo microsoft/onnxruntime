@@ -99,7 +99,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
   const auto device = memory_info.device;
 
-  if (utils::HasExternalData(tensor_proto)) {
+  if (utils::HasExternalData(tensor_proto) &&
+      !utils::HasExternalDataInMemory(tensor_proto)) {
     auto external_data_loader =
         external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
     if (external_data_loader) {
