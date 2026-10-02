@@ -191,7 +191,7 @@ static int64_t ComputeTensorSizeInBytesForConstantFolding(ONNX_NAMESPACE::Tensor
 }
 
 static int64_t EstimateTensorElementCount(const ONNX_NAMESPACE::TensorShapeProto& shape) {
-  SafeInt<int64_t> num_elements = 1;
+  int64_t num_elements = 1;
   for (int i = 0; i < shape.dim_size(); ++i) {
     const auto& dim = shape.dim(i);
     if (!utils::HasDimValue(dim)) {
@@ -201,7 +201,9 @@ static int64_t EstimateTensorElementCount(const ONNX_NAMESPACE::TensorShapeProto
     if (dim_value < 0) {
       return -1;  // Invalid dimension
     }
-    num_elements *= dim_value;
+    if (!SafeMultiply(num_elements, dim_value, num_elements)) {
+      return -1;
+    }
   }
 
   return num_elements;
@@ -258,7 +260,7 @@ static int64_t EstimateUniqueOutputSizeInBytes(const Node& node) {
     return -1;
   }
 
-  SafeInt<int64_t> total_size = 0;
+  int64_t total_size = 0;
   const auto& output_defs = node.OutputDefs();
   for (size_t output_idx = 0; output_idx < output_defs.size(); ++output_idx) {
     const auto* output_def = output_defs[output_idx];
@@ -272,10 +274,16 @@ static int64_t EstimateUniqueOutputSizeInBytes(const Node& node) {
       if (output0_size < 0) {
         return -1;  // Output 0 size is unknown; treat the whole node's output size as unknown.
       }
-      total_size += output0_size;
+      if (!SafeAdd(total_size, output0_size, total_size)) {
+        return -1;
+      }
     } else {
       // The remaining Unique outputs are int64 index/count tensors.
-      total_size += SafeInt<int64_t>(input_num_elements) * sizeof(int64_t);
+      int64_t output_size = 0;
+      if (!SafeMultiply(input_num_elements, sizeof(int64_t), output_size) ||
+          !SafeAdd(total_size, output_size, total_size)) {
+        return -1;
+      }
     }
   }
 
@@ -314,12 +322,14 @@ static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const 
     return -1;
   }
 
-  SafeInt<int64_t> num_elements = 1;
+  int64_t num_elements = 1;
   for (int64_t dim : shape_data.DataAsSpan<int64_t>()) {
     if (dim < 0) {
       return -1;  // Invalid shape value; let the kernel reject it.
     }
-    num_elements *= dim;
+    if (!SafeMultiply(num_elements, dim, num_elements)) {
+      return -1;
+    }
   }
 
   // Determine the element type of the output. The ONNX spec for ConstantOfShape defaults the
@@ -350,15 +360,10 @@ static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& grap
   }
 
   if (node.OpType() == "ConstantOfShape" && node.Domain().empty()) {
-    const int64_t size = EstimateConstantOfShapeOutputSizeInBytes(node, graph);
-    if (size >= 0) {
-      return size;
-    }
-    // Fall through to the generic estimator if we could not derive a size from the input
-    // initializer (e.g., the shape input is not a recognizable constant initializer).
+    return EstimateConstantOfShapeOutputSizeInBytes(node, graph);
   }
 
-  SafeInt<int64_t> total_size = 0;
+  int64_t total_size = 0;
   for (const auto* output_def : node.OutputDefs()) {
     if (!output_def->Exists()) {
       continue;
@@ -369,7 +374,9 @@ static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& grap
       return -1;
     }
 
-    total_size += output_size;
+    if (!SafeAdd(total_size, output_size, total_size)) {
+      return -1;
+    }
   }
 
   return total_size;
@@ -593,7 +600,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           estimated_output_size = EstimateNodeOutputSizeInBytes(*node, graph);
         }
         ORT_CATCH(const std::exception&) {
-          LOGS(logger, WARNING) << "Integer overflow while estimating output size of "
+          LOGS(logger, WARNING) << "Failed to estimate output size of "
                                 << node->OpType() << " node '" << node->Name()
                                 << "'. Skipping constant folding for this node.";
           continue;
@@ -758,21 +765,18 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // Post-execution size check: verify actual output sizes don't exceed the limit.
       // This catches cases where pre-execution shape inference couldn't determine the output size.
       if (max_output_size > 0) {
-        SafeInt<int64_t> actual_total_size = 0;
+        int64_t actual_total_size = 0;
         bool size_exceeded = false;
-        ORT_TRY {
-          for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-            if (fetches[fetch_idx].IsAllocated() && fetches[fetch_idx].IsTensor()) {
-              const auto& tensor = fetches[fetch_idx].Get<Tensor>();
-              actual_total_size += tensor.SizeInBytes();
+        for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+          if (fetches[fetch_idx].IsAllocated() && fetches[fetch_idx].IsTensor()) {
+            const auto& tensor = fetches[fetch_idx].Get<Tensor>();
+            if (!SafeAdd(actual_total_size, tensor.SizeInBytes(), actual_total_size)) {
+              size_exceeded = true;
+              break;
             }
           }
-          size_exceeded = actual_total_size > max_output_size;
         }
-        ORT_CATCH(const std::exception&) {
-          // SafeInt overflow means total size is astronomically large
-          size_exceeded = true;
-        }
+        size_exceeded = size_exceeded || actual_total_size > max_output_size;
 
         if (size_exceeded) {
           LOGS(logger, WARNING) << "Skipping constant folding for " << node->OpType()
