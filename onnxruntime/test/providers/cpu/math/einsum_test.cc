@@ -126,7 +126,7 @@ TEST(Einsum, BFloat16Opset28MatMulReductionAndDiagonal) {
                              BFloat16(4.0f), BFloat16(5.0f), BFloat16(6.0f)});
     test.AddOutput<BFloat16>("o", {1, 2, 2},
                              {BFloat16(22.0f), BFloat16(28.0f), BFloat16(49.0f), BFloat16(64.0f)});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
   }
 
   {
@@ -137,7 +137,7 @@ TEST(Einsum, BFloat16Opset28MatMulReductionAndDiagonal) {
                              BFloat16(5.0f), BFloat16(6.0f), BFloat16(7.0f), BFloat16(8.0f)});
     test.AddOutput<BFloat16>("y", {2, 2},
                              {BFloat16(4.0f), BFloat16(6.0f), BFloat16(12.0f), BFloat16(14.0f)});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
   }
 
   {
@@ -148,7 +148,7 @@ TEST(Einsum, BFloat16Opset28MatMulReductionAndDiagonal) {
                              BFloat16(5.0f), BFloat16(6.0f), BFloat16(7.0f), BFloat16(8.0f)});
     test.AddOutput<BFloat16>("y", {2, 2},
                              {BFloat16(1.0f), BFloat16(4.0f), BFloat16(5.0f), BFloat16(8.0f)});
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
   }
 }
 
