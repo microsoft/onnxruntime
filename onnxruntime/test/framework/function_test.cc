@@ -4,12 +4,14 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <limits>
 #include <sstream>
 
 #include "core/graph/onnx_protobuf.h"
 #include "onnx/checker.h"
 #include "onnx/defs/parser.h"
 
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
@@ -23,6 +25,7 @@
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
@@ -1472,9 +1475,6 @@ TEST(FunctionTest, OverloadedFunctionBackwardCompat) {
 }
 
 namespace {
-// Builds a model whose model-local function body contains a Constant node with the supplied
-// number of outputs. Ahead-of-time function inlining converts such Constant nodes into
-// initializers, and derives the initializer name from the node's single output.
 ONNX_NAMESPACE::ModelProto MakeModelWithFunctionConstant(int constant_output_count) {
   ONNX_NAMESPACE::ModelProto model_proto;
   model_proto.set_ir_version(10);
@@ -1544,26 +1544,146 @@ Status LoadAndInitialize(const ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
   InferenceSession session{SessionOptions(), GetEnvironment()};
-  ORT_RETURN_IF_ERROR(session.Load(serialized_model.data(), static_cast<int>(serialized_model.size())));
+  ORT_RETURN_IF_ERROR(session.Load(serialized_model.data(), narrow<int>(serialized_model.size())));
   return session.Initialize();
+}
+
+void CheckFunctionNodeCountRejection(const ONNX_NAMESPACE::ModelProto& model_proto, const char* expected_error) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  auto check_status = [&](const Status& status) {
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_error));
+    EXPECT_EQ(model, nullptr);
+  };
+
+  check_status(Model::Load(model_proto, model, nullptr, logger));
+  auto copy = model_proto;
+  check_status(Model::Load(std::move(copy), model, nullptr, logger));
+
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+  const int size = narrow<int>(serialized_model.size());
+  check_status(Model::LoadFromBytes(size, serialized_model.data(), model, nullptr, logger));
+
+  InferenceSession session{SessionOptions(), GetEnvironment()};
+  check_status(session.Load(serialized_model.data(), size));
+
+  PathString path = ORT_TSTR("function_node_counts_XXXXXX");
+  FILE* file = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateTestFile(file, path));
+  ScopedFileDeleter deleter(path);
+  std::unique_ptr<FILE, int (*)(FILE*)> file_owner(file, fclose);
+  ASSERT_EQ(serialized_model.size(), fwrite(serialized_model.data(), 1, serialized_model.size(), file));
+  ASSERT_EQ(0, fclose(file_owner.release()));
+  check_status(Model::Load(path, model, nullptr, logger));
 }
 }  // namespace
 
-// A model-local function body is not checked against the op schema before its node outputs are
-// walked, so a Constant node in it may declare an output count other than the single output the
-// schema requires. Both a missing and a surplus output must be reported as a model error instead of
-// running off the end of the schema's output list.
+// These failures must return before constructing Model, without relying on exception handling.
 TEST(FunctionTest, RejectFunctionConstantWithUnexpectedOutputCount) {
-  const auto no_output_status = LoadAndInitialize(MakeModelWithFunctionConstant(0));
-  ASSERT_FALSE(no_output_status.IsOK());
-  EXPECT_THAT(no_output_status.ErrorMessage(), testing::HasSubstr("Output 0 is out of bounds"));
+  for (int output_count : {0, 2}) {
+    SCOPED_TRACE(output_count);
+    ASSERT_NO_FATAL_FAILURE(CheckFunctionNodeCountRejection(
+        MakeModelWithFunctionConstant(output_count), "Invalid output count for op Constant"));
+  }
 
-  const auto surplus_output_status = LoadAndInitialize(MakeModelWithFunctionConstant(2));
-  ASSERT_FALSE(surplus_output_status.IsOK());
-  EXPECT_THAT(surplus_output_status.ErrorMessage(), testing::HasSubstr("Too many outputs for op Constant"));
-
-  // The well-formed counterpart still loads, so the checks above are not rejecting every such model.
   ASSERT_STATUS_OK(LoadAndInitialize(MakeModelWithFunctionConstant(1)));
+}
+
+TEST(FunctionTest, RejectFunctionNodeWithUnexpectedInputCount) {
+  auto model_proto = MakeModelWithFunctionConstant(1);
+  model_proto.mutable_functions(0)->mutable_node(0)->add_input("lx");
+  CheckFunctionNodeCountRejection(model_proto, "Invalid input count for op Constant");
+}
+
+TEST(FunctionTest, RejectFunctionWithInvalidOpsetImports) {
+  auto model_proto = MakeModelWithFunctionConstant(1);
+  auto* function = model_proto.mutable_functions(0);
+  for (int64_t version : {int64_t{0}, int64_t{-1}, int64_t{std::numeric_limits<int>::max()} + 1}) {
+    SCOPED_TRACE(version);
+    function->mutable_opset_import(0)->set_version(version);
+    ASSERT_NO_FATAL_FAILURE(CheckFunctionNodeCountRejection(model_proto, "Invalid opset version"));
+  }
+
+  function->clear_opset_import();
+  CheckFunctionNodeCountRejection(model_proto, "No opset registered for domain");
+}
+
+TEST(FunctionTest, RejectFunctionSubgraphNodeWithUnexpectedOutputCount) {
+  for (int output_count : {0, 1, 2}) {
+    SCOPED_TRACE(output_count);
+    auto model_proto = MakeModelWithFunctionConstant(output_count);
+    auto* function = model_proto.mutable_functions(0);
+    ONNX_NAMESPACE::NodeProto constant;
+    constant.Swap(function->mutable_node(0));
+
+    auto* condition = function->mutable_node(0);
+    condition->set_op_type("Constant");
+    condition->add_output("cond");
+    auto* value = condition->add_attribute();
+    value->set_name("value");
+    value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    value->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    value->mutable_t()->add_int32_data(1);
+
+    auto* if_node = function->mutable_node(1);
+    if_node->set_op_type("If");
+    if_node->set_input(0, "cond");
+    for (const char* branch_name : {"then_branch", "else_branch"}) {
+      auto* branch = if_node->add_attribute();
+      branch->set_name(branch_name);
+      branch->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      auto* graph = branch->mutable_g();
+      graph->set_name(branch_name);
+      *graph->add_node() = constant;
+      auto* identity = graph->add_node();
+      identity->set_op_type("Identity");
+      identity->add_input("lx");
+      identity->add_output("branch_output");
+      auto* output = graph->add_output();
+      output->set_name("branch_output");
+      *output->mutable_type() = model_proto.graph().input(0).type();
+    }
+
+    if (output_count == 1) {
+      ASSERT_STATUS_OK(LoadAndInitialize(model_proto));
+    } else {
+      ASSERT_NO_FATAL_FAILURE(CheckFunctionNodeCountRejection(model_proto, "Invalid output count for op Constant"));
+    }
+  }
+}
+
+TEST(FunctionTest, RejectFunctionDefaultGraphAttributeWithUnexpectedOutputCount) {
+  for (bool repeated_graphs : {false, true}) {
+    SCOPED_TRACE(repeated_graphs);
+    auto model_proto = MakeModelWithFunctionConstant(1);
+    auto* function = model_proto.mutable_functions(0);
+    auto* attribute = function->add_attribute_proto();
+    attribute->set_name("body");
+    attribute->set_type(repeated_graphs ? ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS
+                                        : ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* graph = repeated_graphs ? attribute->add_graphs() : attribute->mutable_g();
+    graph->set_name("default_body");
+    auto* constant = graph->add_node();
+    *constant = function->node(0);
+    constant->add_output("c1");
+    ASSERT_NO_FATAL_FAILURE(CheckFunctionNodeCountRejection(model_proto, "Invalid output count for op Constant"));
+  }
+}
+
+TEST(FunctionTest, FunctionNodeOptionalAndVariadicOutputs) {
+  for (const char* op_type : {"Dropout", "Split"}) {
+    for (int output_count : {1, 2}) {
+      SCOPED_TRACE(MakeString(op_type, " with ", output_count, " outputs"));
+      auto model_proto = MakeModelWithFunctionConstant(output_count);
+      auto* node = model_proto.mutable_functions(0)->mutable_node(0);
+      node->set_op_type(op_type);
+      node->clear_attribute();
+      node->add_input("lx");
+      ASSERT_STATUS_OK(LoadAndInitialize(model_proto));
+    }
+  }
 }
 
 }  // namespace test

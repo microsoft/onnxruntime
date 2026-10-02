@@ -175,7 +175,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     variadic_arg_idx = -1;
     for (int i = 0; i < node.output_size(); ++i) {
       if (node_op_schema && variadic_arg_idx == -1) {
-        // The check is applied only if we have not seen a variadic parameter so far:
+        // Model::Load validates counts before construction; retain this invariant for direct constructor callers.
         ORT_ENFORCE(static_cast<size_t>(i) < node_op_schema->outputs().size(),
                     "Too many outputs for op " + node.op_type());
       }
