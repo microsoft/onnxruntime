@@ -483,8 +483,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         node = helper.make_node(
             "PackedSparseAttentionIndexer",
             [
-                "query",
-                "key",
+                "query_key",
+                "",
                 "query_norm_weight",
                 "key_norm_weight",
                 "cos_cache",
@@ -499,6 +499,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "past_kv_buffer",
                 "",
                 "past_state_lengths",
+                "state_update_capture_count",
+                "state_update_active",
             ],
             [
                 "selected_indices",
@@ -507,16 +509,17 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "present_kv_buffer",
                 "",
                 "present_state_lengths",
+                "state_update",
             ],
             domain="com.microsoft",
             policy_mode="qsa",
             compress_ratio=4,
             state_capacity=5,
             token_budget=8,
+            state_update_capacity=4,
         )
         inputs = [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["total_tokens", 16]),
-            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["total_tokens", 8]),
+            helper.make_tensor_value_info("query_key", TensorProto.FLOAT16, ["total_tokens", 24]),
             helper.make_tensor_value_info("query_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
             helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [64, 8]),
@@ -526,6 +529,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("past_key_state", TensorProto.FLOAT16, [2, 5, 8]),
             helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT16, [2, 7, 8]),
             helper.make_tensor_value_info("past_state_lengths", TensorProto.INT32, [2, 2]),
+            helper.make_tensor_value_info("state_update_capture_count", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("state_update_active", TensorProto.INT32, [1]),
         ]
 
         inferred = self._infer_packed_sparse_attention_indexer(node, inputs)
@@ -539,6 +544,8 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 8])
         self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
         self.assertEqual(outputs["present_state_lengths"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["state_update"]), [2, 4, 8])
+        self.assertEqual(outputs["state_update"].type.tensor_type.elem_type, TensorProto.FLOAT16)
 
     def test_packed_sparse_attention_indexer_csa(self):
         node = helper.make_node(

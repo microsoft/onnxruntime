@@ -41,6 +41,30 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
   return Status::OK();
 }
 
+struct RotaryCacheShape {
+  bool batched;
+  int64_t max_rotary_length;
+  int64_t rotary_width;
+};
+
+Status CheckRotaryCache(const Tensor* cos_cache, const Tensor* sin_cache, int64_t batch_size,
+                        RotaryCacheShape& out) {
+  ORT_RETURN_IF(cos_cache == nullptr, "SparseAttentionIndexer: cos_cache is required");
+  const auto& cos_shape = cos_cache->Shape();
+  out.batched = cos_shape.NumDimensions() == 3;
+  ORT_RETURN_IF_NOT(
+      (out.batched && cos_shape[0] == batch_size && cos_shape[1] > 0) ||
+          (cos_shape.NumDimensions() == 2 && cos_shape[0] > 0),
+      "SparseAttentionIndexer: cos_cache must have shape (max_rotary_sequence_length, rotary_width) or "
+      "(batch_size, max_rotary_sequence_length, rotary_width), got ",
+      cos_shape.ToString());
+  out.max_rotary_length = out.batched ? cos_shape[1] : cos_shape[0];
+  out.rotary_width = out.batched ? cos_shape[2] : cos_shape[1];
+  ORT_RETURN_IF_NOT(sin_cache != nullptr && sin_cache->Shape() == cos_shape,
+                    "SparseAttentionIndexer: sin_cache must have the same shape as cos_cache");
+  return Status::OK();
+}
+
 uint32_t ToUint32(int64_t value) {
   return onnxruntime::narrow<uint32_t>(value);
 }
@@ -98,17 +122,24 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& key_norm = shader.AddInput("key_norm_weight", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
-  const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
       << "fn visible(row: u32, token: u32) -> bool {\n"
-      << "  let batch = row / uniforms.sequence_length;\n"
-      << "  let query = row % uniforms.sequence_length;\n"
-      << "  let offset = batch * uniforms.total_sequence_length + token;\n"
-      << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
-      << "  return token <= uniforms.past_sequence_length + query && "
-         "(mask_value.x != 0u || mask_value.y != 0u);\n"
+      << "  let query = row % uniforms.sequence_length;\n";
+  if (has_mask_) {
+    const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation()
+        << "  let batch = row / uniforms.sequence_length;\n"
+        << "  let offset = batch * uniforms.total_sequence_length + token;\n"
+        << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
+        << "  return token <= uniforms.past_sequence_length + query && "
+           "(mask_value.x != 0u || mask_value.y != 0u);\n";
+  } else {
+    shader.AdditionalImplementation()
+        << "  return token <= uniforms.past_sequence_length + query;\n";
+  }
+  shader.AdditionalImplementation()
       << "}\n"
       << "fn visible_at(row: u32, ordinal: u32) -> u32 {\n"
       << "  var seen = 0u;\n"
@@ -145,7 +176,7 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    let batch = row / uniforms.sequence_length;\n"
       << "    let token = row % uniforms.sequence_length;\n"
       << "    let position = clamp_position(uniforms.past_sequence_length + token);\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + d;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + d;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
@@ -180,7 +211,7 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    let paired = sign * normalized_value(row, block, pair_d);\n"
       << "    let batch = row / uniforms.sequence_length;\n"
       << "    let position = clamp_position(visible_at(row, block * uniforms.compress_ratio));\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + d;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + d;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
@@ -358,7 +389,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
       << "  let inverse_rms = inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon);\n"
       << "  let entry = uniforms.past_compressed_length + window;\n"
       << "  let position = min(entry * uniforms.compress_ratio, uniforms.max_rotary_length - 1u);\n"
-      << "  let cache_base = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width;\n"
+      << "  let cache_base = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width;\n"
       << "  let rotary_base = uniforms.head_size - 2u * uniforms.rotary_width;\n"
       << "  for (var d = 0u; d < uniforms.head_size; d++) {\n"
       << "    var value = pooled_value(batch, window, d) * inverse_rms * f32(" << norm.GetByOffset("d") << ");\n"
@@ -476,7 +507,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    let paired = sign * normalized_query_value(row, head, pair_d);\n"
       << "    let batch = row / uniforms.sequence_length;\n"
       << "    let position = clamped_position(row, uniforms.max_rotary_length - 1u);\n"
-      << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + offset / 2u;\n"
+      << "    let cache = (batch * uniforms.rotary_cache_batch_stride + position) * uniforms.rotary_width + offset / 2u;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
       << "  }\n"
@@ -565,14 +596,16 @@ Status SparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const bool is_qsa = policy_ == sai::Policy::kQsa;
   ORT_RETURN_IF(!is_qsa && context.Input(sai::kKey) == nullptr,
                 "SparseAttentionIndexer: key is required for policy_mode 'csa'");
-  for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+  for (int index : {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                     sai::kPositionIds, sai::kPastProjBuffer}) {
-    const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
+    const bool policy_owns_slot = !is_qsa;
     const bool provided = index < context.InputCount() && context.Input(index) != nullptr;
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
                   provided ? " must be omitted for policy_mode '" : " is required for policy_mode '",
                   is_qsa ? sai::kPolicyModeQsa : sai::kPolicyModeCsa, "'");
   }
+  ORT_RETURN_IF(!is_qsa && context.Input(sai::kMask) != nullptr,
+                "SparseAttentionIndexer: mask must be omitted for policy_mode 'csa'");
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
@@ -615,18 +648,18 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   }
   ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm, "key_norm_weight", {head_size}));
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: invalid cos_cache shape");
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape && rotary_width > 0 && rotary_width % 2 == 0 &&
-                        rotary_width <= head_size,
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
+  ORT_RETURN_IF_NOT(rotary_width > 0 && rotary_width % 2 == 0 && rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid qsa rotary cache shape");
-  const auto& mask_shape = mask->Shape();
-  ORT_RETURN_IF_NOT(
-      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
-      "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  if (mask != nullptr) {
+    const auto& mask_shape = mask->Shape();
+    ORT_RETURN_IF_NOT(
+        mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
+        "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  }
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
   Tensor* selected =
@@ -661,16 +694,19 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   if (rows == 0) {
     return Status::OK();
   }
-  SparseAttentionIndexerQsaSelectProgram select;
-  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity)
+  SparseAttentionIndexerQsaSelectProgram select{mask != nullptr};
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity,
+                   mask != nullptr)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
                   {present, ProgramTensorMetadataDependency::Type},
                   {query_norm, ProgramTensorMetadataDependency::Type},
                   {key_norm, ProgramTensorMetadataDependency::Type},
                   {cos_cache, ProgramTensorMetadataDependency::Type},
-                  {sin_cache, ProgramTensorMetadataDependency::Type}})
-      .AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1})
-      .AddOutput({selected, ProgramTensorMetadataDependency::Type})
+                  {sin_cache, ProgramTensorMetadataDependency::Type}});
+  if (mask != nullptr) {
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1});
+  }
+  select.AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},
@@ -680,6 +716,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
                             {ToUint32(query_shape[2])},
                             {ToUint32(rotary_width)},
                             {ToUint32(max_rotary_length)},
+                            {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                             {ToUint32(compress_ratio_)},
                             {ToUint32(capacity)},
                             {ToUint32(past_length)},
@@ -728,12 +765,11 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   ORT_RETURN_IF_ERROR(CheckShape(head_weights, "head_weights", {batch_size, sequence_length, num_heads}));
   ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {batch_size, sequence_length}));
 
-  const auto& cos_shape = cos_cache->Shape();
-  ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
-                    "SparseAttentionIndexer: invalid cos_cache shape");
-  const int64_t max_rotary_length = cos_shape[1];
-  const int64_t rotary_width = cos_shape[2];
-  ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape && rotary_width > 0 && 2 * rotary_width <= head_size,
+  RotaryCacheShape rotary_cache_shape;
+  ORT_RETURN_IF_ERROR(CheckRotaryCache(cos_cache, sin_cache, batch_size, rotary_cache_shape));
+  const int64_t max_rotary_length = rotary_cache_shape.max_rotary_length;
+  const int64_t rotary_width = rotary_cache_shape.rotary_width;
+  ORT_RETURN_IF_NOT(rotary_width > 0 && 2 * rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid csa rotary cache shape");
   const auto& past_compressed_shape = past_compressed->Shape();
   ORT_RETURN_IF_NOT(past_compressed_shape.NumDimensions() == 3 &&
@@ -794,6 +830,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                               {ToUint32(head_size)},
                               {ToUint32(rotary_width)},
                               {ToUint32(max_rotary_length)},
+                              {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                               {ToUint32(compress_ratio_)},
                               {ToUint32(past_compressed_length)},
                               {ToUint32(present_compressed_length)},
@@ -860,6 +897,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                             {ToUint32(head_size)},
                             {ToUint32(rotary_width)},
                             {ToUint32(max_rotary_length)},
+                            {rotary_cache_shape.batched ? ToUint32(max_rotary_length) : 0u},
                             {ToUint32(compress_ratio_)},
                             {ToUint32(capacity)},
                             {ToUint32(present_compressed_length)},
