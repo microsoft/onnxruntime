@@ -415,7 +415,9 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
     options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
     options.EnableProfiling(ORT_TSTR("webgpu_copy_regression"));
-    options.AppendExecutionProvider_V2(*ort_env, {Device()}, {{"maxNumPendingDispatches", "4096"}});
+    Ort::KeyValuePairs ep_options;
+    ep_options.Add("maxNumPendingDispatches", "4096");
+    options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
     const auto bytes = model.SerializeAsString();
     Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
     for (const auto& device : session.GetEpDeviceForOutputs()) {
