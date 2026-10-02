@@ -398,6 +398,8 @@ TEST(FunctionTest, AotInliningIgnoresFunctionMetadataForProtoBytes) {
 
 TEST(FunctionTest, AotInliningChargesBoundAttributePayloadPerReference) {
   auto model = CreateFunctionExpansionModel(0, 1);
+  constexpr int64_t kPayloadElementCount = 64 * 1024;
+  model.mutable_graph()->mutable_output(0)->mutable_type()->mutable_tensor_type()->mutable_shape()->mutable_dim(0)->set_dim_value(kPayloadElementCount);
   auto* function = model.mutable_functions(0);
   function->add_attribute("payload");
   for (size_t i = 0; i < 8; ++i) {
@@ -414,8 +416,8 @@ TEST(FunctionTest, AotInliningChargesBoundAttributePayloadPerReference) {
   payload_attribute->set_name("payload");
   payload_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
   auto* payload_tensor = payload_attribute->mutable_t();
-  payload_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  payload_tensor->add_dims(256 * 1024);
+  payload_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  payload_tensor->add_dims(kPayloadElementCount);
   payload_tensor->set_raw_data(std::string(256 * 1024, 'x'));
 
   std::vector<std::string> log_messages;
@@ -486,12 +488,20 @@ TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
   branch->set_name("bound_branch");
   for (size_t i = 0; i < 8; ++i) {
     auto* constant = branch->add_node();
+    const std::string output_name = i + 1 == 8 ? "branch_output" : "unused_" + std::to_string(i);
     constant->set_op_type("Constant");
-    constant->add_output(i + 1 == 8 ? "branch_output" : "unused_" + std::to_string(i));
+    constant->add_output(output_name);
     auto* value = constant->add_attribute();
     value->set_name("value");
     value->set_ref_attr_name("payload");
     value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    if (i + 1 != 8) {
+      auto* value_info = branch->add_value_info();
+      value_info->set_name(output_name);
+      auto* value_type = value_info->mutable_type()->mutable_tensor_type();
+      value_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      value_type->mutable_shape()->add_dim()->set_dim_value(kPayloadElementCount);
+    }
   }
   auto* branch_output = branch->add_output();
   branch_output->set_name("branch_output");
