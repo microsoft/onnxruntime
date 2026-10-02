@@ -111,9 +111,9 @@ stages:
 
     - template: use-xcode-version.yml
 
-    - task: NodeTool@0
+    - task: UseNode@1
       inputs:
-        versionSpec: '22.x'
+        version: '24.x'
 
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 

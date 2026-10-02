@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <limits>
 
 #include "contrib_ops/webgpu/bert/paged_attention.h"
@@ -12,6 +13,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
@@ -583,9 +585,9 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PagedAttention (WebGPU): slot_mapping input is not supported yet.");
   }
-  if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "PagedAttention (WebGPU): q_norm_weight/k_norm_weight inputs are not supported yet.");
+  if (parameters.use_qk_norm && !std::isfinite(qk_norm_epsilon_)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention (WebGPU): qk_norm_epsilon must be a positive finite number.");
   }
   if (k_scale != nullptr || v_scale != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -859,11 +861,30 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                            max_storage_buffer_binding_size, ".");
   }
 
-  // Fused rotary path. Rotate Q and K into scratch tensors, then scatter the
-  // rotated K + untouched V into the paged cache. Metadata validation above
-  // must complete before either shader can use device-derived cache positions.
   const Tensor* query_for_fa = query;
   const Tensor* key_for_scatter = key;
+  Tensor normalized_query_tensor;
+  Tensor normalized_key_tensor;
+  if (parameters.use_qk_norm) {
+    // Normalize each packed token/head in f32, then materialize in T before RoPE,
+    // matching CUDA's prologue. Only incoming K participates, never cached K.
+    normalized_query_tensor = context.CreateGPUTensor(query->DataType(), query->Shape());
+    normalized_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
+    ORT_RETURN_IF_ERROR(RunLayerNormProgram(
+        context, query, q_norm_weight, nullptr, qk_norm_epsilon_,
+        onnxruntime::narrow<uint32_t>(query->Shape().Size() / parameters.head_size),
+        parameters.head_size, /*simplified=*/true, &normalized_query_tensor, nullptr, nullptr,
+        /*fp32_normalization=*/true));
+    ORT_RETURN_IF_ERROR(RunLayerNormProgram(
+        context, key, k_norm_weight, nullptr, qk_norm_epsilon_,
+        onnxruntime::narrow<uint32_t>(key->Shape().Size() / parameters.head_size),
+        parameters.head_size, /*simplified=*/true, &normalized_key_tensor, nullptr, nullptr,
+        /*fp32_normalization=*/true));
+    query_for_fa = &normalized_query_tensor;
+    key_for_scatter = &normalized_key_tensor;
+  }
+
+  // Metadata validation must precede shaders that use device-derived cache positions.
   Tensor rotated_query_tensor;
   Tensor rotated_key_tensor;
   if (do_rotary_) {
@@ -871,7 +892,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
                                            static_cast<uint32_t>(parameters.num_heads),
                                            rotary_interleaved_,
-                                           query, cos_cache, sin_cache,
+                                           query_for_fa, cos_cache, sin_cache,
                                            cumulative_seqlens_q, past_seqlens,
                                            &rotated_query_tensor));
     query_for_fa = &rotated_query_tensor;
@@ -880,7 +901,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters,
                                            static_cast<uint32_t>(parameters.kv_num_heads),
                                            rotary_interleaved_,
-                                           key, cos_cache, sin_cache,
+                                           key_for_scatter, cos_cache, sin_cache,
                                            cumulative_seqlens_q, past_seqlens,
                                            &rotated_key_tensor));
     key_for_scatter = &rotated_key_tensor;
