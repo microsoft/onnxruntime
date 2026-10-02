@@ -2509,7 +2509,8 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillBFloat16WithoutDecode) {
 
 template <typename ElementType>
 static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_size, int64_t inter_size,
-                                            int64_t top_k, bool skewed, bool scale_initializers = true) {
+                                            int64_t top_k, bool skewed, bool scale_initializers = true,
+                                            int64_t row_tile_size = 0) {
   constexpr int64_t num_experts = 8;
   constexpr int64_t block_size = 64;
   constexpr float alpha = 1.5f;
@@ -2639,6 +2640,10 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1"));
+  if (row_tile_size > 0) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
+  }
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
@@ -2694,7 +2699,10 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWorkspaceLimit) {
   }
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
-  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 64, 8192, true, true, 8192);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 64, 8192, false, true, 8193);
+#if defined(ENABLE_BF16)
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 64, 8192, false, true, 8193);
+#endif
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRespectsRowTiling) {
@@ -2704,8 +2712,27 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRespectsRowTiling) {
   ScopedEnvironmentVariables scoped_env_vars{
       {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, 33, 33);
-  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 33, 16);
-  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true, false, false, 64, 512, 512, false, true, 33, 16);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, 33, 16);
+#if defined(ENABLE_BF16)
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, true, 64, 512, 512, false, true, 257, 16);
+#endif
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillTiledRouting) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  for (int64_t top_k : {1, 2, 4}) {
+    for (bool scale_initializers : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "top_k=" << top_k << " scale_initializers=" << scale_initializers);
+      RunQMoEPackedPrefillRoutingTest<MLFloat16>(33, 128, 64, top_k, false, scale_initializers, 16);
+#if defined(ENABLE_BF16)
+      RunQMoEPackedPrefillRoutingTest<BFloat16>(257, 64, 128, top_k, true, scale_initializers, 16);
+#endif
+    }
+  }
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {

@@ -1133,10 +1133,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           << " fc2_shape=" << packed_int_fc2_shape_supported
                           << " routing=" << packed_int_routing_supported;
   }
-  bool use_packed_int_prefill =
+  const bool use_packed_int_prefill =
       enable_int2_prefill_ && !use_packed_int_gemv && !has_any_zero_point && is_fused_swiglu &&
       swiglu_fusion == 1 && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr &&
-      (row_tile_size_ == qmoe::kDisabledRowTileSize || moe_params.num_rows <= row_tile_size_) &&
       moe_params.num_rows > 0 && packed_int_expanded <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
@@ -1147,28 +1146,38 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (use_packed_int_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     constexpr size_t kMaxPackedPrefillScratchBytes = 256 * 1024 * 1024;
-    constexpr int64_t kFallbackRowTileSize = 1024;
     ck::Int2MoePrefillParams sizing_params;
-    sizing_params.num_rows = moe_params.num_rows;
     sizing_params.hidden_size = static_cast<int>(moe_params.hidden_size);
     sizing_params.inter_size = static_cast<int>(moe_params.inter_size);
     sizing_params.num_experts = static_cast<int>(moe_params.num_experts);
     sizing_params.top_k = static_cast<int>(k_);
-    packed_prefill_workspace_bytes = ck::GetInt2MoePrefillWorkspaceSize(sizing_params);
-    const auto untiled_plan = qmoe::MakeRowTilePlan(moe_params.num_rows, qmoe::kDisabledRowTileSize, false);
-    size_t packed_scratch_bytes = SafeInt<size_t>(packed_prefill_workspace_bytes) +
-                                  qmoe::MakeScratchLayout(0, untiled_plan, k_).total_bytes;
+    size_t scale_scratch_bytes = 0;
     if (!gemv_int_fc1_scales_ && fc1_scales) {
-      packed_scratch_bytes = SafeInt<size_t>(packed_scratch_bytes) + fc1_scales->SizeInBytes();
+      scale_scratch_bytes = SafeInt<size_t>(scale_scratch_bytes) + fc1_scales->SizeInBytes();
     }
     if (!gemv_int_fc2_scales_ && fc2_scales) {
-      packed_scratch_bytes = SafeInt<size_t>(packed_scratch_bytes) + fc2_scales->SizeInBytes();
+      scale_scratch_bytes = SafeInt<size_t>(scale_scratch_bytes) + fc2_scales->SizeInBytes();
     }
-    if (packed_scratch_bytes > kMaxPackedPrefillScratchBytes) {
-      use_packed_int_prefill = false;
-      effective_row_tile_size = row_tile_size_ == qmoe::kDisabledRowTileSize
-                                    ? kFallbackRowTileSize
-                                    : std::min(row_tile_size_, kFallbackRowTileSize);
+    effective_row_tile_size = row_tile_size_ == qmoe::kDisabledRowTileSize
+                                  ? moe_params.num_rows
+                                  : std::min(moe_params.num_rows, row_tile_size_);
+    for (;;) {
+      const auto plan = qmoe::MakeRowTilePlan(moe_params.num_rows, effective_row_tile_size, true);
+      sizing_params.num_rows = plan.rows_per_tile;
+      packed_prefill_workspace_bytes = ck::GetInt2MoePrefillWorkspaceSize(sizing_params);
+      sizing_params.num_rows = plan.RowsInTile(plan.TileCount() - 1);
+      packed_prefill_workspace_bytes = std::max(
+          packed_prefill_workspace_bytes, ck::GetInt2MoePrefillWorkspaceSize(sizing_params));
+      const size_t packed_scratch_bytes = SafeInt<size_t>(packed_prefill_workspace_bytes) +
+                                          qmoe::MakeScratchLayout(0, plan, k_).total_bytes + scale_scratch_bytes;
+      if (packed_scratch_bytes <= kMaxPackedPrefillScratchBytes) {
+        break;
+      }
+      ORT_RETURN_IF_NOT(effective_row_tile_size > 1,
+                        "QMoE packed INT prefill requires ", packed_scratch_bytes,
+                        " bytes of scratch for one row, exceeding the packed scratch limit of ",
+                        kMaxPackedPrefillScratchBytes, " bytes.");
+      effective_row_tile_size = std::max<int64_t>(1, effective_row_tile_size / 2);
     }
   }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
@@ -1184,7 +1193,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const qmoe::RowTilePlan row_tile_plan =
       qmoe::MakeRowTilePlan(
           moe_params.num_rows, effective_row_tile_size,
-          effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int);
+          effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
@@ -1808,17 +1817,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   if (use_packed_int_prefill) {
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
-    const auto fused_routing = route_tile(0, moe_params.num_rows);
-    ORT_ENFORCE(fused_routing.router_logits == nullptr,
-                "QMoE packed INT prefill requires materialized routing outputs.");
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_snapshot_) {
-      ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
-          expert_indices, SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_), stream));
-    }
-#endif
     ck::Int2MoePrefillParams params;
-    params.input = input->DataRaw();
     params.is_bf16 = !is_fp16_;
     params.fc1_weights = static_cast<const uint8_t*>(packed_fc1_weights_.get());
     params.fc2_weights = static_cast<const uint8_t*>(packed_fc2_weights_.get());
@@ -1829,8 +1828,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.selected_experts = expert_indices;
     params.routing_weights = expert_scales;
     params.unpermuted_to_permuted = unpermuted_row_to_permuted_row;
-    params.output = output->MutableDataRaw();
-    params.num_rows = moe_params.num_rows;
     params.hidden_size = static_cast<int>(moe_params.hidden_size);
     params.inter_size = static_cast<int>(moe_params.inter_size);
     params.num_experts = static_cast<int>(moe_params.num_experts);
@@ -1843,17 +1840,36 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.stream = stream;
     const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
-    ck::RunInt2MoePrefill(params, prefill_workspace.get());
+    for (int64_t tile_index = 0; tile_index < row_tile_plan.TileCount(); ++tile_index) {
+      const int64_t row_offset = row_tile_plan.RowOffset(tile_index);
+      const int64_t tile_rows = row_tile_plan.RowsInTile(tile_index);
+      const auto fused_routing = route_tile(row_offset, tile_rows);
+      ORT_ENFORCE(fused_routing.router_logits == nullptr,
+                  "QMoE packed INT prefill requires materialized routing outputs.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+      if (routing_snapshot_) {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Capture(
+            expert_indices, SafeInt<size_t>(tile_rows) * SafeInt<size_t>(k_), stream));
+      }
+#endif
+      const size_t element_offset = SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
+      const size_t input_byte_offset = SafeInt<size_t>(element_offset) * input->DataType()->Size();
+      const size_t output_byte_offset = SafeInt<size_t>(element_offset) * output->DataType()->Size();
+      params.input = reinterpret_cast<const char*>(input->DataRaw()) + input_byte_offset;
+      params.output = reinterpret_cast<char*>(output->MutableDataRaw()) + output_byte_offset;
+      params.num_rows = tile_rows;
+      ck::RunInt2MoePrefill(params, prefill_workspace.get());
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+      if (routing_snapshot_) {
+        ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
+      }
+#endif
+    }
     if (enable_kernel_debug_info_) {
-      PrintQMoEKernelDebugInfo("packed_int_prefill", moe_params.num_rows, moe_params.num_rows,
-                               moe_params.num_rows, packed_int_expanded, packed_int_expanded,
+      PrintQMoEKernelDebugInfo("packed_int_prefill", moe_params.num_rows, row_tile_plan.rows_per_tile,
+                               final_tile_rows, row_tile_plan.rows_per_tile * k_, final_tile_rows * k_,
                                prefill_bytes, SafeInt<size_t>(total_scratch_bytes) + prefill_bytes);
     }
-#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-    if (routing_snapshot_) {
-      ORT_RETURN_IF_ERROR(routing_snapshot_->Consume());
-    }
-#endif
     return Status::OK();
   }
 
