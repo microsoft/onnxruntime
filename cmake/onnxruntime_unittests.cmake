@@ -2364,6 +2364,17 @@ endif()
     endif()
     target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
     set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+    if (onnxruntime_RUN_MLAS_TESTS)
+      # The full suite is too slow for per-PR ARM64 CI, so focus on architecture-specific activation and FP16 paths.
+      set(onnxruntime_mlas_test_args "--gtest_filter=*FP16*:*Fp16*:Exp.*:Softmax*:Activation*")
+      if (onnxruntime_GENERATE_TEST_REPORTS)
+        list(APPEND onnxruntime_mlas_test_args
+          "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:onnxruntime_mlas_test>.$<CONFIG>.results.xml>")
+      endif()
+      add_test(NAME onnxruntime_mlas_test
+        COMMAND onnxruntime_mlas_test ${onnxruntime_mlas_test_args}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_mlas_test>)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
         set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
@@ -2867,12 +2878,18 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
-  AddTest(TARGET onnxruntime_webgpu_external_dawn_test
-          SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
-          LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
-          DEPENDS ${all_dependencies}
-  )
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+  if (onnxruntime_BUILD_SHARED_LIB)
+    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native
+            DEPENDS ${all_dependencies})
+  else()
+    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+            SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
+            LIBS dawn::dawn_native ${onnxruntime_test_providers_libs}
+            DEPENDS ${all_dependencies})
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
 endif()
 
