@@ -105,7 +105,7 @@ TEST(MathOpTest, MatMulPackedScalarFp16LongReductionUsesFloat32Accumulator) {
     OpTester test("MatMul", 14);
     test.AddInput<MLFloat16>("A", {rows, reduction_size}, std::vector<MLFloat16>(rows * reduction_size, value));
     test.AddInput<MLFloat16>("B", {reduction_size, output_columns},
-                            std::vector<MLFloat16>(reduction_size * output_columns, value));
+                             std::vector<MLFloat16>(reduction_size * output_columns, value));
     test.AddOutput<MLFloat16>("Y", {rows, output_columns}, std::vector<MLFloat16>(rows * output_columns, expected));
     test.SetOutputAbsErr("Y", 0.01f);
     test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
