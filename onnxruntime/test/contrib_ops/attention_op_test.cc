@@ -2446,6 +2446,27 @@ TEST(ContribOpAttentionTest, PrePackRejectsQkvHiddenSizeMismatch) {
              {}, nullptr, &execution_providers);
 }
 
+TEST(ContribOpAttentionTest, PrePackRejectsNonpositiveQkvHiddenSize) {
+  OpTester tester("Attention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 2);
+  tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", {8, 0, 8});
+
+  tester.AddInput<float>("input", {1, 1, 4}, std::vector<float>(4, 0.0f));
+  tester.AddInput<float>("weight", {4, 16}, std::vector<float>(64, 0.0f), true);
+  tester.AddInput<float>("bias", {16}, std::vector<float>(16, 0.0f));
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOutput<float>("output", {1, 1, 8}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "qkv_hidden_sizes values should be positive",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(ContribOpAttentionTest, SharedPrepackedWeights) {
   int batch_size = 2;
   int sequence_length = 2;
