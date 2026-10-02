@@ -1173,16 +1173,14 @@ TEST(WebGpuContextTest, PreferredWeightLoadAccelerationFallsBackWithoutDeviceSup
   ASSERT_NE(ep, nullptr);
 }
 
-TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport) {
+TEST(WebGpuContextTest, RequiredWeightLoadAccelerationDoesNotExposeLoaderWithoutDevice) {
   auto factory = WebGpuProviderFactoryCreator::Create(
       CompileOnlyWeightLoadAccelerationOptions(
           kWeightLoadAcceleration_Required));
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   auto ep = factory->CreateProvider();
   ASSERT_NE(ep, nullptr);
-  auto loader = ep->GetExternalDataLoader();
-  ASSERT_NE(loader, nullptr);
-  EXPECT_FALSE(loader->BeginLoad().IsOK());
+  EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
 #else
   EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
 #endif

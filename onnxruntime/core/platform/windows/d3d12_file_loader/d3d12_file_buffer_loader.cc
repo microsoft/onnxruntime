@@ -27,10 +27,11 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr uint64_t kBufferAlignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-// The cancellation token is callback-based and has no waitable handle, so a
-// short timed wait keeps cancellation responsive without adding noticeable
-// fence-completion tail latency.
-constexpr DWORD kCancellationPollMilliseconds = 1;
+// The cancellation token is callback-based and has no waitable handle. Start
+// with a short wait to avoid adding fence-completion tail latency, then back
+// off during longer transfers to avoid unnecessary CPU wakeups.
+constexpr DWORD kInitialCancellationPollMilliseconds = 1;
+constexpr DWORD kMaximumCancellationPollMilliseconds = 10;
 
 common::Status HResultError(const char* operation, HRESULT hr) {
   return ORT_MAKE_STATUS(
@@ -773,6 +774,8 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
   };
 
   ORT_RETURN_IF_ERROR(issue_available());
+  DWORD cancellation_poll_milliseconds =
+      kInitialCancellationPollMilliseconds;
   while (true) {
     std::array<HANDLE, MAXIMUM_WAIT_OBJECTS> handles{};
     std::array<size_t, MAXIMUM_WAIT_OBJECTS> slot_indices{};
@@ -814,11 +817,15 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
 
     const DWORD wait_result = WaitForMultipleObjects(
         handle_count, handles.data(), FALSE,
-        kCancellationPollMilliseconds);
+        cancellation_poll_milliseconds);
     if (wait_result == WAIT_TIMEOUT) {
       if (cancellation.IsCancellationRequested()) {
         return CancelledStatus();
       }
+      cancellation_poll_milliseconds =
+          std::min(
+              cancellation_poll_milliseconds * 2,
+              kMaximumCancellationPollMilliseconds);
       continue;
     }
     if (wait_result < WAIT_OBJECT_0 ||
@@ -844,6 +851,8 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
             slot, slot.file_offset, bytes_read,
             file.range_indices, ranges, batch,
             last_submitted_fence));
+    cancellation_poll_milliseconds =
+        kInitialCancellationPollMilliseconds;
     ORT_RETURN_IF_ERROR(issue_available());
   }
 
@@ -1013,10 +1022,12 @@ common::Status D3D12FileBufferLoader::Impl::WaitForFence(
         "ID3D12Fence::SetEventOnCompletion", hr);
   }
 
+  DWORD cancellation_poll_milliseconds =
+      kInitialCancellationPollMilliseconds;
   while (true) {
     const DWORD wait_result = WaitForSingleObject(
         fence_event_.get(),
-        kCancellationPollMilliseconds);
+        cancellation_poll_milliseconds);
     if (wait_result == WAIT_OBJECT_0) {
       return common::Status::OK();
     }
@@ -1028,6 +1039,10 @@ common::Status D3D12FileBufferLoader::Impl::WaitForFence(
     if (cancellation.IsCancellationRequested()) {
       return CancelledStatus();
     }
+    cancellation_poll_milliseconds =
+        std::min(
+            cancellation_poll_milliseconds * 2,
+            kMaximumCancellationPollMilliseconds);
   }
 }
 

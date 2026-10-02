@@ -631,7 +631,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   if (webgpu::IsWeightLoadAccelerationEnabled(
-          config.weight_load_acceleration_mode)) {
+          config.weight_load_acceleration_mode) &&
+      context_.HasDevice()) {
     accelerated_initializer_allocator_ =
         CreateD3D12AcceleratedWebGpuAllocator(
             context_,
@@ -673,7 +674,8 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   return {
       // allocator for initializers
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
-      accelerated_initializer_allocator_ != nullptr
+      context_.HasDevice() &&
+              accelerated_initializer_allocator_ != nullptr
           ? accelerated_initializer_allocator_
           :
 #endif
