@@ -74,7 +74,7 @@ class Memcpy final : public OpKernel {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer([&ep]() -> const BufferManager& { return ep.BufferManager(); }, ep.Recording());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording());
     return transfer.CopyTensor(*X, *Y);
   }
 };
@@ -625,7 +625,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 #endif
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
-          context.IsDeviceFree(),
+          !context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
@@ -668,7 +668,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  const bool device_free = context_.IsDeviceFree();
+  const bool device_free = !context_.HasDevice();
   return {
   // allocator for initializers
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
@@ -794,11 +794,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(
-      [&context = context_]() -> const webgpu::BufferManager& {
-        return context.BufferManager();
-      },
-      Recording());
+  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording());
 }
 
 #if defined(__wasm__)

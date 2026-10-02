@@ -34,7 +34,6 @@ class Tensor;
 
 namespace webgpu {
 
-inline constexpr int kDeviceFreeDefaultContextId = -1;
 class WebGpuContext;
 class ComputeContextBase;
 class ComputeContext;
@@ -270,9 +269,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const {
-    return device_features_.contains(feature);
-  }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
@@ -323,7 +320,6 @@ class WebGpuContext final {
 
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
-
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
@@ -333,7 +329,6 @@ class WebGpuContext final {
   // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
   // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
   inline bool HasDevice() const { return device_ != nullptr; }
-  inline bool IsDeviceFree() const { return device_free_; }
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   ID3D12Device* WeightLoadingD3D12Device();
   bool D3D12SharedResourceFeaturesAvailable() const {
@@ -426,7 +421,6 @@ class WebGpuContext final {
         max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  void StartInitialize(const WebGpuContextConfig& config);
   void Initialize(const WebGpuContextConfig& config);
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
@@ -464,7 +458,6 @@ class WebGpuContext final {
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
-  bool device_free_ = false;
 
   wgpu::Instance instance_;
   wgpu::Device device_;

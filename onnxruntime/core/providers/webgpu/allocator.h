@@ -4,7 +4,6 @@
 #pragma once
 
 #include <functional>
-#include <optional>
 
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -51,8 +50,7 @@ class GpuBufferAllocator : public IAllocator {
   std::function<const BufferManager&()> buffer_manager_getter_;
   std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
-  bool is_read_only_allocator_;
-  std::optional<bool> mapped_at_creation_;
+  bool mapped_at_creation_;
   // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
   // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
   bool initialize_to_zero_;
