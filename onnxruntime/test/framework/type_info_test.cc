@@ -12,14 +12,13 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
-#include "core/session/onnxruntime_type_conversion.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace mb = modelbuilder;
 
-constexpr bool TensorElementTypeConversionIsConstexpr() {
+constexpr bool TensorElementTypesMatchTensorProto() {
   constexpr std::array<ONNXTensorElementDataType, ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE>
       expected_types{
           ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
@@ -56,8 +55,7 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
   for (size_t index = 0; index < expected_types.size(); ++index) {
     if (type_info_internal::ToONNXTensorElementDataType(
             static_cast<ONNX_NAMESPACE::TensorProto_DataType>(index)) != expected_types[index] ||
-        utils::ToOrtTensorElementDataType(static_cast<int>(index)) != expected_types[index] ||
-        utils::ToTensorProtoElementType(expected_types[index]) != static_cast<int>(index)) {
+        static_cast<int>(expected_types[index]) != static_cast<int>(index)) {
       return false;
     }
   }
@@ -69,9 +67,10 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
              ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 }
 
-static_assert(TensorElementTypeConversionIsConstexpr());
+static_assert(TensorElementTypesMatchTensorProto(),
+              "C API tensor element types must match TensorProto::DataType values.");
 
-TEST(TypeInfoTests, TensorElementTypeConversions) {
+TEST(TypeInfoTests, TensorElementTypesMatchTensorProto) {
   struct TypePair {
     ONNXTensorElementDataType api_type;
     ONNX_NAMESPACE::TensorProto_DataType proto_type;
@@ -110,13 +109,9 @@ TEST(TypeInfoTests, TensorElementTypeConversions) {
   static_assert(std::size(types) == ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE);
   for (const auto& [api_type, proto_type] : types) {
     SCOPED_TRACE(static_cast<int>(api_type));
-    EXPECT_EQ(utils::ToTensorProtoElementType(api_type), proto_type);
-    EXPECT_EQ(utils::ToOrtTensorElementDataType(proto_type), api_type);
-    EXPECT_EQ(utils::ToOrtTensorElementDataType(utils::ToTensorProtoElementType(api_type)), api_type);
+    EXPECT_EQ(static_cast<int>(api_type), static_cast<int>(proto_type));
+    EXPECT_EQ(type_info_internal::ToONNXTensorElementDataType(proto_type), api_type);
   }
-  EXPECT_EQ(utils::ToOrtTensorElementDataType(-1), ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
-  EXPECT_EQ(utils::ToOrtTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE),
-            ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
 }
 
 TEST(TypeInfoTests, CApiElementTypeFromProtoTypeFloat6) {

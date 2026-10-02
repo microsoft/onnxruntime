@@ -6,7 +6,6 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/TensorSeq.h"
 #include "core/session/ort_apis.h"
-#include "core/session/onnxruntime_type_conversion.h"
 #include <unordered_map>
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -384,7 +383,7 @@ onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
 
   for (int i = 0; i < type_constraint_count; ++i) {
     ONNX_NAMESPACE::TypeProto proto;
-    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType(type_constraint_values[i]));
+    proto.mutable_tensor_type()->set_elem_type(type_constraint_values[i]);
     type_constraint_map[type_constraint_names[i]] = DataTypeImpl::TypeFromProto(proto);
   }
 

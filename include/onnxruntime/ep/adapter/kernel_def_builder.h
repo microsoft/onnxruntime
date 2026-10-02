@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "core/framework/data_types.h"
-#include "core/session/onnxruntime_type_conversion.h"
 
 namespace onnxruntime {
 namespace ep {
@@ -52,7 +51,7 @@ inline const OrtDataType* MLDataTypeToOrtDataType(MLDataType ml_type) {
   EP_ENFORCE(tensor_type != nullptr, "EP Kernel registration only supports tensor types.");
   auto elem_type = tensor_type->GetElementType();
   auto primitive_type = static_cast<const PrimitiveDataTypeBase*>(elem_type);
-  auto onnx_type = utils::ToOrtTensorElementDataType(primitive_type->GetDataType());
+  auto onnx_type = static_cast<ONNXTensorElementDataType>(primitive_type->GetDataType());
   return GetTensorType(onnx_type);
 }
 
@@ -66,7 +65,7 @@ inline const OrtDataType* TryMLDataTypeToOrtDataType(MLDataType ml_type) {
   EP_ENFORCE(tensor_type != nullptr, "EP Kernel registration only supports tensor types.");
   auto elem_type = tensor_type->GetElementType();
   auto primitive_type = static_cast<const PrimitiveDataTypeBase*>(elem_type);
-  auto onnx_type = utils::ToOrtTensorElementDataType(primitive_type->GetDataType());
+  auto onnx_type = static_cast<ONNXTensorElementDataType>(primitive_type->GetDataType());
   return TryGetTensorType(onnx_type);
 }
 

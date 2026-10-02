@@ -188,8 +188,12 @@ extern "C" {
  */
 
 /** Tensor element types used by the C API.
- * Numeric values are ABI-stable and are not all identical to TensorProto::DataType.
+ * Numeric values match TensorProto::DataType.
  * Currently, Ort doesn't support complex64, complex128
+ *
+ * \note Since 1.31, FLOAT8E8M0, UINT2, and INT2 have values 24, 25, and 26, respectively.
+ * In earlier releases their values were 26, 24, and 25. Applications and plugins using
+ * these types must be rebuilt with the updated headers when upgrading to 1.31 or later.
  */
 typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
@@ -219,11 +223,11 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,   // maps to a pair of packed int4 values (size == 1 byte)
   // Float4 types were introduced in ONNX 1.18. See https://onnx.ai/onnx/technical/float4.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,  // maps to a pair of packed float4 values (size == 1 byte)
-  // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,  // maps to 4 packed uint2 values (size == 1 byte)
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
   // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0 = 24,  // Non-IEEE floating-point format, all values are powers of two
+  // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2 = 25,  // maps to 4 packed uint2 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2 = 26,   // maps to 4 packed int2 values (size == 1 byte)
   // Float6 types introduced in ONNX 1.23.
   // ORT tensor storage uses one byte per element. TensorProto typed serialization uses int32_data;
   // TensorProto raw_data uses bit-packed 6-bit values.
