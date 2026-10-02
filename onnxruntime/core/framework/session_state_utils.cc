@@ -343,11 +343,15 @@ common::Status SaveInitializedTensors(
     // - Values that are external and mapped from disk. We let the OS manage the memory.
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
+#if defined(ENABLE_D3D12_FILE_LOADING)
     const bool loader_creates_tensor =
         utils::HasExternalData(*tensor_proto) &&
         !utils::HasExternalDataInMemory(*tensor_proto) &&
         external_data_loader_mgr.GetTensorCreator(
             exec_plan.GetLocation(ort_value_index), tensor_proto->data_type()) != nullptr;
+#else
+    constexpr bool loader_creates_tensor = false;
+#endif
     const bool trace_allocation = !loader_creates_tensor &&
                                   ((exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
                                    !utils::HasExternalData(*tensor_proto));
@@ -369,12 +373,14 @@ common::Status SaveInitializedTensors(
       // do not trace string tensor
       continue;
     }
+#if defined(ENABLE_D3D12_FILE_LOADING)
     if (utils::HasExternalData(*entry.second) &&
         !utils::HasExternalDataInMemory(*entry.second) &&
         external_data_loader_mgr.GetTensorCreator(
             exec_plan.GetLocation(entry.first), entry.second->data_type()) != nullptr) {
       continue;
     }
+#endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
