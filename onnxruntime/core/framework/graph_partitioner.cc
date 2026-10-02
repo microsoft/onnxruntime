@@ -1379,67 +1379,122 @@ static size_t EstimateNodeProtoBytes(const Node& node) {
   return proto_bytes;
 }
 
-static size_t CountSpecializedNameFields(const ONNX_NAMESPACE::GraphProto& graph);
+using FunctionNameBindings = InlinedHashMap<std::string_view, std::string_view>;
 
-static size_t CountSpecializedNameFields(const ONNX_NAMESPACE::AttributeProto& attribute) {
-  SafeInt<size_t> field_count = 0;
+static size_t SpecializedNameFieldCost(std::string_view name,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead) {
+  constexpr size_t kFieldOverhead = 11;
+  const auto binding = name_bindings.find(name);
+  return SafeInt<size_t>(binding == name_bindings.end() ? name.size() + prefix_overhead
+                                                        : binding->second.size()) +
+         kFieldOverhead;
+}
+
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes);
+
+static void AddSpecializedAttributeNameCost(const ONNX_NAMESPACE::AttributeProto& attribute,
+                                            const FunctionNameBindings& name_bindings,
+                                            size_t prefix_overhead,
+                                            SafeInt<size_t>& proto_bytes) {
   if (attribute.has_g()) {
-    field_count += CountSpecializedNameFields(attribute.g());
+    AddSpecializedGraphNameCost(attribute.g(), name_bindings, prefix_overhead, proto_bytes);
   }
   for (const auto& graph : attribute.graphs()) {
-    field_count += CountSpecializedNameFields(graph);
+    AddSpecializedGraphNameCost(graph, name_bindings, prefix_overhead, proto_bytes);
   }
-  return field_count;
 }
 
-static size_t CountSpecializedNameFields(const ONNX_NAMESPACE::NodeProto& node) {
-  SafeInt<size_t> field_count = node.input_size() + node.output_size();
+static void AddSpecializedNodeNameCost(const ONNX_NAMESPACE::NodeProto& node,
+                                       const FunctionNameBindings& name_bindings,
+                                       size_t prefix_overhead,
+                                       SafeInt<size_t>& proto_bytes) {
   if (!node.name().empty()) {
-    ++field_count;
+    proto_bytes += SpecializedNameFieldCost(node.name(), name_bindings, prefix_overhead);
+  }
+  for (const auto& input : node.input()) {
+    proto_bytes += SpecializedNameFieldCost(input, name_bindings, prefix_overhead);
+  }
+  for (const auto& output : node.output()) {
+    proto_bytes += SpecializedNameFieldCost(output, name_bindings, prefix_overhead);
   }
   for (const auto& attribute : node.attribute()) {
-    field_count += CountSpecializedNameFields(attribute);
+    AddSpecializedAttributeNameCost(attribute, name_bindings, prefix_overhead, proto_bytes);
   }
-  return field_count;
 }
 
-static size_t CountSpecializedNameFields(const ONNX_NAMESPACE::GraphProto& graph) {
-  SafeInt<size_t> field_count = graph.input_size() + graph.output_size() +
-                                graph.initializer_size() + graph.sparse_initializer_size();
+static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
+                                        const FunctionNameBindings& name_bindings,
+                                        size_t prefix_overhead,
+                                        SafeInt<size_t>& proto_bytes) {
+  for (const auto& input : graph.input()) {
+    proto_bytes += SpecializedNameFieldCost(input.name(), name_bindings, prefix_overhead);
+  }
+  for (const auto& output : graph.output()) {
+    proto_bytes += SpecializedNameFieldCost(output.name(), name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.initializer()) {
+    proto_bytes += SpecializedNameFieldCost(initializer.name(), name_bindings, prefix_overhead);
+  }
+  for (const auto& initializer : graph.sparse_initializer()) {
+    proto_bytes += SpecializedNameFieldCost(initializer.values().name(), name_bindings, prefix_overhead);
+  }
   for (const auto& node : graph.node()) {
-    field_count += CountSpecializedNameFields(node);
+    AddSpecializedNodeNameCost(node, name_bindings, prefix_overhead, proto_bytes);
   }
-  return field_count;
 }
 
-static void AddBoundAttributeCost(
+static Status AddBoundAttributeCost(
     const ONNX_NAMESPACE::AttributeProto& attribute,
     const InlinedHashMap<std::string_view, const ONNX_NAMESPACE::AttributeProto*>& attribute_bindings,
+    const FunctionNameBindings& name_bindings,
+    size_t prefix_overhead,
+    InlinedHashSet<std::string_view>& resolving_attribute_bindings,
     SafeInt<size_t>& node_count,
     SafeInt<size_t>& proto_bytes) {
+  const ONNX_NAMESPACE::AttributeProto* effective_attribute = &attribute;
+  bool bound_attribute = false;
   if (!attribute.ref_attr_name().empty()) {
     const auto binding = attribute_bindings.find(attribute.ref_attr_name());
     if (binding != attribute_bindings.end()) {
+      ORT_RETURN_IF_NOT(resolving_attribute_bindings.insert(binding->first).second,
+                        "Recursive function attribute binding '", binding->first, "' is not supported.");
       node_count += CountNodesIncludingSubgraphs(*binding->second);
       proto_bytes += binding->second->ByteSizeLong();
+      effective_attribute = binding->second;
+      bound_attribute = true;
     }
-    return;
   }
 
-  if (attribute.has_g()) {
-    for (const auto& node : attribute.g().node()) {
-      for (const auto& nested_attribute : node.attribute()) {
-        AddBoundAttributeCost(nested_attribute, attribute_bindings, node_count, proto_bytes);
-      }
-    }
+  if (bound_attribute) {
+    AddSpecializedAttributeNameCost(*effective_attribute, name_bindings, prefix_overhead, proto_bytes);
   }
-  for (const auto& graph : attribute.graphs()) {
+
+  const auto process_graph = [&](const ONNX_NAMESPACE::GraphProto& graph) -> Status {
     for (const auto& node : graph.node()) {
       for (const auto& nested_attribute : node.attribute()) {
-        AddBoundAttributeCost(nested_attribute, attribute_bindings, node_count, proto_bytes);
+        ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+            nested_attribute, attribute_bindings, name_bindings, prefix_overhead,
+            resolving_attribute_bindings, node_count, proto_bytes));
       }
     }
+    return Status::OK();
+  };
+
+  if (effective_attribute->has_g()) {
+    ORT_RETURN_IF_ERROR(process_graph(effective_attribute->g()));
   }
+  for (const auto& graph : effective_attribute->graphs()) {
+    ORT_RETURN_IF_ERROR(process_graph(graph));
+  }
+
+  if (bound_attribute) {
+    resolving_attribute_bindings.erase(attribute.ref_attr_name());
+  }
+  return Status::OK();
 }
 
 static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& cost) {
@@ -1480,29 +1535,30 @@ static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& 
     attribute_bindings.emplace(attribute.name(), &attribute);
   }
 
+  FunctionNameBindings name_bindings;
+  const auto add_name_bindings = [&name_bindings](const auto& formal_names, const auto& actual_defs) {
+    const size_t binding_count = std::min(static_cast<size_t>(formal_names.size()), actual_defs.size());
+    for (size_t i = 0; i < binding_count; ++i) {
+      if (actual_defs[i] != nullptr) {
+        name_bindings.emplace(formal_names.Get(static_cast<int>(i)), actual_defs[i]->Name());
+      }
+    }
+  };
+  add_name_bindings(function_proto.input(), node.InputDefs());
+  add_name_bindings(function_proto.output(), node.OutputDefs());
+
+  const size_t prefix_overhead = SafeInt<size_t>(node.OpType().size()) + 42;
   SafeInt<size_t> node_count = function_proto.node_size();
   SafeInt<size_t> proto_bytes = 0;
+  InlinedHashSet<std::string_view> resolving_attribute_bindings;
   for (const auto& function_node : function_proto.node()) {
     proto_bytes += function_node.ByteSizeLong();
+    AddSpecializedNodeNameCost(function_node, name_bindings, prefix_overhead, proto_bytes);
     for (const auto& attribute : function_node.attribute()) {
       node_count += CountNodesIncludingSubgraphs(attribute);
-      AddBoundAttributeCost(attribute, attribute_bindings, node_count, proto_bytes);
-    }
-  }
-  const SafeInt<size_t> prefix_overhead = SafeInt<size_t>(node.OpType().size()) + 42;
-  SafeInt<size_t> specialized_name_fields = 0;
-  for (const auto& function_node : function_proto.node()) {
-    specialized_name_fields += CountSpecializedNameFields(function_node);
-  }
-  proto_bytes += specialized_name_fields * prefix_overhead;
-  for (const auto* input : node.InputDefs()) {
-    if (input != nullptr) {
-      proto_bytes += input->Name().size();
-    }
-  }
-  for (const auto* output : node.OutputDefs()) {
-    if (output != nullptr) {
-      proto_bytes += output->Name().size();
+      ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
+          attribute, attribute_bindings, name_bindings, prefix_overhead,
+          resolving_attribute_bindings, node_count, proto_bytes));
     }
   }
   cost = {node_count, proto_bytes};

@@ -429,6 +429,95 @@ TEST(FunctionTest, AotInliningChargesBoundAttributePayloadPerReference) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
 }
 
+TEST(FunctionTest, AotInliningChargesRepeatedActualNamesPerOccurrence) {
+  auto model = CreateFunctionExpansionModel(32, 1);
+  for (auto& function_node : *model.mutable_functions(0)->mutable_node()) {
+    function_node.set_input(0, "function_input");
+  }
+  const std::string long_input_name(4096, 'x');
+  model.mutable_graph()->mutable_input(0)->set_name(long_input_name);
+  model.mutable_graph()->mutable_node(0)->set_input(0, long_input_name);
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 64 * 1024});
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
+}
+
+TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
+  auto model = CreateFunctionExpansionModel(0, 1);
+  constexpr int64_t kPayloadElementCount = 64 * 1024;
+  model.mutable_graph()->mutable_output(0)->mutable_type()->mutable_tensor_type()->mutable_shape()->mutable_dim(0)->set_dim_value(kPayloadElementCount);
+
+  auto* function = model.mutable_functions(0);
+  function->add_attribute("branch");
+  function->add_attribute("payload");
+
+  auto* condition_node = function->add_node();
+  condition_node->set_op_type("Constant");
+  condition_node->add_output("condition");
+  auto* condition_attribute = condition_node->add_attribute();
+  condition_attribute->set_name("value");
+  condition_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  condition_attribute->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition_attribute->mutable_t()->add_int32_data(1);
+
+  auto* if_node = function->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("function_output");
+  for (const char* attribute_name : {"then_branch", "else_branch"}) {
+    auto* attribute = if_node->add_attribute();
+    attribute->set_name(attribute_name);
+    attribute->set_ref_attr_name("branch");
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  }
+
+  auto* call_node = model.mutable_graph()->mutable_node(0);
+  auto* branch_attribute = call_node->add_attribute();
+  branch_attribute->set_name("branch");
+  branch_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* branch = branch_attribute->mutable_g();
+  branch->set_name("bound_branch");
+  for (size_t i = 0; i < 8; ++i) {
+    auto* constant = branch->add_node();
+    constant->set_op_type("Constant");
+    constant->add_output(i + 1 == 8 ? "branch_output" : "unused_" + std::to_string(i));
+    auto* value = constant->add_attribute();
+    value->set_name("value");
+    value->set_ref_attr_name("payload");
+    value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  }
+  auto* branch_output = branch->add_output();
+  branch_output->set_name("branch_output");
+  auto* branch_output_type = branch_output->mutable_type()->mutable_tensor_type();
+  branch_output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  branch_output_type->mutable_shape()->add_dim()->set_dim_value(kPayloadElementCount);
+
+  auto* payload_attribute = call_node->add_attribute();
+  payload_attribute->set_name("payload");
+  payload_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* payload_tensor = payload_attribute->mutable_t();
+  payload_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  payload_tensor->add_dims(kPayloadElementCount);
+  payload_tensor->set_raw_data(std::string(kPayloadElementCount * sizeof(float), 'x'));
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 1024 * 1024});
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
+}
+
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
 // ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
 // function references"), which runs before ORT's equivalent check ("must not be recursive").
