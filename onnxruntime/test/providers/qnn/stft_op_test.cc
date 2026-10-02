@@ -191,7 +191,7 @@ TEST_F(QnnCPUBackendTests, StftOp_Float_Rank2Signal) {
       17,
       ExpectedEPNodeAssignment::All);
 }
-#endif  // (QNN_API_VERSION_MAJOR <= 2) && (QNN_API_VERSION_MINOR < 37)
+#endif  // QNN API version 2.32 or later
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
