@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// DO NOT include ORT header files as this is meant to be a header-only utility that can be copied
+// Only include public ORT headers as this is meant to be a header-only utility that can be copied
 // to other projects.
 
 /*
@@ -479,7 +479,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
         tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
         if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
-          GetTensorElementSize(initializer_elem_type, element_size);
+          ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElementSize(initializer_elem_type, element_size));
           // create local copy of data and do endianess conversion
           auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
           std::memcpy(raw_data_buf.get(), data, data_bytes);
@@ -748,7 +748,7 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         // Copy the Ortvalue to TensorProto as raw data
         if constexpr (endian::native == endian::big) {
           size_t element_size = 0;
-          GetTensorElementSize(element_type, element_size);
+          ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElementSize(element_type, element_size));
           // create local copy of data and do endianess conversion
           auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
           std::memcpy(raw_data_buf.get(), data, data_bytes);
@@ -789,7 +789,7 @@ Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size
   ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
                                                                   initializer_elem_type, initializer_dims,
                                                                   initializer_sym_dims, has_shape));
-  GetTensorElementSize(initializer_elem_type, element_size);
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetTensorElementSize(initializer_elem_type, element_size));
   if (element_size != 1) {
     SwapByteOrderInplace(data, bytes, element_size);
   }
@@ -823,6 +823,10 @@ static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(uint8_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, sizeof(uint8_t)},
   };
   auto pos = tensor_elem_data_size.find(element_type);
   if (pos == tensor_elem_data_size.end()) {

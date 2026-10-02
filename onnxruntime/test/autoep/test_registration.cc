@@ -5,9 +5,22 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "core/framework/data_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+
+// Exercise the header-only adapters without changing the host test's EP build mode.
+#pragma push_macro("EP_ENFORCE")
+#undef EP_ENFORCE
+#define EP_ENFORCE ORT_ENFORCE
+#pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#define ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#include "ep/adapter/kernel_def_builder.h"
+#include "ep/adapter/tensor_helper.h"
+#pragma pop_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#pragma pop_macro("EP_ENFORCE")
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -19,6 +32,52 @@ extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
+
+TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
+  const auto& ep_api = Ort::GetEpApi();
+  const struct {
+    ONNXTensorElementDataType ort_type;
+    int proto_type;
+    size_t storage_bytes;
+  } types[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 20},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2, 2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2, 2},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, 3},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0, 5},
+#endif
+  };
+  Ort::AllocatorWithDefaultOptions allocator;
+  const int64_t shape[] = {5};
+  for (const auto& [ort_type, proto_type, storage_bytes] : types) {
+    SCOPED_TRACE(ort_type);
+    const OrtDataType* data_type = nullptr;
+    ASSERT_ORTSTATUS_OK(ep_api.GetTensorDataType(ort_type, &data_type));
+    ASSERT_NE(data_type, nullptr);
+    const auto* ml_type = reinterpret_cast<const DataTypeImpl*>(data_type);
+    const auto* type_proto = ml_type->GetTypeProto();
+    ASSERT_NE(type_proto, nullptr);
+    EXPECT_EQ(type_proto->tensor_type().elem_type(), proto_type);
+    EXPECT_EQ(ep::adapter::MLDataTypeToOrtDataType(ml_type), data_type);
+    EXPECT_EQ(ep::adapter::TryMLDataTypeToOrtDataType(ml_type), data_type);
+
+    auto value = Ort::Value::CreateTensor(allocator, shape, 1, ort_type);
+    auto tensor = ep::adapter::CreateTensorFromApiValue(value);
+    EXPECT_EQ(tensor.DataType()->AsPrimitiveDataType()->GetDataType(), proto_type);
+    EXPECT_EQ(tensor.SizeInBytes(), storage_bytes);
+    EXPECT_EQ(tensor.DataRaw(), value.GetTensorRawData());
+  }
+#if defined(DISABLE_FLOAT8_TYPES)
+  const OrtDataType* data_type = nullptr;
+  Ort::Status status(ep_api.GetTensorDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, &data_type));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(data_type, nullptr);
+#endif
+}
 
 TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
   const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
