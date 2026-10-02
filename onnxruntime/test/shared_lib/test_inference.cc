@@ -5461,8 +5461,8 @@ TEST(CApiTest, TensorCreationUsesOrtElementTypes) {
     }
 
     if (test_case.supported) {
-      auto buffer = allocator.GetAllocation(test_case.storage_bytes);
       for (bool with_deleter : {false, true}) {
+        std::unique_ptr<void, decltype(free_buffer)> buffer(allocator.Alloc(test_case.storage_bytes), free_buffer);
         OrtValue* raw_value = nullptr;
         Ort::Status status(with_deleter
                                ? api.CreateTensorWithDataAndDeleterAsOrtValue(
@@ -5471,6 +5471,10 @@ TEST(CApiTest, TensorCreationUsesOrtElementTypes) {
                                : api.CreateTensorWithDataAsOrtValue(
                                      info, buffer.get(), test_case.storage_bytes - 1, shape, 1,
                                      test_case.ort_type, &raw_value));
+        if (with_deleter && status.IsOK()) {
+          buffer.release();
+        }
+        Ort::Value value(raw_value);
         EXPECT_FALSE(status.IsOK());
         EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
         EXPECT_EQ(raw_value, nullptr);
