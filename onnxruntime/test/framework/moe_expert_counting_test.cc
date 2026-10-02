@@ -197,11 +197,13 @@ SessionOptions CountingOptions() {
   return options;
 }
 
+#if defined(USE_CUDA)
 InlinedVector<int> CudaExperts(KernelPilotMoeExpertState& state, const OpKernel* kernel) {
   gsl::span<const int> experts;
   ORT_THROW_IF_ERROR(state.GetKernelPilot(kernel)->GetMoeCudaExperts(experts));
   return InlinedVector<int>(experts.begin(), experts.end());
 }
+#endif
 
 // Groups the flat ExpertStat list by kernel, ordered by expert_id, for tests that don't
 // care about graph identity and just want each registered node's counters.

@@ -102,6 +102,7 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   return Status::OK();
 }
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
 template <typename T>
 Status MoE<T>::InitializeKernelPilot(KernelPilot* pilot) {
   if constexpr (!std::is_same_v<T, MLFloat16>) {
@@ -187,6 +188,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
   }
   return Status::OK();
 }
+#endif
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {

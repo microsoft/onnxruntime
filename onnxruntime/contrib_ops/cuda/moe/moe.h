@@ -25,7 +25,9 @@ class MoE final : public CudaKernel, public MoEBase {
   Status ComputeInternal(OpKernelContext* ctx) const override;
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   Status InitializeKernelPilot(KernelPilot* pilot) override;
+#endif
 
  private:
   struct PackedTensor {
@@ -36,7 +38,9 @@ class MoE final : public CudaKernel, public MoEBase {
     bool present{false};
   };
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
   Status InitializeCudaExpertWeights(gsl::span<const int> cuda_experts);
+#endif
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
