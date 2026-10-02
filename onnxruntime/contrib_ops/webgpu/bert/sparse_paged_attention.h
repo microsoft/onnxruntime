@@ -14,7 +14,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-using namespace onnxruntime::webgpu;
+using onnxruntime::webgpu::Program;
+using onnxruntime::webgpu::ProgramUniformVariableDataType;
+using onnxruntime::webgpu::ShaderHelper;
+using onnxruntime::webgpu::WebGpuKernel;
 
 // 'attention_mode' attribute.
 enum class SparseAttentionMode {

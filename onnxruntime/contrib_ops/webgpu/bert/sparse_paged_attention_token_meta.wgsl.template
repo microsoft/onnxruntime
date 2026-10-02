@@ -39,21 +39,24 @@ $MAIN {
   let position_limit = i32(uniforms.max_main_positions);
   let token_limit = i32(min(uniforms.dispatch_size, 0x3fffffffu));
 
-  // Locate the request this packed token belongs to. Falls back to the last
-  // request when cumulative_sequence_length does not cover the token, which
-  // keeps every later index in range.
-  var batch_idx: u32 = uniforms.batch_size - 1u;
-  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
-    if (token_index_i32 < cumulative_sequence_length.getByOffset(i + 1u)) {
-      batch_idx = i;
-      break;
+  // Locate the first cumulative upper bound greater than this token. If the
+  // metadata does not cover the token, fall back to the final request.
+  var search_lo: u32 = 0u;
+  var search_hi: u32 = uniforms.batch_size;
+  while (search_lo < search_hi) {
+    let search_mid = search_lo + (search_hi - search_lo) / 2u;
+    if (token_index_i32 < cumulative_sequence_length.getByOffset(search_mid + 1u)) {
+      search_hi = search_mid;
+    } else {
+      search_lo = search_mid + 1u;
     }
   }
+  let batch_idx = min(search_lo, uniforms.batch_size - 1u);
 
   let cum_lo = clamp(cumulative_sequence_length.getByOffset(batch_idx), 0, token_limit);
   let cum_hi = clamp(cumulative_sequence_length.getByOffset(batch_idx + 1u), cum_lo, token_limit);
   let query_length = cum_hi - cum_lo;
-  let query_offset = clamp(token_index_i32 - cum_lo, 0, token_limit);
+  let query_offset = clamp(token_index_i32 - cum_lo, 0, max(query_length - 1, 0));
   let past_length = clamp(past_seqlens.getByOffset(batch_idx), 0, position_limit);
   // Both operands are already clamped below 2^30, so these sums cannot overflow.
   let query_position = min(past_length + query_offset, position_limit);
