@@ -9,6 +9,7 @@
 #include "contrib_ops/cpu/moe/moe_helper.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
 #endif
@@ -51,11 +52,12 @@ const std::string& Fp8E4M3DequantLutWgsl() {
 
 class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulProgram> {
  public:
-  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input)
+  BlockFp8ExpertMatMulProgram(bool has_bias, bool has_indirect_experts, bool broadcast_input, bool use_matrix)
       : Program<BlockFp8ExpertMatMulProgram>{"QMoEBlockFp8ExpertMatMul"},
         has_bias_{has_bias},
         has_indirect_experts_{has_indirect_experts},
-        broadcast_input_{broadcast_input} {}
+        broadcast_input_{broadcast_input},
+        use_matrix_{use_matrix} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
@@ -75,6 +77,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
                                WGSL_TEMPLATE_PARAMETER(broadcast_input, broadcast_input_),
                                WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                                WGSL_TEMPLATE_PARAMETER(has_indirect_experts, has_indirect_experts_),
+                               WGSL_TEMPLATE_PARAMETER(use_matrix, use_matrix_),
                                WGSL_TEMPLATE_VARIABLE(bias, *bias),
                                WGSL_TEMPLATE_VARIABLE(indirect_experts, *indirect_experts),
                                WGSL_TEMPLATE_VARIABLE(input, input),
@@ -95,6 +98,7 @@ class BlockFp8ExpertMatMulProgram final : public Program<BlockFp8ExpertMatMulPro
   bool has_bias_;
   bool has_indirect_experts_;
   bool broadcast_input_;
+  bool use_matrix_;
 };
 
 Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
@@ -119,7 +123,13 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
   const uint32_t scale_n_blocks = (cols + 127) / 128;
   const uint32_t scale_k_blocks = (inner + 127) / 128;
   uint32_t byte_offset = 0;
-  BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input};
+  const bool use_matrix = !indirect_experts && rows >= 128 && cols >= 256 && inner >= 256 &&
+                          input->DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+                          SelectSubgroupMatrixConfig(context, {{wgpu::SubgroupMatrixComponentType::F16,
+                                                                wgpu::SubgroupMatrixComponentType::F32,
+                                                                16, 16, 16, 32, false}})
+                              .has_value();
+  BlockFp8ExpertMatMulProgram program{bias != nullptr, indirect_experts != nullptr, broadcast_input, use_matrix};
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type}});
   if (indirect_experts) {
     program.AddInputs({{&raw_weights, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
@@ -151,13 +161,16 @@ Status ApplyBlockFp8ExpertMatMul(ComputeContext& context,
                                                   expert_idx * cols)});
     }
   }
-  constexpr uint32_t workgroup_size = 64;
   program.AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetWorkgroupSize(workgroup_size)
-      .SetDispatchGroupSize((cols + workgroup_size - 1) / workgroup_size, rows)
+      .SetWorkgroupSize(use_matrix ? 128 : 64)
+      .SetDispatchGroupSize(use_matrix ? (cols + 15) / 16 : (cols + 63) / 64,
+                            use_matrix ? (rows + 63) / 64 : rows)
       .AddUniformVariables({rows, cols, inner, byte_offset,
                             scale_n_blocks, scale_k_blocks})
       .CacheHint(bias != nullptr, indirect_experts != nullptr, broadcast_input);
+  if (use_matrix && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    program.SetSubgroupSize(32);
+  }
   return context.RunProgram(program);
 }
 
