@@ -109,8 +109,8 @@ struct GraphOptions {
 
 int64_t BufferCapacity(int64_t compress_ratio) { return 2 * compress_ratio - 1; }
 
-// Builds a fixed 16-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
-// requires. position_ids (slot 11) is forbidden for "qsa" and forced on for "csa".
+// Builds a fixed-input node; csa-only slots are left empty for policy_mode "qsa", as the schema
+// requires. position_ids (slot 11) is optional for "qsa" and forced on for "csa".
 void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   const bool is_csa = options.policy_mode == psai::kPolicyModeCsa;
   const int64_t width = is_csa ? 2 * options.head_size : options.head_size;
@@ -359,11 +359,11 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
                        "must be omitted when policy_mode is 'qsa'");
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaWithPositionIds) {
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, AllowsQsaWithPositionIds) {
   GraphOptions options;
   options.add_position_ids = true;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "position_ids) must be omitted when policy_mode is 'qsa'");
+  std::unique_ptr<Model> model;
+  EXPECT_STATUS_OK(BuildAndResolve([&options](ModelTestBuilder& builder) { AddNode(builder, options); }, model));
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingPositionIds) {
@@ -598,6 +598,7 @@ struct QsaPackedProblem {
   std::vector<float> key_norm_weight;
   std::vector<float> cos_cache;  // shared: [max_position, rotary_width]
   std::vector<float> sin_cache;
+  std::vector<int64_t> position_ids;
   std::vector<float> past_key_state;  // [batch, state_capacity, head_size]
   std::vector<float> past_kv_buffer;  // [batch, buffer_capacity, head_size]
 
@@ -729,7 +730,9 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
-      const int position = p.past_sequence_lengths[static_cast<size_t>(b)] + (token - req_start);
+      const int position = p.position_ids.empty()
+                               ? p.past_sequence_lengths[static_cast<size_t>(b)] + (token - req_start)
+                               : static_cast<int>(p.position_ids[static_cast<size_t>(token)]);
       const int causal_count = CausalThreshold(position, p.compress_ratio);
       const int visible_block_count = std::min(key_len_after[static_cast<size_t>(b)], causal_count);
       const int selected = std::min(block_topk, visible_block_count);
@@ -868,10 +871,14 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   test.AddInput<T>("sin_cache", {problem.max_position, problem.rotary_width}, ToElementType<T>(problem.sin_cache));
   test.AddInput<int32_t>("cumulative_sequence_lengths", {batch_size + 1}, problem.cumulative_sequence_lengths);
   test.AddInput<int32_t>("past_sequence_lengths", {batch_size}, problem.past_sequence_lengths);
-  test.AddOptionalInputEdge<T>();        // gate
-  test.AddOptionalInputEdge<T>();        // position_bias
-  test.AddOptionalInputEdge<T>();        // head_weights
-  test.AddOptionalInputEdge<int64_t>();  // position_ids
+  test.AddOptionalInputEdge<T>();  // gate
+  test.AddOptionalInputEdge<T>();  // position_bias
+  test.AddOptionalInputEdge<T>();  // head_weights
+  if (problem.position_ids.empty()) {
+    test.AddOptionalInputEdge<int64_t>();
+  } else {
+    test.AddInput<int64_t>("position_ids", {total_tokens}, problem.position_ids);
+  }
   test.AddInput<T>("past_key_state", {batch_size, problem.state_capacity, head_size},
                    ToElementType<T>(problem.past_key_state));
   test.AddInput<T>("past_kv_buffer", {batch_size, buffer_capacity, head_size},
@@ -917,6 +924,12 @@ TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, QsaPackedQueryKey) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::Cuda, nullptr, true);
+}
+
+TEST(PackedSparseAttentionIndexerTest, QsaPositionIds) {
+  QsaPackedProblem problem = MakeQsaPackedProblem();
+  problem.position_ids = {7, 9, 3, 4, 8};
+  RunQsaPackedTest<float>(1.0e-5f, std::move(problem));
 }
 
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {

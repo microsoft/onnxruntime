@@ -159,10 +159,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context
   }
   const bool position_ids_provided =
       psai::kPositionIds < context->InputCount() && context->Input<Tensor>(psai::kPositionIds) != nullptr;
-  ORT_RETURN_IF(position_ids_provided == is_qsa,
+  ORT_RETURN_IF(!is_qsa && !position_ids_provided,
                 "PackedSparseAttentionIndexer: input ", psai::kPositionIds,
-                is_qsa ? " (position_ids) must be omitted for policy_mode 'qsa'"
-                       : " (position_ids) is required for policy_mode 'csa'");
+                " (position_ids) is required for policy_mode 'csa'");
   const bool gate_buffer_provided =
       psai::kPastGateBuffer < context->InputCount() && context->Input<Tensor>(psai::kPastGateBuffer) != nullptr;
   ORT_RETURN_IF(gate_buffer_provided != !is_qsa, "PackedSparseAttentionIndexer: input ", psai::kPastGateBuffer,
@@ -193,6 +192,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   const Tensor* sin_cache = context->Input<Tensor>(psai::kSinCache);
   const Tensor* cumulative_sequence_lengths = context->Input<Tensor>(psai::kCumulativeSequenceLengths);
   const Tensor* past_sequence_lengths = context->Input<Tensor>(psai::kPastSequenceLengths);
+  const Tensor* position_ids = context->Input<Tensor>(psai::kPositionIds);
   const Tensor* past_key_state = context->Input<Tensor>(psai::kPastKeyState);
   const Tensor* past_kv_buffer = context->Input<Tensor>(psai::kPastKvBuffer);
   const Tensor* past_state_lengths = context->Input<Tensor>(psai::kPastStateLengths);
@@ -243,6 +243,9 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
                 "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
+  if (position_ids != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {total_tokens}));
+  }
   if (has_separate_key) {
     ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
   }
@@ -315,6 +318,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
+  params.has_position_ids = position_ids != nullptr;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.state_capacity = static_cast<int>(state_capacity);
   params.buffer_capacity = static_cast<int>(buffer_capacity);
@@ -342,6 +346,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
       reinterpret_cast<const CudaT*>(sin_cache->Data<T>()),
       cumulative_sequence_lengths->Data<int32_t>(),
       past_sequence_lengths->Data<int32_t>(),
+      position_ids != nullptr ? position_ids->Data<int64_t>() : nullptr,
       reinterpret_cast<const CudaT*>(past_key_state->Data<T>()),
       reinterpret_cast<const CudaT*>(past_kv_buffer->Data<T>()),
       past_state_lengths->Data<int32_t>(),
@@ -473,6 +478,7 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
   params.rotary_width = static_cast<int>(rotary.rotary_width);
   params.max_rotary_length = static_cast<int>(rotary.max_rotary_length);
   params.cos_cache_batched = rotary.batched;
+  params.has_position_ids = true;
   params.compress_ratio = static_cast<int>(compress_ratio_);
   params.state_capacity = static_cast<int>(state_capacity);
   params.buffer_capacity = static_cast<int>(buffer_capacity);
