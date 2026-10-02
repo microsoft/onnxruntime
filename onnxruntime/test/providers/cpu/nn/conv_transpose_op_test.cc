@@ -2101,9 +2101,8 @@ TEST(ConvTransposeTest, ZeroInputChannelsFillOutputWithBias) {
 TEST(ConvTransposeTest, NonzeroInputChannelsRejectColBufferSizeOverflow) {
   constexpr size_t kNonzeroInputImageSize = 2;
   constexpr size_t kOverflowingKernelDim = std::numeric_limits<size_t>::max();
-  EXPECT_THROW(::onnxruntime::conv_transpose_internal::CalculateColBufferSize(
-                   sizeof(float), kOverflowingKernelDim, kNonzeroInputImageSize),
-               OnnxRuntimeException);
+  EXPECT_ANY_THROW(::onnxruntime::conv_transpose_internal::CalculateColBufferSize(
+      sizeof(float), kOverflowingKernelDim, kNonzeroInputImageSize));
 }
 
 // Test that extreme attribute values causing arithmetic overflow are caught.

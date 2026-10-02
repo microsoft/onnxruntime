@@ -170,10 +170,10 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const size_t col_buffer_size =
+  const size_t col_buffer_bytes =
       conv_transpose_internal::CalculateColBufferSize(
           sizeof(T), SafeInt<size_t>(kernel_dim), SafeInt<size_t>(input_image_size));
-  auto col_data = alloc->Alloc(col_buffer_size);
+  auto col_data = alloc->Alloc(col_buffer_bytes);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
@@ -286,10 +286,10 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const size_t col_buffer_size =
+  const size_t col_buffer_bytes =
       conv_transpose_internal::CalculateColBufferSize(
           sizeof(float), SafeInt<size_t>(kernel_dim), SafeInt<size_t>(input_image_size));
-  auto col_data = alloc->Alloc(col_buffer_size);
+  auto col_data = alloc->Alloc(col_buffer_bytes);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
 
