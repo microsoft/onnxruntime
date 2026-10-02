@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#ifdef USE_POSIX_TELEMETRY
-#include "core/platform/posix/telemetry.h"
+#ifdef USE_1DS_TELEMETRY
+#include "core/platform/telemetry_1ds.h"
 #endif
 
 #include <assert.h>
@@ -725,8 +725,8 @@ class PosixEnv : public Env {
   }
 
  private:
-#ifdef USE_POSIX_TELEMETRY
-  PosixTelemetry telemetry_provider_;
+#ifdef USE_1DS_TELEMETRY
+  OneDsTelemetry telemetry_provider_;
 #else
   Telemetry telemetry_provider_;
 #endif

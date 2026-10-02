@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/device_id.h"
+#include "core/platform/device_id.h"
 
 #include <cstdlib>
 #include <filesystem>

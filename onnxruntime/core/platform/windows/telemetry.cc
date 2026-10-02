@@ -845,11 +845,17 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
 }
 
 void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
+  LogLocalProviderOptions(provider_id, provider_options_string, captureState);
+}
+
+void WindowsTelemetry::LogLocalProviderOptions(const std::string& provider_id,
+                                               const std::string& provider_options_string,
+                                               bool capture_state) {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
-  if (!captureState) {
+  if (!capture_state) {
     TraceLoggingWrite(telemetry_provider_handle,
                       "ProviderOptions",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),

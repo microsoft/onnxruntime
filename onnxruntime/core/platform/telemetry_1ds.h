@@ -24,6 +24,10 @@ class EventProperties;
 
 namespace onnxruntime {
 
+namespace test {
+class OneDsTelemetryTest;
+}
+
 /**
  * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
  *
@@ -34,10 +38,10 @@ namespace onnxruntime {
  * Configuration:
  * - Telemetry is opt-in via build flags
  */
-class PosixTelemetry : public Telemetry {
+class OneDsTelemetry : public Telemetry {
  public:
-  PosixTelemetry();
-  ~PosixTelemetry() override;
+  OneDsTelemetry();
+  ~OneDsTelemetry() override;
 
   void EnableTelemetryEvents() const override;
   void DisableTelemetryEvents() const override;
@@ -105,6 +109,10 @@ class PosixTelemetry : public Telemetry {
                           const std::vector<std::string>& requested_execution_provider_ids,
                           const std::vector<std::string>& available_execution_provider_ids) const override;
 
+  void LogProviderOptions(const std::string& provider_id,
+                          const std::string& provider_options_string,
+                          bool capture_state) const override;
+
   void LogModelLoadStart(uint32_t session_id) const override;
   void LogModelLoadEnd(uint32_t session_id, const common::Status& status,
                        int64_t duration_us) const override;
@@ -132,6 +140,8 @@ class PosixTelemetry : public Telemetry {
                                        const std::string& lib_path) const override;
 
  private:
+  friend class test::OneDsTelemetryTest;
+
   // Initialize telemetry SDK logger
   void Initialize();
 
@@ -153,10 +163,10 @@ class PosixTelemetry : public Telemetry {
   // Safe async event logging.
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
 
-  // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
+  // All shared telemetry state below is static: OneDsTelemetry is a process-wide singleton whose
   // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
   // tears it down), matching WindowsTelemetry. Keeping the SDK handles and state static ensures a
-  // single owner regardless of how many PosixTelemetry objects exist.
+  // single owner regardless of how many OneDsTelemetry objects exist.
 
   // Mutex for thread-safe init/shutdown of the shared SDK state.
   static std::shared_mutex mutex_;

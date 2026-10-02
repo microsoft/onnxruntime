@@ -884,11 +884,23 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
-    parser.add_argument(
+    telemetry_group = parser.add_mutually_exclusive_group()
+    telemetry_group.add_argument(
         "--no_telemetry",
         dest="use_telemetry",
         action="store_false",
         help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
+    telemetry_group.add_argument(
+        "--use_telemetry",
+        dest="use_telemetry_legacy",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    telemetry_group.add_argument(
+        "--use_windows_telemetry",
+        action="store_true",
+        help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
     )
 
 
@@ -1030,8 +1042,24 @@ def parse_arguments() -> argparse.Namespace:
     if args.build_wasm_static_lib:
         args.build_wasm = True
 
+    if args.use_telemetry_legacy:
+        warnings.warn(
+            "--use_telemetry is deprecated because telemetry is enabled by default. "
+            "On Windows it retains its historical TraceLogging behavior; use "
+            "--use_windows_telemetry to request that backend explicitly.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        if not target_supports_telemetry(args):
+            parser.error("--use_telemetry requires a telemetry-capable target")
+        args.use_telemetry = True
+        if is_windows():
+            args.use_windows_telemetry = True
+
     if not target_supports_telemetry(args):
         args.use_telemetry = False
+    if args.use_windows_telemetry and (not is_windows() or args.android or not target_supports_telemetry(args)):
+        parser.error("--use_windows_telemetry requires a telemetry-capable native Windows target")
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:

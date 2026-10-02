@@ -112,6 +112,9 @@ class WindowsTelemetry : public Telemetry {
   void LogProviderOptions(const std::string& provider_id,
                           const std::string& provider_options_string,
                           bool captureState) const override;
+  static void LogLocalProviderOptions(const std::string& provider_id,
+                                      const std::string& provider_options_string,
+                                      bool capture_state);
 
   void LogModelLoadStart(uint32_t session_id) const override;
 

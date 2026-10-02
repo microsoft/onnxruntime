@@ -1,22 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/telemetry.h"
-#include "core/platform/posix/device_id.h"
-#include "core/platform/posix/telemetry_context.h"
-#include "core/platform/posix/telemetry_no_throw.h"
-#include "core/platform/posix/telemetry_sampling.h"
-#include "core/platform/posix/telemetry_sha256.h"
+#include "core/platform/telemetry_1ds.h"
+#include "core/platform/device_id.h"
+#include "core/platform/telemetry_context.h"
+#include "core/platform/telemetry_no_throw.h"
+#include "core/platform/telemetry_sampling.h"
+#include "core/platform/telemetry_sha256.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
+#include "core/platform/telemetry_1ds_platform.h"
 #include "core/platform/telemetry_redaction.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
-#include <mach-o/dyld.h>
 #endif
 
+#if defined(ORT_TELEMETRY_USES_STATIC_CURL)
 #include <unistd.h>
+#endif
+
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
@@ -24,26 +27,9 @@
 #include "http/HttpClient_Android.hpp"
 #endif
 
-#include <unistd.h>
-#include <sys/resource.h>
-
-#ifdef __APPLE__
-#include <sys/sysctl.h>
-#include <sys/types.h>
-#endif
-
-#if defined(__linux__) || defined(__ANDROID__)
-#include <fstream>
-#endif
-
 #include <algorithm>
-#include <array>
-#include <cctype>
-#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
-#include <limits>
-#include <random>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -68,7 +54,7 @@ using namespace Microsoft::Applications::Events;
 
 namespace onnxruntime {
 
-// PosixTelemetry can be constructed during early Env initialization (before logging registers a
+// OneDsTelemetry can be constructed during early Env initialization (before logging registers a
 // default logger) and destroyed late at process exit, so only emit warnings when a default logger
 // exists, to avoid touching a missing/destroyed LoggingManager.
 #define ORT_TELEMETRY_WARN(stream_expr)                               \
@@ -79,17 +65,17 @@ namespace onnxruntime {
   } while (0)
 
 // Static member initialization
-std::atomic<uint32_t> PosixTelemetry::global_register_count_{0};
-std::mutex PosixTelemetry::global_mutex_;
-std::shared_mutex PosixTelemetry::mutex_;
-::Microsoft::Applications::Events::ILogManager* PosixTelemetry::log_manager_ = nullptr;
-std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
-std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
-std::atomic<bool> PosixTelemetry::enabled_{true};
-std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
-std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
-std::atomic<uint32_t> PosixTelemetry::projection_{0};
-std::atomic<bool> PosixTelemetry::process_info_logged_{false};
+std::atomic<uint32_t> OneDsTelemetry::global_register_count_{0};
+std::mutex OneDsTelemetry::global_mutex_;
+std::shared_mutex OneDsTelemetry::mutex_;
+::Microsoft::Applications::Events::ILogManager* OneDsTelemetry::log_manager_ = nullptr;
+std::atomic<::Microsoft::Applications::Events::ILogger*> OneDsTelemetry::logger_{nullptr};
+std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> OneDsTelemetry::config_;
+std::atomic<bool> OneDsTelemetry::enabled_{true};
+std::atomic<bool> OneDsTelemetry::telemetry_disabled_{false};
+std::atomic<bool> OneDsTelemetry::network_context_suppressed_{false};
+std::atomic<uint32_t> OneDsTelemetry::projection_{0};
+std::atomic<bool> OneDsTelemetry::process_info_logged_{false};
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
 
@@ -125,8 +111,7 @@ std::string DecodeBase64(const std::string& encoded) {
 std::string GetToken() {
   static constexpr char kXorKey[] = "OnnxRuntime";
   constexpr size_t klen = sizeof(kXorKey) - 1;
-  std::string decoded = DecodeBase64(
-      "eg8KQWRGDBBdD1YuWl9JahRaTFhZVX4NDUhgRF9MXlhIegxYHGpFXxJEXVd/V0NMa0FXWVEOA3hDCxw3RFhCUF8Edl0NVWRMWEM=");
+  std::string decoded = DecodeBase64(telemetry_internal::GetDefaultEncodedToken());
   for (size_t i = 0; i < decoded.size(); ++i) {
     decoded[i] = static_cast<char>(decoded[i] ^ kXorKey[i % klen]);
   }
@@ -311,7 +296,7 @@ class PendingLogManager {
   ILogManager* manager_;
 };
 
-const std::string& GetAppSessionGuid() {
+const std::string& GetAppSessionGuidInternal() {
   static const std::string guid = GenerateGuidV4();
   return guid;
 }
@@ -357,7 +342,7 @@ void RunTelemetryOperation(const char* operation_name, Operation&& operation) no
 }
 
 bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
-  if (!telemetry_internal::ShouldSampleSession(GetAppSessionGuid(), session_id)) {
+  if (!telemetry_internal::ShouldSampleSession(GetAppSessionGuidInternal(), session_id)) {
     return false;
   }
 
@@ -367,7 +352,7 @@ bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
 
 bool PrepareHighVolumeEvent(EventBuilder& event, uint32_t session_id) {
   if (!telemetry_internal::ShouldSampleSession(
-          GetAppSessionGuid(), session_id,
+          GetAppSessionGuidInternal(), session_id,
           telemetry_internal::kHighVolumeEventSampleRatePercent)) {
     return false;
   }
@@ -376,36 +361,26 @@ bool PrepareHighVolumeEvent(EventBuilder& event, uint32_t session_id) {
   return true;
 }
 
-bool PrepareProcessEvent(EventBuilder& event) {
+bool PrepareSampledProcessEvent(EventBuilder& event) {
   if (!telemetry_internal::ShouldSampleSession(
-          GetAppSessionGuid(), 0,
-          telemetry_internal::kProcessEventSampleRatePercent)) {
+          GetAppSessionGuidInternal(), 0,
+          telemetry_internal::kOtherProcessEventSampleRatePercent)) {
     return false;
   }
 
-  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  event.SetPopsample(telemetry_internal::kOtherProcessEventSampleRatePercent);
   return true;
-}
-
-int32_t GetProcessorCount() {
-  auto n = sysconf(_SC_NPROCESSORS_ONLN);
-  if (n <= 0) {
-    return 0;
-  }
-  if (n > static_cast<long>(std::numeric_limits<int32_t>::max())) {
-    return std::numeric_limits<int32_t>::max();
-  }
-  return static_cast<int32_t>(n);
-}
-
-std::string GetFileName(std::string_view path) {
-  const size_t separator = path.find_last_of('/');
-  return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
 }
 
 }  // namespace
 
-PosixTelemetry::PosixTelemetry() {
+namespace telemetry_internal {
+const std::string& GetAppSessionGuid() {
+  return GetAppSessionGuidInternal();
+}
+}  // namespace telemetry_internal
+
+OneDsTelemetry::OneDsTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
 
   // Always increment so destructor pairing is symmetric
@@ -418,7 +393,7 @@ PosixTelemetry::PosixTelemetry() {
   }
 }
 
-PosixTelemetry::~PosixTelemetry() {
+OneDsTelemetry::~OneDsTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
 
   global_register_count_--;
@@ -433,7 +408,7 @@ PosixTelemetry::~PosixTelemetry() {
   }
 }
 
-void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
+void OneDsTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
   // Hold a shared (reader) lock for the duration of the LogEvent call so the logger and its owning
   // log manager cannot be torn down underneath us: Initialize()/Shutdown() take this lock
   // exclusively. The shared lock still allows multiple threads to log concurrently.
@@ -464,7 +439,7 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   }
 }
 
-void PosixTelemetry::Initialize() {
+void OneDsTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
   // Full suppression is process-wide and irreversible: never create the uploader, emit an event, or
@@ -516,7 +491,7 @@ void PosixTelemetry::Initialize() {
   {
     std::string cache_dir = DeviceId::EnsureStorageDirectory();
     if (!cache_dir.empty()) {
-      std::string cache_path = cache_dir + "/onnxruntime.db";
+      std::string cache_path = telemetry_internal::GetCachePath(cache_dir);
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
   }
@@ -582,7 +557,7 @@ void PosixTelemetry::Initialize() {
 #endif
 
   // Add only ORT version and process-wide correlation context.
-  logger->SetContext("AppSessionGuid", GetAppSessionGuid());
+  logger->SetContext("AppSessionGuid", GetAppSessionGuidInternal());
   logger->SetContext("LibraryVersion", ORT_VERSION);
 
   // Caller-framework label from the build-time ORT_CALLER_FRAMEWORK option; only stamped when a
@@ -598,7 +573,7 @@ void PosixTelemetry::Initialize() {
   logger_.store(logger, std::memory_order_release);
 }
 
-void PosixTelemetry::Shutdown() {
+void OneDsTelemetry::Shutdown() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
   // Clear the logger so concurrent LogEventAsync() readers (which take the shared lock) observe
@@ -622,290 +597,37 @@ void PosixTelemetry::Shutdown() {
   }
 }
 
-std::string PosixTelemetry::GetPlatformInfo() const {
-#if defined(__APPLE__)
-#if TARGET_OS_IOS
-  return "iOS";
-#elif TARGET_OS_MAC
-  return "macOS";
-#else
-  return "Apple";
-#endif
-#elif defined(__ANDROID__)
-  return "Android";
-#elif defined(__linux__)
-  return "Linux";
-#else
-  return "Unknown";
-#endif
-}
-
-// ---------------------------------------------------------------------------
-// Process / system info helpers for LogProcessInfo
-// ---------------------------------------------------------------------------
-
-// Get detailed OS version string (e.g., "macOS 15.2", "Ubuntu 22.04 LTS")
-std::string PosixTelemetry::GetOsDescription() const {
-#if defined(__APPLE__)
-  char version[64] = {};
-  size_t len = sizeof(version);
-  if (sysctlbyname("kern.osproductversion", version, &len, nullptr, 0) == 0) {
-#if TARGET_OS_IOS
-    return std::string("iOS ") + version;
-#else
-    return std::string("macOS ") + version;
-#endif
-  }
-  return GetPlatformInfo();
-
-#elif defined(__ANDROID__)
-  // Read Android system properties via /system/build.prop
-  std::string release, sdk;
-  std::ifstream prop("/system/build.prop");
-  if (prop.is_open()) {
-    std::string line;
-    while (std::getline(prop, line)) {
-      if (line.rfind("ro.build.version.release=", 0) == 0)
-        release = line.substr(25);
-      else if (line.rfind("ro.build.version.sdk=", 0) == 0)
-        sdk = line.substr(21);
-    }
-  }
-  if (!release.empty()) {
-    std::string result = "Android " + release;
-    if (!sdk.empty()) result += " (API " + sdk + ")";
-    return result;
-  }
-  return "Android";
-
-#elif defined(__linux__)
-  // Parse /etc/os-release for PRETTY_NAME (e.g., "Ubuntu 22.04.3 LTS")
-  std::ifstream os_release("/etc/os-release");
-  if (os_release.is_open()) {
-    std::string line;
-    while (std::getline(os_release, line)) {
-      if (line.rfind("PRETTY_NAME=", 0) == 0) {
-        std::string value = line.substr(12);
-        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-          value = value.substr(1, value.size() - 2);
-        }
-        return value;
-      }
-    }
-  }
-  return "Linux";
-
-#else
-  return "Unknown";
-#endif
-}
-
-// Get the CPU brand string (e.g. "Intel(R) Core(TM) i7-10700K"). Empty when unavailable.
-std::string PosixTelemetry::GetCpuModel() const {
-#if defined(__APPLE__)
-  // macOS/iOS expose the CPU brand string via sysctl.
-  char buf[256] = {0};
-  size_t size = sizeof(buf);
-  if (sysctlbyname("machdep.cpu.brand_string", buf, &size, nullptr, 0) == 0) {
-    return std::string(buf);
-  }
-  return "";
-
-#elif defined(__linux__) || defined(__ANDROID__)
-  // /proc/cpuinfo exposes the CPU brand as "model name" (x86) or "Hardware" (ARM).
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  std::string line;
-  std::string hardware;
-  while (std::getline(cpuinfo, line)) {
-    const size_t colon = line.find(':');
-    if (colon == std::string::npos) {
-      continue;
-    }
-    std::string key = line.substr(0, colon);
-    while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back()))) {
-      key.pop_back();
-    }
-    std::string value = line.substr(colon + 1);
-    const size_t start = value.find_first_not_of(" \t");
-    value = (start == std::string::npos) ? std::string() : value.substr(start);
-    if (key == "model name") {
-      return value;
-    }
-    if (hardware.empty() && key == "Hardware") {
-      hardware = value;
-    }
-  }
-  return hardware;
-
-#else
-  return "";
-#endif
-}
-
-// Coarse device class for the host: "Mobile" on Android/iOS, "Desktop" elsewhere.
-std::string PosixTelemetry::GetDeviceClass() const {
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-  return "Mobile";
-#else
-  return "Desktop";
-#endif
-}
-
-namespace {
-
-#if defined(__linux__) || defined(__ANDROID__)
-std::string ReadBoundedFile(const char* path) {
-  constexpr size_t kMaxProbeBytes = 16 * 1024;
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return {};
-  }
-
-  std::array<char, kMaxProbeBytes> buffer{};
-  input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-  return std::string(buffer.data(), static_cast<size_t>(input.gcount()));
-}
-
-bool FileExists(const char* path) {
-  std::ifstream input(path);
-  return input.good();
-}
-#endif
-
-}  // namespace
-
-telemetry_detail::HostEnvironmentInfo PosixTelemetry::GetHostEnvironmentInfo() {
-  telemetry_detail::HostEnvironmentEvidence evidence;
-#if defined(__linux__) || defined(__ANDROID__)
-  evidence.docker_marker = FileExists("/.dockerenv");
-  evidence.podman_marker = FileExists("/run/.containerenv");
-  evidence.kubernetes = !telemetry_detail::GetTelemetryEnv("KUBERNETES_SERVICE_HOST").empty();
-  evidence.aws_ecs = !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI").empty() ||
-                     !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI_V4").empty();
-  evidence.generic_container =
-      telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("DOTNET_RUNNING_IN_CONTAINER"));
-  evidence.systemd_container =
-      ReadBoundedFile("/run/systemd/container") + telemetry_detail::GetTelemetryEnv("container");
-  evidence.cgroup = ReadBoundedFile("/proc/1/cgroup") + ReadBoundedFile("/proc/self/cgroup");
-  evidence.cpu_info = ReadBoundedFile("/proc/cpuinfo");
-  evidence.kernel_release = ReadBoundedFile("/proc/sys/kernel/osrelease");
-  evidence.dmi = ReadBoundedFile("/sys/class/dmi/id/sys_vendor") +
-                 ReadBoundedFile("/sys/class/dmi/id/product_name") +
-                 ReadBoundedFile("/sys/class/dmi/id/board_vendor");
-#if defined(__ANDROID__)
-  const std::string android_properties = ReadBoundedFile("/system/build.prop");
-  evidence.android_emulator = telemetry_detail::ContainsAscii(android_properties, "ro.kernel.qemu=1") ||
-                              telemetry_detail::ContainsAscii(android_properties, "ro.boot.qemu=1") ||
-                              telemetry_detail::ContainsAscii(android_properties, "ro.product.manufacturer=genymotion");
-#endif
-#elif defined(__APPLE__) && !TARGET_OS_IOS
-  int is_virtual_machine = 0;
-  size_t size = sizeof(is_virtual_machine);
-  evidence.apple_virtual_machine =
-      sysctlbyname("kern.hv_vmm_present", &is_virtual_machine, &size, nullptr, 0) == 0 &&
-      is_virtual_machine != 0;
-#endif
-  return telemetry_detail::ClassifyHostEnvironment(evidence);
-}
-
-std::string PosixTelemetry::GetProcessName() {
-#if defined(__APPLE__)
-  uint32_t path_size = 1024;
-  std::vector<char> path(path_size);
-  if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
-    path.resize(path_size);
-    if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
-      return {};
-    }
-  }
-  return GetFileName(path.data());
-#elif defined(__linux__) || defined(__ANDROID__)
-  std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
-  std::string first_argument;
-  if (cmdline && std::getline(cmdline, first_argument, '\0')) {
-    return GetFileName(first_argument);
-  }
-  return {};
-#else
-  return {};
-#endif
-}
-
-// Get the CPU architecture the binary was compiled for
-std::string PosixTelemetry::GetArchitecture() {
-#if defined(__x86_64__)
-  return "x86_64";
-#elif defined(__i386__)
-  return "x86";
-#elif defined(__aarch64__)
-  return "arm64";
-#elif defined(__arm__)
-  return "arm";
-#elif defined(__riscv)
-  return "riscv";
-#elif defined(__wasm__)
-  return "wasm";
-#else
-  return "unknown";
-#endif
-}
-
-// Get total physical memory in MB
-int64_t PosixTelemetry::GetTotalMemoryMB() {
-#if defined(__APPLE__)
-  int64_t mem = 0;
-  size_t len = sizeof(mem);
-  if (sysctlbyname("hw.memsize", &mem, &len, nullptr, 0) == 0) {
-    return mem / (1024 * 1024);
-  }
-  return 0;
-
-#elif defined(__linux__) || defined(__ANDROID__)
-  long pages = sysconf(_SC_PHYS_PAGES);
-  long page_size = sysconf(_SC_PAGE_SIZE);
-  if (pages > 0 && page_size > 0) {
-    return static_cast<int64_t>(pages) * page_size / (1024 * 1024);
-  }
-  return 0;
-
-#else
-  return 0;
-#endif
-}
-
-void PosixTelemetry::EnableTelemetryEvents() const {
+void OneDsTelemetry::EnableTelemetryEvents() const {
   if (!telemetry_disabled_.load(std::memory_order_acquire)) {
     enabled_.store(true, std::memory_order_release);
   }
 }
 
-void PosixTelemetry::DisableTelemetryEvents() const {
+void OneDsTelemetry::DisableTelemetryEvents() const {
   enabled_.store(false, std::memory_order_release);
 }
 
-void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {
+void OneDsTelemetry::SetLanguageProjection(uint32_t projection) const {
   projection_ = projection;
 }
 
-bool PosixTelemetry::IsEnabled() const {
+bool OneDsTelemetry::IsEnabled() const {
   // Reflect actual readiness: the opt-out flag AND a successfully-initialized logger.
   return enabled_.load(std::memory_order_acquire) && logger_.load(std::memory_order_acquire) != nullptr;
 }
 
-unsigned char PosixTelemetry::Level() const {
+unsigned char OneDsTelemetry::Level() const {
   // POSIX telemetry has no ETW-style level/keyword control plane; report zero.
   return 0;
 }
 
-uint64_t PosixTelemetry::Keyword() const {
+uint64_t OneDsTelemetry::Keyword() const {
   return 0;
 }
 
-void PosixTelemetry::LogProcessInfo() const {
+void OneDsTelemetry::LogProcessInfo() const {
   RunTelemetryOperation("LogProcessInfo", [&]() {
-    // Runtime API suppression leaves the uploader live, so ProcessInfo still fires. Full process
-    // suppression never creates a logger and returns here.
-    if (logger_.load(std::memory_order_acquire) == nullptr) {
+    if (!IsEnabled()) {
       return;
     }
 
@@ -923,10 +645,6 @@ void PosixTelemetry::LogProcessInfo() const {
 #endif
 
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
-    if (!PrepareProcessEvent(builder)) {
-      return;
-    }
-
     const auto host_environment = GetHostEnvironmentInfo();
     builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
@@ -946,29 +664,29 @@ void PosixTelemetry::LogProcessInfo() const {
         .AddString("hostEnvironment", host_environment.environment_class)
         .AddString("environmentDetectionConfidence", host_environment.detection_confidence)
         .AddString("deviceIdScope", host_environment.device_id_scope)
-        .AddInt32("processorCount", GetProcessorCount())
+        .AddInt32("processorCount", telemetry_internal::GetProcessorCount())
         .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
     LogEventAsync(builder.Build());
   });
 }
 
-void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
+void OneDsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
   // Start/stop markers are retained by TraceLogging. 1DS completion events carry local durations.
   (void)session_id;
 }
 
-void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
+void OneDsTelemetry::LogEvaluationStop(uint32_t session_id) const {
   // Per-run start/stop markers are useful for ETW tracing, but RuntimePerf already aggregates every
   // successful run for 1DS without putting synchronous telemetry work on the inference hot path.
   (void)session_id;
 }
 
-void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
+void OneDsTelemetry::LogEvaluationStart(uint32_t session_id) const {
   (void)session_id;
 }
 
-void PosixTelemetry::LogSessionCreation(
+void OneDsTelemetry::LogSessionCreation(
     uint32_t session_id, int64_t ir_version,
     const std::string& model_producer_name,
     const std::string& model_producer_version,
@@ -1023,7 +741,7 @@ void PosixTelemetry::LogSessionCreation(
   });
 }
 
-void PosixTelemetry::LogCompileModelStart(
+void OneDsTelemetry::LogCompileModelStart(
     uint32_t session_id,
     const std::string& input_source,
     const std::string& output_target,
@@ -1055,7 +773,7 @@ void PosixTelemetry::LogCompileModelStart(
   });
 }
 
-void PosixTelemetry::LogCompileModelComplete(
+void OneDsTelemetry::LogCompileModelComplete(
     uint32_t session_id,
     bool success,
     uint32_t error_code,
@@ -1081,7 +799,7 @@ void PosixTelemetry::LogCompileModelComplete(
   });
 }
 
-void PosixTelemetry::LogRuntimeError(
+void OneDsTelemetry::LogRuntimeError(
     uint32_t session_id, const common::Status& status,
     const char* file, const char* function, uint32_t line) const {
   RunTelemetryOperation("LogRuntimeError", [&]() {
@@ -1098,9 +816,6 @@ void PosixTelemetry::LogRuntimeError(
     const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 
     auto builder = EventBuilder("RuntimeError", EventPriority::HIGH);
-    if (!PrepareHighVolumeEvent(builder, session_id)) {
-      return;
-    }
     auto event = builder.AddUInt32("sessionId", session_id)
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1114,7 +829,7 @@ void PosixTelemetry::LogRuntimeError(
   });
 }
 
-void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+void OneDsTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
                                               const std::string& ep_versions,
                                               const std::string& ep_device_types) const {
   RunTelemetryOperation("LogRuntimeInferenceError", [&]() {
@@ -1123,9 +838,6 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
     }
 
     auto builder = EventBuilder("RuntimeInferenceError", EventPriority::HIGH);
-    if (!PrepareHighVolumeEvent(builder, session_id)) {
-      return;
-    }
     auto event = builder.AddUInt32("sessionId", session_id)
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
@@ -1139,7 +851,7 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
   });
 }
 
-void PosixTelemetry::LogRuntimePerf(
+void OneDsTelemetry::LogRuntimePerf(
     uint32_t session_id, uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last,
     const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
@@ -1162,26 +874,7 @@ void PosixTelemetry::LogRuntimePerf(
   });
 }
 
-void PosixTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
-  RunTelemetryOperation("LogExecutionProviderEvent", [&]() {
-    // Not applicable for non-Windows platforms (LUID is Windows-specific)
-    (void)adapterLuid;
-  });
-}
-
-void PosixTelemetry::LogDriverInfoEvent(
-    const std::string_view device_class,
-    const std::wstring_view& driver_names,
-    const std::wstring_view& driver_versions) const {
-  RunTelemetryOperation("LogDriverInfoEvent", [&]() {
-    // Not applicable for non-Windows platforms
-    (void)device_class;
-    (void)driver_names;
-    (void)driver_versions;
-  });
-}
-
-void PosixTelemetry::LogAutoEpSelection(
+void OneDsTelemetry::LogAutoEpSelection(
     uint32_t session_id, const std::string& selection_policy,
     const std::vector<std::string>& requested_execution_provider_ids,
     const std::vector<std::string>& available_execution_provider_ids) const {
@@ -1204,11 +897,11 @@ void PosixTelemetry::LogAutoEpSelection(
   });
 }
 
-void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
+void OneDsTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;
 }
 
-void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+void OneDsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
                                      int64_t duration_us) const {
   RunTelemetryOperation("LogModelLoadEnd", [&]() {
     if (!IsEnabled()) {
@@ -1231,7 +924,7 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
   });
 }
 
-void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status,
+void OneDsTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status,
                                            int64_t duration_us) const {
   RunTelemetryOperation("LogSessionCreationEnd", [&]() {
     if (!IsEnabled()) {
@@ -1254,7 +947,7 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
   });
 }
 
-void PosixTelemetry::LogEpDeviceUsage(
+void OneDsTelemetry::LogEpDeviceUsage(
     uint32_t session_id,
     const std::string& ep_type,
     const std::string& hardware_device_type,
@@ -1292,11 +985,11 @@ void PosixTelemetry::LogEpDeviceUsage(
   });
 }
 
-void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
+void OneDsTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
   (void)registration_name;
 }
 
-void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+void OneDsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
                                              const common::Status& status,
                                              int64_t duration_us) const {
   RunTelemetryOperation("LogRegisterEpLibraryEnd", [&]() {
@@ -1305,7 +998,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
     }
 
     auto builder = EventBuilder("RegisterEpLibraryEnd", EventPriority::NORMAL);
-    if (!PrepareProcessEvent(builder)) {
+    if (!PrepareSampledProcessEvent(builder)) {
       return;
     }
     auto event = builder.AddString("registrationName", registration_name)
@@ -1320,7 +1013,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
   });
 }
 
-void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+void OneDsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                                      const std::string& lib_path) const {
   RunTelemetryOperation("LogRegisterEpLibraryWithLibPath", [&]() {
     if (!IsEnabled()) {
@@ -1329,7 +1022,7 @@ void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registra
 
     const std::string scrubbed_lib_path = ScrubStringForTelemetry(lib_path);
     auto builder = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL);
-    if (!PrepareProcessEvent(builder)) {
+    if (!PrepareSampledProcessEvent(builder)) {
       return;
     }
     auto event = builder.AddString("registrationName", registration_name)

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/posix/telemetry_sampling.h"
+#include "core/platform/telemetry_sampling.h"
 
 #include "gtest/gtest.h"
 
@@ -30,7 +30,7 @@ TEST(TelemetrySamplingTest, HonorsBoundaryRates) {
 TEST(TelemetrySamplingTest, UsesOnePercentRates) {
   EXPECT_EQ(telemetry_internal::kModelSessionSampleRatePercent, 1.0);
   EXPECT_EQ(telemetry_internal::kHighVolumeEventSampleRatePercent, 1.0);
-  EXPECT_EQ(telemetry_internal::kProcessEventSampleRatePercent, 1.0);
+  EXPECT_EQ(telemetry_internal::kOtherProcessEventSampleRatePercent, 1.0);
 }
 
 TEST(TelemetrySamplingTest, HighVolumeRateSamplesExpectedFraction) {

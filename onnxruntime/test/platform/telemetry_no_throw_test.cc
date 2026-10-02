@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "core/platform/posix/telemetry_no_throw.h"
+#include "core/platform/telemetry_no_throw.h"
 
 namespace onnxruntime::test {
 
