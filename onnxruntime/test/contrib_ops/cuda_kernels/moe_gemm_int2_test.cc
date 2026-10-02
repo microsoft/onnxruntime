@@ -671,6 +671,16 @@ TEST(Int2GroupedGemmValidationTest, RejectsMisalignedBf16Buffers) {
 }
 #endif
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+TEST(Int2GroupedGemmValidationTest, Fc2RunnerUsesProvidedArchitecture) {
+  using llm::kernels::cutlass_kernels::MoeGemmRunner;
+  for (int sm : {80, 86, 89, 90, 100, 120, 121}) {
+    MoeGemmRunner<half, cutlass::uint4b_t, half> runner(sm, 1);
+    EXPECT_EQ(runner.getSM(), sm);
+  }
+}
+#endif
+
 TEST(Int2GroupedGemmValidationTest, RejectsUnsupportedConfiguration) {
   Int2GroupedGemmParams params;
   params.num_rows = 128;

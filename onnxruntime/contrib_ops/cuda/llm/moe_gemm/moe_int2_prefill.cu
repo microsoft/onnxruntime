@@ -105,7 +105,7 @@ void RunInt2MoePrefillImpl(const Int2MoePrefillParams& params, void* workspace) 
   fc2.gemm_config = cutlass_extensions::CutlassGemmConfig(
       cutlass_extensions::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
       cutlass_extensions::SplitKStyle::NO_SPLIT_K, 1, 4);
-  MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> fc2_runner;
+  MoeGemmRunner<ElementType, cutlass::uint4b_t, ElementType> fc2_runner(params.sm, params.multiprocessor_count);
   fc2_runner.moeGemm(fc2, {});
   finalizeMoeRoutingKernelLauncher<ElementType, ElementType, ElementType>(
       fc2_output, static_cast<ElementType*>(params.output), static_cast<const ElementType*>(params.fc2_bias),
