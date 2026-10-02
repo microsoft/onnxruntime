@@ -131,7 +131,7 @@ TEST_F(QnnHTPBackendTests, StftOp_Float_Rank2Signal) {
 }
 
 #if QNN_API_VERSION_MAJOR > 2 || \
-    (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 37)
+    (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 32)
 TEST_F(QnnCPUBackendTests, StftOp_Float_WithWindowOnly) {
   std::vector<float> signal_data(128, 1.0f);  // Signal: shape [1, 128, 1]
   std::vector<float> window_data(16, 1.0f);   // Window: shape [16]
