@@ -40,16 +40,21 @@ Status SoftmaxCrossEntropyLossInternalFusion::ApplyImpl(Graph& graph, bool& modi
       continue;
     }
 
+    const auto* input_shape = log_softmax_node.InputDefs()[0]->Shape();
+    if (log_softmax_node.SinceVersion() < 13 &&
+        (input_shape == nullptr || input_shape->dim_size() != 2)) {
+      continue;
+    }
+
     const auto axis_attr = log_softmax_node.GetAttributes().find("axis");
     int64_t axis = axis_attr == log_softmax_node.GetAttributes().end()
                        ? (log_softmax_node.SinceVersion() < 13 ? 1 : -1)
                        : axis_attr->second.i();
     if (axis < 0) {
-      const auto* input_type = log_softmax_node.InputDefs()[0]->TypeAsProto();
-      if (!input_type || !input_type->has_tensor_type() || !input_type->tensor_type().has_shape()) {
+      if (input_shape == nullptr) {
         continue;
       }
-      axis += input_type->tensor_type().shape().dim_size();
+      axis += input_shape->dim_size();
     }
     if (axis != 1) {
       continue;
