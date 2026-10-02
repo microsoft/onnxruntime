@@ -140,7 +140,7 @@ using Fp4KernelDetailsInterleaved =
 // (interleave_without_bias), i.e. exactly the layout the SM80 grouped GEMM consumes. Selecting
 // this variant lets the decode GEMV read the *same* pre-packed buffer the SM80 prefill uses, so
 // the MXFP4 expert weights are stored once instead of twice (~9 GiB saved for gpt-oss-20b).
-// The un-permutation is a compile-time index remap, so it is free at runtime.
+// Each word is un-permuted with a few register ops before the shared packed decode.
 template <typename T>
 using Fp4KernelDetailsSm80Pair =
     fiv::KernelDetails<typename Fp4ADetails<T>::Type, fiv::Fp4DetailsW, fiv::ColumnMajorInterleaved, true,

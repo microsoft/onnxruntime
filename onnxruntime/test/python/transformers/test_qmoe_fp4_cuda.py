@@ -429,7 +429,7 @@ class TestQMoEFP4(unittest.TestCase):
                 onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
             )
         except Exception as e:
-            if "FP4" in str(e) or "ENABLE_FP4" in str(e) or "SM" in str(e):
+            if "ENABLE_FP4" in str(e) or "USE_FP4_QMOE" in str(e):
                 self.skipTest(f"FP4 not supported in this build: {e}")
             raise
         finally:
@@ -458,13 +458,7 @@ class TestQMoEFP4(unittest.TestCase):
             session.run_with_iobinding(iobinding)
         except Exception as e:
             msg = str(e)
-            if (
-                "FP4" in msg
-                or "MXFP4" in msg
-                or "ENABLE_FP4" in msg
-                or "stubbed out" in msg
-                or "not supported in this build" in msg
-            ):
+            if "ENABLE_FP4" in msg or "stubbed out" in msg or "not supported in this build" in msg:
                 self.skipTest(f"FP4 kernel not available in this build: {e}")
             raise
         iobinding.synchronize_outputs()
@@ -924,7 +918,7 @@ def _quantize_random_mxfp4_experts(num_experts, fc1_n, fc1_k, fc2_n, fc2_k, bloc
 @unittest.skipIf(not has_onnx, "ONNX not available")
 @unittest.skipIf(not has_fp4_qmoe, "CUDA QMoE FP4 kernels not enabled in this build")
 class TestQMoEFP4Sm80SingleWeightCopy(unittest.TestCase):
-    """MXFP4 SM80 grouped-GEMM regime (ORT_FP4_SM80_GEMM=1, the default for 80 <= SM < 120).
+    """MXFP4 SM80 grouped-GEMM regime (ORT_FP4_SM80_GEMM=1, the default for SM >= 80, including SM120).
 
     PrePack packs one pair-interleaved e2m1 buffer that serves both prefill (the SM80 grouped
     GEMM) and decode (the fused GEMV inverts the nibble pair-interleave in-register --
@@ -947,8 +941,6 @@ class TestQMoEFP4Sm80SingleWeightCopy(unittest.TestCase):
         sm = _cuda_sm()
         if sm < 90:
             self.skipTest(f"FP4 requires SM90+, got SM{sm}")
-        if sm >= 120:
-            self.skipTest(f"The SM80 MXFP4 grouped GEMM is only used below SM120, got SM{sm}")
 
     def _build_model(self, hidden_size, inter_size, num_tokens, onnx_dtype, num_experts=None):
         """SwiGLU MXFP4 MoE model. FC1 is [E, hidden, inter] packed (n = 2 * inter_size)."""
