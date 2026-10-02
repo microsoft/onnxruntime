@@ -63,7 +63,6 @@ TEST(GemmFloat8OpTest, MissingScalesCUDA) {
   test.AddInput<float>("B", {2, 2}, {1.f, 0.f, 0.f, 1.f});
   test.AddOptionalInputEdge<float>();
   test.AddOptionalInputEdge<float>();
-  test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
 
   SessionOptions options;
