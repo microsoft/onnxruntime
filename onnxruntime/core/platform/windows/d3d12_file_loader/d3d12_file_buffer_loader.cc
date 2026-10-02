@@ -552,8 +552,11 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
   for (size_t range_index = 0;
        range_index < ranges.size(); ++range_index) {
     const auto& range = ranges[range_index];
+    auto file_key = range.path;
+    CharLowerBuffW(file_key.data(),
+                   static_cast<DWORD>(file_key.size()));
     const auto [file_index_it, inserted] =
-        file_indices.try_emplace(range.path, files.size());
+        file_indices.try_emplace(std::move(file_key), files.size());
     if (inserted) {
       PreparedFile file;
       file.path = range.path;
