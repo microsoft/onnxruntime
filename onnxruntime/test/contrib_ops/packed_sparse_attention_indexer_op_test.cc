@@ -29,9 +29,6 @@
 #include "gtest/gtest.h"
 
 #include "contrib_ops/cpu/sparse/packed_sparse_attention_indexer_common.h"
-#ifdef USE_CUDA
-#include "contrib_ops/cuda/sparse/packed_sparse_attention_indexer_impl.h"
-#endif
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -220,9 +217,8 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndSt
 #ifdef USE_CUDA
 TEST(PackedSparseAttentionIndexerCudaTest, DynamicSharedMemoryBoundaryValidation) {
   constexpr size_t supported_bytes = 64 * 1024;
-  EXPECT_STATUS_OK(contrib::cuda::ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
-      supported_bytes, supported_bytes, "BoundaryKernel"));
-  const Status status = contrib::cuda::ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
+  EXPECT_STATUS_OK(psai::ValidateDynamicSharedMemory(supported_bytes, supported_bytes, "BoundaryKernel"));
+  const Status status = psai::ValidateDynamicSharedMemory(
       supported_bytes + 1, supported_bytes, "BoundaryKernel");
   ASSERT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("requires 65537 bytes"), std::string::npos);

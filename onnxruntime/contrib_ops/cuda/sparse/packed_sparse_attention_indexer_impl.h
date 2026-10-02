@@ -42,14 +42,6 @@ struct PackedSparseAttentionIndexerParams {
 // Scratch requirements, in float elements.
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
-inline Status ValidatePackedSparseAttentionIndexerDynamicSharedMemory(size_t required_bytes, size_t supported_bytes,
-                                                                      const char* kernel_name) {
-  ORT_RETURN_IF(required_bytes > supported_bytes,
-                "PackedSparseAttentionIndexer: ", kernel_name, " requires ", required_bytes,
-                " bytes of dynamic shared memory, but the device supports at most ", supported_bytes);
-  return Status::OK();
-}
-
 // `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
 // (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
 // blocks/windows would exceed state_capacity; when it does, the whole step is rejected for that

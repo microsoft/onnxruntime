@@ -55,7 +55,7 @@ Status ConfigureDynamicSharedMemory(Kernel kernel, size_t bytes, const char* ker
   CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
   CUDA_RETURN_IF_ERROR(
       cudaDeviceGetAttribute(&max_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device));
-  ORT_RETURN_IF_ERROR(ValidatePackedSparseAttentionIndexerDynamicSharedMemory(
+  ORT_RETURN_IF_ERROR(psai::ValidateDynamicSharedMemory(
       bytes, static_cast<size_t>(max_bytes), kernel_name));
   return CUDA_CALL(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, max_bytes));
 }
