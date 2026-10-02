@@ -110,8 +110,8 @@ TEST(TensorOpTest, SpaceToDepthOpset28NhwcCrd) {
                        {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f,
                         8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f});
   test.AddOutput<float>("output", {1, 1, 2, 8},
-                        {0.f, 1.f, 2.f, 3.f, 8.f, 9.f, 10.f, 11.f,
-                         4.f, 5.f, 6.f, 7.f, 12.f, 13.f, 14.f, 15.f});
+                        {0.f, 2.f, 8.f, 10.f, 1.f, 3.f, 9.f, 11.f,
+                         4.f, 6.f, 12.f, 14.f, 5.f, 7.f, 13.f, 15.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_provider));
