@@ -9,6 +9,14 @@ import onnx.helper as onnx_helper
 import onnx.numpy_helper as onnx_numpy_helper
 from onnx.onnx_pb import ModelProto
 
+from onnxruntime.tools.onnx_graph_utils import (
+    get_children,
+    get_parent,
+    get_parents,
+    input_name_to_nodes,
+    output_name_to_node,
+)
+
 from .quant_utils import attribute_to_kwarg, find_by_name
 
 
@@ -215,57 +223,28 @@ class ONNXModel:
         return non_initializer_inputs
 
     def input_name_to_nodes(self):
-        input_name_to_nodes = {}
-        for node in self.model.graph.node:
-            for input_name in node.input:
-                if input_name:  # Could be empty when it is optional
-                    if input_name not in input_name_to_nodes:
-                        input_name_to_nodes[input_name] = [node]
-                    else:
-                        input_name_to_nodes[input_name].append(node)
-        return input_name_to_nodes
+        return input_name_to_nodes(self.model.graph.node)
 
     def output_name_to_node(self):
-        output_name_to_node = {}
-        for node in self.model.graph.node:
-            for output_name in node.output:
-                if output_name:  # Could be empty when it is optional
-                    output_name_to_node[output_name] = node
-        return output_name_to_node
+        return output_name_to_node(self.model.graph.node)
 
     def get_children(self, node, input_name_to_nodes=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
-        children = []
-        for output in node.output:
-            if output in input_name_to_nodes:
-                for node in input_name_to_nodes[output]:
-                    children.append(node)  # noqa: PERF402
-        return children
+        return get_children(node, input_name_to_nodes)
 
     def get_parents(self, node, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        parents = []
-        for input in node.input:
-            if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
-        return parents
+        return get_parents(node, output_name_to_node)
 
     def get_parent(self, node, idx, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
-        if len(node.input) <= idx:
-            return None
-
-        input = node.input[idx]
-        if input not in output_name_to_node:
-            return None
-
-        return output_name_to_node[input]
+        return get_parent(node, idx, output_name_to_node)
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
         """Find out if a node exists in a graph or a node is in the
