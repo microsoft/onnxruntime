@@ -467,8 +467,7 @@ OrtStatus* _Nullable ORT_API_CALL EpContextDataReadCallback(void* state,
         ORT_CXX_API_THROW("Failed to create EPContext data read block registration", ORT_FAIL);
       }
       _sessionOptions->SetEpContextDataReadFunc(
-          EpContextDataReadCallback, (__bridge void*)registration,
-          registration.maxDataSize);
+          EpContextDataReadCallback, (__bridge void*)registration);
       _epContextDataReadRegistration = registration;
     }
 

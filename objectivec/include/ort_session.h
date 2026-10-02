@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * A block that supplies application-managed external EPContext data.
  *
- * Available since 1.30.
+ * Available since 1.31.
  *
  * The block may be called concurrently from arbitrary ONNX Runtime threads and must be thread-safe.
  *
@@ -205,7 +205,7 @@ typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError**
 /**
  * Registers a block that supplies application-managed external EPContext data during session initialization.
  *
- * Available since 1.30.
+ * Available since 1.31.
  *
  * The block is copied and retained by these options. Each `ORTSession` created from the options takes its own strong
  * registration snapshot for the session lifetime, so replacing or clearing the block only affects future sessions.
@@ -215,6 +215,8 @@ typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError**
  * Return zero-length `NSData` for a successful empty payload. Return nil only on failure and set the provided error.
  * Returning nil without an error produces an ONNX Runtime failure status. Data larger than `maxDataSize` is rejected
  * before the native output buffer is allocated.
+ * This limit is retained and enforced by the Objective-C callback registration, not configured in the native API.
+ * It does not constrain allocations made inside the block.
  *
  * The Objective-C API exposes only the application-side read callback. It does not currently expose model compilation,
  * so the EPContext data write callback is not applicable.
@@ -231,7 +233,7 @@ typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError**
 /**
  * Clears the block that supplies application-managed external EPContext data for future sessions.
  *
- * Available since 1.30.
+ * Available since 1.31.
  *
  * Sessions already created from these options retain their registration snapshot for the session lifetime.
  *

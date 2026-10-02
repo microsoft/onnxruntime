@@ -23,13 +23,12 @@ namespace {
 struct EpContextReadRegistration {
   OrtReadNamedBufferFunc function = nullptr;
   void* state = nullptr;
-  size_t maxDataSize = 0;
 };
 
 EpContextReadRegistration GetEpContextReadRegistration(ORTSessionOptions* sessionOptions) {
   Ort::EpContextConfig config{[sessionOptions CXXAPIOrtSessionOptions]};
   EpContextReadRegistration registration;
-  config.GetReadFunc(registration.function, registration.state, registration.maxDataSize);
+  config.GetReadFunc(registration.function, registration.state);
   return registration;
 }
 
@@ -337,14 +336,13 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
         receivedName = name;
         return expectedData;
       }
-                    maxDataSize:1024
+                    maxDataSize:expectedData.length
                           error:&err];
   ORTAssertBoolResultSuccessful(result, err);
 
   const EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
   XCTAssertNotEqual(registration.function, nullptr);
   XCTAssertNotEqual(registration.state, nullptr);
-  XCTAssertEqual(registration.maxDataSize, 1024U);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = reinterpret_cast<void*>(0x1);
@@ -536,7 +534,6 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   XCTAssertNotNil(err);
 
   EpContextReadRegistration registration = GetEpContextReadRegistration(sessionOptions);
-  XCTAssertEqual(registration.maxDataSize, 16U);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = nullptr;
@@ -558,7 +555,6 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   ORTAssertBoolResultSuccessful(result, err);
 
   registration = GetEpContextReadRegistration(sessionOptions);
-  XCTAssertEqual(registration.maxDataSize, 8U);
 
   buffer = nullptr;
   dataSize = 0;
@@ -575,7 +571,6 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   registration = GetEpContextReadRegistration(sessionOptions);
   XCTAssertEqual(registration.function, nullptr);
   XCTAssertEqual(registration.state, nullptr);
-  XCTAssertEqual(registration.maxDataSize, std::numeric_limits<size_t>::max());
 }
 
 - (void)testSessionRetainsEpContextDataReadBlockRegistration {
