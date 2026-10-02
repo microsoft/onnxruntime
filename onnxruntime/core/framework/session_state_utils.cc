@@ -104,7 +104,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
     if (external_data_loader) {
       if (external_data_loader->CreatesTensorForDevice(device)) {
-        ORT_RETURN_IF(memory_buffer != nullptr || alloc == nullptr,
+        ORT_RETURN_IF(memory_buffer != nullptr,
+                      "An external data loader that creates tensors cannot use a preallocated buffer.");
+        ORT_RETURN_IF(alloc == nullptr,
                       "An external data loader that creates tensors requires a device allocator.");
         tensor = Tensor{type, tensor_shape, nullptr, alloc};
       } else {
@@ -395,6 +397,7 @@ common::Status SaveInitializedTensors(
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
   bool external_data_load_finalized = false;
   auto abort_external_data_load = gsl::finally([&]() {
@@ -425,6 +428,7 @@ common::Status SaveInitializedTensors(
 
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
       [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+#endif
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -513,7 +517,13 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
+  // AbortLoad is also the idempotent end-of-batch cleanup hook. All claimed
+  // allocations have transferred ownership, so this only releases metadata
+  // and any unclaimed resources left by a successful batch.
+  external_data_loader_mgr.AbortLoad();
   external_data_load_finalized = true;
+#endif
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
 }
