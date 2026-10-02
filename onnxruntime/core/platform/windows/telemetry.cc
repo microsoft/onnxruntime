@@ -357,11 +357,6 @@ void WindowsTelemetry::SetLanguageProjection(uint32_t projection) const {
 }
 
 void WindowsTelemetry::LogProcessInfo() const {
-  LogLocalProcessInfo({}, {});
-}
-
-void WindowsTelemetry::LogLocalProcessInfo(const std::string& device_id,
-                                           const std::string& device_id_status) {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -393,9 +388,7 @@ void WindowsTelemetry::LogLocalProcessInfo(const std::string& device_id,
                     TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"),
-                    TraceLoggingString(service_names.c_str(), "serviceNames"),
-                    TraceLoggingString(device_id.c_str(), "deviceId"),
-                    TraceLoggingString(device_id_status.c_str(), "deviceIdStatus"));
+                    TraceLoggingString(service_names.c_str(), "serviceNames"));
 
   process_info_logged = true;
 }

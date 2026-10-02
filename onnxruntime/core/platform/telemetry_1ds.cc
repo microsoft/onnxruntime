@@ -6,14 +6,11 @@
 #include "core/platform/telemetry_context.h"
 #include "core/platform/telemetry_no_throw.h"
 #include "core/platform/telemetry_sampling.h"
+#include "core/platform/telemetry_sha256.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_1ds_platform.h"
 #include "core/platform/telemetry_redaction.h"
-
-#ifdef _WIN32
-#include "core/platform/windows/telemetry.h"
-#endif
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -259,6 +256,12 @@ class EventBuilder {
 
   EventProperties Build() { return std::move(props_); }
 };
+
+// All Microsoft AI developer tools read the same UUID and derive the same upload identifier.
+// The raw UUID is never transmitted.
+[[maybe_unused]] static std::string HashDeviceId(const std::string& id) {
+  return telemetry_internal::Sha256::HashStringHex(id);
+}
 
 namespace {
 
@@ -548,9 +551,8 @@ void OneDsTelemetry::Initialize() {
   // caller-supplied identifier); the raw UUID itself is never transmitted.
   auto& device_id = DeviceId::Instance();
   std::string raw_device_id = device_id.GetValue();
-  std::string telemetry_device_id = telemetry_internal::FormatDeviceIdForTelemetry(raw_device_id);
-  if (!telemetry_device_id.empty()) {
-    logger->GetSemanticContext()->SetDeviceId(telemetry_device_id);
+  if (!raw_device_id.empty()) {
+    logger->GetSemanticContext()->SetDeviceId("c:" + HashDeviceId(raw_device_id));
   }
 #endif
 
@@ -638,15 +640,10 @@ void OneDsTelemetry::LogProcessInfo() const {
 
 #if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
     auto& device_id = DeviceId::Instance();
-    const std::string telemetry_device_id =
-        telemetry_internal::FormatDeviceIdForTelemetry(device_id.GetValue());
-    const std::string device_id_status = device_id.GetStatusString();
-    if (device_id.GetStatus() == DeviceIdStatus::Failed) {
+    const DeviceIdStatus device_id_status = device_id.GetStatus();
+    if (device_id_status == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
     }
-#ifdef _WIN32
-    WindowsTelemetry::LogLocalProcessInfo(telemetry_device_id, device_id_status);
-#endif
 #endif
 
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
@@ -655,7 +652,7 @@ void OneDsTelemetry::LogProcessInfo() const {
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
         .AddString("DeviceInfo.Status", "Mobile")
 #else
-        .AddString("DeviceInfo.Status", device_id_status)
+        .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
 #endif
         .AddString("osDescription", GetOsDescription())
         .AddString("architecture", GetArchitecture())
