@@ -159,13 +159,12 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   const auto* initial_h = ctx->Input<Tensor>(5);
 
   int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
+  ORT_RETURN_IF_ERROR(rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
+                                                           num_directions, hidden_size_));
+
   int64_t seq_length = X.Shape()[0];
   int64_t batch_size = X.Shape()[1];
   int64_t input_size = X.Shape()[2];
-
-  auto status = rnn::detail::ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 1, sequence_lens, initial_h,
-                                                     num_directions, hidden_size_);
-  ORT_RETURN_IF_ERROR(status);
 
   // RNN outputs are optional
   std::vector<int64_t> Y_dims({seq_length, num_directions, batch_size, hidden_size_});

@@ -470,3 +470,91 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 - The FP8 weight-only GEMV is 1.5-2.0x faster than cuBLAS FP16 at `M = 1`, so
   quantizing a projection is a decode latency win, not just a footprint win. The
   ordering reverses by `M = 4`.
+
+
+## 9. Opt-in DeepGEMM W8A8 on SM90
+
+Measured on NVIDIA H200, CUDA 13.0.48, driver 580.105.08, with the existing
+DeepGEMM dependency introduced by PR #32122. Both configurations use the same
+Release CUDA provider binary; only `ORT_FP8_MATMUL_DEEPGEMM` changes. Inputs use
+`block_size=128`, a scalar activation scale, bias, and seed 123.
+
+The profiler's `--cuda-graph` mode captures 16 warmed operator calls on a user
+stream and measures each graph replay with CUDA events. The following numbers
+are medians of 50 replays after 10 warmup calls, divided by 16. They include
+activation quantization, scale preparation, output clearing, GEMM, conversion,
+and bias. Model/session creation, host dispatch, and reference computation are
+outside the timed interval. These are warm-cache, fixed-shape operator results,
+not end-to-end model latency; the 80 MiB `16384 x 5120` weight also exceeds H200 L2.
+
+| Activation | M | N | K | Flag off (us) | Flag on (us) | Speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| fp16 | 64 | 4096 | 4096 | 27.79 | 17.33 | 1.60x |
+| fp16 | 128 | 4096 | 4096 | 33.65 | 19.81 | 1.70x |
+| fp16 | 64 | 11008 | 4096 | 68.08 | 31.74 | 2.15x |
+| fp16 | 128 | 11008 | 4096 | 71.92 | 42.58 | 1.69x |
+| fp16 | 128 | 16384 | 5120 | 122.85 | 63.85 | 1.92x |
+| bf16 | 64 | 4096 | 4096 | 27.78 | 17.23 | 1.61x |
+| bf16 | 128 | 4096 | 4096 | 33.37 | 19.77 | 1.69x |
+| bf16 | 64 | 11008 | 4096 | 68.73 | 31.73 | 2.17x |
+| bf16 | 128 | 11008 | 4096 | 71.96 | 42.72 | 1.68x |
+| bf16 | 128 | 16384 | 5120 | 122.65 | 63.76 | 1.92x |
+
+Decode cases M=4 and M=32 keep the existing GEMV and were within 1% between
+flag settings. M=512 and M=2048 keep dequantization plus cuBLAS. Small weights
+also keep that fallback: N=512 or 2048 with K=2048 showed helper overhead
+outweighing savings when forced through the native kernel. The enabled range
+is therefore limited to M<=128, N>=2048, at least 8 MiB of FP8 weights, and the
+alignment and activation-scale requirements documented in
+[the operator guide](matmul_block_scaled_fp8.md#61-opt-in-sm90-deepgemm-w8a8-path).
+Larger M was deliberately excluded after measurements showed regressions for
+some shapes, including M=512 and M=2048 with N=K=4096.
+
+Reproduce an individual row from outside the source package directory:
+
+```bash
+cd /tmp
+for enabled in 0 1; do
+  PYTHONPATH="$ORT_BUILD" CUDA_VISIBLE_DEVICES=0 ORT_FP8_MATMUL_DEEPGEMM=$enabled \
+    python "$ORT_REPO/onnxruntime/test/python/contrib_ops/profile_matmul_block_scaled.py" \
+    --op fp8 --m 128 --n 4096 --k 4096 --activation-dtype bf16 \
+    --w8a8 --bias --cuda-graph --seed 123 --warmup 10 --repeat 50
+done
+```
+
+### Kernel profiling
+
+Nsight Systems 2026.1.3 with `--trace=cuda,nvtx --cuda-graph-trace=node` confirmed
+69 native `sm90_fp8_gemm_1d1d_impl` launches for the M=128, N=K=4096 probe
+(5 warmups plus four graph replays of 16 calls). It also showed the activation
+quantization/scale-fill kernel, weight-scale packing, output clearing, and
+conversion/bias. The separate activation-scale fill launch was fused into
+quantization during tuning.
+
+For BF16, average instrumented kernel durations were approximately 10.51 us
+for DeepGEMM, 2.67 us for activation preparation, 2.34 us for scale packing,
+and 3.29 us for conversion/bias. The flag-off trace instead showed weight
+dequantization (14.47 us), cuBLAS GEMM (12.96 us), activation QDQ (3.25 us),
+and bias (2.65 us). These instrumented durations explain where work is saved;
+the uninstrumented complete-operator table is the performance comparison.
+
+### Validation
+
+- All 44 flag-off/on benchmark records passed the profiler's FP32-reference
+  accuracy check for FP16 and BF16.
+- Six focused integration tests passed on H200. They use an FP64 accumulation
+  reference, dtype-aware rounding tolerances, independent row/K-block scales,
+  changing activation and weight scales, zero scale, clipping, bias, partial M
+  tiles, K=128, bounded output scratch, fallbacks, a nondefault stream, and ORT
+  CUDA graph replay. A subprocess asserts the native dispatch log so a build
+  without DeepGEMM cannot silently pass by using the fallback.
+- Compute Sanitizer memcheck passed the tile/pipeline-boundary and output-scratch
+  tests with zero errors.
+- The CUDA provider and Python binding built successfully. The operator source
+  also compiled with `USE_DEEP_GEMM` removed. Changed C++/CUDA files passed
+  clang-format; changed Python files passed ruff.
+
+Native FP8 applies scales to FP32 partial sums and has different intermediate
+rounding from dequantizing operands to FP16/BF16. These tests establish operator
+correctness within the stated tolerances; model-quality validation remains
+necessary before deployment.

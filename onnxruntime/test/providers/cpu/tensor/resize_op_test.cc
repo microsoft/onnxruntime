@@ -3136,6 +3136,38 @@ TEST(ResizeOpTest, Axes_and_Scale_18) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ResizeOpTest, Axes_Roi_18) {
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<std::vector<int64_t>>("axes", {2});
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("roi", {2}, {0.25f, 0.75f});
+  test.AddInput<float>("scales", {1}, {0.5f}, true);
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.75f, 3.25f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_FullRankRoi_18) {
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<std::vector<int64_t>>("axes", {2});
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("roi", {6}, {0.0f, 0.0f, 0.25f, 1.0f, 1.0f, 0.75f});
+  test.AddInput<float>("scales", {1}, {0.5f}, true);
+  test.AddOutput<float>("Y", {1, 1, 2}, {1.75f, 3.25f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(ResizeOpTest, Axes_and_Size_18) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
@@ -3242,6 +3274,25 @@ TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to number of axes.",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ResizeOpTest, Scales_CountMismatch_13) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> scales(16, 1.0f);
+  std::vector<float> Y(16, 0.0f);
+
+  OpTester test("Resize", 13);
+  test.AddAttribute("mode", "nearest");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, std::vector<float>{});
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in scales should be equal to rank of the data when axes is not provided.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_OutOfRange_18) {
@@ -3453,21 +3504,35 @@ TEST(ResizeOpTest, Roi_TooShortForAxes_18) {
   std::vector<int64_t> axes{2, 3, 4};
   std::vector<float> Y(16 * 4, 0.0f);
 
+  auto configure_test = [&](OpTester& test) {
+    test.AddShapeToTensorData(false);
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+    test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+    test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+    test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+    test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+    test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+  };
+
   OpTester test("Resize", 18);
-  test.AddShapeToTensorData(false);
-  test.AddAttribute("mode", "linear");
-  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-  test.AddAttribute<std::vector<int64_t>>("axes", axes);
-
-  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
-  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
-  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
-  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
-
+  configure_test(test);
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "roi input length",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
             kOpenVINOExecutionProvider});
+
+#ifdef USE_DML
+  auto dml_execution_provider = DefaultDmlExecutionProvider();
+  if (dml_execution_provider) {
+    OpTester dml_test("Resize", 18);
+    configure_test(dml_test);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(dml_execution_provider));
+    dml_test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+  }
+#endif
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {

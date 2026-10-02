@@ -123,6 +123,10 @@ class IExecutionProvider {
    * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
+   *
+   * The session requests a fresh loader for each graph initialization attempt. It owns the returned loader and
+   * destroys it after initializing the main graph and its subgraphs, including on failure. The loader is not
+   * retained for inference, and must finish any outstanding work before its destruction completes.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
@@ -468,18 +472,18 @@ class IExecutionProvider {
   }
 
   /** Returns support for application-managed external EPContext data. */
-  virtual Status GetEpContextDataSupport(uint32_t& supported_flags) const {
-    supported_flags = OrtEpContextDataSupportFlags_NONE;
+  virtual Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
     return Status::OK();
   }
 
   /**
-   * Returns whether this EP may produce EPContext nodes without a Compile() call.
+   * Returns whether this EP may produce external EPContext data without a Compile() call.
    *
-   * This query must not have side effects. ORT uses it to validate callback support before calling
-   * GetEpContextNodes(), which may create external EPContext data for these providers.
+   * This query must not have side effects. ORT uses it to validate WRITE callback support before capability
+   * discovery or GetEpContextNodes() can create external artifacts. Embedded EPContext data does not require it.
    */
-  virtual bool MayProduceEpContextNodesWithoutCompilation() const {
+  virtual bool MayProduceExternalEpContextDataWithoutCompilation() const {
     return false;
   }
 

@@ -206,14 +206,8 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
 
-  // Guard against using generic half GEMM when no accelerated implementation is
-  // available. Native packing support currently also signals an accelerated
-  // backend path.
   const bool has_accelerated_half_gemm =
-      MlasFp16AccelerationSupported() ||
-      MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
-                                  static_cast<size_t>(N), static_cast<size_t>(K),
-                                  mlas_backend_kernel_selector_config) != 0;
+      MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config);
   bool support_mlas_bias = false;
   if (c_shape == nullptr) {
     support_mlas_bias = true;

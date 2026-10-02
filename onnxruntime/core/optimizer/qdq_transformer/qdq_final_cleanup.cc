@@ -128,10 +128,17 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
       }
     }
 
-    if (second_node_ptr == second_node_ptrs.back()) {
-      graph.RemoveNode(first_node.Index());
+    InlinedVector<NodeIndex> removed_node_indices;
+    const NodeIndex first_node_index = first_node.Index();
+    const NodeIndex second_node_index = second_node.Index();
+    if (second_node_ptr == second_node_ptrs.back() &&
+        graph.RemoveNode(first_node_index)) {
+      removed_node_indices.push_back(first_node_index);
     }
-    graph.RemoveNode(second_node.Index());
+    if (graph.RemoveNode(second_node_index)) {
+      removed_node_indices.push_back(second_node_index);
+    }
+    graph.NotifyNodesRemoved(removed_node_indices);
   }
 
   return true;

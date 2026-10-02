@@ -12,9 +12,7 @@ stages:
       demands:
       - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-build-tools.yml
       parameters:
@@ -45,3 +43,4 @@ stages:
       displayName: 'Install and test Python package'
       env:
         ORT_TEST_VERBOSE: $(OrtTestVerbose)
+        ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE: '1'

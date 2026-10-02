@@ -445,6 +445,10 @@ void addOpSchemaSubmodule(pybind11::module& m);
 
 const char* GetDeviceName(const OrtDevice& device);
 
+// Allocator name for an OrtMemoryInfo. Differs from GetDeviceName only for WebGPU, whose
+// GPU device carries no vendor id and so would otherwise be named CUDA.
+const char* GetDeviceAllocatorName(const OrtDevice& device);
+
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
 
 AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
