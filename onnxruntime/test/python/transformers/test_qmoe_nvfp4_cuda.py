@@ -691,6 +691,44 @@ class TestQMoENVFP4(unittest.TestCase):
     # tokens runs N+1 tokens at once, so a top_k=8 model expands to (N+1)*8 rows.
     # ================================================================
 
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 16, 3),
+            (TensorProto.FLOAT16, 16, 10),
+            (TensorProto.BFLOAT16, 16, 10),
+            (TensorProto.FLOAT16, 512, 2),
+            (TensorProto.BFLOAT16, 512, 2),
+            (TensorProto.FLOAT16, 512, 10),
+            (TensorProto.BFLOAT16, 512, 10),
+        ]
+    )
+    def test_nvfp4_gemv_unfused_expert_maps(self, onnx_dtype, num_experts, top_k):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=num_experts,
+            top_k=top_k,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
+
+    @parameterized.expand([(1,), (6,)])
+    @unittest.skipUnless(os.getenv("ORT_RUN_LARGE_NVFP4_QMOE_TEST") == "1", "Opt-in large NVFP4 QMoE test")
+    def test_nvfp4_gemv_qwen38_official_shape(self, num_tokens):
+        self._run_nvfp4_moe_test(
+            hidden_size=2560,
+            inter_size=640,
+            num_experts=512,
+            top_k=10,
+            num_tokens=num_tokens,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+            input_scale=0.05,
+        )
+
     def test_nvfp4_fp16_gemv_decode_swiglu(self):
         self._run_nvfp4_moe_test(
             hidden_size=512,
