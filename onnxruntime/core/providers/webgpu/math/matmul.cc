@@ -286,7 +286,9 @@ Status ComputeMatMul(ComputeContext* context,
   uint32_t splits_per_batch = 1;
 
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (!context->KernelContext().GetUseDeterministicCompute()) {
+  // Disable FP16 Split-K because partial sums are converted to FP16 before atomic reduction,
+  // losing FP32 accumulation precision and potentially overflowing even when the final result fits.
+  if (!output_tensor->IsDataType<MLFloat16>() && !context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
     const bool need_split_k = split_k_config.UseSplitK(
         is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer,

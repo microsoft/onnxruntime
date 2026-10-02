@@ -63,7 +63,8 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul = true,
                               uint32_t tile_inner = 32,
                               bool split_k = false,
-                              uint32_t split_dim_inner = 32);
+                              uint32_t split_dim_inner = 32,
+                              bool use_f32_accumulation = false);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -233,6 +233,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t split_dim_inner,
                                   bool use_f32_accumulation) {
   const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
+  const std::string write_type = MakeScalarOrVectorType(output_components, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
       transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
@@ -456,10 +457,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
   shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n";
   if (output_components == 1) {
     shader.MainFunctionBody() << " for (var i = 0; i < innerElementSize; i = i + 1) {\n"
-                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, output_value_t(acc[innerRow][i]));\n"
+                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, " << write_type << "(acc[innerRow][i]));\n"
                               << "  }\n";
   } else {
-    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, output_value_t(acc[innerRow]));\n";
+    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, " << write_type << "(acc[innerRow]));\n";
   }
 
   shader.MainFunctionBody() << "  }\n";
@@ -479,10 +480,12 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul,
                               uint32_t tile_inner,
                               bool split_k,
-                              uint32_t split_dim_inner) {
+                              uint32_t split_dim_inner,
+                              bool use_f32_accumulation) {
   ORT_UNUSED_PARAMETER(split_k);
   ORT_UNUSED_PARAMETER(split_dim_inner);
 
+  const std::string accumulation_type = use_f32_accumulation ? "f32" : data_type;
   const auto elements_per_thread_x = elements_per_thread[0];
   const auto elements_per_thread_y = elements_per_thread[1];
 
@@ -518,7 +521,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
-                            << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
+                            << " var acc: array<array<" << accumulation_type << ", colPerThread>, rowPerThread>;\n";
 
   shader.MainFunctionBody()
       << "let tileRow = i32(local_id.y) * rowPerThread;\n"
@@ -560,21 +563,21 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
 
     // Compute acc values for a single thread.
     shader.MainFunctionBody()
-        << "var BCached: array<" << data_type << ", colPerThread>;\n"
+        << "var BCached: array<" << accumulation_type << ", colPerThread>;\n"
         << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
         << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n";
     if (transpose_b) {
-      shader.MainFunctionBody() << "      BCached[inner] = mm_Bsub[tileCol + inner][k];\n";
+      shader.MainFunctionBody() << "      BCached[inner] = " << accumulation_type << "(mm_Bsub[tileCol + inner][k]);\n";
     } else {
       shader.MainFunctionBody()
-          << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n";
+          << "      BCached[inner] = " << accumulation_type << "(mm_Bsub[k][tileCol + inner]);\n";
     }
     shader.MainFunctionBody() << "    }\n"
                               << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n";
     if (transpose_a) {
-      shader.MainFunctionBody() << "      let ACached = mm_Asub[k][tileRow + innerRow];\n";
+      shader.MainFunctionBody() << "      let ACached = " << accumulation_type << "(mm_Asub[k][tileRow + innerRow]);\n";
     } else {
-      shader.MainFunctionBody() << "      let ACached = mm_Asub[tileRow + innerRow][k];\n";
+      shader.MainFunctionBody() << "      let ACached = " << accumulation_type << "(mm_Asub[tileRow + innerRow][k]);\n";
     }
     shader.MainFunctionBody() << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
                               << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
@@ -588,7 +591,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
     if (alpha != 1.0f) {
       shader.MainFunctionBody() << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
                                 << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-                                << "    acc[innerRow][innerCol] = output_element_t(uniforms.alpha) * acc[innerRow][innerCol];\n"
+                                << "    acc[innerRow][innerCol] = " << accumulation_type << "(uniforms.alpha) * acc[innerRow][innerCol];\n"
                                 << "  }\n"
                                 << "}\n";
     }
@@ -597,7 +600,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
   shader.MainFunctionBody()
       << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
       << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-      << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
+      << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, " << data_type << "(acc[innerRow][innerCol]));\n"
       << "  }\n"
       << "}\n";
   return Status::OK();
