@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -16,6 +17,10 @@ namespace contrib {
 namespace webgpu {
 
 namespace sai = onnxruntime::contrib::sparse_attention_indexer;
+using onnxruntime::webgpu::ProgramTensorMetadataDependency;
+using onnxruntime::webgpu::ShaderUsage;
+using onnxruntime::webgpu::ShaderVariableHelper;
+using onnxruntime::webgpu::WebGpuSupportedFloatTypes;
 
 ONNX_OPERATOR_KERNEL_EX(
     SparseAttentionIndexer,
@@ -31,7 +36,10 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 
-constexpr uint32_t kWorkgroupSize = 64;
+constexpr uint32_t kElementwiseWorkgroupSize = 64;
+constexpr uint32_t kSerialWorkgroupSize = 1;
+constexpr std::string_view kWgslNegativeMax =
+    "const NEGATIVE_MAX_F32: f32 = -3.4028234663852886e+38;\n";
 
 Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<int64_t> expected) {
   ORT_RETURN_IF(tensor == nullptr, "SparseAttentionIndexer: ", name, " is required");
@@ -41,8 +49,31 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
   return Status::OK();
 }
 
+Status CheckUint32(std::initializer_list<std::pair<int64_t, const char*>> values) {
+  for (const auto& [value, name] : values) {
+    ORT_RETURN_IF(value < 0 || static_cast<uint64_t>(value) > std::numeric_limits<uint32_t>::max(),
+                  "SparseAttentionIndexer WebGPU: ", name, " must fit in uint32, got ", value);
+  }
+  return Status::OK();
+}
+
+Status CheckUint32Product(const char* name, std::initializer_list<int64_t> factors) {
+  uint64_t product = 1;
+  for (const int64_t factor : factors) {
+    ORT_RETURN_IF(factor < 0 || (factor != 0 && product > std::numeric_limits<uint32_t>::max() /
+                                                              static_cast<uint64_t>(factor)),
+                  "SparseAttentionIndexer WebGPU: ", name, " must fit in uint32");
+    product *= static_cast<uint64_t>(factor);
+  }
+  return Status::OK();
+}
+
 uint32_t ToUint32(int64_t value) {
-  return onnxruntime::narrow<uint32_t>(value);
+  return static_cast<uint32_t>(value);
+}
+
+uint32_t DivideRoundUp(uint32_t value, uint32_t divisor) {
+  return value / divisor + (value % divisor != 0 ? 1 : 0);
 }
 
 }  // namespace
@@ -200,7 +231,7 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
 
   shader.MainFunctionBody()
       << "  let row = workgroup_idx;\n"
-      << "  if (row >= uniforms.rows || local_idx != 0u) { return; }\n"
+      << "  if (row >= uniforms.rows) { return; }\n"
       << "  let output_base = row * uniforms.capacity;\n"
       << "  for (var i = 0u; i < uniforms.capacity; i++) {\n"
       << "    " << selected.SetByOffset("output_base + i", "-1") << "\n"
@@ -272,6 +303,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
                                          ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation()
+      << kWgslNegativeMax
       << "fn kv_value(batch: u32, position: u32, channel: u32) -> f32 {\n";
   if (has_past_buffer_) {
     shader.AdditionalImplementation()
@@ -312,7 +344,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
       << "  let width = 2u * uniforms.head_size;\n"
       << "  let current_base = uniforms.overlap_length + window * uniforms.compress_ratio;\n"
       << "  let has_previous = window >= 1u || uniforms.overlap_length >= uniforms.compress_ratio;\n"
-      << "  var max_gate = -3.4028234663852886e+38;\n"
+      << "  var max_gate = NEGATIVE_MAX_F32;\n"
       << "  if (has_previous) {\n"
       << "    let previous_base = uniforms.overlap_length + (window - 1u) * uniforms.compress_ratio;\n"
       << "    for (var slot = 0u; slot < uniforms.compress_ratio; slot++) {\n"
@@ -347,7 +379,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
 
   shader.MainFunctionBody()
       << "  let work = workgroup_idx;\n"
-      << "  if (work >= uniforms.work_items || local_idx != 0u) { return; }\n"
+      << "  if (work >= uniforms.work_items) { return; }\n"
       << "  let window = work % uniforms.new_window_count;\n"
       << "  let batch = work / uniforms.new_window_count;\n"
       << "  var square_sum = 0.0;\n"
@@ -357,7 +389,9 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
       << "  }\n"
       << "  let inverse_rms = inverseSqrt(square_sum / f32(uniforms.head_size) + uniforms.epsilon);\n"
       << "  let entry = uniforms.past_compressed_length + window;\n"
-      << "  let position = min(entry * uniforms.compress_ratio, uniforms.max_rotary_length - 1u);\n"
+      << "  let max_position = uniforms.max_rotary_length - 1u;\n"
+      << "  let position = select(entry * uniforms.compress_ratio, max_position, "
+         "entry > max_position / uniforms.compress_ratio);\n"
       << "  let cache_base = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width;\n"
       << "  let rotary_base = uniforms.head_size - 2u * uniforms.rotary_width;\n"
       << "  for (var d = 0u; d < uniforms.head_size; d++) {\n"
@@ -439,6 +473,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
+      << kWgslNegativeMax
       << "fn clamped_position(row: u32, limit: u32) -> u32 {\n"
       << "  let raw = " << position_ids.GetByOffset("row", true) << ";\n"
       << "  if ((raw.y & 0x80000000u) != 0u) { return 0u; }\n"
@@ -499,7 +534,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
 
   shader.MainFunctionBody()
       << "  let row = workgroup_idx;\n"
-      << "  if (row >= uniforms.rows || local_idx != 0u) { return; }\n"
+      << "  if (row >= uniforms.rows) { return; }\n"
       << "  let output_base = row * uniforms.capacity;\n"
       << "  for (var i = 0u; i < uniforms.capacity; i++) {\n"
       << "    " << selected.SetByOffset("output_base + i", "-1") << "\n"
@@ -507,13 +542,14 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "  let count = uniforms.present_compressed_length;\n"
       << "  let threshold = visible_entry_count(row, count);\n"
       << "  let ranks = min(uniforms.capacity, count);\n"
+      << "  if (threshold == 0u || ranks == 0u) { return; }\n"
       << "  var previous_score = 0.0;\n"
       << "  var previous_index = -1i;\n"
       << "  for (var rank = 0u; rank < ranks; rank++) {\n"
       << "    var best_score = 0.0;\n"
       << "    var best_index = -1i;\n"
       << "    for (var candidate = 0u; candidate < count; candidate++) {\n"
-      << "      let score = select(-3.4028234663852886e+38, entry_score(row, candidate), candidate < threshold);\n"
+      << "      let score = select(NEGATIVE_MAX_F32, entry_score(row, candidate), candidate < threshold);\n"
       << "      if (previous_index >= 0 && !(score < previous_score || "
          "(score == previous_score && i32(candidate) > previous_index))) { continue; }\n"
       << "      if (best_index < 0 || score > best_score || (score == best_score && i32(candidate) < best_index)) {\n"
@@ -609,6 +645,16 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   ORT_RETURN_IF_NOT(past_shape.NumDimensions() == 3 && past_shape[0] == batch_size && past_shape[2] == head_size,
                     "SparseAttentionIndexer: invalid past_key shape");
   const int64_t past_length = past_shape[1];
+  ORT_RETURN_IF_ERROR(CheckUint32({{batch_size, "batch_size"},
+                                   {sequence_length, "sequence_length"},
+                                   {num_heads, "num_heads"},
+                                   {head_size, "head_size"},
+                                   {query_shape[2], "query width"},
+                                   {past_length, "past sequence length"},
+                                   {compress_ratio_, "compress_ratio"},
+                                   {token_budget_, "token_budget"}}));
+  ORT_RETURN_IF(past_length > std::numeric_limits<uint32_t>::max() - sequence_length,
+                "SparseAttentionIndexer WebGPU: total sequence length must fit in uint32");
   const int64_t total_length = past_length + sequence_length;
   if (!packed_qk) {
     ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, head_size}));
@@ -629,6 +675,18 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
       "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
+  ORT_RETURN_IF_ERROR(CheckUint32({{max_rotary_length, "rotary cache length"},
+                                   {rotary_width, "rotary width"},
+                                   {total_length, "total sequence length"},
+                                   {capacity, "selected capacity"}}));
+  ORT_RETURN_IF(total_length > std::numeric_limits<int32_t>::max(),
+                "SparseAttentionIndexer WebGPU: qsa selected-index range must fit in int32");
+  ORT_RETURN_IF_ERROR(CheckUint32Product("query element count", {batch_size, sequence_length, query_shape[2]}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("present key element count", {batch_size, total_length, head_size}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("selected index element count", {batch_size, sequence_length, capacity}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("rotary cache element count",
+                                         {batch_size, max_rotary_length, rotary_width}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("mask element count", {batch_size, total_length}));
   Tensor* selected =
       context.Output(sai::kSelectedIndices, TensorShape({batch_size, sequence_length, capacity}));
   Tensor* present = context.Output(sai::kPresentKey, TensorShape({batch_size, total_length, head_size}));
@@ -639,7 +697,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
     const Tensor* current_key = packed_qk ? query : key;
     SparseAttentionIndexerQsaConcatProgram concat{has_past, has_current};
     concat.CacheHint(has_past, has_current)
-        .SetWorkgroupSize(kWorkgroupSize);
+        .SetWorkgroupSize(kElementwiseWorkgroupSize);
     if (has_past) {
       concat.AddInput({past_key, ProgramTensorMetadataDependency::Type});
     }
@@ -647,7 +705,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
       concat.AddInput({current_key, ProgramTensorMetadataDependency::Type});
     }
     concat.AddOutput({present, ProgramTensorMetadataDependency::Type})
-        .SetDispatchGroupSize((ToUint32(present_elements) + kWorkgroupSize - 1) / kWorkgroupSize)
+        .SetDispatchGroupSize(DivideRoundUp(ToUint32(present_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(present_elements)},
                               {ToUint32(sequence_length)},
                               {ToUint32(past_length)},
@@ -671,7 +729,7 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
                   {sin_cache, ProgramTensorMetadataDependency::Type}})
       .AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1})
       .AddOutput({selected, ProgramTensorMetadataDependency::Type})
-      .SetWorkgroupSize(kWorkgroupSize)
+      .SetWorkgroupSize(kSerialWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},
                             {ToUint32(sequence_length)},
@@ -719,6 +777,8 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                     "SparseAttentionIndexer: query width must be positive and divisible by head_size");
   const int64_t num_heads = query_shape[2] / head_size;
   ORT_RETURN_IF_NOT(num_heads > 0 && head_size > 0, "SparseAttentionIndexer: invalid query dimensions");
+  ORT_RETURN_IF(head_size > std::numeric_limits<uint32_t>::max() / 2,
+                "SparseAttentionIndexer WebGPU: twice head_size must fit in uint32");
   const int64_t width = 2 * head_size;
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, width}));
   ORT_RETURN_IF_ERROR(CheckShape(query_norm, "query_norm_weight", {head_size}));
@@ -745,12 +805,49 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                         past_buffer_shape[1] == batch_size && past_buffer_shape[3] == width,
                     "SparseAttentionIndexer: invalid past_proj_buffer shape");
   const int64_t past_buffer_length = past_buffer_shape[2];
+  ORT_RETURN_IF_ERROR(CheckUint32({{batch_size, "batch_size"},
+                                   {sequence_length, "sequence_length"},
+                                   {num_heads, "num_heads"},
+                                   {head_size, "head_size"},
+                                   {width, "projection width"},
+                                   {max_rotary_length, "rotary cache length"},
+                                   {rotary_width, "rotary width"},
+                                   {compress_ratio_, "compress_ratio"},
+                                   {index_topk_, "index_topk"},
+                                   {past_compressed_length, "past compressed length"},
+                                   {past_buffer_length, "past projection buffer length"}}));
+  ORT_RETURN_IF(past_buffer_length > std::numeric_limits<uint32_t>::max() - sequence_length,
+                "SparseAttentionIndexer WebGPU: combined projection sequence length must fit in uint32");
 
   sai::CsaWindowPlan plan;
   ORT_RETURN_IF_NOT(sai::TryComputeCsaWindowPlan(past_buffer_length, sequence_length, compress_ratio_, plan),
                     "SparseAttentionIndexer: invalid csa buffer length");
   const int64_t present_compressed_length = past_compressed_length + plan.new_window_count;
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
+  ORT_RETURN_IF_ERROR(CheckUint32({{plan.overlap_length, "overlap length"},
+                                   {plan.new_window_count, "new window count"},
+                                   {plan.present_buffer_length, "present projection buffer length"},
+                                   {plan.present_buffer_start, "present projection buffer start"},
+                                   {present_compressed_length, "present compressed length"},
+                                   {capacity, "selected capacity"}}));
+  ORT_RETURN_IF(present_compressed_length > std::numeric_limits<int32_t>::max(),
+                "SparseAttentionIndexer WebGPU: csa selected-index range must fit in int32");
+  ORT_RETURN_IF_ERROR(CheckUint32Product("query element count", {batch_size, sequence_length, query_shape[2]}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("key and gate element count", {batch_size, sequence_length, width}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("position bias element count", {compress_ratio_, width}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("head weights element count", {batch_size, sequence_length, num_heads}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("position IDs element count", {batch_size, sequence_length}));
+  ORT_RETURN_IF_ERROR(
+      CheckUint32Product("past compressed key element count", {batch_size, past_compressed_length, head_size}));
+  ORT_RETURN_IF_ERROR(
+      CheckUint32Product("past projection buffer element count", {2, batch_size, past_buffer_length, width}));
+  ORT_RETURN_IF_ERROR(
+      CheckUint32Product("compressed key element count", {batch_size, present_compressed_length, head_size}));
+  ORT_RETURN_IF_ERROR(
+      CheckUint32Product("projection buffer element count", {2, batch_size, plan.present_buffer_length, width}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("selected index element count", {batch_size, sequence_length, capacity}));
+  ORT_RETURN_IF_ERROR(CheckUint32Product("rotary cache element count",
+                                         {batch_size, max_rotary_length, rotary_width}));
   Tensor* selected =
       context.Output(sai::kSelectedIndices, TensorShape({batch_size, sequence_length, capacity}));
   Tensor* present_compressed =
@@ -764,8 +861,8 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
     copy.CacheHint(query->GetElementType())
         .AddInput({past_compressed, ProgramTensorMetadataDependency::Type})
         .AddOutput({present_compressed, ProgramTensorMetadataDependency::Type})
-        .SetWorkgroupSize(kWorkgroupSize)
-        .SetDispatchGroupSize((ToUint32(past_compressed_elements) + kWorkgroupSize - 1) / kWorkgroupSize)
+        .SetWorkgroupSize(kElementwiseWorkgroupSize)
+        .SetDispatchGroupSize(DivideRoundUp(ToUint32(past_compressed_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(past_compressed_elements)},
                               {ToUint32(head_size)},
                               {ToUint32(past_compressed_length)},
@@ -787,7 +884,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                         {cos_cache, ProgramTensorMetadataDependency::Type},
                         {sin_cache, ProgramTensorMetadataDependency::Type}})
         .AddOutput({present_compressed, ProgramTensorMetadataDependency::Type})
-        .SetWorkgroupSize(kWorkgroupSize)
+        .SetWorkgroupSize(kSerialWorkgroupSize)
         .SetDispatchGroupSize(ToUint32(batch_size * plan.new_window_count))
         .AddUniformVariables({{ToUint32(batch_size * plan.new_window_count)},
                               {ToUint32(sequence_length)},
@@ -818,8 +915,8 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
       copy_buffer.AddInput({past_proj, ProgramTensorMetadataDependency::Type});
     }
     copy_buffer.AddOutput({present_proj, ProgramTensorMetadataDependency::Type})
-        .SetWorkgroupSize(kWorkgroupSize)
-        .SetDispatchGroupSize((ToUint32(present_buffer_elements) + kWorkgroupSize - 1) / kWorkgroupSize)
+        .SetWorkgroupSize(kElementwiseWorkgroupSize)
+        .SetDispatchGroupSize(DivideRoundUp(ToUint32(present_buffer_elements), kElementwiseWorkgroupSize))
         .AddUniformVariables({{ToUint32(present_buffer_elements)},
                               {ToUint32(sequence_length)},
                               {ToUint32(head_size)},
@@ -837,8 +934,8 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
     const int64_t output_elements = selected->Shape().Size();
     SparseAttentionIndexerFillProgram fill;
     fill.AddOutput({selected, ProgramTensorMetadataDependency::None})
-        .SetWorkgroupSize(kWorkgroupSize)
-        .SetDispatchGroupSize((ToUint32(output_elements) + kWorkgroupSize - 1) / kWorkgroupSize)
+        .SetWorkgroupSize(kElementwiseWorkgroupSize)
+        .SetDispatchGroupSize(DivideRoundUp(ToUint32(output_elements), kElementwiseWorkgroupSize))
         .AddUniformVariable({ToUint32(output_elements)});
     return context.RunProgram(fill);
   }
@@ -852,7 +949,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                   {cos_cache, ProgramTensorMetadataDependency::Type},
                   {sin_cache, ProgramTensorMetadataDependency::Type}})
       .AddOutput({selected, ProgramTensorMetadataDependency::Type})
-      .SetWorkgroupSize(kWorkgroupSize)
+      .SetWorkgroupSize(kSerialWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},
                             {ToUint32(sequence_length)},

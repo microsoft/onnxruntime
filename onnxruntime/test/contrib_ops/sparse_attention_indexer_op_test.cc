@@ -644,7 +644,10 @@ std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
 void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(std::move(provider));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Run(std::move(session_options), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
@@ -1298,6 +1301,12 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaExplicitZeroScales) {
 TEST(SparseAttentionIndexerWebGpuTest, CsaInt64MaxPosition) {
   CsaProblem problem = MakeCsaProblem();
   problem.position_ids[0] = std::numeric_limits<int64_t>::max();
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNegativePosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = -1;
   RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
 }
 #endif
