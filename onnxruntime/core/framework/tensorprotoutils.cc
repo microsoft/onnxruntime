@@ -1664,8 +1664,13 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
     RandomAccessFile::MappedMemoryPtr mapped_memory{};
     auto status = file.Map(offset, length, mapped_memory);
     if (status.IsOK()) {
-      IAllocatorUniquePtr<void> raw_buffer(mapped_memory.release(),
-                                           mapped_memory.get_deleter());
+      const auto mapped_memory_deleter = mapped_memory.get_deleter();
+      IAllocatorUniquePtr<void>::deleter_type raw_buffer_deleter =
+          [mapped_memory_deleter](void* p) {
+            mapped_memory_deleter(static_cast<char*>(p));
+          };
+      auto* mapped_data = mapped_memory.release();
+      IAllocatorUniquePtr<void> raw_buffer(mapped_data, std::move(raw_buffer_deleter));
       external_data.swap(raw_buffer);
       return Status::OK();
     }
