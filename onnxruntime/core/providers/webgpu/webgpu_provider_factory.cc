@@ -49,11 +49,11 @@ constexpr const char* WeightLoadAccelerationModeName(
     WeightLoadAccelerationMode mode) {
   switch (mode) {
     case WeightLoadAccelerationMode::Off:
-      return "off";
+      return kWeightLoadAcceleration_Off;
     case WeightLoadAccelerationMode::Preferred:
-      return "preferred";
+      return kWeightLoadAcceleration_Preferred;
     case WeightLoadAccelerationMode::Required:
-      return "required";
+      return kWeightLoadAcceleration_Required;
   }
   return "unknown";
 }

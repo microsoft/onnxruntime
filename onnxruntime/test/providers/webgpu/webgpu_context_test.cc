@@ -953,6 +953,25 @@ TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalTensorsAcrossFilesAndRanges
   ASSERT_STATUS_OK(loader->BeginLoad());
   ASSERT_STATUS_OK(loader->PrepareTensor(
       Env::Default(), data_path, "weights", kDataOffset, sizeof(expected)));
+  auto differently_cased_native = data_path.native();
+  ASSERT_FALSE(differently_cased_native.empty());
+  if (differently_cased_native.front() >= L'A' &&
+      differently_cased_native.front() <= L'Z') {
+    differently_cased_native.front() += L'a' - L'A';
+  } else {
+    ASSERT_GE(differently_cased_native.front(), L'a');
+    ASSERT_LE(differently_cased_native.front(), L'z');
+    differently_cased_native.front() -= L'a' - L'A';
+  }
+  const std::filesystem::path differently_cased_data_path{
+      differently_cased_native};
+  const auto duplicate_status = loader->PrepareTensor(
+      Env::Default(), differently_cased_data_path, "weights",
+      kDataOffset, sizeof(expected));
+  EXPECT_FALSE(duplicate_status.IsOK());
+  EXPECT_NE(duplicate_status.ErrorMessage().find(
+                "Duplicate D3D12 accelerated initializer"),
+            std::string::npos);
   ASSERT_STATUS_OK(loader->PrepareTensor(
       Env::Default(), data_path, "separated", kSeparatedDataOffset,
       sizeof(separated_expected)));

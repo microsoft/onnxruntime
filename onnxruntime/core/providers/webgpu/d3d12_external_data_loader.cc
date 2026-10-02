@@ -49,6 +49,13 @@ double Milliseconds(Clock::duration duration) {
   return std::chrono::duration<double, std::milli>(duration).count();
 }
 
+struct WindowsPathLess {
+  bool operator()(const std::filesystem::path& left,
+                  const std::filesystem::path& right) const {
+    return _wcsicmp(left.c_str(), right.c_str()) < 0;
+  }
+};
+
 struct TensorKey {
   std::filesystem::path path;
   std::string name;
@@ -56,8 +63,12 @@ struct TensorKey {
   size_t length;
 
   bool operator<(const TensorKey& other) const {
-    if (path != other.path) {
-      return path.native() < other.path.native();
+    const WindowsPathLess path_less;
+    if (path_less(path, other.path)) {
+      return true;
+    }
+    if (path_less(other.path, path)) {
+      return false;
     }
     if (name != other.name) {
       return name < other.name;
@@ -87,7 +98,7 @@ struct D3D12AcceleratedBatch {
 
   std::vector<PreparedTensor> tensors;
   std::map<TensorKey, size_t> tensors_by_key;
-  std::map<std::filesystem::path, FileInfo> files;
+  std::map<std::filesystem::path, FileInfo, WindowsPathLess> files;
   size_t total_bytes = 0;
   size_t load_range_count = 0;
   bool finalized = false;
