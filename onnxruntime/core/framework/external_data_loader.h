@@ -43,9 +43,9 @@ class IExternalDataLoader {
                                     [[maybe_unused]] SafeInt<size_t> data_length,
                                     [[maybe_unused]] Tensor& tensor) const {
 #endif
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
-  }
-};
+      ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+}
+};  // namespace onnxruntime
 
 #if defined(__wasm__)
 

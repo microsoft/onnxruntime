@@ -162,7 +162,7 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     path.assign(buffer.data(), static_cast<size_t>(length));
     return Status::OK();
 #elif defined(__FreeBSD__) && defined(F_KINFO)
-    struct kinfo_file file_info {};
+    struct kinfo_file file_info{};
     if (fcntl(descriptor_.Get(), F_KINFO, &file_info) != 0) {
       return ReportSystemError("fcntl(F_KINFO)", path_);
     }
@@ -173,8 +173,8 @@ class PosixRandomAccessFile final : public RandomAccessFile {
     ORT_RETURN_IF_NOT(realpath(path_.c_str(), buffer.data()) != nullptr,
                       "realpath failed for ", path_, ": ", strerror(errno));
 
-    struct stat opened_stat {};
-    struct stat path_stat {};
+    struct stat opened_stat{};
+    struct stat path_stat{};
     ORT_RETURN_IF_NOT(fstat(descriptor_.Get(), &opened_stat) == 0,
                       "fstat failed for ", path_, ": ", strerror(errno));
     ORT_RETURN_IF_NOT(stat(buffer.data(), &path_stat) == 0,
