@@ -325,7 +325,7 @@ void EndAccessNoThrow(
 common::Status CheckD3D12AcceleratedExternalWeightsSupport(
     const WebGpuContext& context) {
   ORT_RETURN_IF_NOT(
-      context.RequestedBackendType() ==
+      context.SelectedBackendType() ==
           wgpu::BackendType::D3D12,
       "D3D12 accelerated external weights require the Dawn D3D12 backend.");
   ORT_RETURN_IF_NOT(
