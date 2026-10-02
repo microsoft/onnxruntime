@@ -208,15 +208,19 @@ TEST(ContribOpAttentionTest, InvalidSharedCacheSequenceLengthCUDA) {
 }
 #endif
 
-#ifdef USE_WEBGPU
 TEST(ContribOpAttentionTest, InvalidProjectionSizesWebGPU) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU is unavailable.";
+  }
   RunAttentionProjectionFailures([] { return DefaultWebGpuExecutionProvider(); });
 }
 
 TEST(ContribOpAttentionTest, InvalidWeightsRankWebGPU) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU is unavailable.";
+  }
   RunAttentionWeightRankFailures([] { return DefaultWebGpuExecutionProvider(); });
 }
-#endif
 
 TEST(ContribOpAttentionTest, OptionalBiasCPU) {
   for (bool constant_weights : {false, true}) {
