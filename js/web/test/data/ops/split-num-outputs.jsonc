@@ -1,0 +1,21 @@
+[
+  {
+    "name": "Split 18 with num_outputs and empty optional split input",
+    "operator": "Split",
+    "opset": { "domain": "", "version": 18 },
+    "attributes": [{ "name": "num_outputs", "data": 2, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[4]",
+        "inputs": [
+          { "data": [1, 2, 3, 4], "dims": [4], "type": "float32" },
+          { "data": null, "type": "int64" }
+        ],
+        "outputs": [
+          { "data": [1, 2], "dims": [2], "type": "float32" },
+          { "data": [3, 4], "dims": [2], "type": "float32" }
+        ]
+      }
+    ]
+  }
+]
