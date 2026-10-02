@@ -5396,16 +5396,27 @@ struct ElementTypeIdentityKernel {
 };
 
 struct ElementTypeIdentityOp : Ort::CustomOpBase<ElementTypeIdentityOp, ElementTypeIdentityKernel> {
-  explicit ElementTypeIdentityOp(ONNXTensorElementDataType type) : type_(type) {}
+  explicit ElementTypeIdentityOp(ONNXTensorElementDataType type, bool with_shape_inference) : type_(type) {
+    if (with_shape_inference) {
+      OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp* op, OrtShapeInferContext* context) -> OrtStatusPtr {
+        const auto* self = static_cast<const ElementTypeIdentityOp*>(op);
+        self->shape_inference_called_ = true;
+        Ort::ShapeInferContext shape_context(&Ort::GetApi(), context);
+        return shape_context.SetOutputShape(0, shape_context.GetInputShape(0), self->type_).release();
+      };
+    }
+  }
   void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const { return new ElementTypeIdentityKernel(); }
   const char* GetName() const { return "ElementTypeIdentity"; }
   size_t GetInputTypeCount() const { return 1; }
   size_t GetOutputTypeCount() const { return 1; }
   ONNXTensorElementDataType GetInputType(size_t) const { return type_; }
   ONNXTensorElementDataType GetOutputType(size_t) const { return type_; }
+  bool ShapeInferenceCalled() const { return shape_inference_called_; }
 
  private:
   ONNXTensorElementDataType type_;
+  mutable bool shape_inference_called_{false};
 };
 }  // namespace
 
@@ -5532,15 +5543,20 @@ TEST(CApiTest, SparseTensorCreationUsesOrtElementTypes) {
   }
 }
 
-TEST(CApiTest, CustomOpSchemaAndKernelUseOrtElementTypes) {
+static void TestCustomOpElementTypes(bool with_shape_inference) {
   for (const auto& test_case : element_type_test_cases) {
     if (!test_case.supported) {
       continue;
     }
     SCOPED_TRACE(test_case.ort_type);
-    ElementTypeIdentityOp op(test_case.ort_type);
+    ElementTypeIdentityOp op(test_case.ort_type, with_shape_inference);
+    ElementTypeIdentityOp alternate_op(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false);
     Ort::CustomOpDomain domain("test.element_types");
     domain.Add(&op);
+    if (with_shape_inference) {
+      // A unique schema output type would hide the callback's inferred element type in Graph::Resolve.
+      domain.Add(&alternate_op);
+    }
     Ort::SessionOptions options;
     options.Add(domain);
     options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
@@ -5569,6 +5585,7 @@ TEST(CApiTest, CustomOpSchemaAndKernelUseOrtElementTypes) {
 
     const auto bytes = model.SerializeAsString();
     Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
+    EXPECT_EQ(op.ShapeInferenceCalled(), with_shape_inference);
     EXPECT_EQ(session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType(), test_case.ort_type);
     EXPECT_EQ(session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType(), test_case.ort_type);
 
@@ -5584,6 +5601,14 @@ TEST(CApiTest, CustomOpSchemaAndKernelUseOrtElementTypes) {
     ASSERT_EQ(outputs[0].GetTensorSizeInBytes(), test_case.storage_bytes);
     EXPECT_EQ(std::memcmp(outputs[0].GetTensorRawData(), value.GetTensorRawData(), test_case.storage_bytes), 0);
   }
+}
+
+TEST(CApiTest, CustomOpSchemaAndKernelUseOrtElementTypes) {
+  TestCustomOpElementTypes(false);
+}
+
+TEST(CApiTest, CustomOpShapeInferenceUsesOrtElementTypes) {
+  TestCustomOpElementTypes(true);
 }
 
 TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {

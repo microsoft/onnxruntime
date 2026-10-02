@@ -121,7 +121,8 @@ struct OrtShapeInferContext {
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
-    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->GetElementType());
+    ONNX_NAMESPACE::updateOutputElemType(
+        ctx_, index, onnxruntime::utils::ToTensorProtoElementType(info->GetElementType()));
     return onnxruntime::Status::OK();
   }
 
