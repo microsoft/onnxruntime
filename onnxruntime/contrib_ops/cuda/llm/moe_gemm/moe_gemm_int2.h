@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #if defined(ENABLE_BF16)
@@ -33,6 +36,7 @@ using Int2GroupedGemmParams = Int2GroupedGemmParamsT<half>;
 using Bf16Int2GroupedGemmParams = Int2GroupedGemmParamsT<__nv_bfloat16>;
 #endif
 
+// Accepts actual device SM80 or later using the SM80 CUTLASS kernel and packed layout.
 bool IsInt2GroupedGemmSupported(const Int2GroupedGemmParams& params);
 void RunInt2GroupedGemm(const Int2GroupedGemmParams& params);
 #if defined(ENABLE_BF16)

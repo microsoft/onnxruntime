@@ -912,6 +912,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 for side in ("key", "value"):
                     np.testing.assert_array_equal(accelerated[f"{side}_cache_out"], portable[f"{side}_cache_out"])
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_scalar_k_per_channel_v_keeps_int8_xqa(self):
         for lengths in ((1, 1), (3, 1)):
             with self.subTest(lengths=lengths):
