@@ -103,13 +103,16 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     auto external_data_loader =
         external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
     if (external_data_loader) {
+#if defined(ENABLE_D3D12_FILE_LOADING)
       if (external_data_loader->CreatesTensorForDevice(device)) {
         ORT_RETURN_IF(memory_buffer != nullptr,
                       "An external data loader that creates tensors cannot use a preallocated buffer.");
         ORT_RETURN_IF(alloc == nullptr,
                       "An external data loader that creates tensors requires a device allocator.");
         tensor = Tensor{type, tensor_shape, nullptr, alloc};
-      } else {
+      } else
+#endif
+      {
         // if custom external data loader is used, always allocate memory on device
         ORT_RETURN_IF_ERROR(
             AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));

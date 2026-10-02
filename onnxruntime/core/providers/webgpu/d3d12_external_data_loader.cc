@@ -499,7 +499,7 @@ struct D3D12AcceleratedExternalDataLoader::Impl {
           ResolveWeightLoadAccelerationMode(
               mode, support_status, enabled);
       if (resolved_status.IsOK() && !enabled &&
-          !IsWeightLoadAccelerationRequired(mode)) {
+          mode == WeightLoadAccelerationMode::Preferred) {
         LOGS_DEFAULT(WARNING)
             << "D3D12 accelerated external weights are unavailable; "
                "using the ordinary WebGPU initializer loading path. "

@@ -36,6 +36,7 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(
   return nullptr;
 }
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
 const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
     const OrtDevice& target_device, int32_t tensor_data_type) const {
   for (const auto& external_data_loader : external_data_loaders_) {
@@ -77,5 +78,6 @@ void ExternalDataLoaderManager::AbortLoad() const noexcept {
     external_data_loader->AbortLoad();
   }
 }
+#endif
 
 }  // namespace onnxruntime

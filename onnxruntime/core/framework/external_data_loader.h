@@ -95,6 +95,7 @@ class IExternalDataLoader {
   // PrepareTensor(), FinalizeLoad(), or partial tensor consumption, and may be called
   // more than once. Implementations must therefore be noexcept and idempotent.
   virtual void AbortLoad() const noexcept {}
+#endif
 
   // A tensor-creating loader replaces tensor with one backed by memory owned through allocator.
   virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
