@@ -2888,7 +2888,7 @@ TEST(MoETest, QMoETest_MixedWidthCudaRejectsUnsafeFallbackInputs) {
   RunQMoEMixedWidthCudaInvalidFallbackInputTest(
       64, 80, 32, false, false, "requires inter_size to be divisible by block_size");
   RunQMoEMixedWidthCudaInvalidFallbackInputTest(
-      64, 64, 32, false, false, "fc1_scales dtype to match the input dtype", true);
+      64, 64, 32, false, false, "fc1_scales must match the activation type", true);
 }
 #endif
 
