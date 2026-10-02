@@ -217,7 +217,9 @@ public class CompileApiTests
     [Fact]
     public void EpContextDataCallbackValidation()
     {
-        Assert.Equal(IntPtr.Size * 429, Marshal.SizeOf<OrtApi>());
+        Assert.Equal(IntPtr.Size * 427, Marshal.SizeOf<OrtApi>());
+        Assert.Equal(new IntPtr(IntPtr.Size * 426),
+            Marshal.OffsetOf<OrtApi>(nameof(OrtApi.SessionOptionsSetEpContextDataReadFunc)));
         Assert.Equal(IntPtr.Size * 17, Marshal.SizeOf<CompileApi.OrtCompileApi>());
 
         using var sessionOptions = new SessionOptions();
@@ -396,7 +398,7 @@ public class CompileApiTests
                     }
                 }
             }
-            Assert.True(replacementTask.IsCompletedSuccessfully);
+            Assert.Equal(TaskStatus.RanToCompletion, replacementTask.Status);
             Assert.Equal(2, originalWriteCount);
             Assert.Equal(0, replacementWriteCount);
 
@@ -417,7 +419,7 @@ public class CompileApiTests
                 reentrantLoadOptions.AppendExecutionProvider(ortEnvInstance, new[] { epDevice }, null);
 
                 using var reentrantSession = new InferenceSession(compiledModel, reentrantLoadOptions);
-                Assert.True(reentrantClearTask.IsCompletedSuccessfully);
+                Assert.Equal(TaskStatus.RanToCompletion, reentrantClearTask.Status);
             }
 
             using (var missingOutputLoadOptions = new SessionOptions())

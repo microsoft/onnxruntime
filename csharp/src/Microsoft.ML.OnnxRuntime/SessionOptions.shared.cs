@@ -619,6 +619,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Registers a delegate that supplies external EPContext data during session initialization.
         /// The delegate must reject data larger than <paramref name="maxDataSize"/> before allocation;
         /// <see cref="OrtEpContextDataBuffer"/> enforces that limit independently.
+        /// The limit is retained by the C# callback registration, not configured in the native API.
         /// </summary>
         /// <param name="readDelegate">Delegate that supplies the named data.</param>
         /// <param name="maxDataSize">Required finite maximum payload size in bytes.</param>
@@ -637,24 +638,16 @@ namespace Microsoft.ML.OnnxRuntime
 
             var registration = new EpContextDataReadRegistration(readDelegate, maxDataSize);
             bool optionsRefAdded = false;
-            IntPtr readOptions = IntPtr.Zero;
 
             try
             {
-                NativeApiStatus.VerifySuccess(
-                    NativeMethods.OrtCreateEpContextDataReadOptions(out readOptions));
-                NativeApiStatus.VerifySuccess(
-                    NativeMethods.OrtEpContextDataReadOptionsSetMaxDataSize(
-                        readOptions, new UIntPtr(maxDataSize)));
-
                 lock (_epContextDataReadRegistrationLock)
                 {
                     DangerousAddRef(ref optionsRefAdded);
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetEpContextDataReadFunc(
                         DangerousGetHandle(),
                         registration.FunctionPointer,
-                        registration.State,
-                        readOptions));
+                        registration.State));
 
                     var previousRegistration = _epContextDataReadRegistration;
                     _epContextDataReadRegistration = registration;
@@ -668,7 +661,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                NativeMethods.OrtReleaseEpContextDataReadOptions(readOptions);
                 if (optionsRefAdded)
                 {
                     DangerousRelease();
@@ -688,7 +680,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     DangerousAddRef(ref optionsRefAdded);
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsSetEpContextDataReadFunc(
-                        DangerousGetHandle(), IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
+                        DangerousGetHandle(), IntPtr.Zero, IntPtr.Zero));
                     var previousRegistration = _epContextDataReadRegistration;
                     _epContextDataReadRegistration = null;
                     previousRegistration?.Release();
