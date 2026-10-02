@@ -213,6 +213,54 @@ static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& ou
   output_data.assign(output_values, output_values + num_output_elems);
 }
 
+TEST(EpGraphTest, SerializeToProto_PreservesTensorElementTypes) {
+  const int element_types[] = {
+      ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+#if !defined(DISABLE_FLOAT4_TYPES)
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1,
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0,
+#endif
+      ONNX_NAMESPACE::TensorProto_DataType_UINT2,
+      ONNX_NAMESPACE::TensorProto_DataType_INT2,
+  };
+
+  for (int element_type : element_types) {
+    SCOPED_TRACE(element_type);
+    auto model = std::make_shared<Model>("element_types", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model->MainGraph();
+    ONNX_NAMESPACE::TypeProto type;
+    type.mutable_tensor_type()->set_elem_type(element_type);
+    type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    auto& input = graph.GetOrCreateNodeArg("input", &type);
+    auto& weight = graph.GetOrCreateNodeArg("weight", &type);
+
+    ONNX_NAMESPACE::TensorProto initializer;
+    initializer.set_name("weight");
+    initializer.set_data_type(element_type);
+    initializer.add_dims(1);
+    initializer.set_raw_data(std::string(1, '\x01'));
+    graph.AddInitializedTensor(initializer);
+    graph.SetInputs({&input});
+    graph.SetOutputs({&input, &weight});
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    TestGraph test_graph(model);
+    ONNX_NAMESPACE::GraphProto graph_proto;
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), graph_proto));
+    ASSERT_EQ(graph_proto.input_size(), 1);
+    EXPECT_EQ(graph_proto.input(0).type().tensor_type().elem_type(), element_type);
+    ASSERT_EQ(graph_proto.output_size(), 2);
+    for (const auto& output : graph_proto.output()) {
+      EXPECT_EQ(output.type().tensor_type().elem_type(), element_type);
+    }
+    ASSERT_EQ(graph_proto.initializer_size(), 1);
+    EXPECT_EQ(graph_proto.initializer(0).data_type(), element_type);
+    EXPECT_EQ(graph_proto.initializer(0).raw_data(), initializer.raw_data());
+  }
+}
+
 // Test serializing an OrtGraph with external initializers to GraphProto.
 // Checks that the outputs of the serialized and original models are identical.
 TEST(EpGraphTest, SerializeToProto_InputModelHasExternalIni) {

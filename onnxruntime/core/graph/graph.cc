@@ -38,6 +38,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "data_propagation/custom_data_propagation.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -7109,7 +7110,7 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
 
   auto* tensor = value_info_proto.mutable_type()->mutable_tensor_type();
   const OrtTensorTypeAndShapeInfo& tensor_info = *vi.type_info->tensor_type_info;
-  tensor->set_elem_type(tensor_info.GetElementType());
+  tensor->set_elem_type(utils::ToTensorProtoElementType(tensor_info.GetElementType()));
 
   if (tensor_info.HasShape()) {
     auto& shape = *tensor->mutable_shape();

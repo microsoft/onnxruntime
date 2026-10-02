@@ -27,6 +27,7 @@
 #include "core/session/utils.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
@@ -1013,8 +1014,8 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
     } else {
-      def_builder.TypeConstraint(input_name,
-                                 DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
+      const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(input_type));
+      def_builder.TypeConstraint(input_name, tensor_type->AsTensorType());
     }
   }
 
@@ -1024,8 +1025,8 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
     } else {
-      def_builder.TypeConstraint(output_name,
-                                 DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
+      const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(output_type));
+      def_builder.TypeConstraint(output_name, tensor_type->AsTensorType());
     }
   }
 
@@ -1137,7 +1138,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
       std::vector<std::string> types;
       for (auto type : all_types) {
         const ONNX_NAMESPACE::TypeProto* type_proto =
-            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+            DataTypeImpl::TensorTypeFromONNXEnum(utils::ToTensorProtoElementType(type))->GetTypeProto();
         types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
       }
       schema.TypeConstraint(name, types, "defined list of types");

@@ -12,6 +12,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/session/onnxruntime_type_conversion.h"
 
 namespace onnxruntime {
 namespace test {
@@ -54,7 +55,9 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
 
   for (size_t index = 0; index < expected_types.size(); ++index) {
     if (type_info_internal::ToONNXTensorElementDataType(
-            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(index)) != expected_types[index]) {
+            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(index)) != expected_types[index] ||
+        utils::ToOrtTensorElementDataType(static_cast<int>(index)) != expected_types[index] ||
+        utils::ToTensorProtoElementType(expected_types[index]) != static_cast<int>(index)) {
       return false;
     }
   }
@@ -67,6 +70,54 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
 }
 
 static_assert(TensorElementTypeConversionIsConstexpr());
+
+TEST(TypeInfoTests, TensorElementTypeConversions) {
+  struct TypePair {
+    ONNXTensorElementDataType api_type;
+    ONNX_NAMESPACE::TensorProto_DataType proto_type;
+  };
+  constexpr TypePair types[]{
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_FLOAT},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, ONNX_NAMESPACE::TensorProto_DataType_UINT8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, ONNX_NAMESPACE::TensorProto_DataType_INT8},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, ONNX_NAMESPACE::TensorProto_DataType_UINT16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, ONNX_NAMESPACE::TensorProto_DataType_INT16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, ONNX_NAMESPACE::TensorProto_DataType_INT32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, ONNX_NAMESPACE::TensorProto_DataType_INT64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, ONNX_NAMESPACE::TensorProto_DataType_STRING},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, ONNX_NAMESPACE::TensorProto_DataType_BOOL},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, ONNX_NAMESPACE::TensorProto_DataType_UINT32},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, ONNX_NAMESPACE::TensorProto_DataType_UINT64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64, ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128, ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, ONNX_NAMESPACE::TensorProto_DataType_UINT4},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, ONNX_NAMESPACE::TensorProto_DataType_INT4},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3, ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2, ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2},
+  };
+  static_assert(std::size(types) == ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE);
+  for (const auto& [api_type, proto_type] : types) {
+    SCOPED_TRACE(static_cast<int>(api_type));
+    EXPECT_EQ(utils::ToTensorProtoElementType(api_type), proto_type);
+    EXPECT_EQ(utils::ToOrtTensorElementDataType(proto_type), api_type);
+    EXPECT_EQ(utils::ToOrtTensorElementDataType(utils::ToTensorProtoElementType(api_type)), api_type);
+  }
+  EXPECT_EQ(utils::ToOrtTensorElementDataType(-1), ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+  EXPECT_EQ(utils::ToOrtTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE),
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
+}
 
 TEST(TypeInfoTests, CApiElementTypeFromProtoTypeFloat6) {
   EXPECT_EQ(utils::CApiElementTypeFromProtoType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3),

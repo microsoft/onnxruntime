@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// DO NOT include ORT header files as this is meant to be a header-only utility that can be copied
+// Only include public ORT headers as this is meant to be a header-only utility that can be copied
 // to other projects.
 
 /*
@@ -124,6 +124,7 @@
 #include <functional>
 #include <optional>
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_type_conversion.h"
 #include "onnx/onnx_pb.h"
 
 namespace OrtEpUtils {
@@ -438,7 +439,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       onnx::TensorProto* tensor_proto = graph_proto.add_initializer();
       tensor_proto->set_name(initializer_name);
-      tensor_proto->set_data_type(initializer_elem_type);
+      tensor_proto->set_data_type(onnxruntime::utils::ToTensorProtoElementType(initializer_elem_type));
 
       auto* tensor_proto_dims = tensor_proto->mutable_dims();
       for (int64_t dim : initializer_dims) {
@@ -591,7 +592,7 @@ static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info,
   value_info_proto.set_name(ort_value_info.GetName());
 
   onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
-  type_proto_tensor->set_elem_type(ort_elem_type);
+  type_proto_tensor->set_elem_type(onnxruntime::utils::ToTensorProtoElementType(ort_elem_type));
 
   // If there is no shape, do not set a TensorShapeProto.
   if (has_shape) {
