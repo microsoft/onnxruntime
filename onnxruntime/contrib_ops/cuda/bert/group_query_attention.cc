@@ -758,6 +758,35 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.sequence_length,          // seq_len_q
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
                                                               parameters.is_unidirectional);
+
+  // is_supported() is only a static gate: the cuDNN planner may still reject the graph for some
+  // (architecture, shape, mask) combinations, and dispatch cannot fall back once committed. Probe the
+  // same graph CudnnSdpaAttention will run (cached per thread and shape) and fall back to the other
+  // kernels for this Run when cuDNN cannot build it.
+  if (use_cudnn_sdpa) {
+    const float cudnn_scale = parameters.scale == 0.0f
+                                  ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                  : parameters.scale;
+    use_cudnn_sdpa = onnxruntime::cudnn_sdpa::try_build_graph(
+        parameters.batch_size,
+        parameters.num_heads,
+        parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.head_size,
+        parameters.sequence_length,
+        parameters.seqlen_present_kv_cache,
+        cudnn_scale,
+        parameters.is_unidirectional,
+        std::is_same<T, BFloat16>::value,
+        /*has_bias=*/false,
+        /*broadcast_attn_bias_dim_0=*/false,
+        /*broadcast_attn_bias_dim_1=*/false,
+        /*has_padding_mask=*/true,
+        /*sliding_window=*/0,
+        AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
+        GetCudnnHandle(context),
+        ort_stream.get());
+  }
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION

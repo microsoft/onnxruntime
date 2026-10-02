@@ -312,7 +312,11 @@ Eligible when **all** of the following hold:
 - past/present KV in BNSH (`Q_K_V_BNSH`);
 - cuDNN SDPA is enabled — either explicitly (`ORT_ENABLE_CUDNN_FLASH_ATTENTION=1` or the cuDNN bit of
   `sdpa_kernel`), or auto-preferred on SM≥90 when no kernel is explicitly pinned;
-- cuDNN ≥ 9.3 (stable) and `is_supported` returns true for the shape.
+- cuDNN ≥ 9.3 (stable) and `is_supported` returns true for the shape;
+- the cuDNN planner can build the graph for the current shape (`try_build_graph` probe). Planner
+  rejections (for example, a shape/mask combination without a kernel on the current GPU architecture)
+  are cached per thread and shape, and that Run falls back to Flash / MEA / Unfused instead of failing.
+  On a graph-cache miss during CUDA graph capture the probe also returns false.
 
 ### 6.3 Flash Attention
 

@@ -47,6 +47,35 @@ void run(
     Stream* stream,
     AllocatorPtr allocator);
 
+// Pre-dispatch buildability probe for run(). is_supported() is only a static shape gate; the cuDNN
+// planner may still have no kernel for a particular (architecture, shape, mask) combination. Returns
+// true iff a graph for these parameters is in the thread-local cache or was just built successfully.
+// A planner rejection is cached and reported as false without throwing, so callers can fall back to
+// another attention kernel instead of failing in run(). Parameters must match those later passed to
+// run(): has_bias corresponds to bias != nullptr, and has_padding_mask to either
+// mask_sequence_lengths_q or mask_sequence_lengths_kv being non-null.
+// Capture-safe: on a cache miss while `stream` is capturing a CUDA graph, returns false without
+// building, so warm up with a non-capturing run before capture.
+bool try_build_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int sequence_length_q,
+    int sequence_length_kv,
+    float scale,
+    bool is_causal,
+    bool is_bf16,
+    bool has_bias,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
+    bool has_padding_mask,
+    int sliding_window,
+    AttentionQkvFormat qkv_format,
+    cudnnHandle_t handle,
+    Stream* stream);
+
 // Paged-KV variant of the SDPA above. The K/V "cache" tensors point into a shared block pool with
 // physical layout [cache_num_blocks, block_size, num_heads_kv, head_size]; a per-batch page_table
 // selects which blocks belong to which sequence. Same masking surface as run() with these first-cut
