@@ -1081,7 +1081,7 @@ static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer) {
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
   auto ort_cxx_graph = Ort::ConstGraph(&api_graph);
   // Check the path to model.
-  const std::filesystem::path& model_path = graph_viewer.ModelPath();
+  const auto& model_path = graph_viewer.ModelPath();
   const auto api_model_path = ort_cxx_graph.GetModelPath();
   ASSERT_EQ(PathString(api_model_path), PathString(model_path.c_str()));
   // Check the model metadata

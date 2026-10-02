@@ -113,7 +113,7 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
   } else {
     blob_filepath = so_context_file_path;
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
-      blob_filepath = graph_viewer.ModelPath();
+      blob_filepath = graph_viewer.ModelPath().Path();
     }
     constexpr const char* path_resolution_guidance =
         ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "

@@ -18,6 +18,7 @@
 #include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/model_path.h"
 #include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
@@ -152,7 +153,7 @@ class Node {
   void SetOverload(std::string_view overload) { overload_ = overload; }
 
   /** Gets the path of the owning model if any. */
-  const std::filesystem::path& ModelPath() const noexcept;
+  const onnxruntime::ModelPath& ModelPath() const noexcept;
 
   /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
@@ -728,7 +729,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const std::string& Description() const noexcept;
 
   /** Gets the path of the owning model, if any. */
-  const std::filesystem::path& ModelPath() const;
+  const onnxruntime::ModelPath& ModelPath() const;
 
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -1827,7 +1828,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="external_offset">current external file offset updated with each write</param>
   /// <returns>Status instance</returns>
   Status AddExternalInitializersToGraphProtoImpl(
-      const std::filesystem::path& model_path,
+      const onnxruntime::ModelPath& model_path,
       const std::filesystem::path& external_file_path,
       const std::filesystem::path& model_external_file_path,
       const ModelSavingOptions& model_saving_options,

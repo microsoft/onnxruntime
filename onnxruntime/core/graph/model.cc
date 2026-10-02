@@ -23,6 +23,7 @@
 #pragma warning(disable : 4800)
 #endif
 #include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -88,13 +89,16 @@ static ModelProto ValidateAndCopyModelProto(const ModelProto& model_proto) {
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
-             const PathString& model_path,
+             const onnxruntime::ModelPath& model_path,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger,
              const ModelOptions& options)
     : model_path_(model_path), check_load_cancellation_fn_(options.check_load_cancellation_fn) {
+  if (model_path_.GetExternalDataDirectories() == nullptr) {
+    ORT_THROW_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), model_path_));
+  }
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -176,16 +180,19 @@ Model::Model(const std::string& graph_name,
                          logger, options.strict_shape_type_inference));
 }
 
-Model::Model(const ModelProto& model_proto, const PathString& model_path,
+Model::Model(const ModelProto& model_proto, const onnxruntime::ModelPath& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
              const ModelOptions& options)
     : Model(ValidateAndCopyModelProto(model_proto), model_path, local_registries, logger, options) {
 }
 
-Model::Model(ModelProto&& model_proto, const PathString& model_path,
+Model::Model(ModelProto&& model_proto, const onnxruntime::ModelPath& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
     : model_path_(model_path), check_load_cancellation_fn_(options.check_load_cancellation_fn) {
+  if (model_path_.GetExternalDataDirectories() == nullptr) {
+    ORT_THROW_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), model_path_));
+  }
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
@@ -490,7 +497,7 @@ Status Model::Load(const ModelProto& model_proto,
 }
 
 Status Model::Load(const ModelProto& model_proto,
-                   const PathString& model_path,
+                   const onnxruntime::ModelPath& model_path,
                    std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger,
@@ -535,7 +542,7 @@ Status Model::Load(ModelProto&& model_proto,
 }
 
 Status Model::Load(ModelProto&& model_proto,
-                   const PathString& model_path,
+                   const onnxruntime::ModelPath& model_path,
                    std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger,
@@ -572,6 +579,9 @@ Status Model::Load(ModelProto&& model_proto,
 
 template <typename T, typename Loader>
 static Status LoadModelHelper(const T& file_path, Loader loader) {
+  onnxruntime::ModelPath model_path;
+#if defined(__wasm__)
+  ORT_RETURN_IF_ERROR(Env::Default().CaptureModelPath(std::filesystem::path(file_path), model_path));
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -586,10 +596,20 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
     }
+    return status;
   }
+#else
+  std::unique_ptr<RandomAccessFile> file;
+  Status status = Env::Default().OpenModelFile(std::filesystem::path(file_path), file, model_path);
+  ORT_RETURN_IF_ERROR(status);
+#endif
 
   ORT_TRY {
-    status = loader(fd);
+#if defined(__wasm__)
+    status = loader(fd, model_path);
+#else
+    status = loader(*file, model_path);
+#endif
   }
   ORT_CATCH(const OnnxRuntimeException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -602,31 +622,48 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
     });
   }
 
+#if defined(__wasm__)
   if (!status.IsOK()) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
   return Env::Default().FileClose(fd);
+#else
+  return status;
+#endif
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
-  const auto loader = [&model_proto](int fd) {
-    return Model::Load(fd, model_proto);
+static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto,
+                        onnxruntime::ModelPath* model_path = nullptr) {
+  const auto loader = [&model_proto, model_path](auto& file, const onnxruntime::ModelPath& captured_path) {
+    ORT_RETURN_IF_ERROR(Model::Load(file, model_proto));
+    if (model_path != nullptr) {
+      *model_path = captured_path;
+    }
+    return Status::OK();
   };
-
   return LoadModelHelper(file_path, loader);
 }
 
 template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                        const logging::Logger& logger, const ModelOptions& options) {
-  const auto loader = [&file_path, &p_model, local_registries, &logger, &options](int fd) {
-    return Model::Load(fd, ToPathString(file_path), p_model, local_registries, logger, options);
+                        const logging::Logger& logger, const ModelOptions& options,
+                        const onnxruntime::ModelPath* graph_model_path = nullptr) {
+  const auto loader = [&](auto& file, const onnxruntime::ModelPath& captured_path) {
+    onnxruntime::ModelPath model_path = graph_model_path != nullptr ? *graph_model_path : captured_path;
+    if (model_path.GetExternalDataDirectories() == nullptr) {
+      ORT_RETURN_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), model_path, false));
+    }
+    ModelProto model_proto;
+    ORT_RETURN_IF_ERROR(Model::Load(file, model_proto));
+    p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
+    Graph::ResolveOptions resolve_options;
+    resolve_options.no_proto_sync_required = true;
+    return p_model->MainGraph().Resolve(resolve_options);
   };
-
   return LoadModelHelper(file_path, loader);
 }
 
@@ -715,8 +752,9 @@ static Status SaveModelWithExternalInitializers(Model& model,
 }
 
 Status Model::Load(const PathString& file_path,
-                   ONNX_NAMESPACE::ModelProto& model_proto) {
-  return LoadModel(file_path, model_proto);
+                   ONNX_NAMESPACE::ModelProto& model_proto,
+                   onnxruntime::ModelPath* model_path) {
+  return LoadModel(file_path, model_proto, model_path);
 }
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
@@ -729,15 +767,11 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const PathString& file_path, const PathString& graph_model_path,
+Status Model::Load(const PathString& file_path, const onnxruntime::ModelPath& graph_model_path,
                    std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger, const ModelOptions& options) {
-  const auto loader = [&graph_model_path, &p_model, local_registries, &logger, &options](int fd) {
-    return Model::Load(fd, graph_model_path, p_model, local_registries, logger, options);
-  };
-
-  return LoadModelHelper(file_path, loader);
+  return LoadModel(file_path, p_model, local_registries, logger, options, &graph_model_path);
 }
 
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
@@ -761,7 +795,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
   return LoadFromBytes(count, p_bytes, PathString{}, p_model, local_registries, logger, options);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_path,
+Status Model::LoadFromBytes(int count, void* p_bytes, const onnxruntime::ModelPath& model_path,
                             std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                             const logging::Logger& logger, const ModelOptions& options) {
   ModelProto model_proto;
@@ -783,6 +817,61 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
 using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
+
+namespace {
+
+class ModelFileInputStream final : public google::protobuf::io::CopyingInputStream {
+ public:
+  ModelFileInputStream(const RandomAccessFile& file, size_t length) : file_(file), length_(length) {}
+
+  int Read(void* buffer, int size) override {
+    if (size < 0) {
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Protobuf requested a negative read size.");
+      return -1;
+    }
+    const size_t length = std::min(static_cast<size_t>(size), length_ - offset_);
+    if (length == 0) {
+      return 0;
+    }
+    status_ = file_.Read(static_cast<FileOffsetType>(offset_), gsl::span<char>(static_cast<char*>(buffer), length));
+    if (!status_.IsOK()) {
+      return -1;
+    }
+    offset_ += length;
+    return static_cast<int>(length);
+  }
+
+  const Status& GetStatus() const { return status_; }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ModelFileInputStream);
+  const RandomAccessFile& file_;
+  const size_t length_;
+  size_t offset_{0};
+  Status status_;
+};
+
+}  // namespace
+
+Status Model::Load(const RandomAccessFile& file, ONNX_NAMESPACE::ModelProto& model_proto) {
+  size_t length = 0;
+  ORT_RETURN_IF_ERROR(file.GetLength(length));
+  ORT_RETURN_IF_ERROR(file.ValidateRange(0, length));
+  ModelFileInputStream stream{file, length};
+  google::protobuf::io::CopyingInputStreamAdaptor input{&stream, DEFAULT_PROTOBUF_BLOCK_SIZE};
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  const bool parsed = model_proto.ParseFromZeroCopyStream(&input);
+#else
+  CodedInputStream coded_input{&input};
+  coded_input.SetTotalBytesLimit(INT_MAX);
+  const bool parsed = model_proto.ParseFromCodedStream(&coded_input);
+#endif
+  ORT_RETURN_IF_ERROR(stream.GetStatus());
+  if (!parsed) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+  return Status::OK();
+}
 
 Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
@@ -823,14 +912,18 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
   return Load(fd, PathString{}, p_model, local_registries, logger, options);
 }
 
-Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>& p_model,
+Status Model::Load(int fd, const onnxruntime::ModelPath& model_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
                    const ModelOptions& options) {
+  onnxruntime::ModelPath captured_path = model_path;
+  if (captured_path.GetExternalDataDirectories() == nullptr) {
+    ORT_RETURN_IF_ERROR(Env::Default().CaptureModelPath(model_path.Path(), captured_path, false));
+  }
   ModelProto model_proto;
 
   ORT_RETURN_IF_ERROR(Load(fd, model_proto));
 
-  p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger, options);
+  p_model = std::make_shared<Model>(std::move(model_proto), captured_path, local_registries, logger, options);
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;

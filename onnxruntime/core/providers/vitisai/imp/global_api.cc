@@ -649,7 +649,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
 
   the_global_api.get_model_path = [](const Graph& graph) -> const std::filesystem::path& {
-    return graph.ModelPath();
+    return graph.ModelPath().Path();
   };
 
   the_global_api.create_empty_model = [](const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset) -> Model* {

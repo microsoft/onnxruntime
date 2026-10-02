@@ -1414,7 +1414,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     std::filesystem::path output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr
                                                                                  : std::filesystem::path("");
     ORT_RETURN_IF_ERROR(epctx::GetValidatedEpContextPath(output_model_path,
-                                                         graph.ModelPath(),
+                                                         graph.ModelPath().Path(),
                                                          valid_output_model_path,
                                                          ep_context_gen_options.error_if_output_file_exists));
   }
@@ -1841,7 +1841,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
           output_model_path_ptr != nullptr) {
         // Check before EP compile graphs
         std::filesystem::path context_cache_path;
-        ORT_RETURN_IF_ERROR(epctx::GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
+        ORT_RETURN_IF_ERROR(epctx::GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath().Path(),
                                                              context_cache_path,
                                                              ep_context_gen_options.error_if_output_file_exists));
       }
@@ -1850,7 +1850,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
     // The map is empty if not created if not enabled
     std::optional<ResourceAccountantMap> ep_acc_map;
-    ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
+    ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath().Path(), ep_acc_map));
 
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,

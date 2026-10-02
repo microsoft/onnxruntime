@@ -1632,7 +1632,7 @@ Status SessionState::InitializeMoeExpertState(std::shared_ptr<KernelPilotMoeExpe
 }
 #endif
 
-Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+Status SessionState::FinalizeSessionState(const ModelPath& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
@@ -1876,7 +1876,7 @@ static void AccumulateAllNestedSubgraphsInfo(
   }
 }
 
-Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+Status SessionState::FinalizeSessionStateImpl(const ModelPath& graph_location,
                                               const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,

@@ -33,7 +33,7 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
   data_ = GetTensor(ort_value_);
 }
 
-Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path) {
+Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const onnxruntime::ModelPath& model_path) {
   ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
   name_ = tensor_proto.name();
 
@@ -54,7 +54,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
 }
 
 Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                         const std::filesystem::path& model_path, bool check_outer_scope) {
+                         const onnxruntime::ModelPath& model_path, bool check_outer_scope) {
   ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
   name_ = tensor_proto.name();
 

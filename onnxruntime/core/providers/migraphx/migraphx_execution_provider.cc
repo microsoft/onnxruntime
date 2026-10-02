@@ -1085,7 +1085,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
-  model_path_ = graph_viewer.ModelPath();
+  model_path_ = graph_viewer.ModelPath().Path();
 
   // dump onnx file if environment var is set
   if (dump_model_ops_) {

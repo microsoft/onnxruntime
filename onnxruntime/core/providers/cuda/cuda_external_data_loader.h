@@ -80,6 +80,9 @@ class ExternalDataLoader final : public IExternalDataLoader {
                             SafeInt<size_t> data_length,
                             Tensor& tensor) const override;
 
+  common::Status LoadTensorFromFile(const RandomAccessFile& file, FileOffsetType data_offset,
+                                    size_t data_length, Tensor& tensor) const override;
+
  private:
   common::Status EnsureResources() const;
   void ReleaseResources() const noexcept;

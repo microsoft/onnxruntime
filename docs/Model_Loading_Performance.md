@@ -10,6 +10,24 @@ ONNX Runtime provides two independent loading optimizations for models with larg
 The CPU option is a session configuration entry. The CUDA option is an execution provider option passed when the
 CUDA EP is appended to `SessionOptions`.
 
+## External-file lifetime
+
+Native external-data loading resolves the location and retains the opened file for size checks, mappings, and reads.
+Mapping fallback and CUDA staging use that same file object rather than reopening the location. Supported in-tree
+links and symlinked model/blob-cache layouts continue to work; a resolved path that changes while opening can fail.
+
+The apparent directory and the resolved model-file directory are captured when opening an ONNX model. Loading,
+optimization, and native tensor loading retain this context, so later model-path or working-directory changes do not
+select different directories. Explicit external-data folder overrides use only their configured directory.
+
+An open file is not a snapshot of in-place writes or of multiple files. Native `IExternalDataLoader` implementations
+consume the framework's file via `LoadTensorFromFile`; WASM loaders retain their mounted-file, pathname-based entry
+point. Internal APIs pass `ModelPath` to preserve the captured context; use its `Path()` accessor only when a plain
+filesystem path is needed, not when forwarding an external-tensor read.
+
+WASM model-path capture does not probe the host filesystem. Basic minimal builds, which load only ORT-format
+models, omit canonical ONNX file opening while preserving random-access reads and file mapping.
+
 ## Parallel CPU weight prepacking
 
 Some CPU kernels transform constant weights into a layout that is faster to use during inference. This prepacking
