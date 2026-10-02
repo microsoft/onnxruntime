@@ -100,6 +100,7 @@ struct D3D12FileBufferLoader::Impl {
   struct PreparedFile {
     std::wstring path;
     wil::unique_hfile file;
+    wil::unique_hfile buffered_tail_file;
     uint64_t size = 0;
     uint64_t alignment = 0;
     std::vector<size_t> range_indices;
@@ -113,6 +114,7 @@ struct D3D12FileBufferLoader::Impl {
     wil::unique_handle read_event;
     void* mapped = nullptr;
     OVERLAPPED overlapped{};
+    HANDLE read_file = INVALID_HANDLE_VALUE;
     uint64_t file_offset = 0;
     DWORD requested = 0;
     uint64_t fence_value = 0;
@@ -150,7 +152,6 @@ struct D3D12FileBufferLoader::Impl {
       uint64_t offset,
       DWORD size);
   common::Status CompleteRead(
-      HANDLE file,
       uint64_t file_size,
       UploadSlot& slot,
       DWORD& bytes_read);
@@ -180,7 +181,7 @@ struct D3D12FileBufferLoader::Impl {
       uint64_t value,
       const CancellationToken& cancellation);
   void WaitForFenceUncancelled(uint64_t value) noexcept;
-  void DrainActiveReads(HANDLE file) noexcept;
+  void DrainActiveReads() noexcept;
 
   ComPtr<ID3D12Device> device_;
   Config config_;
@@ -362,14 +363,13 @@ common::Status D3D12FileBufferLoader::Impl::Load(
       });
 
   std::vector<PreparedFile> files;
-  HANDLE active_file = INVALID_HANDLE_VALUE;
   uint64_t last_submitted_fence = 0;
   bool load_succeeded = false;
   // Resources referenced by in-flight I/O or GPU work must remain alive on
   // every error and cancellation path.
   auto cleanup = gsl::finally([&]() noexcept {
     if (!load_succeeded) {
-      DrainActiveReads(active_file);
+      DrainActiveReads();
       WaitForFenceUncancelled(last_submitted_fence);
     }
     if (allocation_future.valid()) {
@@ -404,7 +404,6 @@ common::Status D3D12FileBufferLoader::Impl::Load(
   };
 
   for (auto& file : files) {
-    active_file = file.file.get();
     for (const auto& region : file.regions) {
       const auto status = ReadRegion(
           file, region, ranges, loaded_batch, allocation_ready,
@@ -413,7 +412,6 @@ common::Status D3D12FileBufferLoader::Impl::Load(
         return status;
       }
     }
-    active_file = INVALID_HANDLE_VALUE;
   }
 
   ORT_RETURN_IF_ERROR(ensure_allocation());
@@ -610,6 +608,18 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
           ONNXRUNTIME, FAIL,
           "upload_slot_size does not satisfy source file alignment.");
     }
+    if (file.size % file.alignment != 0) {
+      file.buffered_tail_file.reset(CreateFileW(
+          file.path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+          nullptr, OPEN_EXISTING,
+          FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED |
+              FILE_FLAG_SEQUENTIAL_SCAN,
+          nullptr));
+      if (!file.buffered_tail_file) {
+        return Win32Error(
+            "CreateFileW(buffered tail)", GetLastError());
+      }
+    }
 
     std::sort(
         file.range_indices.begin(), file.range_indices.end(),
@@ -628,20 +638,16 @@ common::Status D3D12FileBufferLoader::Impl::PrepareFiles(
       }
 
       uint64_t aligned_end = 0;
-      uint64_t aligned_file_size = 0;
       if (!TryAlignUp(
               range.offset + range.length,
-              file.alignment, aligned_end) ||
-          !TryAlignUp(
-              file.size, file.alignment,
-              aligned_file_size)) {
+              file.alignment, aligned_end)) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
             "Aligned file range overflow.");
       }
       FileReadRegion region{
           AlignDown(range.offset, file.alignment),
-          std::min(aligned_end, aligned_file_size)};
+          std::min(aligned_end, file.size)};
       if (!file.regions.empty() &&
           region.begin <= file.regions.back().end) {
         file.regions.back().end =
@@ -669,6 +675,7 @@ common::Status D3D12FileBufferLoader::Impl::PrepareSlots(
           "Mapped upload buffer does not satisfy source file alignment.");
     }
     slot.overlapped = {};
+    slot.read_file = INVALID_HANDLE_VALUE;
     slot.file_offset = 0;
     slot.requested = 0;
     slot.fence_value = 0;
@@ -692,6 +699,7 @@ common::Status D3D12FileBufferLoader::Impl::IssueRead(
   slot.overlapped.hEvent = slot.read_event.get();
   slot.file_offset = offset;
   slot.requested = size;
+  slot.read_file = file;
   slot.read_active = true;
   if (!ReadFile(
           file, slot.mapped, size, nullptr,
@@ -699,24 +707,25 @@ common::Status D3D12FileBufferLoader::Impl::IssueRead(
     const DWORD error = GetLastError();
     if (error != ERROR_IO_PENDING) {
       slot.read_active = false;
-      return Win32Error("ReadFile(unbuffered)", error);
+      slot.read_file = INVALID_HANDLE_VALUE;
+      return Win32Error("ReadFile", error);
     }
   }
   return common::Status::OK();
 }
 
 common::Status D3D12FileBufferLoader::Impl::CompleteRead(
-    HANDLE file,
     uint64_t file_size,
     UploadSlot& slot,
     DWORD& bytes_read) {
   if (!GetOverlappedResult(
-          file, &slot.overlapped,
+          slot.read_file, &slot.overlapped,
           &bytes_read, FALSE)) {
     return Win32Error(
         "GetOverlappedResult", GetLastError());
   }
   slot.read_active = false;
+  slot.read_file = INVALID_HANDLE_VALUE;
   const uint64_t required_bytes =
       std::min<uint64_t>(
           slot.requested,
@@ -724,7 +733,7 @@ common::Status D3D12FileBufferLoader::Impl::CompleteRead(
   if (bytes_read < required_bytes) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
-        "Unbuffered read ended before the required file range.");
+        "Read ended before the required file range.");
   }
   return common::Status::OK();
 }
@@ -764,9 +773,15 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
           std::min<uint64_t>(
               config_.upload_slot_size,
               region.end - next_offset));
+      const bool use_buffered_tail =
+          next_offset + bytes == file.size &&
+          bytes % file.alignment != 0;
       ORT_RETURN_IF_ERROR(
           IssueRead(
-              file.file.get(), slot,
+              use_buffered_tail
+                  ? file.buffered_tail_file.get()
+                  : file.file.get(),
+              slot,
               next_offset, bytes));
       next_offset += bytes;
     }
@@ -840,8 +855,7 @@ common::Status D3D12FileBufferLoader::Impl::ReadRegion(
     DWORD bytes_read = 0;
     ORT_RETURN_IF_ERROR(
         CompleteRead(
-            file.file.get(), file.size,
-            slot, bytes_read));
+            file.size, slot, bytes_read));
 
     if (!allocation_ready) {
       ORT_RETURN_IF_ERROR(ensure_allocation());
@@ -1071,16 +1085,13 @@ void D3D12FileBufferLoader::Impl::WaitForFenceUncancelled(
   }
 }
 
-void D3D12FileBufferLoader::Impl::DrainActiveReads(HANDLE file) noexcept {
-  if (file == nullptr ||
-      file == INVALID_HANDLE_VALUE) {
-    return;
-  }
+void D3D12FileBufferLoader::Impl::DrainActiveReads() noexcept {
   for (auto& slot : slots_) {
     if (!slot.read_active) {
       continue;
     }
-    (void)CancelIoEx(file, &slot.overlapped);
+    (void)CancelIoEx(
+        slot.read_file, &slot.overlapped);
   }
   for (auto& slot : slots_) {
     if (!slot.read_active) {
@@ -1088,9 +1099,10 @@ void D3D12FileBufferLoader::Impl::DrainActiveReads(HANDLE file) noexcept {
     }
     DWORD bytes_read = 0;
     (void)GetOverlappedResult(
-        file, &slot.overlapped,
+        slot.read_file, &slot.overlapped,
         &bytes_read, TRUE);
     slot.read_active = false;
+    slot.read_file = INVALID_HANDLE_VALUE;
   }
 }
 
