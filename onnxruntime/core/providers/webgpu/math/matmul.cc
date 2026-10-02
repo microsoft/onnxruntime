@@ -297,13 +297,14 @@ Status ComputeMatMul(ComputeContext* context,
       dim_inner >= 2048 && dim_inner <= 8192 &&
       !has_bias && activation.activation_kind_ == ActivationKind::None &&
       a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() && output_tensor->IsDataType<MLFloat16>()) {
+    const uint32_t n_vec_count = dim_b_outer / 4;
     MatMulGemvProgram program;
     program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
                        {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
         .AddUniformVariables({{dim_inner}, {dim_b_outer}})
         .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
-        .SetDispatchGroupSize(CeilDiv(dim_b_outer, MatMulGemvProgram::kColumnsPerWorkgroup));
+        .SetDispatchGroupSize(CeilDiv(n_vec_count, MatMulGemvProgram::kWorkgroupSizeX));
     return context->RunProgram(program);
   }
 
