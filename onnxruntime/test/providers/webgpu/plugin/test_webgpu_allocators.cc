@@ -26,8 +26,15 @@
 #include "test/util/include/api_asserts.h"
 
 #if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
