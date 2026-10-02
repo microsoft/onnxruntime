@@ -25,6 +25,20 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
   test.Run();
 }
 
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_MissingPadsRejectedAtRuntime) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+  test.AddInput<float>("X", {1, 1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1, 1}, {1.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("Y", {1, 1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dynamic pads tensor is required.",
+           {}, nullptr, &execution_providers);
+}
+
 // Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.
 // These tests exercise shape inference which uses fail_shape_inference (throws InferenceError).
 // In no-exception builds, fail_shape_inference calls abort(), so these tests must be skipped.

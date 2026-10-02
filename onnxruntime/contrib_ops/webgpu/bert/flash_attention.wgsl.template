@@ -343,8 +343,6 @@ $MAIN {
 #endif
   let total_sequence_length = get_total_sequence_length(batch_idx);
 
-#if is_unidirectional
-  // Causal masking loop bound.
 #if use_seqlens_q
   // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b (>= 0).
   let q_len_b = u32(seqlens_q[batch_idx]);
@@ -358,6 +356,7 @@ $MAIN {
                                     0u,
                                     total_sequence_length <= uniforms.new_sequence_length);
 #endif
+#if is_unidirectional
   let max_causal_len_for_workgroup = past_sequence_length +
                                      (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
   let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
@@ -368,14 +367,11 @@ $MAIN {
 #endif
 
 #if has_local_window
-#if is_unidirectional
-  let first_query_causal_length = past_sequence_length + query_tile_start + 1u;
-#else
-  let first_query_causal_length = total_sequence_length;
-#endif
-  let first_query_window_start = first_query_causal_length -
-                                 min(first_query_causal_length, uniforms.local_window_size);
-  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+  // Removing the causal right bound must not move the query-relative left bound.
+  let first_query_end = past_sequence_length + query_tile_start + 1u;
+  let query_end = past_sequence_length + q_idx_global + 1u;
+  let first_query_window_start = first_query_end - min(first_query_end, uniforms.local_window_size);
+  let local_window_start = query_end - min(query_end, uniforms.local_window_size);
 #else
   let first_query_window_start = 0u;
   let local_window_start = 0u;
@@ -410,21 +406,23 @@ $MAIN {
 
     var sum = qk_precision(0);
     for (var k = 0u; k < max_k_step; k++) {
-      let exp_val = qk_precision(exp(qk_precision(qk_scores[k]) - qk_precision(new_max)));
+      let exp_val = select(qk_precision(0),
+                           qk_precision(exp(qk_precision(qk_scores[k]) - qk_precision(new_max))),
+                           is_key_visible(k_start + k, local_window_start, seq_causal_length));
       qk_scores[k] = exp_val;
       sum += exp_val;
     }
 
     let dleft = previous_denom * qk_precision(exp(qk_precision(previous_max) - qk_precision(new_max)));
-    var d = dleft + sum;
-    d = select(d, qk_precision(0.0000001), d == 0);
+    let d = dleft + sum;
+    let safe_d = select(d, qk_precision(1), d == 0);
 
     for (var k = 0u; k < max_k_step; k++) {
-      qk_scores[k] = qk_scores[k] / d;
+      qk_scores[k] = qk_scores[k] / safe_d;
     }
     previous_max = new_max;
     previous_denom = d;
-    let o_ratio = q_element_t(dleft / d);
+    let o_ratio = q_element_t(dleft / safe_d);
 
     for (var i : u32 = 0; i < head_size_vec; i++) {
       var acc = q_value_t(0);
@@ -548,22 +546,34 @@ $MAIN {
       qk_3 = exp(qk_3 - vec4<qk_precision>(new_max));
       qk_4 = exp(qk_4 - vec4<qk_precision>(new_max));
     }
+    for (var k = 0u; k < 4u; k++) {
+      qk_1[k] = select(qk_precision(0), qk_1[k],
+                      is_key_visible(k_start + k, local_window_start, seq_causal_length));
+      qk_2[k] = select(qk_precision(0), qk_2[k],
+                      is_key_visible(k_start + k + 4u, local_window_start, seq_causal_length));
+      if (sg_size > 8) {
+        qk_3[k] = select(qk_precision(0), qk_3[k],
+                        is_key_visible(k_start + k + 8u, local_window_start, seq_causal_length));
+        qk_4[k] = select(qk_precision(0), qk_4[k],
+                        is_key_visible(k_start + k + 12u, local_window_start, seq_causal_length));
+      }
+    }
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max - new_max);
-    var d = dleft + sum;
-    d = select(d, qk_precision(0.0000001), d == 0);
-    qk_1 = qk_1 / d;
-    qk_2 = qk_2 / d;
+    let d = dleft + sum;
+    let safe_d = select(d, qk_precision(1), d == 0);
+    qk_1 = qk_1 / safe_d;
+    qk_2 = qk_2 / safe_d;
     if (sg_size > 8) {
-      qk_3 = qk_3 / d;
-      qk_4 = qk_4 / d;
+      qk_3 = qk_3 / safe_d;
+      qk_4 = qk_4 / safe_d;
     }
     previous_max = new_max;
     previous_denom = d;
-    let o_ratio = q_element_t(dleft / d);
+    let o_ratio = q_element_t(dleft / safe_d);
     let qk_1_value = q_value_t(qk_1);
     let qk_2_value = q_value_t(qk_2);
     let qk_3_value = q_value_t(qk_3);
