@@ -17,9 +17,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Compress);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Compress,
     11,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    Compress);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Compress,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),

@@ -18,10 +18,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Compress);
 
 // explicit negative axis support
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Compress,
+    kOnnxDomain,
+    11, 27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    Compress);
+
 ONNX_OPERATOR_KERNEL_EX(
     Compress,
     kOnnxDomain,
-    11,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

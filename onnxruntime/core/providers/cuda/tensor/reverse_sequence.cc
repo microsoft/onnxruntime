@@ -9,10 +9,18 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ReverseSequence,
+    kOnnxDomain,
+    10, 27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    ReverseSequenceOp);
+
 ONNX_OPERATOR_KERNEL_EX(
     ReverseSequence,
     kOnnxDomain,
-    10,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     ReverseSequenceOp);
@@ -51,6 +59,7 @@ Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
   ReverseSequenceCallCudaImplTypeAs(uint32_t, int32_t);
 
   ReverseSequenceCallCudaImplTypeAs(MLFloat16, int16_t);
+  ReverseSequenceCallCudaImplTypeAs(BFloat16, int16_t);
   ReverseSequenceCallCudaImplTypeAs(int16_t, int16_t);
   ReverseSequenceCallCudaImplTypeAs(uint16_t, int16_t);
 
