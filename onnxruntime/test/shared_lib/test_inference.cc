@@ -5611,6 +5611,120 @@ TEST(CApiTest, CustomOpShapeInferenceUsesOrtElementTypes) {
   TestCustomOpElementTypes(true);
 }
 
+#if !defined(REDUCED_OPS_BUILD)
+namespace {
+struct StandaloneDequantizeKernel {
+  StandaloneDequantizeKernel(const OrtKernelInfo* info, ONNXTensorElementDataType type)
+      : info_(Ort::ConstKernelInfo(info).Copy()) {
+    const char* names[] = {"T1", "T2"};
+    const ONNXTensorElementDataType types[] = {type, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+    op_ = Ort::Op::Create(info_, "DequantizeLinear", "", 25, names, types, 2, nullptr, 0, 2, 1);
+  }
+
+  void Compute(OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    const auto input = ctx.GetInput(0);
+    auto output = ctx.GetOutput(0, input.GetTensorTypeAndShapeInfo().GetShape());
+    float scale_data = 2.0f;
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    auto scale = Ort::Value::CreateTensor<float>(memory_info, &scale_data, 1, nullptr, 0);
+    const OrtValue* inputs[] = {input, scale};
+    OrtValue* outputs[] = {output};
+    op_.Invoke(context, inputs, 2, outputs, 1);
+  }
+
+ private:
+  Ort::KernelInfo info_;
+  Ort::Op op_{nullptr};
+};
+
+struct StandaloneDequantizeOp : Ort::CustomOpBase<StandaloneDequantizeOp, StandaloneDequantizeKernel> {
+  explicit StandaloneDequantizeOp(ONNXTensorElementDataType type) : type_(type) {}
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const {
+    return new StandaloneDequantizeKernel(info, type_);
+  }
+  const char* GetName() const { return "StandaloneDequantize"; }
+  size_t GetInputTypeCount() const { return 1; }
+  size_t GetOutputTypeCount() const { return 1; }
+  ONNXTensorElementDataType GetInputType(size_t) const { return type_; }
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+
+ private:
+  ONNXTensorElementDataType type_;
+};
+}  // namespace
+
+TEST(CApiTest, StandaloneCreateOpUsesOrtElementTypes) {
+  const struct {
+    ONNXTensorElementDataType ort_type;
+    int proto_type;
+    bool supported;
+    std::array<float, 5> expected;
+  } cases[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2, true, {4, 2, 0, 6, 2}},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2, true, {-4, 2, 0, -2, 2}},
+#if !defined(DISABLE_FLOAT8_TYPES)
+      // DequantizeLinear has no E8M0 kernel; it must not silently select the INT2 kernel.
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0, false, {}},
+#endif
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(test_case.ort_type);
+    StandaloneDequantizeOp op(test_case.ort_type);
+    Ort::CustomOpDomain domain("test.element_types");
+    domain.Add(&op);
+    Ort::SessionOptions options;
+    options.Add(domain);
+    options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+    model.add_opset_import()->set_version(26);
+    auto* opset = model.add_opset_import();
+    opset->set_domain("test.element_types");
+    opset->set_version(1);
+    auto* graph = model.mutable_graph();
+    graph->set_name("standalone_dequantize");
+    auto* input = graph->add_input();
+    input->set_name("X");
+    auto* input_type = input->mutable_type()->mutable_tensor_type();
+    input_type->set_elem_type(test_case.proto_type);
+    input_type->mutable_shape()->add_dim()->set_dim_value(5);
+    auto* output = graph->add_output();
+    output->set_name("Y");
+    *output->mutable_type() = input->type();
+    output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* node = graph->add_node();
+    node->set_op_type(op.GetName());
+    node->set_domain("test.element_types");
+    node->add_input("X");
+    node->add_output("Y");
+    const auto bytes = model.SerializeAsString();
+
+    if (!test_case.supported) {
+      EXPECT_THROW(Ort::Session(*ort_env, bytes.data(), bytes.size(), options), Ort::Exception);
+      continue;
+    }
+    Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
+    uint8_t packed[] = {0xc6, 0x01};
+    const int64_t shape[] = {5};
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    auto value = Ort::Value::CreateTensor(memory_info, packed, sizeof(packed), shape, 1, test_case.ort_type);
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    auto outputs = session.Run(Ort::RunOptions(), input_names, &value, 1, output_names, 1);
+    ASSERT_EQ(outputs.size(), 1u);
+    ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), test_case.expected.size());
+    const auto* actual = outputs[0].GetTensorData<float>();
+    for (size_t i = 0; i < test_case.expected.size(); ++i) {
+      EXPECT_EQ(actual[i], test_case.expected[i]);
+    }
+  }
+}
+
+#endif  // !defined(REDUCED_OPS_BUILD)
+
 TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
   // Test that calling OrtApi::Session_GetEpGraphAssignmentInfo() without enabling the appropriate
   // session configuration option returns an error.
