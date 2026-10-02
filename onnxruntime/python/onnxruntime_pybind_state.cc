@@ -2752,7 +2752,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
               old_registration = std::move(options->py_ep_context_data_read_registration);
               options->value.ep_context_data_read_func = PyEpContextDataReadFuncWrapper;
               options->value.ep_context_data_read_state = registration.get();
-              options->value.ep_context_data_read_max_size = max_data_size;
               options->py_ep_context_data_read_registration = std::move(registration);
             }
           },
@@ -2762,6 +2761,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 The callback receives the data name and an OrtEpContextDataBuffer. It must call allocate(size) exactly once,
 where size is at most max_data_size, then populate that buffer with one or more write(data, offset) calls.
 The output object and its allocator are valid only until the callback returns.
+The Python callback registration retains and enforces max_data_size; the native API stores only the callback and state.
 
 ORT may invoke the callback concurrently. Synchronize any shared Python state.)pbdoc")
       .def(
@@ -2772,7 +2772,6 @@ ORT may invoke the callback concurrently. Synchronize any shared Python state.)p
               std::lock_guard<std::mutex> lock{options->py_callback_mutex};
               options->value.ep_context_data_read_func = nullptr;
               options->value.ep_context_data_read_state = nullptr;
-              options->value.ep_context_data_read_max_size = std::numeric_limits<size_t>::max();
               old_registration = std::move(options->py_ep_context_data_read_registration);
             }
           },

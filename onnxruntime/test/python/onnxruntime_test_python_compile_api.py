@@ -295,6 +295,7 @@ assert events == ["read", "selection", "write"], events
                 nonlocal read_count, retained_read_output
                 read_count += 1
                 self.assertEqual(name, context_name)
+                self.assertEqual(output.max_size, len(context_payload))
                 retained_read_output = output
                 output.allocate(len(context_payload))
                 midpoint = len(context_payload) // 2
@@ -327,6 +328,7 @@ assert events == ["read", "selection", "write"], events
                 nonlocal compile_read_count
                 compile_read_count += 1
                 self.assertEqual(name, context_name)
+                self.assertEqual(output.max_size, len(context_payload))
                 output.allocate(len(context_payload))
                 output.write(context_payload)
 
