@@ -480,7 +480,6 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
-      << kWgslNegativeMax
       << "fn clamped_position(row: u32, limit: u32) -> u32 {\n"
       << "  let raw = " << position_ids.GetByOffset("row", true) << ";\n"
       << "  if ((raw.y & 0x80000000u) != 0u) { return 0u; }\n"
@@ -560,15 +559,15 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "  }\n"
       << "  let count = uniforms.present_compressed_length;\n"
       << "  let threshold = visible_entry_count(row, count);\n"
-      << "  let ranks = min(uniforms.capacity, count);\n"
+      << "  let ranks = min(uniforms.capacity, threshold);\n"
       << "  if (threshold == 0u || ranks == 0u) { return; }\n"
       << "  var previous_score = 0.0;\n"
       << "  var previous_index = -1i;\n"
       << "  for (var rank = 0u; rank < ranks; rank++) {\n"
       << "    var best_score = 0.0;\n"
       << "    var best_index = -1i;\n"
-      << "    for (var candidate = 0u; candidate < count; candidate++) {\n"
-      << "      let score = select(NEGATIVE_MAX_F32, entry_score(row, candidate), candidate < threshold);\n"
+      << "    for (var candidate = 0u; candidate < threshold; candidate++) {\n"
+      << "      let score = entry_score(row, candidate);\n"
       << "      if (previous_index >= 0 && !(score < previous_score || "
          "(score == previous_score && i32(candidate) > previous_index))) { continue; }\n"
       << "      if (best_index < 0 || score > best_score || (score == best_score && i32(candidate) < best_index)) {\n"
@@ -577,9 +576,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "      }\n"
       << "    }\n"
       << "    if (best_index < 0) { break; }\n"
-      << "    if (u32(best_index) < threshold) {\n"
-      << "      " << selected.SetByOffset("output_base + rank", "best_index") << "\n"
-      << "    }\n"
+      << "    " << selected.SetByOffset("output_base + rank", "best_index") << "\n"
       << "    previous_score = best_score;\n"
       << "    previous_index = best_index;\n"
       << "  }\n";

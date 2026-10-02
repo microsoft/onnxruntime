@@ -1360,6 +1360,32 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaInt64PositionVisibilityBoundary) {
   RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, CsaMaskedCandidatesDoNotOutrankNegativeInfinity) {
+  CsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.num_heads = 1;
+  problem.head_size = 2;
+  problem.rotary_width = 1;
+  problem.compress_ratio = 1;
+  problem.index_topk = 1;
+  problem.past_compressed_length = 2;
+  problem.past_buffer_length = 0;
+  problem.max_rotary_length = 1;
+  problem.query = {1.0f, 0.0f};
+  problem.key.assign(4, 0.0f);
+  problem.query_norm_weight = {1.0f, 1.0f};
+  problem.key_norm_weight = {1.0f, 1.0f};
+  problem.cos_cache = {1.0f};
+  problem.sin_cache = {0.0f};
+  problem.gate.assign(4, 0.0f);
+  problem.position_bias.assign(4, 0.0f);
+  problem.head_weights = {-std::numeric_limits<float>::infinity()};
+  problem.position_ids = {0};
+  problem.past_compressed_key = {1.0f, 0.0f, 2.0f, 0.0f};
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, CsaNegativePosition) {
   CsaProblem problem = MakeCsaProblem();
   problem.position_ids[0] = -1;
