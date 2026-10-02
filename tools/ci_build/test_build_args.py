@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -63,6 +64,29 @@ class BuildArgsTest(unittest.TestCase):
             self._parse(platform_name="linux")
 
         warn.assert_not_called()
+
+
+class StalePythonCacheArgsTest(unittest.TestCase):
+    def _args_for_cached_python(self, cached_executable: str | None):
+        with tempfile.TemporaryDirectory() as build_dir:
+            if cached_executable is not None:
+                (Path(build_dir) / "CMakeCache.txt").write_text(
+                    "Python_EXECUTABLE:UNINITIALIZED=x\n"
+                    f"_Python_EXECUTABLE:INTERNAL={cached_executable}\n"
+                    "_Python_INCLUDE_DIR:INTERNAL=/old/include\n",
+                    encoding="utf-8",
+                )
+            return build.stale_python_cache_args(build_dir)
+
+    def test_new_build_tree_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(None), [])
+
+    def test_same_interpreter_keeps_the_cache(self):
+        self.assertEqual(self._args_for_cached_python(sys.executable), [])
+
+    def test_other_interpreter_drops_the_find_python_cache(self):
+        other = str(Path(tempfile.gettempdir()) / "other-python" / "python3")
+        self.assertEqual(self._args_for_cached_python(other), ["-U", "_Python_*"])
 
 
 if __name__ == "__main__":
