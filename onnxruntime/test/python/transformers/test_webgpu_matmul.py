@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
 
@@ -29,24 +28,24 @@ def webgpu_devices():
 
 
 def matmul_model(a_shape, weights, node_count=1, dynamic_b=False):
-    dtype = TensorProto.FLOAT16 if weights[0].dtype == np.float16 else TensorProto.FLOAT
-    inputs = [helper.make_tensor_value_info("A", dtype, a_shape)]
+    dtype = onnx.TensorProto.FLOAT16 if weights[0].dtype == np.float16 else onnx.TensorProto.FLOAT
+    inputs = [onnx.helper.make_tensor_value_info("A", dtype, a_shape)]
     initializers = []
     if dynamic_b:
         if len(weights) != 1 or node_count != 1:
             raise ValueError("Dynamic B is only supported for the single-node correctness cases.")
-        inputs.append(helper.make_tensor_value_info("B0", dtype, weights[0].shape))
+        inputs.append(onnx.helper.make_tensor_value_info("B0", dtype, weights[0].shape))
     else:
-        initializers = [numpy_helper.from_array(weight, f"B{i}") for i, weight in enumerate(weights)]
+        initializers = [onnx.numpy_helper.from_array(weight, f"B{i}") for i, weight in enumerate(weights)]
     nodes = [
-        helper.make_node("MatMul", ["A", f"B{i % len(weights)}"], [f"Y{i}"], name=f"projection_{i}")
+        onnx.helper.make_node("MatMul", ["A", f"B{i % len(weights)}"], [f"Y{i}"], name=f"projection_{i}")
         for i in range(node_count)
     ]
     # Shape inference handles vector promotion and broadcasted leading dimensions.
-    outputs = [helper.make_tensor_value_info(f"Y{i}", dtype, None) for i in range(node_count)]
-    model = helper.make_model(
-        helper.make_graph(nodes, "webgpu_matmul", inputs, outputs, initializers),
-        opset_imports=[helper.make_opsetid("", 18)],
+    outputs = [onnx.helper.make_tensor_value_info(f"Y{i}", dtype, None) for i in range(node_count)]
+    model = onnx.helper.make_model(
+        onnx.helper.make_graph(nodes, "webgpu_matmul", inputs, outputs, initializers),
+        opset_imports=[onnx.helper.make_opsetid("", 18)],
         ir_version=9,
     )
     return onnx.shape_inference.infer_shapes(model).SerializeToString()
@@ -55,12 +54,12 @@ def matmul_model(a_shape, weights, node_count=1, dynamic_b=False):
 def pointwise_conv_model(b, bias=None, relu=False):
     k, n = b.shape
     inputs = ["A", "W"]
-    initializers = [numpy_helper.from_array(b.T.reshape(n, k, 1, 1), "W")]
+    initializers = [onnx.numpy_helper.from_array(b.T.reshape(n, k, 1, 1), "W")]
     if bias is not None:
         inputs.append("bias")
-        initializers.append(numpy_helper.from_array(bias, "bias"))
+        initializers.append(onnx.numpy_helper.from_array(bias, "bias"))
     # This is the existing layout transform's representation of a fused NHWC Conv.
-    node = helper.make_node(
+    node = onnx.helper.make_node(
         "Conv",
         inputs,
         ["Y0"],
@@ -68,15 +67,15 @@ def pointwise_conv_model(b, bias=None, relu=False):
         kernel_shape=[1, 1],
         **({"activation": "Relu"} if relu else {}),
     )
-    return helper.make_model(
-        helper.make_graph(
+    return onnx.helper.make_model(
+        onnx.helper.make_graph(
             [node],
             "pointwise_conv_matmul",
-            [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [1, 1, 1, k])],
-            [helper.make_tensor_value_info("Y0", TensorProto.FLOAT16, [1, 1, 1, n])],
+            [onnx.helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT16, [1, 1, 1, k])],
+            [onnx.helper.make_tensor_value_info("Y0", onnx.TensorProto.FLOAT16, [1, 1, 1, n])],
             initializers,
         ),
-        opset_imports=[helper.make_opsetid("", 18), helper.make_opsetid("com.ms.internal.nhwc", 11)],
+        opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.ms.internal.nhwc", 11)],
         ir_version=9,
     ).SerializeToString()
 
