@@ -198,12 +198,12 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   }
 
   // WorkspaceInputShape exposes the total_sequence_length scalar's shape, not
-  // its value. For a non-windowed cache that value can exceed past dim 2 and
-  // directly scales backend workspace. Non-windowed execution can also copy a
-  // full past tensor when only one past/present pair aliases, but alias state is
-  // unavailable here. Windowed execution is bounded by the cache shape and the
-  // runtime requires both past/present pairs to alias before allocating scratch.
-  if (!config.sliding_window_cache) return std::nullopt;
+  // its value. Non-windowed estimation therefore requires an explicit bound.
+  // Aliasing is also unknown, so the aggregate includes the valid one-sided
+  // past/present alias case.
+  if (!config.sliding_window_cache && config.max_total_sequence_length <= 0) {
+    return std::nullopt;
+  }
 
   const bool packed = !Present(shapes, kKey);
   const TensorShape* query = Shape(shapes, kQuery);
@@ -248,7 +248,11 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
     return std::nullopt;
   }
   if ((*past_key)[2] != (*past_value)[2]) return std::nullopt;
-  const int64_t capacity_bound = (*past_key)[2];
+  const int64_t past_capacity_bound = (*past_key)[2];
+  const int64_t capacity_bound =
+      config.sliding_window_cache
+          ? past_capacity_bound
+          : std::max(past_capacity_bound, config.max_total_sequence_length);
   int64_t cache_head_bound = std::min((*past_key)[3], (*past_value)[3]);
   if (config.kv_cache_bit_width == 4) {
     if (cache_head_bound > std::numeric_limits<int64_t>::max() / 2) return std::nullopt;
@@ -256,7 +260,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   }
   head_bound = std::min(head_bound, cache_head_bound);
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
-      capacity_bound != config.local_window_size ||
+      (config.sliding_window_cache && capacity_bound != config.local_window_size) ||
       !ValidateAuxiliaryShapes(config, shapes, batch_bound, sequence_bound,
                                head_bound, capacity_bound)) {
     return std::nullopt;
@@ -291,6 +295,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.kv_num_heads = config.kv_num_heads;
   bounds.head_size_bound = head_bound;
   bounds.present_kv_cache_capacity_bound = capacity_bound;
+  bounds.past_kv_cache_capacity_bound = past_capacity_bound;
   bounds.kv_cache_bit_width = config.kv_cache_bit_width;
   bounds.k_quantization = config.k_quantization;
   bounds.v_quantization = config.v_quantization;
@@ -300,6 +305,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.use_qk_norm = Present(shapes, kQNorm);
   bounds.prompt_reachable = true;
   bounds.decode_reachable = true;
+  bounds.partial_alias_reachable = !config.sliding_window_cache;
   bounds.device_major = device_prop.major;
   bounds.device_minor = device_prop.minor;
   bounds.multi_processor_count = device_prop.multiProcessorCount;

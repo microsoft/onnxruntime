@@ -240,20 +240,27 @@ Neither adapter changes runtime
 `GetScratchBuffer()` calls or allocation topology.
 
 The CPU `total_sequence_length` scalar and past/present aliasing are not
-available through `WorkspaceInputShape`. For non-windowed GQA, the scalar can
-exceed the past-cache sequence dimension and directly scale Flash, MEA, and
-unfused workspace. Non-windowed execution can also preserve one full past
-tensor when exactly one past/present pair aliases. The current adapter therefore
-reports non-windowed GQA as unavailable rather than treating the past shape as
-a total-KV bound or omitting alias-preservation scratch.
+available through `WorkspaceInputShape`. Non-windowed Level-2 estimation is
+enabled when the caller supplies a positive
+`ep.cuda.gqa_workspace_max_total_sequence_length` session option. The estimator
+uses the larger of that value and the past-cache capacity as the present-cache
+and backend KV-length bound. Callers must provide a sound scalar bound whenever
+the runtime value may exceed the past-cache capacity.
 
-Successful estimates are currently limited to sliding-window cache nodes.
-Their final cache capacity remains `C`, while a multi-token step uses a
-transient staged/effective attention extent of `C + S`; a single-token step
-uses `C`. This shape-only bound remains sound even when the scalar
-`total_sequence_length` is much larger. Runtime requires both past/present
-pairs to alias before staging or compaction, excluding the partial-alias
-preservation path. Sliding-window attention bias remains
+`MayInplace(3, 1)` and `MayInplace(4, 2)` permit but do not guarantee cache
+aliasing. For non-windowed GQA, the aggregate therefore also evaluates the
+valid one-sided-alias case, which preserves one complete past tensor before
+preprocessing overwrites the aliased present buffer. XQA and Flash fast decode
+are excluded from that case because their runtime routes require both
+past/present pairs to alias. The Level-1 node adapter remains unavailable for
+non-windowed inputs because it cannot access the session option.
+
+For sliding-window nodes, the final cache capacity remains `C`, while a
+multi-token step uses a transient staged/effective attention extent of `C + S`;
+a single-token step uses `C`. This shape-only bound remains sound even when the
+scalar `total_sequence_length` is much larger. Runtime requires both
+past/present pairs to alias before staging or compaction, excluding the
+partial-alias preservation path. Sliding-window attention bias remains
 unsupported by runtime and is also unavailable to the estimator. If cuDNN can
 be reached anywhere in a graph-free bounded domain, aggregation remains
 unavailable because cuDNN's allocator-based workspace has no sound graph-free
