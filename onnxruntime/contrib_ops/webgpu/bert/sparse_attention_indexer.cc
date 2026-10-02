@@ -122,17 +122,24 @@ Status SparseAttentionIndexerQsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& key_norm = shader.AddInput("key_norm_weight", ShaderUsage::UseUniform);
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
-  const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
       << "fn visible(row: u32, token: u32) -> bool {\n"
-      << "  let batch = row / uniforms.sequence_length;\n"
-      << "  let query = row % uniforms.sequence_length;\n"
-      << "  let offset = batch * uniforms.total_sequence_length + token;\n"
-      << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
-      << "  return token <= uniforms.past_sequence_length + query && "
-         "(mask_value.x != 0u || mask_value.y != 0u);\n"
+      << "  let query = row % uniforms.sequence_length;\n";
+  if (has_mask_) {
+    const auto& mask = shader.AddInput("mask", ShaderUsage::UseUniform);
+    shader.AdditionalImplementation()
+        << "  let batch = row / uniforms.sequence_length;\n"
+        << "  let offset = batch * uniforms.total_sequence_length + token;\n"
+        << "  let mask_value = " << mask.GetByOffset("offset", true) << ";\n"
+        << "  return token <= uniforms.past_sequence_length + query && "
+           "(mask_value.x != 0u || mask_value.y != 0u);\n";
+  } else {
+    shader.AdditionalImplementation()
+        << "  return token <= uniforms.past_sequence_length + query;\n";
+  }
+  shader.AdditionalImplementation()
       << "}\n"
       << "fn visible_at(row: u32, ordinal: u32) -> u32 {\n"
       << "  var seen = 0u;\n"
@@ -589,14 +596,16 @@ Status SparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeConte
   const bool is_qsa = policy_ == sai::Policy::kQsa;
   ORT_RETURN_IF(!is_qsa && context.Input(sai::kKey) == nullptr,
                 "SparseAttentionIndexer: key is required for policy_mode 'csa'");
-  for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+  for (int index : {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
                     sai::kPositionIds, sai::kPastProjBuffer}) {
-    const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
+    const bool policy_owns_slot = !is_qsa;
     const bool provided = index < context.InputCount() && context.Input(index) != nullptr;
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
                   provided ? " must be omitted for policy_mode '" : " is required for policy_mode '",
                   is_qsa ? sai::kPolicyModeQsa : sai::kPolicyModeCsa, "'");
   }
+  ORT_RETURN_IF(!is_qsa && context.Input(sai::kMask) != nullptr,
+                "SparseAttentionIndexer: mask must be omitted for policy_mode 'csa'");
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
@@ -645,10 +654,12 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   const int64_t rotary_width = rotary_cache_shape.rotary_width;
   ORT_RETURN_IF_NOT(rotary_width > 0 && rotary_width % 2 == 0 && rotary_width <= head_size,
                     "SparseAttentionIndexer: invalid qsa rotary cache shape");
-  const auto& mask_shape = mask->Shape();
-  ORT_RETURN_IF_NOT(
-      mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
-      "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  if (mask != nullptr) {
+    const auto& mask_shape = mask->Shape();
+    ORT_RETURN_IF_NOT(
+        mask_shape.NumDimensions() == 2 && mask_shape[0] == batch_size && mask_shape[1] == total_length,
+        "SparseAttentionIndexer: qsa mask must be INT64 with shape (batch_size, total_sequence_length)");
+  }
 
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
   Tensor* selected =
@@ -683,16 +694,19 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   if (rows == 0) {
     return Status::OK();
   }
-  SparseAttentionIndexerQsaSelectProgram select;
-  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity)
+  SparseAttentionIndexerQsaSelectProgram select{mask != nullptr};
+  select.CacheHint(query->GetElementType(), num_heads, head_size, rotary_width, compress_ratio_, capacity,
+                   mask != nullptr)
       .AddInputs({{query, ProgramTensorMetadataDependency::Type},
                   {present, ProgramTensorMetadataDependency::Type},
                   {query_norm, ProgramTensorMetadataDependency::Type},
                   {key_norm, ProgramTensorMetadataDependency::Type},
                   {cos_cache, ProgramTensorMetadataDependency::Type},
-                  {sin_cache, ProgramTensorMetadataDependency::Type}})
-      .AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1})
-      .AddOutput({selected, ProgramTensorMetadataDependency::Type})
+                  {sin_cache, ProgramTensorMetadataDependency::Type}});
+  if (mask != nullptr) {
+    select.AddInput({mask, ProgramTensorMetadataDependency::Type, {mask->Shape().Size()}, 1});
+  }
+  select.AddOutput({selected, ProgramTensorMetadataDependency::Type})
       .SetWorkgroupSize(kWorkgroupSize)
       .SetDispatchGroupSize(ToUint32(rows))
       .AddUniformVariables({{ToUint32(rows)},

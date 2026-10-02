@@ -321,7 +321,6 @@ struct QsaProblem {
   float epsilon = 1.0e-6f;
   std::optional<float> scale;
   bool shared_rotary_cache = false;
-  bool cache_block_representatives = false;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -353,7 +352,7 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
     for (int t = 0; t < present_capacity; ++t) {
       for (int d = 0; d < head_size; ++d) {
         const size_t output_index = (static_cast<size_t>(b) * present_capacity + t) * head_size + d;
-        if (!problem.cache_block_representatives && t >= problem.past_sequence_length && t < total) {
+        if (t >= problem.past_sequence_length && t < total) {
           present_key[output_index] =
               problem.key[(static_cast<size_t>(b) * problem.sequence_length + t - problem.past_sequence_length) *
                               head_size +
@@ -362,57 +361,6 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
           present_key[output_index] =
               problem.past_key[(static_cast<size_t>(b) * past_capacity + t) * head_size + d];
         }
-      }
-    }
-  }
-
-  if (problem.cache_block_representatives) {
-    const int representative_capacity = present_capacity / problem.compress_ratio;
-    const int first_block = problem.past_sequence_length / problem.compress_ratio;
-    const int completed_blocks = total / problem.compress_ratio;
-    for (int b = 0; b < problem.batch_size; ++b) {
-      const size_t cache_batch = problem.shared_rotary_cache ? 0 : static_cast<size_t>(b);
-      const float* cos_base =
-          problem.cos_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
-      const float* sin_base =
-          problem.sin_cache.data() + cache_batch * problem.MaxRotaryLength() * problem.rotary_width;
-      for (int block = first_block; block < completed_blocks; ++block) {
-        const int first_position = block * problem.compress_ratio;
-        std::vector<float> pooled(static_cast<size_t>(head_size), 0.0f);
-        for (int token = 0; token < problem.compress_ratio; ++token) {
-          const int position = first_position + token;
-          for (int d = 0; d < head_size; ++d) {
-            if (position < problem.past_sequence_length) {
-              const int cache_position = representative_capacity + position % problem.compress_ratio;
-              pooled[static_cast<size_t>(d)] +=
-                  problem.past_key[(static_cast<size_t>(b) * past_capacity + cache_position) * head_size + d];
-            } else {
-              pooled[static_cast<size_t>(d)] +=
-                  problem.key[(static_cast<size_t>(b) * problem.sequence_length +
-                               position - problem.past_sequence_length) *
-                                  head_size +
-                              d];
-            }
-          }
-        }
-        for (float& value : pooled) {
-          value /= static_cast<float>(problem.compress_ratio);
-        }
-        pooled = RmsNormalize(pooled, problem.key_norm_weight, problem.epsilon);
-        pooled = LeadingRope(pooled, problem.rotary_width, cos_base + first_position * problem.rotary_width,
-                             sin_base + first_position * problem.rotary_width);
-        std::copy(pooled.begin(), pooled.end(),
-                  present_key.begin() + (static_cast<size_t>(b) * present_capacity + block) * head_size);
-      }
-      const int completed_tokens = completed_blocks * problem.compress_ratio;
-      for (int position = std::max(problem.past_sequence_length, completed_tokens); position < total; ++position) {
-        const int cache_position = representative_capacity + position % problem.compress_ratio;
-        const int key_token = position - problem.past_sequence_length;
-        std::copy_n(problem.key.begin() +
-                        (static_cast<size_t>(b) * problem.sequence_length + key_token) * head_size,
-                    head_size,
-                    present_key.begin() +
-                        (static_cast<size_t>(b) * present_capacity + cache_position) * head_size);
       }
     }
   }
@@ -449,27 +397,20 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
       std::vector<float> scores(static_cast<size_t>(block_count), 0.0f);
       for (int block = 0; block < block_count; ++block) {
         std::vector<float> pooled(static_cast<size_t>(head_size), 0.0f);
-        if (problem.cache_block_representatives) {
+        for (int t = 0; t < problem.compress_ratio; ++t) {
+          const int token = visible[static_cast<size_t>(block * problem.compress_ratio + t)];
           for (int d = 0; d < head_size; ++d) {
-            pooled[static_cast<size_t>(d)] =
-                present_key[(static_cast<size_t>(b) * present_capacity + block) * head_size + d];
+            pooled[static_cast<size_t>(d)] +=
+                present_key[(static_cast<size_t>(b) * present_capacity + token) * head_size + d];
           }
-        } else {
-          for (int t = 0; t < problem.compress_ratio; ++t) {
-            const int token = visible[static_cast<size_t>(block * problem.compress_ratio + t)];
-            for (int d = 0; d < head_size; ++d) {
-              pooled[static_cast<size_t>(d)] +=
-                  present_key[(static_cast<size_t>(b) * present_capacity + token) * head_size + d];
-            }
-          }
-          for (float& element : pooled) {
-            element /= static_cast<float>(problem.compress_ratio);
-          }
-          pooled = RmsNormalize(pooled, problem.key_norm_weight, problem.epsilon);
-          const int key_position = visible[static_cast<size_t>(block * problem.compress_ratio)];
-          pooled = LeadingRope(pooled, problem.rotary_width, cos_base + key_position * problem.rotary_width,
-                               sin_base + key_position * problem.rotary_width);
         }
+        for (float& element : pooled) {
+          element /= static_cast<float>(problem.compress_ratio);
+        }
+        pooled = RmsNormalize(pooled, problem.key_norm_weight, problem.epsilon);
+        const int key_position = visible[static_cast<size_t>(block * problem.compress_ratio)];
+        pooled = LeadingRope(pooled, problem.rotary_width, cos_base + key_position * problem.rotary_width,
+                             sin_base + key_position * problem.rotary_width);
 
         float score = 0.0f;
         for (int h = 0; h < problem.num_heads; ++h) {
@@ -1368,13 +1309,14 @@ TEST(SparseAttentionIndexerTest, QsaQwenSpecializedScoreAndPartialTopKBFloat16) 
   RunQsaQwenSpecializedScoreAndPartialTopK<BFloat16>(2.0e-2f);
 }
 
-TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopK) {
+TEST(SparseAttentionIndexerTest, QsaQwenFixedCapacityRawCacheDistributedTopK) {
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
   problem.num_heads = 4;
   problem.head_size = 128;
   problem.past_sequence_length = 8191;
+  problem.key_cache_capacity = 8192;
   problem.rotary_width = 32;
   problem.compress_ratio = 4;
   problem.token_budget = 2048;
@@ -1393,103 +1335,6 @@ TEST(SparseAttentionIndexerTest, QsaQwenDistributedPartialTopKTies) {
   problem.rotary_width = 32;
   problem.compress_ratio = 4;
   problem.token_budget = 2048;
-  problem = MakeQsaProblem(std::move(problem));
-  std::fill(problem.mask.begin(), problem.mask.end(), 1);
-  std::fill(problem.query.begin(), problem.query.end(), 0.0f);
-  std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
-  std::fill(problem.key.begin(), problem.key.end(), 0.0f);
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
-}
-
-TEST(SparseAttentionIndexerTest, QsaQwenSharedBlockRepresentatives) {
-  QsaProblem problem;
-  problem.batch_size = 1;
-  problem.sequence_length = 8;
-  problem.num_heads = 4;
-  problem.head_size = 128;
-  problem.past_sequence_length = 0;
-  problem.key_cache_capacity = 16;
-  problem.rotary_width = 32;
-  problem.compress_ratio = 4;
-  problem.token_budget = 8;
-  problem.cache_block_representatives = true;
-  problem = MakeQsaProblem(std::move(problem));
-  std::fill(problem.mask.begin(), problem.mask.end(), 1);
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
-}
-
-TEST(SparseAttentionIndexerTest, QsaQwenHierarchicalTopKAllEqual) {
-  QsaProblem problem;
-  problem.batch_size = 1;
-  problem.sequence_length = 1;
-  problem.num_heads = 4;
-  problem.head_size = 128;
-  problem.past_sequence_length = 8191;
-  problem.key_cache_capacity = 8192;
-  problem.rotary_width = 32;
-  problem.compress_ratio = 4;
-  problem.token_budget = 2048;
-  problem.cache_block_representatives = true;
-  problem = MakeQsaProblem(std::move(problem));
-  std::fill(problem.mask.begin(), problem.mask.end(), 1);
-  std::fill(problem.query.begin(), problem.query.end(), 0.0f);
-  std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
-  std::fill(problem.key.begin(), problem.key.end(), 0.0f);
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
-}
-
-void RunQsaQwenHierarchicalTopKRepresentativeScores(bool with_ties) {
-  const std::string context_environment = Env::Default().GetEnvironmentVar("ORT_QSA_TEST_CONTEXT");
-  const int context_length = context_environment.empty() ? 8192 : std::stoi(context_environment);
-  QsaProblem problem;
-  problem.batch_size = 1;
-  problem.sequence_length = 1;
-  problem.num_heads = 4;
-  problem.head_size = 128;
-  problem.past_sequence_length = context_length - 1;
-  problem.key_cache_capacity = context_length;
-  problem.rotary_width = 32;
-  problem.compress_ratio = 4;
-  problem.token_budget = 2048;
-  problem.cache_block_representatives = true;
-  problem = MakeQsaProblem(std::move(problem));
-  std::fill(problem.mask.begin(), problem.mask.end(), 1);
-  std::fill(problem.query.begin(), problem.query.end(), 0.0f);
-  std::fill(problem.cos_cache.begin(), problem.cos_cache.end(), 1.0f);
-  std::fill(problem.sin_cache.begin(), problem.sin_cache.end(), 0.0f);
-  std::fill(problem.past_key.begin(), problem.past_key.end(), 0.0f);
-  std::fill(problem.key.begin(), problem.key.end(), 0.0f);
-  for (int head = 0; head < problem.num_heads; ++head) {
-    problem.query[static_cast<size_t>(head) * problem.head_size] = 1.0f;
-  }
-  const int completed_past_blocks = problem.past_sequence_length / problem.compress_ratio;
-  for (int block = 0; block < completed_past_blocks; ++block) {
-    problem.past_key[static_cast<size_t>(block) * problem.head_size] =
-        static_cast<float>(with_ties ? block % 17 : block + 1);
-  }
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::Cuda, false, true);
-}
-
-TEST(SparseAttentionIndexerTest, QsaQwenHierarchicalTopKUniqueScores) {
-  RunQsaQwenHierarchicalTopKRepresentativeScores(false);
-}
-
-TEST(SparseAttentionIndexerTest, QsaQwenHierarchicalTopKModerateTies) {
-  RunQsaQwenHierarchicalTopKRepresentativeScores(true);
-}
-
-TEST(SparseAttentionIndexerTest, QsaQwenHierarchicalTopKMultiRowPartialTile) {
-  QsaProblem problem;
-  problem.batch_size = 2;
-  problem.sequence_length = 1;
-  problem.num_heads = 4;
-  problem.head_size = 128;
-  problem.past_sequence_length = 8202;
-  problem.key_cache_capacity = 8203;
-  problem.rotary_width = 32;
-  problem.compress_ratio = 4;
-  problem.token_budget = 2048;
-  problem.cache_block_representatives = true;
   problem = MakeQsaProblem(std::move(problem));
   std::fill(problem.mask.begin(), problem.mask.end(), 1);
   std::fill(problem.query.begin(), problem.query.end(), 0.0f);
@@ -1620,6 +1465,12 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaFloat) {
 
 TEST(SparseAttentionIndexerWebGpuTest, QsaPackedQkFloat) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu, true);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaMasklessPrefixCausal) {
+  QsaProblem problem = MakeQsaProblem();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu, false, true);
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {

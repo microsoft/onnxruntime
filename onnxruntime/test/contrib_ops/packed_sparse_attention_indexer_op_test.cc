@@ -1063,6 +1063,29 @@ TEST(PackedSparseAttentionIndexerWebGpuTest, QsaPackedQueryKey) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu, nullptr, true);
 }
 
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateUpdateCapturesRawAndBlockTransitions) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 3};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateUpdateActiveZeroClearsAllSlots) {
+  QsaPackedProblem problem;
+  problem.batch_size = 2;
+  problem.compress_ratio = 4;
+  problem.cumulative_sequence_lengths = {0, 8, 13};
+  problem.past_sequence_lengths = {0, 3};
+  problem.state_update_capacity = 8;
+  problem.state_update_capture_count = {8, 5};
+  problem.state_update_active = 0;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
   QsaPackedProblem problem;
   problem.batch_size = 1;
