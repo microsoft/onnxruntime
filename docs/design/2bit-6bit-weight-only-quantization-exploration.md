@@ -85,13 +85,13 @@ INT2 QMoE is a meaningful follow-up because expert weights dominate the storage 
 | --- | --- | --- |
 | QMoE schema | Independent FC1, FC2, and FC3 widths merged in [#32697](https://github.com/microsoft/onnxruntime/pull/32697) | Maintain backward compatibility and add model-level conformance coverage |
 | CPU QMoE | Accepts blockwise INT2 and has an optimized LUT path | Add mixed-width semantics and model-level conformance coverage |
-| CUDA QMoE | Bounded INT2/mixed-width correctness fallback merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743); SM80 packed decode merged in [#32761](https://github.com/microsoft/onnxruntime/pull/32761) | Benchmark packed decode and add a native packed prefill path |
+| CUDA QMoE | Correctness and packed decode merged in [#32743](https://github.com/microsoft/onnxruntime/pull/32743) and [#32761](https://github.com/microsoft/onnxruntime/pull/32761); grouped GEMM foundation/follow-up merged in [#32963](https://github.com/microsoft/onnxruntime/pull/32963) and [#33045](https://github.com/microsoft/onnxruntime/pull/33045); default-enabled SM80+ FP16/BF16 mixed INT2/INT4 packed prefill merged in [#33005](https://github.com/microsoft/onnxruntime/pull/33005) | Qualify model quality, controlled decode/prefill performance, exact memory use and deployment GPU coverage |
 | WebGPU QMoE | Rejects INT2 and uses a 4/8-bit-specific pack-size calculation | Use `8 / bits`, complete reachable INT2 shader support, and add QMoE tests |
 | Model production | Dense mixed-bit export is the initial Olive/Mobius target | Define and qualify a distinct fused QMoE graph and weight-binding contract |
 
-The mixed-width model contract is no longer the primary blocker. QMoE now supports independent FC-specific width attributes with inheritance from `expert_weight_bits`, including the target `fc1_expert_weight_bits=2` and `fc2_expert_weight_bits=4` recipe. The remaining product blockers are fused Olive/Mobius model production, CPU and CUDA model-level parity, packed-decode performance evidence, bounded or native prefill, and quality qualification on the target Qwen model.
+As of October 2, 2026, the mixed-width model contract and native CUDA packed prefill implementation are merged. QMoE supports independent FC-specific width attributes with inheritance from `expert_weight_bits`, including the target `fc1_expert_weight_bits=2` and `fc2_expert_weight_bits=4` recipe. The remaining product blockers are fused Olive/Mobius model production, CPU and CUDA model-level parity, controlled decode/prefill performance and memory evidence, supported-platform qualification, and quality evaluation on the target Qwen model.
 
-CUDA dequantization to persistent FP16/BF16 expert weights is useful only as a correctness oracle because it expands INT2 payloads by approximately 8x and removes the deployment memory benefit. The first performance-relevant QMoE target should be packed INT2 fused decode for small expanded-row counts. Long-context prefill ultimately requires a native or equivalently bounded W2A16 grouped GEMM; full expert dequantization is not a production milestone.
+CUDA dequantization to persistent FP16/BF16 expert weights is useful only as a correctness oracle because it expands INT2 payloads by approximately 8x and removes the deployment memory benefit. The merged packed path preserves GEMV decode priority and uses W2A16/W4A16 grouped GEMM for eligible prefill. Packed prefill uses block size 64, symmetric weights and interleaved fused SwiGLU; row tiling bounds estimated temporary scratch to 256 MiB without sending eligible long prompts to dense fallback. This is not a process-wide GPU memory cap, and SM80+ eligibility is not hardware qualification on every architecture. Full expert dequantization is not a production milestone.
 
 Shared MatMulNBits INT2 packing, CPU-reference, validation, and CUDA load/dequantization primitives remain early enabling work because they reduce QMoE implementation risk. QMoE contract and export work should proceed in parallel and must not wait for complete dense MatMulNBits coverage across every data type, block size, or M regime.
 
@@ -292,11 +292,11 @@ After the scoped delivery, expand to BF16, additional block sizes, asymmetric ze
 
 Execute the prioritized QMoE work according to the standalone end-to-end delivery plan. Reuse MatMulNBits INT2 packing, validation, and CUDA extraction primitives as they stabilize, but do not gate the QMoE schema or Olive/Mobius export work on complete dense kernel coverage:
 
-1. Define independent FC1 and FC2 bit-width semantics and preserve compatibility with the existing single-width QMoE contract.
+1. Maintain the merged independent FC-width semantics and compatibility with the existing single-width QMoE contract (#32697).
 2. Add CPU correctness and model-level tests for FC1 INT2 with FC2 INT4.
 3. Qualify Olive/Mobius fused QMoE export, graph binding, and numerical parity separately from dense `MatMulNBits` export.
-4. Implement CUDA packed INT2 QMoE decode by reusing validated INT2 extraction and dequantization primitives.
-5. Implement or evaluate a bounded native W2A16 grouped-GEMM path for prefill.
+4. Qualify the merged CUDA packed INT2 QMoE decode path (#32761) against model quality and performance targets.
+5. Qualify the merged native packed prefill path (#32963, #33045, #33005), including long-prompt tiling, exact memory attribution and target GPU coverage.
 
 WebGPU QMoE enablement is an independent follow-up and should not block the CUDA model-level milestone. A cross-provider correctness fallback may be useful for conformance, but persistent full expert dequantization does not satisfy the production acceptance criteria.
 
