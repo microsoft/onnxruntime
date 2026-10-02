@@ -114,6 +114,19 @@ struct CancellationState {
   const std::atomic<bool>* abort_requested = nullptr;
 };
 
+bool InvokeCancellationNoThrow(
+    const std::function<bool()>& is_canceled) noexcept {
+  if (!is_canceled) {
+    return false;
+  }
+  ORT_TRY {
+    return is_canceled();
+  }
+  ORT_CATCH(...) {
+    return true;
+  }
+}
+
 bool IsCancellationRequested(void* opaque) noexcept {
   const auto& state = *static_cast<const CancellationState*>(opaque);
   if (state.abort_requested != nullptr &&
@@ -123,12 +136,7 @@ bool IsCancellationRequested(void* opaque) noexcept {
   if (state.external == nullptr || !*state.external) {
     return false;
   }
-  ORT_TRY {
-    return (*state.external)();
-  }
-  ORT_CATCH(...) {
-    return true;
-  }
+  return InvokeCancellationNoThrow(*state.external);
 }
 
 common::Status LoadBatchToD3D12(
@@ -138,7 +146,7 @@ common::Status LoadBatchToD3D12(
     const std::atomic<bool>& abort_requested,
     D3D12AcceleratedLoadMetrics& metrics) {
   if (abort_requested.load(std::memory_order_relaxed) ||
-      (is_canceled && is_canceled())) {
+      InvokeCancellationNoThrow(is_canceled)) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "D3D12 accelerated initializer loading was canceled.");
@@ -259,8 +267,9 @@ common::Status PrepareTensorForBatch(
   ORT_RETURN_IF(
       batch.tensors_by_key.find(key) !=
           batch.tensors_by_key.end(),
-      "Duplicate D3D12 accelerated initializer: ",
-      tensor_name);
+      "Duplicate D3D12 accelerated initializer \"",
+      tensor_name, "\" from \"", key.path.string(),
+      "\" range [", offset, ", ", offset + length, ").");
   ORT_RETURN_IF(
       batch.total_bytes >
           std::numeric_limits<size_t>::max() - length,
@@ -633,7 +642,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
       -> common::Status {
     if (status.Code() ==
             common::MODEL_LOAD_CANCELED ||
-        (is_canceled && is_canceled())) {
+        InvokeCancellationNoThrow(is_canceled)) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "D3D12 accelerated initializer loading was canceled.");
@@ -652,7 +661,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   };
 
   if (batch.load_range_count == 0) {
-    if (is_canceled && is_canceled()) {
+    if (InvokeCancellationNoThrow(is_canceled)) {
       return fail_or_fallback(ORT_MAKE_STATUS(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "D3D12 accelerated initializer loading was canceled."));
@@ -673,7 +682,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
     return fail_or_fallback(load_status);
   }
 
-  if (is_canceled && is_canceled()) {
+  if (InvokeCancellationNoThrow(is_canceled)) {
     return fail_or_fallback(ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "D3D12 accelerated initializer loading was canceled."));
@@ -687,7 +696,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
         "D3D12 accelerated external weights require Dawn "
         "SharedBufferMemoryD3D12Resource and SharedFenceDXGISharedHandle features.");
     for (auto& tensor : batch.tensors) {
-      if (is_canceled && is_canceled()) {
+      if (InvokeCancellationNoThrow(is_canceled)) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, MODEL_LOAD_CANCELED,
             "D3D12 accelerated initializer loading was canceled.");
