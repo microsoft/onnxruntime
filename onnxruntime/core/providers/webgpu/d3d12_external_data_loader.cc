@@ -433,7 +433,9 @@ class D3D12AcceleratedWebGpuAllocator final
               delete allocation;
             }};
         recording.pending_release_callbacks.emplace_back(
-            [deferred = std::move(deferred)]() {});
+            [deferred = std::move(deferred)]() mutable {
+              deferred.reset();
+            });
       } else {
         EndAccessNoThrow(*imported);
       }
@@ -752,7 +754,7 @@ D3D12AcceleratedExternalDataLoader::FinalizeLoad(
   const auto import_end = Clock::now();
   batch.finalized = true;
 
-  LOGS_DEFAULT(INFO)
+  LOGS_DEFAULT(VERBOSE)
       << "WebGPU D3D12 accelerated external initializer load: "
       << "file-to-D3D12=" << load_metrics.load_ms
       << " ms, Dawn import/access="
