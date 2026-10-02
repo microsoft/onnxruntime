@@ -26,7 +26,7 @@ GpuBufferAllocator::GpuBufferAllocator(
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       recording_getter_{std::move(recording_getter)},
       should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
-      is_read_only_allocator_{is_read_only_allocator},
+      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
       initialize_to_zero_{!is_read_only_allocator} {
 }
 

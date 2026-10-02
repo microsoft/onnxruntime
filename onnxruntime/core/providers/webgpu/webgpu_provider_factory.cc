@@ -303,9 +303,6 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   // is derived from the session config kOrtSessionOptionCompileOnly, which the Compile API sets
   // automatically -- same signal other EPs use (e.g. NV TensorRT RTX). Not a WebGPU-specific option.
   config.compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
-  if (config.compile_only && config.context_id == 0) {
-    config.context_id = kDeviceFreeDefaultContextId;
-  }
 
   std::string max_storage_buffer_binding_size_str;
   if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {

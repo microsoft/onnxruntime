@@ -28,7 +28,6 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -94,7 +93,7 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
     }
     existing_provider = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
     ASSERT_NE(existing_provider, nullptr);
-    existing_device = webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get();
+    existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
   }
 
   EXPECT_EXIT(
@@ -104,8 +103,7 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
       },
       testing::ExitedWithCode(EXIT_SUCCESS), "");
 
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(existing_provider->GetDeviceId()).Device().Get(),
-            existing_device);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
   flag_error.clear();
   EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
@@ -1097,7 +1095,7 @@ TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
     ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
   },
                              /*compile_only_parent=*/true);
 #endif
@@ -1137,6 +1135,7 @@ TEST(WebGpuContextTest, AdapterIndexRejectsUnsupportedBuild) {
 #else
   ConfigOptions options;
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
 
   try {
     WebGpuProviderFactoryCreator::Create(options);
@@ -1746,24 +1745,9 @@ TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
     auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
     ASSERT_NE(ep, nullptr);
-    EXPECT_EQ(ep->GetDeviceId(), webgpu::kDeviceFreeDefaultContextId);
-    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
   },
                              /*compile_only_parent=*/true);
-}
-
-TEST(WebGpuContextTest, CompileOnlyAndRunnableDefaultContextsAreIsolated) {
-  ConfigOptions compile_only_options;
-  ORT_THROW_IF_ERROR(compile_only_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
-  auto compile_only_ep = WebGpuProviderFactoryCreator::Create(compile_only_options)->CreateProvider();
-  ASSERT_NE(compile_only_ep, nullptr);
-
-  ConfigOptions runnable_options;
-  auto runnable_ep = WebGpuProviderFactoryCreator::Create(runnable_options)->CreateProvider();
-  ASSERT_NE(runnable_ep, nullptr);
-
-  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(compile_only_ep->GetDeviceId()).IsDeviceFree());
-  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(runnable_ep->GetDeviceId()).IsDeviceFree());
 }
 
 TEST(WebGpuContextTest, EnableRobustnessIsIndependentFromValidationMode) {
