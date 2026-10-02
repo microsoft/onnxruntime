@@ -584,33 +584,33 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
 
 #endif
 
-#define DEQUANTIZE_LINEAR_APPLY_FLOAT6(T)                                                          \
-  template <typename OutT, int elements_per_byte>                                                  \
-  struct DequantizeLinearApply<T, OutT, false, elements_per_byte> {                                \
-    void op(size_t M, size_t K, size_t N,                                                          \
-            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
-      for (size_t m = 0; m < M; ++m) {                                                             \
-        for (size_t bd = 0; bd < K; ++bd) {                                                        \
-          const auto sc = scale[bd];                                                               \
-          for (size_t bs = 0; bs < N; ++bs, ++input) {                                             \
-            *output++ = static_cast<OutT>(static_cast<float>(*input) * sc);                        \
-          }                                                                                        \
-        }                                                                                          \
-      }                                                                                            \
-    }                                                                                              \
-    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                                 \
-            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
-      for (size_t m = 0; m < M; ++m) {                                                             \
-        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                      \
-          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {    \
-            for (size_t bs = 0; bs < N; ++bs, ++input) {                                           \
-              *output++ = static_cast<OutT>(static_cast<float>(*input) * scale[bs]);               \
-            }                                                                                      \
-          }                                                                                        \
-          scale += N;                                                                              \
-        }                                                                                          \
-      }                                                                                            \
-    }                                                                                              \
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT6(T)                                                                \
+  template <typename ScaleT, typename OutT, int elements_per_byte>                                       \
+  struct DequantizeLinearApply<T, ScaleT, OutT, false, elements_per_byte> {                              \
+    void op(size_t M, size_t K, size_t N,                                                                \
+            const T* input, const ScaleT* scale, OutT* output, const T*, concurrency::ThreadPool*) {     \
+      for (size_t m = 0; m < M; ++m) {                                                                   \
+        for (size_t bd = 0; bd < K; ++bd) {                                                              \
+          const float sc = static_cast<float>(scale[bd]);                                                \
+          for (size_t bs = 0; bs < N; ++bs, ++input) {                                                   \
+            *output++ = static_cast<OutT>(static_cast<float>(*input) * sc);                              \
+          }                                                                                              \
+        }                                                                                                \
+      }                                                                                                  \
+    }                                                                                                    \
+    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                                       \
+            const T* input, const ScaleT* scale, OutT* output, const T*, concurrency::ThreadPool*) {     \
+      for (size_t m = 0; m < M; ++m) {                                                                   \
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                            \
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {          \
+            for (size_t bs = 0; bs < N; ++bs, ++input) {                                                 \
+              *output++ = static_cast<OutT>(static_cast<float>(*input) * static_cast<float>(scale[bs])); \
+            }                                                                                            \
+          }                                                                                              \
+          scale += N;                                                                                    \
+        }                                                                                                \
+      }                                                                                                  \
+    }                                                                                                    \
   };
 
 DEQUANTIZE_LINEAR_APPLY_FLOAT6(Float6E2M3)
