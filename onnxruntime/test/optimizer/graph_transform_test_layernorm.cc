@@ -2131,13 +2131,21 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionPreservesUnsupportedPublicV
   enum class Case {
     NonLastAxis,
     PublicAddOutput,
+    DistilBertPublicAddOutput,
   };
 
-  for (const auto test_case : {Case::NonLastAxis, Case::PublicAddOutput}) {
-    SCOPED_TRACE(test_case == Case::NonLastAxis ? "non-last axis" : "public Add output");
+  for (const auto test_case : {Case::NonLastAxis, Case::PublicAddOutput,
+                               Case::DistilBertPublicAddOutput}) {
+    SCOPED_TRACE(test_case == Case::NonLastAxis
+                     ? "non-last axis"
+                 : test_case == Case::PublicAddOutput ? "public Add output"
+                                                      : "DistilBERT public Add output");
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(
-        MODEL_FOLDER "fusion/embed_layer_norm_format5.onnx", model, nullptr, *logger_));
+        test_case == Case::DistilBertPublicAddOutput
+            ? MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx"
+            : MODEL_FOLDER "fusion/embed_layer_norm_format5.onnx",
+        model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
 
     Node* layer_norm = nullptr;
