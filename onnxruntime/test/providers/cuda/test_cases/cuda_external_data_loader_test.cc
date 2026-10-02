@@ -413,7 +413,8 @@ TEST(CudaExternalDataLoaderTest, RestoresCurrentDevice) {
   Tensor tensor(DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(kLength)}), *allocator);
 
   ASSERT_EQ(cudaSuccess, cudaSetDevice(kCallerDeviceId));
-  ASSERT_STATUS_OK(loader->LoadTensor(Env::Default(), path, kFilePrefixSize, kLength, tensor));
+  ASSERT_STATUS_OK(loader->LoadTensor(
+      Env::Default(), path, {}, kFilePrefixSize, kLength, *allocator, tensor));
 
   int current_device = -1;
   ASSERT_EQ(cudaSuccess, cudaGetDevice(&current_device));
