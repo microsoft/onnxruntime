@@ -2119,6 +2119,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -2942,6 +2944,10 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
         model_path.parent_path(),
         unpacked_tensor));
     return Status::OK();
+  }
+
+  if (HasRawData(initializer)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(initializer));
   }
 
   switch (initializer.data_type()) {
