@@ -1152,6 +1152,12 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
 
 bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathQ");
+  if (q_reshape.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(q_reshape) ||
+      q_transpose.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(q_transpose)) {
+    DEBUG_LOG("q path has an external use");
+    return false;
+  }
+
   InlinedVector<int64_t> q_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
       q_reshape_shape.size() != 4 ||
@@ -1181,6 +1187,12 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_res
 bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_transpose, int64_t num_heads,
                        int64_t head_size, bool tranpose_optimized_pattern, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathK");
+  if (k_reshape.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(k_reshape) ||
+      k_transpose.GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(k_transpose)) {
+    DEBUG_LOG("k path has an external use");
+    return false;
+  }
+
   InlinedVector<int64_t> perm;
 
   if (!graph_utils::GetRepeatedNodeAttributeValues(k_transpose, "perm", perm)) {
@@ -1461,7 +1473,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       opt_k_transpose = k_concat;
       InlinedVector<int64_t> perm;
 
-      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+      if (opt_k_transpose->GetOutputEdgesCount() != 1 || graph.NodeProducesGraphOutput(*opt_k_transpose) ||
+          !(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) && perm.size() == 4 &&
+            perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
         DEBUG_LOG("opt_k_transpose perm attribute not matched");
         return false;
       }
