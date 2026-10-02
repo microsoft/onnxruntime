@@ -645,7 +645,9 @@ void OneDsTelemetry::LogProcessInfo() const {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
     }
 #ifdef _WIN32
-    WindowsTelemetry::LogLocalProcessInfo(telemetry_device_id, device_id_status);
+    if (!IsRunningInCI()) {
+      WindowsTelemetry::LogLocalProcessInfo(telemetry_device_id, device_id_status);
+    }
 #endif
 #endif
 
