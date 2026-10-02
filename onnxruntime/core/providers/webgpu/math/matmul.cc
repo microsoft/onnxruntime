@@ -44,6 +44,32 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     MatMul);
 
+namespace {
+
+class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+ public:
+  MatMulGemvProgram() : Program{"MatMulGemv"} {}
+
+  static constexpr uint32_t kWorkgroupSizeX = 1;
+  static constexpr uint32_t kWorkgroupSizeY = 128;
+  static constexpr uint32_t kColumnsPerWorkgroup = kWorkgroupSizeX * 4;
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& a = shader.AddInput("a", ShaderUsage::None);
+    const auto& b = shader.AddInput("b", ShaderUsage::None);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "math/matmul_gemv.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(a, a),
+                               WGSL_TEMPLATE_VARIABLE(b, b),
+                               WGSL_TEMPLATE_VARIABLE(output, output));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32});
+};
+
+}  // namespace
+
 static std::string CalcResult(int64_t components, int64_t a_components, int64_t output_number) {
   std::ostringstream oss;
   oss << "var a_data: a_value_t;\n";
@@ -260,6 +286,23 @@ Status ComputeMatMul(ComputeContext* context,
   const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
   const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
+
+  // A single row has no cross-row weight reuse. Stream B directly and reduce K
+  // within each workgroup in f32, retaining the existing paths outside this regime.
+  if (batch_size == 1 && dim_a_outer == 1 &&
+      dim_b_outer >= 16 && dim_b_outer <= 64 && dim_b_outer % 4 == 0 &&
+      dim_inner >= 2048 && dim_inner <= 8192 &&
+      !has_bias && activation.activation_kind_ == ActivationKind::None &&
+      a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() && output_tensor->IsDataType<MLFloat16>()) {
+    MatMulGemvProgram program;
+    program.AddInputs({{a, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten},
+                       {b, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+        .AddUniformVariables({{dim_inner}, {dim_b_outer}})
+        .SetWorkgroupSize(MatMulGemvProgram::kWorkgroupSizeX, MatMulGemvProgram::kWorkgroupSizeY)
+        .SetDispatchGroupSize(CeilDiv(dim_b_outer, MatMulGemvProgram::kColumnsPerWorkgroup));
+    return context->RunProgram(program);
+  }
 
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
