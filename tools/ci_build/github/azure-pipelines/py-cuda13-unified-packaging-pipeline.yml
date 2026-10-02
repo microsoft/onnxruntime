@@ -57,7 +57,7 @@ extends:
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: '13.0'
-          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v13.0 --cudnn_home=$(Agent.TempDirectory)\9.14.0.64_cuda13 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
+          EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v13.0 --cudnn_home=$(Agent.TempDirectory)\9.14.0.64_cuda13 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;120-real"
           use_tensorrt: true
 
       - template: stages/py-linux-gpu-unified-stage.yml
