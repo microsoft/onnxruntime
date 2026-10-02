@@ -1133,14 +1133,44 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           << " fc2_shape=" << packed_int_fc2_shape_supported
                           << " routing=" << packed_int_routing_supported;
   }
-  const bool use_packed_int_prefill =
+  bool use_packed_int_prefill =
       enable_int2_prefill_ && !use_packed_int_gemv && !has_any_zero_point && is_fused_swiglu &&
       swiglu_fusion == 1 && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr &&
+      (row_tile_size_ == qmoe::kDisabledRowTileSize || moe_params.num_rows <= row_tile_size_) &&
       moe_params.num_rows > 0 && packed_int_expanded <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
       moe_params.inter_size <= std::numeric_limits<int>::max() / 2 && moe_params.inter_size % 64 == 0 &&
       moe_params.num_experts > 0 && moe_params.num_experts <= 256;
+  int64_t effective_row_tile_size = row_tile_size_;
+  size_t packed_prefill_workspace_bytes = 0;
+  if (use_packed_int_prefill) {
+    namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
+    constexpr size_t kMaxPackedPrefillScratchBytes = 256 * 1024 * 1024;
+    constexpr int64_t kFallbackRowTileSize = 1024;
+    ck::Int2MoePrefillParams sizing_params;
+    sizing_params.num_rows = moe_params.num_rows;
+    sizing_params.hidden_size = static_cast<int>(moe_params.hidden_size);
+    sizing_params.inter_size = static_cast<int>(moe_params.inter_size);
+    sizing_params.num_experts = static_cast<int>(moe_params.num_experts);
+    sizing_params.top_k = static_cast<int>(k_);
+    packed_prefill_workspace_bytes = ck::GetInt2MoePrefillWorkspaceSize(sizing_params);
+    const auto untiled_plan = qmoe::MakeRowTilePlan(moe_params.num_rows, qmoe::kDisabledRowTileSize, false);
+    size_t packed_scratch_bytes = SafeInt<size_t>(packed_prefill_workspace_bytes) +
+                                  qmoe::MakeScratchLayout(0, untiled_plan, k_).total_bytes;
+    if (!gemv_int_fc1_scales_ && fc1_scales) {
+      packed_scratch_bytes = SafeInt<size_t>(packed_scratch_bytes) + fc1_scales->SizeInBytes();
+    }
+    if (!gemv_int_fc2_scales_ && fc2_scales) {
+      packed_scratch_bytes = SafeInt<size_t>(packed_scratch_bytes) + fc2_scales->SizeInBytes();
+    }
+    if (packed_scratch_bytes > kMaxPackedPrefillScratchBytes) {
+      use_packed_int_prefill = false;
+      effective_row_tile_size = row_tile_size_ == qmoe::kDisabledRowTileSize
+                                    ? kFallbackRowTileSize
+                                    : std::min(row_tile_size_, kFallbackRowTileSize);
+    }
+  }
   const bool use_packed_int = use_packed_int_gemv || use_packed_int_prefill;
   if (use_int_dequant_fallback && !use_packed_int) {
     const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;
@@ -1153,8 +1183,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   const qmoe::RowTilePlan row_tile_plan =
       qmoe::MakeRowTilePlan(
-          moe_params.num_rows, row_tile_size_,
-          row_tile_size_ != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int);
+          moe_params.num_rows, effective_row_tile_size,
+          effective_row_tile_size != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int);
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
@@ -1811,7 +1841,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     params.beta = activation_beta_;
     params.limit = swiglu_limit_;
     params.stream = stream;
-    const size_t prefill_bytes = ck::GetInt2MoePrefillWorkspaceSize(params);
+    const size_t prefill_bytes = packed_prefill_workspace_bytes;
     auto prefill_workspace = GetScratchBuffer<void>(prefill_bytes, GetComputeStream(context));
     ck::RunInt2MoePrefill(params, prefill_workspace.get());
     if (enable_kernel_debug_info_) {

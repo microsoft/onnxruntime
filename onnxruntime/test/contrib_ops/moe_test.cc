@@ -1919,7 +1919,8 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
                                               int64_t inter_size = 64,
                                               bool expect_scratch_failure = true,
                                               bool use_initializers = false,
-                                              int64_t num_rows = 1) {
+                                              int64_t num_rows = 1,
+                                              int64_t row_tile_size = 0) {
   constexpr int64_t num_experts = 1;
 
   auto make_identity = [block_size](int64_t bits, int64_t rows, int64_t columns,
@@ -2042,6 +2043,10 @@ static void RunQMoEMixedWidthCudaIdentityTest(int64_t fc1_bits, int64_t fc2_bits
   if (max_scratch_bytes > 0) {
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         "ep.cuda.qmoe_int_dequant_max_scratch_bytes", std::to_string(max_scratch_bytes).c_str()));
+  }
+  if (row_tile_size > 0) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        "ep.cuda.qmoe_row_tile_size", std::to_string(row_tile_size).c_str()));
   }
   tester.Run(session_options,
              max_scratch_bytes > 0 && expect_scratch_failure ? OpTester::ExpectResult::kExpectFailure
@@ -2562,12 +2567,17 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
     }
     for (int64_t column = 0; column < inter_size; ++column) {
       fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 2 * column)] =
-          ElementType(0.0625f * static_cast<float>(expert - 2));
+          ElementType(0.0625f * static_cast<float>(expert - 2) +
+                      0.015625f * static_cast<float>(column % 11 - 5));
       fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 2 * column + 1)] =
-          ElementType(-0.03125f * static_cast<float>(expert + 1));
+          ElementType(-0.03125f * static_cast<float>(expert + 1) +
+                      0.015625f * static_cast<float>(column % 7 - 3));
     }
-    std::fill_n(fc2_bias.begin() + expert * hidden_size, hidden_size,
-                ElementType(0.03125f * static_cast<float>(expert - 3)));
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      fc2_bias[static_cast<size_t>(expert * hidden_size + column)] =
+          ElementType(0.03125f * static_cast<float>(expert - 3) +
+                      0.015625f * static_cast<float>(column % 13 - 6));
+    }
   }
   float denominator = 0.0f;
   for (int64_t rank = 0; rank < top_k; ++rank) {
@@ -2586,9 +2596,10 @@ static void RunQMoEPackedPrefillRoutingTest(int64_t num_rows, int64_t hidden_siz
         const int64_t input_column = (column % inter_size) % hidden_size;
         const float fc1 = round_value(input[static_cast<size_t>(row * hidden_size + input_column)].ToFloat() *
                                       round_value(fc1_scale(expert, 2 * (column % inter_size), input_column / block_size)));
-        const float gate = std::min(fc1 + fc1_bias[static_cast<size_t>(expert * 2 * inter_size)].ToFloat(), limit);
+        const size_t gate_bias_index = static_cast<size_t>(expert * 2 * inter_size + 2 * (column % inter_size));
+        const float gate = std::min(fc1 + fc1_bias[gate_bias_index].ToFloat(), limit);
         const float linear = std::clamp(
-                                 fc1 + fc1_bias[static_cast<size_t>(expert * 2 * inter_size + 1)].ToFloat(), -limit, limit) +
+                                 fc1 + fc1_bias[gate_bias_index + 1].ToFloat(), -limit, limit) +
                              beta;
         const float activated = round_value(gate / (1.0f + std::exp(-alpha * gate)) * linear);
         const float fc2 = round_value(activated *
@@ -2675,6 +2686,26 @@ TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillFallback) {
   RunQMoEMixedWidthCudaIdentityTest(4, 2, 1, true, false, false, 64, 512, 512, true, true, 33);
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, false, false, false, 64, 512, 512, true, true, 33);
   RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, false, 33);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillWorkspaceLimit) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 64, 8192, true, true, 8192);
+}
+
+TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillRespectsRowTiling) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "SM80 or later is required for packed INT2 prefill.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      {{"ORT_DISABLE_MOE_GEMV", "1"}, {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, false, true, 33, 33);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 1, true, false, false, 64, 512, 512, true, true, 33, 16);
+  RunQMoEMixedWidthCudaIdentityTest(2, 4, 0, true, false, false, 64, 512, 512, false, true, 33, 16);
 }
 
 TEST(MoETest, QMoETest_MixedWidthCudaPackedPrefillDisabled) {
