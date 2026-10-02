@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <mutex>
@@ -1188,9 +1189,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       qmoe::MakeRowTilePlan(
           moe_params.num_rows, row_tile_size_,
           row_tile_size_ != qmoe::kDisabledRowTileSize && !use_fp4_gemv && !use_packed_int_gemv);
+  const bool use_nvfp4_compaction = is_nvfp4 && !route_native_fp4 && !use_fp4_gemv;
+  const bool use_expert_compaction = is_block_fp8 || use_nvfp4_compaction;
   const int runner_num_experts =
-      is_block_fp8 ? qmoe::MaxActiveExperts(row_tile_plan, narrow<int>(moe_params.num_experts), narrow<int>(k_))
-                   : narrow<int>(moe_params.num_experts);
+      use_expert_compaction ? qmoe::MaxActiveExperts(row_tile_plan, narrow<int>(moe_params.num_experts), narrow<int>(k_))
+                            : narrow<int>(moe_params.num_experts);
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
@@ -2188,7 +2191,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<int> compact_to_expert;
   std::array<IAllocatorUniquePtr<float>, 3> fp8_block_scales;
   std::array<const float*, 3> fp8_scales{};
-  size_t fp8_dequant_weight_bytes = 0;
+  size_t dequant_weight_bytes = 0;
+  std::function<void()> dequantize_fp4;
   if (use_int_dequant_fallback) {
     ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr &&
                     fc1_scales != nullptr && fc2_scales != nullptr,
@@ -2263,48 +2267,56 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     int fc1_k = static_cast<int>(moe_params.hidden_size);
     int fc2_n = static_cast<int>(moe_params.hidden_size);
     int fc2_k = static_cast<int>(moe_params.inter_size);
-    int num_experts = static_cast<int>(moe_params.num_experts);
+    int num_experts = runner_num_experts;
     size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
+    dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
     dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
     dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
 
-    // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
-    auto dequant = [&](const uint8_t* weights, const uint8_t* block_scales, const float* global_scale,
-                       void* out, int n, int k) {
-      if (is_fp16_) {
-        half* out_h = static_cast<half*>(out);
-        if (is_nvfp4) {
-          LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
+    dequantize_fp4 = [&, fc1_n, fc1_k, fc2_n, fc2_k, num_experts,
+                      p_fc1_block_scales, p_fc1_global_scale, p_fc2_block_scales, p_fc2_global_scale]() {
+      // Choose the FP4 (MXFP4 / E8M0, block 32) or NVFP4 (E4M3, block 16) dequant launcher.
+      auto dequant = [&](const uint8_t* weights, const uint8_t* block_scales, const float* global_scale,
+                         void* out, int n, int k, const Tensor* bias, void* output_bias) {
+        if (is_fp16_) {
+          half* out_h = static_cast<half*>(out);
+          if (is_nvfp4) {
+            LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream,
+                                             compact_to_expert.get(), bias ? static_cast<const half*>(bias->DataRaw()) : nullptr,
+                                             static_cast<half*>(output_bias));
+          } else {
+            LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
+          }
         } else {
-          LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_h, num_experts, n, k, stream);
+          __nv_bfloat16* out_b = static_cast<__nv_bfloat16*>(out);
+          if (is_nvfp4) {
+            LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream,
+                                             compact_to_expert.get(), bias ? static_cast<const __nv_bfloat16*>(bias->DataRaw()) : nullptr,
+                                             static_cast<__nv_bfloat16*>(output_bias));
+          } else {
+            LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
+          }
         }
-      } else {
-        __nv_bfloat16* out_b = static_cast<__nv_bfloat16*>(out);
-        if (is_nvfp4) {
-          LaunchQMoEDequantizeNvfp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
-        } else {
-          LaunchQMoEDequantizeFp4Weights(weights, block_scales, global_scale, out_b, num_experts, n, k, stream);
-        }
-      }
+      };
+      // This dequant fallback is reachable only for the FP4 family (fp4/nvfp4) and the
+      // WFP4AFP8 dequant path -- never for quant_type='int'. Only the int path nulls out
+      // fc*_experts_weights (int_weights_consumed_by_prepack), so the raw weight pointers are
+      // guaranteed live here. Enforce that invariant explicitly so a future mode-guard change
+      // that lets int fall through cannot silently dereference a null weight tensor.
+      ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
+                  "QMoE FP4/NVFP4 dequant fallback requires the raw expert-weight tensors; got null "
+                  "(this path must not be reached in int-weight prepack mode).");
+      dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
+              static_cast<const uint8_t*>(p_fc1_block_scales),
+              static_cast<const float*>(p_fc1_global_scale),
+              dequant_fc1_weights.get(), fc1_n, fc1_k, fc1_experts_bias_optional, compact_fc1_bias.get());
+      dequant(static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
+              static_cast<const uint8_t*>(p_fc2_block_scales),
+              static_cast<const float*>(p_fc2_global_scale),
+              dequant_fc2_weights.get(), fc2_n, fc2_k, fc2_experts_bias_optional, compact_fc2_bias.get());
     };
-    // This dequant fallback is reachable only for the FP4 family (fp4/nvfp4) and the
-    // WFP4AFP8 dequant path -- never for quant_type='int'. Only the int path nulls out
-    // fc*_experts_weights (int_weights_consumed_by_prepack), so the raw weight pointers are
-    // guaranteed live here. Enforce that invariant explicitly so a future mode-guard change
-    // that lets int fall through cannot silently dereference a null weight tensor.
-    ORT_ENFORCE(fc1_experts_weights != nullptr && fc2_experts_weights != nullptr,
-                "QMoE FP4/NVFP4 dequant fallback requires the raw expert-weight tensors; got null "
-                "(this path must not be reached in int-weight prepack mode).");
-    dequant(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
-            static_cast<const uint8_t*>(p_fc1_block_scales),
-            static_cast<const float*>(p_fc1_global_scale),
-            dequant_fc1_weights.get(), fc1_n, fc1_k);
-    dequant(static_cast<const uint8_t*>(fc2_experts_weights->DataRaw()),
-            static_cast<const uint8_t*>(p_fc2_block_scales),
-            static_cast<const float*>(p_fc2_global_scale),
-            dequant_fc2_weights.get(), fc2_n, fc2_k);
     fc1_weight_data = dequant_fc1_weights.get();
     fc2_weight_data = dequant_fc2_weights.get();
   } else if (is_fp8 && use_fp8_dequant_fallback_) {
@@ -2344,25 +2356,31 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     size_t fc1_bytes = SafeInt<size_t>(runner_num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(runner_num_experts) * fc2_n * fc2_k * element_size;
-    fp8_dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
+    dequant_weight_bytes = SafeInt<size_t>(fc1_bytes) + fc2_bytes;
     dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
     dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
-    if (is_block_fp8) {
-      const size_t num_routes = SafeInt<size_t>(row_tile_plan.rows_per_tile) * k_;
-      compact_expert_indices = GetScratchBuffer<int>(num_routes, GetComputeStream(context));
-      expert_to_compact = GetScratchBuffer<int>(moe_params.num_experts, GetComputeStream(context));
-      compact_to_expert = GetScratchBuffer<int>(runner_num_experts, GetComputeStream(context));
-      if (fc1_experts_bias_optional) {
-        compact_fc1_bias = GetScratchBuffer<void>(
-            SafeInt<size_t>(runner_num_experts) * fc1_n * element_size, GetComputeStream(context));
-      }
-      if (fc2_experts_bias_optional) {
-        compact_fc2_bias = GetScratchBuffer<void>(
-            SafeInt<size_t>(runner_num_experts) * fc2_n * element_size, GetComputeStream(context));
-      }
-    }
     fc1_weight_data = dequant_fc1_weights.get();
     fc2_weight_data = dequant_fc2_weights.get();
+  }
+
+  if (use_expert_compaction) {
+    const size_t num_routes = SafeInt<size_t>(row_tile_plan.rows_per_tile) * k_;
+    compact_expert_indices = GetScratchBuffer<int>(num_routes, GetComputeStream(context));
+    expert_to_compact = GetScratchBuffer<int>(moe_params.num_experts, GetComputeStream(context));
+    compact_to_expert = GetScratchBuffer<int>(runner_num_experts, GetComputeStream(context));
+    const size_t element_size = input->DataType()->Size();
+    if (fc1_experts_bias_optional) {
+      const size_t fc1_n = SafeInt<size_t>(moe_params.inter_size) * (is_fused_swiglu ? 2 : 1);
+      compact_fc1_bias = GetScratchBuffer<void>(
+          SafeInt<size_t>(runner_num_experts) * fc1_n * element_size, GetComputeStream(context));
+    }
+    if (fc2_experts_bias_optional) {
+      compact_fc2_bias = GetScratchBuffer<void>(
+          SafeInt<size_t>(runner_num_experts) * moe_params.hidden_size * element_size, GetComputeStream(context));
+    }
+  }
+  if (dequantize_fp4 && !use_nvfp4_compaction) {
+    dequantize_fp4();
   }
 
   auto dequantize_fp8 = [&]() {
@@ -2442,12 +2460,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       }
     }
 #endif
-    if (is_block_fp8) {
+    if (use_expert_compaction) {
       LaunchQMoECompactExperts(expert_indices, compact_expert_indices.get(),
                                expert_to_compact.get(), compact_to_expert.get(),
                                narrow<int>(moe_params.num_experts), runner_num_experts,
                                SafeInt<int64_t>(tile_rows) * k_, stream);
-      dequantize_fp8();
+      if (use_nvfp4_compaction) {
+        dequantize_fp4();
+      } else {
+        dequantize_fp8();
+      }
     }
     const size_t input_element_offset =
         SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
@@ -2470,7 +2492,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     active_runner->runMoe(
         tile_input,
         nullptr,
-        is_block_fp8 ? compact_expert_indices.get() : expert_indices,
+        use_expert_compaction ? compact_expert_indices.get() : expert_indices,
         expert_scales,
         fc1_weight_data,
         compact_fc1_bias ? compact_fc1_bias.get()
@@ -2505,9 +2527,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                              row_tile_plan.rows_per_tile, final_tile_rows,
                              row_tile_plan.rows_per_tile, final_tile_rows,
                              workspace_size, total_scratch_bytes);
-    if (is_block_fp8) {
-      std::cout << "QMoE FP8 ExpertCapacity=" << runner_num_experts
-                << " DequantWeightBytes=" << fp8_dequant_weight_bytes << std::endl;
+    if (use_expert_compaction) {
+      std::cout << "QMoE " << (use_nvfp4_compaction ? "NVFP4" : "FP8") << " ExpertCapacity=" << runner_num_experts
+                << " DequantWeightBytes=" << dequant_weight_bytes << std::endl;
     }
   }
 
