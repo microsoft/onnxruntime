@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_kernels.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::contrib::cuda {
 namespace {
@@ -29,6 +30,7 @@ void LaunchRemapMoeExpertIndices(const int* expert_indices, int* remapped_expert
   constexpr int threads = 256;
   RemapMoeExpertIndicesKernel<<<static_cast<unsigned int>((count + threads - 1) / threads), threads, 0, stream>>>(
       expert_indices, remapped_expert_indices, expert_map, count);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 void LaunchAddMoeFp16Output(half* output, const half* contribution,
@@ -36,6 +38,7 @@ void LaunchAddMoeFp16Output(half* output, const half* contribution,
   constexpr int threads = 256;
   AddMoeFp16OutputKernel<<<static_cast<unsigned int>((count + threads - 1) / threads), threads, 0, stream>>>(
       output, contribution, count);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 }  // namespace onnxruntime::contrib::cuda

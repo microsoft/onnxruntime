@@ -1980,7 +1980,9 @@ static Status PlaceMoeCpuOffloadInitializersOnCpu(
 
       int ort_value_index = -1;
       ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(input->Name(), ort_value_index));
-      execution_plan.SetLocation(static_cast<size_t>(ort_value_index), OrtDevice{});
+      execution_plan.SetLocation(
+          static_cast<size_t>(ort_value_index),
+          OrtDevice{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0});
     }
   }
 

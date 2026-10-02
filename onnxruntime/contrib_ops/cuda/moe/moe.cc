@@ -95,19 +95,13 @@ Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   packed.bytes = tensor.SizeInBytes();
   packed.present = true;
 
-  if (cpu_offload_enabled_) {
-    ORT_RETURN_IF_NOT(packed.bytes % sizeof(MLFloat16) == 0,
-                      "FP16 MoE input ", input_idx, " has an invalid byte size.");
-    packed.cpu_data.resize(packed.bytes / sizeof(MLFloat16));
-    if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
-    } else {
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
-    }
+  ORT_RETURN_IF_NOT(packed.bytes % sizeof(MLFloat16) == 0,
+                    "FP16 MoE input ", input_idx, " has an invalid byte size.");
+  packed.cpu_data.resize(packed.bytes / sizeof(MLFloat16));
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    std::memcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes);
   } else {
-    packed.cuda_data = IAllocator::MakeUniquePtr<void>(cuda_allocator_, packed.bytes, true);
-    ORT_RETURN_IF_NOT(packed.cuda_data, "Failed to allocate CUDA storage for MoE input ", input_idx, ".");
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cuda_data.get(), tensor.DataRaw(), packed.bytes, cudaMemcpyDefault));
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(packed.cpu_data.data(), tensor.DataRaw(), packed.bytes, cudaMemcpyDeviceToHost));
   }
 
   is_packed = true;
@@ -157,6 +151,16 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
   ORT_RETURN_IF_NOT(fc1_shape.NumDimensions() == 3 && fc1_shape[0] > 0,
                     "FP16 MoE FC1 weights must have a positive expert dimension.");
   const size_t num_experts = static_cast<size_t>(fc1_shape[0]);
+  for (const auto& [bias_idx, weight_idx] : {std::pair{3, 2}, std::pair{5, 4}}) {
+    const auto& bias = packed_inputs_[static_cast<size_t>(bias_idx)];
+    const auto& weight = packed_inputs_[static_cast<size_t>(weight_idx)];
+    ORT_RETURN_IF(bias.present &&
+                      (weight.shape.NumDimensions() != 3 ||
+                       bias.shape.NumDimensions() != 2 ||
+                       bias.shape[0] != static_cast<int64_t>(num_experts) ||
+                       bias.shape[1] != weight.shape[1]),
+                  "FP16 MoE input ", bias_idx, " has an invalid bias shape.");
+  }
   cuda_experts_.assign(cuda_experts.begin(), cuda_experts.end());
   expert_map_.assign(num_experts, -1);
   for (size_t index = 0; index < cuda_experts_.size(); ++index) {
@@ -191,7 +195,7 @@ Status MoE<T>::InitializeCudaExpertWeights(gsl::span<const int> cuda_experts) {
     }
   }
 
-  if (!expert_map_.empty()) {
+  if (!cuda_experts_.empty()) {
     device_expert_map_ =
         IAllocator::MakeUniquePtr<void>(cuda_allocator_, expert_map_.size() * sizeof(int), true);
     ORT_RETURN_IF_NOT(device_expert_map_, "Failed to allocate the CUDA MoE expert map.");
@@ -587,12 +591,15 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         cpu_parameters, gsl::make_span(host_cpu_output.get(), host_element_count),
         context->GetOperatorThreadPool()));
 
-    cpu_output_device_buffer =
-        GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_output_device_buffer.get(), host_cpu_output.get(),
+    void* cpu_output_destination = output->MutableDataRaw();
+    if (!cuda_experts_.empty()) {
+      cpu_output_device_buffer = GetScratchBuffer<void>(input->SizeInBytes(), stream_obj);
+      cpu_output_destination = cpu_output_device_buffer.get();
+    }
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_output_destination, host_cpu_output.get(),
                                          input->SizeInBytes(),
                                          cudaMemcpyHostToDevice, stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    AddDeferredReleaseCPUPtr(host_cpu_output.release(), stream_obj);
 
     if (!cuda_experts_.empty()) {
       remapped_expert_indices_buffer = GetScratchBuffer<void>(indices_bytes, stream_obj);
@@ -602,10 +609,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                                   static_cast<const int*>(device_expert_map_.get()),
                                   expanded_rows, stream);
       runner_expert_indices = remapped_expert_indices;
-    } else {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output->MutableDataRaw(), cpu_output_device_buffer.get(),
-                                           input->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, stream));
     }
   }
 #endif
