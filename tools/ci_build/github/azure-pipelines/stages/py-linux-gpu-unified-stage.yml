@@ -267,9 +267,12 @@ stages:
               exit 0
             fi
             requirements=/onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
-            "$python" -m pip install --disable-pip-version-check "$(grep -E '^onnx==' "$requirements")"
+            "$python" -m pip install --disable-pip-version-check "$(grep -E '^onnx==' "$requirements")" pytest
             cp /onnxruntime_src/onnxruntime/test/python/onnx_backend_test_series.py .
             cp /onnxruntime_src/onnxruntime/test/testdata/onnx_backend_test_series_*.jsonc testdata/
+            # Match build.py's ONNX backend test environment.
+            export ALLOW_RELEASED_ONNX_OPSET_ONLY=0
+            export ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS=1
             "$python" onnx_backend_test_series.py
             SCRIPT
           displayName: 'Test the unified wheel on Python ABI $(PythonAbi)'

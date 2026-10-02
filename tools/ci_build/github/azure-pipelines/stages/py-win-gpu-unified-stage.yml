@@ -299,3 +299,7 @@ stages:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Test the unified wheel on Python $(PythonVersion)'
+          # Match build.py's ONNX backend test environment.
+          env:
+            ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+            ORT_BACKEND_TEST_ALLOW_UNRELEASED_OPSETS: '1'
