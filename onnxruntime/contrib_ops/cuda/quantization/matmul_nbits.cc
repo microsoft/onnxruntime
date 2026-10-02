@@ -611,6 +611,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 #endif
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+  gemmProfiler_->setL2CacheBytes(static_cast<size_t>(this->GetDeviceProp().l2CacheSize));
   gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
 

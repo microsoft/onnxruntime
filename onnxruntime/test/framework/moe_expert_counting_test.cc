@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <tuple>
+#include <utility>
 
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
@@ -18,6 +20,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime::test {
 #if !defined(DISABLE_CONTRIB_OPS) && !defined(ORT_MINIMAL_BUILD)
@@ -441,11 +444,133 @@ TEST(MoeExpertCountingTest, CudaMoE) { TestCounting(false, true); }
 TEST(MoeExpertCountingTest, CudaQMoE) { TestCounting(true, true); }
 TEST(MoeExpertCountingTest, CudaQMoETiled) { TestCounting(true, true, true); }
 TEST(MoeExpertCountingTest, CudaQMoESingleToken) { TestCounting(true, true, false, 1); }
-TEST(MoeExpertCountingTest, CudaQMoEPackedInt2Gemv) {
-  if (!HasCudaEnvironment(800)) {
+TEST(MoeExpertCountingTest, CudaQMoEPackedIntGemv) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || GetCudaArchitecture() < 800) {
     GTEST_SKIP() << "CUDA device with compute capability 8.0 or newer is required.";
   }
-  TestCounting(true, true, false, 3, true);
+  if (provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE expert counting is not supported by the CUDA plugin execution provider.";
+  }
+  ScopedEnvironmentVariables env_vars{{{"ORT_DISABLE_MOE_GEMV", "0"}}};
+  auto options = CountingOptions();
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  // Dense dequantization cannot fit: successful inference proves packed-INT GEMV dispatch.
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry("ep.cuda.qmoe_int_dequant_max_scratch_bytes", "1"));
+
+  constexpr int64_t rows = 3;
+  constexpr int64_t width = 512;
+  constexpr int64_t block_size = 64;
+  constexpr int64_t pack_size = 4;
+  ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain(kMSDomain);
+  opset->set_version(1);
+  auto& graph = *model.mutable_graph();
+  graph.set_name("packed_int_expert_counting");
+  SetValue(*graph.add_input(), "input", TensorProto_DataType_FLOAT16, {rows, width});
+  SetValue(*graph.add_input(), "router", TensorProto_DataType_FLOAT16, {rows, kExperts});
+  SetValue(*graph.add_output(), "output", TensorProto_DataType_FLOAT16, {rows, width});
+
+  auto add_identity_weights = [&](const char* name, int64_t output_width) {
+    AddZeroInitializer(graph, name, TensorProto_DataType_UINT8,
+                       {kExperts, output_width, width / pack_size}, 1);
+    auto& data = *graph.mutable_initializer(graph.initializer_size() - 1)->mutable_raw_data();
+    // Symmetric INT2 zero is code 2; each identity entry uses code 3 (+1).
+    data.assign(data.size(), '\xAA');
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      for (int64_t row = 0; row < output_width; ++row) {
+        const int64_t column = row % width;
+        data[(expert * output_width + row) * (width / pack_size) + column / pack_size] |=
+            static_cast<char>(1u << (2 * (column % pack_size)));
+      }
+    }
+  };
+  add_identity_weights("w1", 2 * width);
+  add_identity_weights("w2", width);
+  auto add_scales = [&](const char* name, int64_t output_width, bool per_expert) {
+    auto* tensor = graph.add_initializer();
+    tensor->set_name(name);
+    tensor->set_data_type(TensorProto_DataType_FLOAT16);
+    tensor->add_dims(kExperts);
+    tensor->add_dims(output_width);
+    tensor->add_dims(width / block_size);
+    for (int64_t expert = 0; expert < kExperts; ++expert) {
+      const MLFloat16 scale(per_expert ? 0.25f * static_cast<float>(expert + 1) : 1.f);
+      for (int64_t i = 0; i < output_width * (width / block_size); ++i) {
+        tensor->add_int32_data(scale.val);
+      }
+    }
+  };
+  add_scales("s1", 2 * width, false);
+  add_scales("s2", width, true);
+
+  auto* node = graph.add_node();
+  node->set_name("packed_moe");
+  node->set_op_type("QMoE");
+  node->set_domain(kMSDomain);
+  for (const char* input : {"input", "router", "w1", "s1", "", "w2", "s2"}) {
+    node->add_input(input);
+  }
+  node->add_output("output");
+  for (const auto& [name, value] :
+       {std::pair{"k", int64_t{1}}, {"expert_weight_bits", int64_t{2}}, {"block_size", block_size}, {"swiglu_fusion", int64_t{1}}, {"normalize_routing_weights", int64_t{1}}, {"weights_prepacked", int64_t{0}}}) {
+    auto* attr = node->add_attribute();
+    attr->set_name(name);
+    attr->set_type(AttributeProto_AttributeType_INT);
+    attr->set_i(value);
+  }
+  auto* activation = node->add_attribute();
+  activation->set_name("activation_type");
+  activation->set_type(AttributeProto_AttributeType_STRING);
+  activation->set_s("swiglu");
+
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+  const auto serialized = model.SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(serialized.data(), static_cast<int>(serialized.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  const auto* state = session.GetSessionState().GetMoeExpertState();
+  ASSERT_NE(state, nullptr);
+  ASSERT_EQ(state->TotalExpertCount(), static_cast<size_t>(kExperts));
+  const auto* kernel = session.GetSessionState().GetKernel(0);
+  ASSERT_NE(kernel, nullptr);
+
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  auto feeds = CountingFeeds();
+  const InlinedVector<MLFloat16> input(rows * width, MLFloat16(1.f));
+  CreateMLValue<MLFloat16>(allocator, {rows, width}, input, &feeds.at("input"));
+  const std::array<std::string, 1> output_names{"output"};
+  const std::array<std::array<double, kExperts>, 3> expected_counters{{{0.1, 0, 0.1, 0}, {0.19, 0, 0.19, 0}, {0.171, 0.1, 0.171, 0}}};
+  for (size_t run = 0; run < expected_counters.size(); ++run) {
+    if (run == 2) {
+      const InlinedVector<MLFloat16> router{
+          MLFloat16(0.f), MLFloat16(9.f), MLFloat16(0.f), MLFloat16(0.f),
+          MLFloat16(0.f), MLFloat16(9.f), MLFloat16(0.f), MLFloat16(0.f),
+          MLFloat16(0.f), MLFloat16(9.f), MLFloat16(0.f), MLFloat16(0.f)};
+      CreateMLValue<MLFloat16>(allocator, {rows, kExperts}, router, &feeds.at("router"));
+    }
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto& output = outputs[0].Get<Tensor>();
+    ASSERT_EQ(output.Shape(), TensorShape({rows, width}));
+    for (int64_t row = 0; row < rows; ++row) {
+      const int expert = run == 2 ? 1 : (row == 2 ? 2 : 0);
+      const float expected = 0.25f * static_cast<float>(expert + 1) / (1.f + std::exp(-1.f));
+      for (int64_t col = 0; col < width; ++col) {
+        EXPECT_NEAR(output.Data<MLFloat16>()[row * width + col].ToFloat(), expected, 0.001f);
+      }
+    }
+    InlinedVector<double> counters;
+    ASSERT_STATUS_OK(state->GetCounters(kernel, counters));
+    ASSERT_EQ(counters.size(), static_cast<size_t>(kExperts));
+    for (size_t expert = 0; expert < counters.size(); ++expert) {
+      EXPECT_NEAR(counters[expert], expected_counters[run][expert], 1e-12)
+          << "run=" << run << ", expert=" << expert;
+    }
+  }
 }
 #endif
 
