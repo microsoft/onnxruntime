@@ -13,6 +13,7 @@ namespace onnxruntime {
 class LayerNormImpl : public OpKernel {
  public:
   LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified = false);
+  LayerNormImpl(const OpKernelInfo& op_kernel_info, int64_t axis, float epsilon, bool simplified);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
