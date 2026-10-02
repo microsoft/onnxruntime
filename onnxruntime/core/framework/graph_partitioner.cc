@@ -1218,7 +1218,10 @@ enum class FunctionExpansionLimit {
   kProtoBytes,
 };
 
-static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& cost);
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost);
 
 static FunctionExpansionLimit TryChargeFunctionExpansion(const FunctionExpansionCost& cost,
                                                          size_t node_limit,
@@ -1262,7 +1265,9 @@ static Status InlineNodes(Graph& graph,
 
   for (auto* node : nodes_to_inline) {
     FunctionExpansionCost expansion_cost{};
-    ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(*node, expansion_cost));
+    ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+        *node, expansion_node_limit - expanded_node_count,
+        expansion_byte_limit - expanded_proto_bytes, expansion_cost));
     const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
                                                            expansion_node_limit,
                                                            expanded_node_count,
@@ -1379,7 +1384,7 @@ static size_t EstimateNodeProtoBytes(const Node& node) {
   return proto_bytes;
 }
 
-using FunctionNameBindings = InlinedHashMap<std::string_view, std::string_view>;
+using FunctionNameBindings = InlinedHashMap<std::string_view, size_t>;
 
 static size_t SpecializedNameFieldCost(std::string_view name,
                                        const FunctionNameBindings& name_bindings,
@@ -1387,7 +1392,7 @@ static size_t SpecializedNameFieldCost(std::string_view name,
   constexpr size_t kFieldOverhead = 11;
   const auto binding = name_bindings.find(name);
   return SafeInt<size_t>(binding == name_bindings.end() ? name.size() + prefix_overhead
-                                                        : binding->second.size()) +
+                                                        : binding->second) +
          kFieldOverhead;
 }
 
@@ -1413,7 +1418,7 @@ static void AddSpecializedNodeNameCost(const ONNX_NAMESPACE::NodeProto& node,
                                        size_t prefix_overhead,
                                        SafeInt<size_t>& proto_bytes) {
   if (!node.name().empty()) {
-    proto_bytes += SpecializedNameFieldCost(node.name(), name_bindings, prefix_overhead);
+    proto_bytes += SafeInt<size_t>(node.name().size()) + prefix_overhead + 11;
   }
   for (const auto& input : node.input()) {
     proto_bytes += SpecializedNameFieldCost(input, name_bindings, prefix_overhead);
@@ -1430,20 +1435,28 @@ static void AddSpecializedGraphNameCost(const ONNX_NAMESPACE::GraphProto& graph,
                                         const FunctionNameBindings& name_bindings,
                                         size_t prefix_overhead,
                                         SafeInt<size_t>& proto_bytes) {
+  FunctionNameBindings scoped_name_bindings = name_bindings;
+  const auto add_local_binding = [&scoped_name_bindings, prefix_overhead](const std::string& name) {
+    scoped_name_bindings.insert_or_assign(name, SafeInt<size_t>(name.size()) + prefix_overhead);
+  };
   for (const auto& input : graph.input()) {
-    proto_bytes += SpecializedNameFieldCost(input.name(), name_bindings, prefix_overhead);
+    add_local_binding(input.name());
+    proto_bytes += SpecializedNameFieldCost(input.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& output : graph.output()) {
-    proto_bytes += SpecializedNameFieldCost(output.name(), name_bindings, prefix_overhead);
+    add_local_binding(output.name());
+    proto_bytes += SpecializedNameFieldCost(output.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& initializer : graph.initializer()) {
-    proto_bytes += SpecializedNameFieldCost(initializer.name(), name_bindings, prefix_overhead);
+    add_local_binding(initializer.name());
+    proto_bytes += SpecializedNameFieldCost(initializer.name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& initializer : graph.sparse_initializer()) {
-    proto_bytes += SpecializedNameFieldCost(initializer.values().name(), name_bindings, prefix_overhead);
+    add_local_binding(initializer.values().name());
+    proto_bytes += SpecializedNameFieldCost(initializer.values().name(), scoped_name_bindings, prefix_overhead);
   }
   for (const auto& node : graph.node()) {
-    AddSpecializedNodeNameCost(node, name_bindings, prefix_overhead, proto_bytes);
+    AddSpecializedNodeNameCost(node, scoped_name_bindings, prefix_overhead, proto_bytes);
   }
 }
 
@@ -1453,8 +1466,13 @@ static Status AddBoundAttributeCost(
     const FunctionNameBindings& name_bindings,
     size_t prefix_overhead,
     InlinedHashSet<std::string_view>& resolving_attribute_bindings,
+    size_t remaining_node_budget,
+    size_t remaining_byte_budget,
     SafeInt<size_t>& node_count,
     SafeInt<size_t>& proto_bytes) {
+  if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+    return Status::OK();
+  }
   const ONNX_NAMESPACE::AttributeProto* effective_attribute = &attribute;
   bool bound_attribute = false;
   if (!attribute.ref_attr_name().empty()) {
@@ -1478,7 +1496,11 @@ static Status AddBoundAttributeCost(
       for (const auto& nested_attribute : node.attribute()) {
         ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
             nested_attribute, attribute_bindings, name_bindings, prefix_overhead,
-            resolving_attribute_bindings, node_count, proto_bytes));
+            resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+            node_count, proto_bytes));
+        if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+          return Status::OK();
+        }
       }
     }
     return Status::OK();
@@ -1497,7 +1519,10 @@ static Status AddBoundAttributeCost(
   return Status::OK();
 }
 
-static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& cost) {
+static Status GetFunctionExpansionCost(const Node& node,
+                                       size_t remaining_node_budget,
+                                       size_t remaining_byte_budget,
+                                       FunctionExpansionCost& cost) {
   if (const auto* function_body = node.GetFunctionBody()) {
     const auto& body = function_body->Body();
     SafeInt<size_t> proto_bytes = 0;
@@ -1540,7 +1565,7 @@ static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& 
     const size_t binding_count = std::min(static_cast<size_t>(formal_names.size()), actual_defs.size());
     for (size_t i = 0; i < binding_count; ++i) {
       if (actual_defs[i] != nullptr) {
-        name_bindings.emplace(formal_names.Get(static_cast<int>(i)), actual_defs[i]->Name());
+        name_bindings.emplace(formal_names.Get(static_cast<int>(i)), actual_defs[i]->Name().size());
       }
     }
   };
@@ -1558,7 +1583,11 @@ static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& 
       node_count += CountNodesIncludingSubgraphs(attribute);
       ORT_RETURN_IF_ERROR(AddBoundAttributeCost(
           attribute, attribute_bindings, name_bindings, prefix_overhead,
-          resolving_attribute_bindings, node_count, proto_bytes));
+          resolving_attribute_bindings, remaining_node_budget, remaining_byte_budget,
+          node_count, proto_bytes));
+      if (node_count > remaining_node_budget || proto_bytes > remaining_byte_budget) {
+        break;
+      }
     }
   }
   cost = {node_count, proto_bytes};
@@ -1698,7 +1727,9 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       if (claimed_by_ep.count(node_index) == 0) {
         auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
         FunctionExpansionCost expansion_cost{};
-        ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(*node, expansion_cost));
+        ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(
+            *node, expansion_node_limit - expanded_node_count,
+            expansion_byte_limit - expanded_proto_bytes, expansion_cost));
         const auto limit_exceeded = TryChargeFunctionExpansion(expansion_cost,
                                                                expansion_node_limit,
                                                                expanded_node_count,

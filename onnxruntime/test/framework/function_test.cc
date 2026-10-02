@@ -451,6 +451,76 @@ TEST(FunctionTest, AotInliningChargesRepeatedActualNamesPerOccurrence) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("protobuf expansion limit"));
 }
 
+TEST(FunctionTest, AotInliningUsesLexicalScopeForShadowedSubgraphNames) {
+  auto model = CreateFunctionExpansionModel(0, 1);
+  auto* function = model.mutable_functions(0);
+  const std::string long_input_name(4096, 'x');
+  model.mutable_graph()->mutable_input(0)->set_name(long_input_name);
+  model.mutable_graph()->mutable_node(0)->set_input(0, long_input_name);
+
+  auto* condition_node = function->add_node();
+  condition_node->set_op_type("Constant");
+  condition_node->add_output("condition");
+  auto* condition_attribute = condition_node->add_attribute();
+  condition_attribute->set_name("value");
+  condition_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  condition_attribute->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition_attribute->mutable_t()->add_int32_data(1);
+  auto* condition_value_info = function->add_value_info();
+  condition_value_info->set_name("condition");
+  condition_value_info->mutable_type()->mutable_tensor_type()->set_elem_type(
+      ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  auto* if_node = function->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("function_output");
+  for (const char* attribute_name : {"then_branch", "else_branch"}) {
+    auto* attribute = if_node->add_attribute();
+    attribute->set_name(attribute_name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* branch = attribute->mutable_g();
+    branch->set_name(attribute_name);
+
+    auto* initializer = branch->add_initializer();
+    initializer->set_name("function_input");
+    initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    initializer->add_dims(1);
+    initializer->add_float_data(1.0f);
+
+    std::string previous = "function_input";
+    for (size_t i = 0; i < 16; ++i) {
+      auto* identity = branch->add_node();
+      identity->set_op_type("Identity");
+      identity->add_input(previous);
+      previous = "shadowed_" + std::to_string(i);
+      identity->add_output(previous);
+      if (i + 1 != 16) {
+        auto* value_info = branch->add_value_info();
+        value_info->set_name(previous);
+        auto* value_type = value_info->mutable_type()->mutable_tensor_type();
+        value_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        value_type->mutable_shape()->add_dim()->set_dim_value(1);
+      }
+    }
+
+    auto* branch_output = branch->add_output();
+    branch_output->set_name(previous);
+    auto* output_type = branch_output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    output_type->mutable_shape()->add_dim()->set_dim_value(1);
+  }
+
+  std::vector<std::string> log_messages;
+  const auto status = InitializeFunctionExpansionModel(
+      std::move(model), log_messages,
+      {.claim_first_function_call = false,
+       .disable_aot_inlining = false,
+       .node_limit = std::nullopt,
+       .byte_limit = 64 * 1024});
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
+
 TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
   auto model = CreateFunctionExpansionModel(0, 1);
   constexpr int64_t kPayloadElementCount = 64 * 1024;
@@ -484,8 +554,7 @@ TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
     attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
   }
 
-  auto* call_node = model.mutable_graph()->mutable_node(0);
-  auto* branch_attribute = call_node->add_attribute();
+  auto* branch_attribute = function->add_attribute_proto();
   branch_attribute->set_name("branch");
   branch_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
   auto* branch = branch_attribute->mutable_g();
@@ -513,7 +582,7 @@ TEST(FunctionTest, AotInliningChargesNestedBoundGraphAttributeReferences) {
   branch_output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   branch_output_type->mutable_shape()->add_dim()->set_dim_value(kPayloadElementCount);
 
-  auto* payload_attribute = call_node->add_attribute();
+  auto* payload_attribute = function->add_attribute_proto();
   payload_attribute->set_name("payload");
   payload_attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
   auto* payload_tensor = payload_attribute->mutable_t();
