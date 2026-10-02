@@ -19,6 +19,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/common/safeint.h"
+#include "core/providers/cpu/nn/conv_transpose_internal.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -146,11 +147,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   if (p.num_input_channels == 0) {
     T* output = p.Y->MutableData<T>();
-    const int64_t spatial_size = p.Y->Shape().Slice(2).Size();
+    const size_t spatial_size = SafeInt<size_t>(p.Y->Shape().Slice(2).Size());
     for (int64_t n = 0; n < p.N; ++n) {
       for (int64_t c = 0; c < p.num_output_channels; ++c) {
         const T value = p.B == nullptr ? T{} : p.B->Data<T>()[c];
-        std::fill_n(output, narrow<size_t>(spatial_size), value);
+        std::fill_n(output, spatial_size, value);
         output += spatial_size;
       }
     }
@@ -170,7 +171,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   const size_t col_buffer_size =
-      conv_transpose_internal::CalculateColBufferSize(sizeof(T), kernel_dim, input_image_size);
+      conv_transpose_internal::CalculateColBufferSize(
+          sizeof(T), SafeInt<size_t>(kernel_dim), SafeInt<size_t>(input_image_size));
   auto col_data = alloc->Alloc(col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
@@ -261,11 +263,11 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
 
   if (p.num_input_channels == 0) {
     float* output = p.Y->MutableData<float>();
-    const int64_t spatial_size = p.Y->Shape().Slice(2).Size();
+    const size_t spatial_size = SafeInt<size_t>(p.Y->Shape().Slice(2).Size());
     for (int64_t n = 0; n < p.N; ++n) {
       for (int64_t c = 0; c < p.num_output_channels; ++c) {
         const float value = p.B == nullptr ? 0.0f : p.B->Data<float>()[c];
-        std::fill_n(output, narrow<size_t>(spatial_size), value);
+        std::fill_n(output, spatial_size, value);
         output += spatial_size;
       }
     }
@@ -285,7 +287,8 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   const size_t col_buffer_size =
-      conv_transpose_internal::CalculateColBufferSize(sizeof(float), kernel_dim, input_image_size);
+      conv_transpose_internal::CalculateColBufferSize(
+          sizeof(float), SafeInt<size_t>(kernel_dim), SafeInt<size_t>(input_image_size));
   auto col_data = alloc->Alloc(col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());

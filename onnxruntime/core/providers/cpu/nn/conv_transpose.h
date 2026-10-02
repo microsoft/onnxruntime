@@ -18,19 +18,10 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "core/common/safeint.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
-
-namespace conv_transpose_internal {
-
-inline size_t CalculateColBufferSize(size_t element_size, int64_t kernel_dim, int64_t input_image_size) {
-  return SafeInt<size_t>(element_size) * kernel_dim * input_image_size;
-}
-
-}  // namespace conv_transpose_internal
 
 template <typename T>
 class ConvTranspose : public OpKernel {

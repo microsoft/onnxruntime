@@ -9,7 +9,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
-#include "core/providers/cpu/nn/conv_transpose.h"
+#include "core/providers/cpu/nn/conv_transpose_internal.h"
 #include "core/session/inference_session.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/test_environment.h"
@@ -2099,9 +2099,9 @@ TEST(ConvTransposeTest, ZeroInputChannelsFillOutputWithBias) {
 
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(ConvTransposeTest, NonzeroInputChannelsRejectColBufferSizeOverflow) {
-  constexpr int64_t kNonzeroInputImageSize = 2;
-  constexpr int64_t kOverflowingKernelDim = std::numeric_limits<int64_t>::max();
-  EXPECT_THROW(conv_transpose_internal::CalculateColBufferSize(
+  constexpr size_t kNonzeroInputImageSize = 2;
+  constexpr size_t kOverflowingKernelDim = std::numeric_limits<size_t>::max();
+  EXPECT_THROW(::onnxruntime::conv_transpose_internal::CalculateColBufferSize(
                    sizeof(float), kOverflowingKernelDim, kNonzeroInputImageSize),
                OnnxRuntimeException);
 }
