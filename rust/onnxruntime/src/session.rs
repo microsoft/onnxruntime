@@ -48,9 +48,6 @@ type CreateStatusFn = extern_system_fn! {
 type ReleaseSessionFn = extern_system_fn! {
     unsafe fn(*mut sys::OrtSession)
 };
-type ReleaseEpContextDataReadOptionsFn = extern_system_fn! {
-    unsafe fn(*mut sys::OrtEpContextDataReadOptions)
-};
 
 struct SessionPointerGuard {
     session_ptr: *mut sys::OrtSession,
@@ -70,17 +67,6 @@ impl Drop for SessionPointerGuard {
         if !self.session_ptr.is_null() {
             unsafe { (self.release_session)(self.session_ptr) };
         }
-    }
-}
-
-struct EpContextDataReadOptionsGuard {
-    read_options: *mut sys::OrtEpContextDataReadOptions,
-    release_options: ReleaseEpContextDataReadOptionsFn,
-}
-
-impl Drop for EpContextDataReadOptionsGuard {
-    fn drop(&mut self) {
-        unsafe { (self.release_options)(self.read_options) };
     }
 }
 
@@ -418,10 +404,14 @@ impl<'a> SessionBuilder<'a> {
     /// [`Session`]. Calling this method again replaces the previous callback only after native
     /// registration succeeds.
     ///
+    /// The Rust callback state retains this limit and checks the returned vector before allocating
+    /// the native output buffer. The native API stores only the callback and state; this limit does
+    /// not constrain allocations made inside the Rust callback.
+    ///
     /// This API reads data referenced by EPContext models. The Rust bindings do not currently
     /// expose model compilation or an EPContext data write callback.
     ///
-    /// Available since ONNX Runtime 1.30.
+    /// Available since ONNX Runtime 1.31.
     pub fn with_ep_context_data_read_callback<F>(
         mut self,
         max_data_size: usize,
@@ -455,45 +445,13 @@ impl<'a> SessionBuilder<'a> {
         let read_func: sys::OrtReadNamedBufferFunc = Some(ep_context_data_read_callback);
         let state = Arc::as_ptr(&registration) as *mut c_void;
 
-        let create_options = api.CreateEpContextDataReadOptions.ok_or_else(|| {
-            OrtError::SessionOptions(OrtApiError::Msg(
-                "ONNX Runtime EPContext read options API is unavailable".to_owned(),
-            ))
-        })?;
-        let release_options = api.ReleaseEpContextDataReadOptions.ok_or_else(|| {
-            OrtError::SessionOptions(OrtApiError::Msg(
-                "ONNX Runtime EPContext read options release API is unavailable".to_owned(),
-            ))
-        })?;
-        let set_max_data_size = api.EpContextDataReadOptionsSetMaxDataSize.ok_or_else(|| {
-            OrtError::SessionOptions(OrtApiError::Msg(
-                "ONNX Runtime EPContext maximum data size API is unavailable".to_owned(),
-            ))
-        })?;
         let set_read_func = api.SessionOptionsSetEpContextDataReadFunc.ok_or_else(|| {
             OrtError::SessionOptions(OrtApiError::Msg(
                 "ONNX Runtime EPContext read callback API is unavailable".to_owned(),
             ))
         })?;
 
-        let mut read_options = EpContextDataReadOptionsGuard {
-            read_options: ptr::null_mut(),
-            release_options,
-        };
-        let status = unsafe { create_options(&mut read_options.read_options) };
-        status_to_result_with_api(status, &api).map_err(OrtError::SessionOptions)?;
-
-        let status = unsafe { set_max_data_size(read_options.read_options, max_data_size) };
-        status_to_result_with_api(status, &api).map_err(OrtError::SessionOptions)?;
-
-        let status = unsafe {
-            set_read_func(
-                self.session_options_ptr,
-                read_func,
-                state,
-                read_options.read_options,
-            )
-        };
+        let status = unsafe { set_read_func(self.session_options_ptr, read_func, state) };
         status_to_result_with_api(status, &api).map_err(OrtError::SessionOptions)?;
 
         self.ep_context_data_read_registration = Some(registration);
@@ -503,7 +461,7 @@ impl<'a> SessionBuilder<'a> {
     /// Clear a previously registered EPContext data read callback.
     ///
     /// The old callback state is dropped only after ONNX Runtime has successfully cleared the
-    /// native registration. Available since ONNX Runtime 1.30.
+    /// native registration. Available since ONNX Runtime 1.31.
     pub fn without_ep_context_data_read_callback(mut self) -> Result<SessionBuilder<'a>> {
         let api = unsafe { self.env.env().api() };
         let set_read_func = api.SessionOptionsSetEpContextDataReadFunc.ok_or_else(|| {
@@ -511,8 +469,7 @@ impl<'a> SessionBuilder<'a> {
                 "ONNX Runtime EPContext read callback API is unavailable".to_owned(),
             ))
         })?;
-        let status =
-            unsafe { set_read_func(self.session_options_ptr, None, ptr::null_mut(), ptr::null()) };
+        let status = unsafe { set_read_func(self.session_options_ptr, None, ptr::null_mut()) };
         status_to_result_with_api(status, &api).map_err(OrtError::SessionOptions)?;
         self.ep_context_data_read_registration = None;
         Ok(self)
@@ -1421,7 +1378,7 @@ mod tests {
 
     unsafe fn registered_callback(
         builder: &SessionBuilder<'_>,
-    ) -> (sys::OrtReadNamedBufferFunc, *mut c_void, usize) {
+    ) -> (sys::OrtReadNamedBufferFunc, *mut c_void) {
         let api = builder.env.env().api();
         let ep_api = &*api.GetEpApi.unwrap()();
         let mut config = ptr::null_mut();
@@ -1433,16 +1390,14 @@ mod tests {
 
         let mut read_func = None;
         let mut state = ptr::null_mut();
-        let mut max_data_size = 0;
         status_to_result(ep_api.EpContextConfigGetEpContextDataReadFunc.unwrap()(
             config,
             &mut read_func,
             &mut state,
-            &mut max_data_size,
         ))
         .unwrap();
         ep_api.ReleaseEpContextConfig.unwrap()(config);
-        (read_func, state, max_data_size)
+        (read_func, state)
     }
 
     #[test]
@@ -1460,9 +1415,8 @@ mod tests {
             .unwrap();
         drop(first_lifetime);
 
-        let (_, first_state, first_max_data_size) = unsafe { registered_callback(&builder) };
+        let (_, first_state) = unsafe { registered_callback(&builder) };
         assert!(!first_state.is_null());
-        assert_eq!(first_max_data_size, 8);
         assert!(first_weak.upgrade().is_some());
 
         let second_lifetime = Arc::new(());
@@ -1474,17 +1428,15 @@ mod tests {
             .with_ep_context_data_read_callback(16, move |name| {
                 let _ = &second_capture;
                 *callback_name.lock().unwrap() = Some(name.to_owned());
-                Ok(vec![9])
+                Ok(vec![9; if name == "oversized.bin" { 17 } else { 16 }])
             })
             .unwrap();
         drop(second_lifetime);
 
-        let (read_func, second_state, second_max_data_size) =
-            unsafe { registered_callback(&builder) };
+        let (read_func, second_state) = unsafe { registered_callback(&builder) };
         assert!(read_func.is_some());
         assert!(!second_state.is_null());
         assert_ne!(first_state, second_state);
-        assert_eq!(second_max_data_size, 16);
         assert!(first_weak.upgrade().is_none());
         assert!(second_weak.upgrade().is_some());
 
@@ -1492,6 +1444,20 @@ mod tests {
             let allocator = default_allocator();
             let mut buffer = ptr::null_mut();
             let mut data_size = 0;
+            let oversized_name = CStr::from_bytes_with_nul(b"oversized.bin\0").unwrap();
+            let status = read_func.unwrap()(
+                second_state,
+                oversized_name.as_ptr(),
+                allocator,
+                &mut buffer,
+                &mut data_size,
+            );
+            let (code, message) = take_status(status);
+            assert_eq!(code, sys::OrtErrorCode::ORT_INVALID_ARGUMENT);
+            assert!(message.contains("configured maximum size"));
+            assert!(buffer.is_null());
+            assert_eq!(data_size, 0);
+
             let name = CStr::from_bytes_with_nul(b"native-config.bin\0").unwrap();
             let status = read_func.unwrap()(
                 second_state,
@@ -1503,7 +1469,7 @@ mod tests {
             assert!(status.is_null());
             assert_eq!(
                 std::slice::from_raw_parts(buffer.cast::<u8>(), data_size),
-                [9]
+                [9; 16]
             );
             (*allocator).Free.unwrap()(allocator, buffer);
         }
@@ -1513,7 +1479,7 @@ mod tests {
         );
 
         let builder = builder.without_ep_context_data_read_callback().unwrap();
-        let (read_func, state, _) = unsafe { registered_callback(&builder) };
+        let (read_func, state) = unsafe { registered_callback(&builder) };
         assert!(read_func.is_none());
         assert!(state.is_null());
         assert!(second_weak.upgrade().is_none());
