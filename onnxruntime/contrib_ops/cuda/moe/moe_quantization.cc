@@ -1758,9 +1758,24 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto fused_routing = route_tile(0, num_rows);
     ORT_ENFORCE(fused_routing.router_logits == nullptr,
                 "QMoE FP4 GEMV does not support fused routing.");
-    ck::fusedBuildExpertMapsSortFirstToken(
-        expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-        num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
+    IAllocatorUniquePtr<int> blocked_expert_counts;
+    IAllocatorUniquePtr<int> blocked_expert_counts_cumsum;
+    IAllocatorUniquePtr<int> blocked_row_to_unpermuted_row;
+    if (!ck::fusedBuildExpertMapsSortFirstToken(
+            expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+            num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream)) {
+      const int64_t num_tokens_per_block = ck::computeNumTokensPerBlock(num_rows, num_experts);
+      const int64_t num_blocks_per_seq = onnxruntime::llm::common::ceilDiv(num_rows, num_tokens_per_block);
+      const size_t num_counts = SafeInt<size_t>(num_experts) * num_blocks_per_seq;
+      blocked_expert_counts = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
+      blocked_expert_counts_cumsum = GetScratchBuffer<int>(num_counts, GetComputeStream(context));
+      blocked_row_to_unpermuted_row = GetScratchBuffer<int>(
+          SafeInt<size_t>(num_experts) * num_rows, GetComputeStream(context));
+      ck::threeStepBuildExpertMapsSortFirstToken(
+          expert_indices, p_exp, p_r2u, unpermuted_row_to_permuted_row, p_efto,
+          blocked_expert_counts.get(), blocked_expert_counts_cumsum.get(),
+          blocked_row_to_unpermuted_row.get(), num_rows, num_experts, k_, 0, stream);
+    }
 
     const void* fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
     const void* fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
