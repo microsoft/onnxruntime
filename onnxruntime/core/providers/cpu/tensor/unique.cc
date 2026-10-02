@@ -315,10 +315,6 @@ static void CreateOutput(OpKernelContext& context,
 
 template <typename T>
 Status Unique::ComputeImpl(OpKernelContext& context) const {
-  if (!utils::HasType<EnabledUniqueDataTypes28, T>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
-  }
-
   const Tensor& input = *context.Input<Tensor>(0);
   auto data = input.DataAsSpan<T>();
 
