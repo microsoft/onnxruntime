@@ -145,6 +145,15 @@ stages:
                 ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
         - ${{ else }}:
+          # FindPython keeps the previous interpreter cached, which hides Python::Module and Python::NumPy.
+          - task: PowerShell@2
+            displayName: 'Reset the cached Python interpreter - Python ${{ version }}'
+            inputs:
+              targetType: inline
+              script: |
+                $cache = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\CMakeCache.txt"
+                (Get-Content $cache) | Where-Object { $_ -notmatch '^_Python_' } | Set-Content $cache
+
           - task: PythonScript@0
             displayName: 'Build extension module - Python ${{ version }}'
             inputs:

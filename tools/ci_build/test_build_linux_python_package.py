@@ -47,6 +47,14 @@ class TestLinuxPythonPackage(unittest.TestCase):
                 abi_tag = Path(sys.argv[0]).parents[1].name.split("-")[1]
                 build_dir = Path(sys.argv[sys.argv.index("--build_dir") + 1])
                 config = sys.argv[sys.argv.index("--config") + 1]
+                if "--update" in sys.argv:
+                    # Like FindPython, a cached interpreter is not re-detected when Python_EXECUTABLE changes.
+                    cache = build_dir / config / "CMakeCache.txt"
+                    entry = f"_Python_EXECUTABLE:INTERNAL={{sys.argv[0]}}\\n"
+                    if cache.exists() and cache.read_text() not in ("", entry):
+                        sys.exit("Stale FindPython cache would drop Python::NumPy: " + cache.read_text())
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    cache.write_text(entry)
                 capi = build_dir / config / "onnxruntime/capi"
                 capi.mkdir(parents=True, exist_ok=True)
                 (capi / "libonnxruntime_providers_shared.so").write_bytes(b"shared native library")

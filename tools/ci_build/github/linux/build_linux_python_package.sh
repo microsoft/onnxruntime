@@ -169,6 +169,8 @@ do
     # Reuse the native libraries and rebuild only the CPython extension module. Re-running CMake with a
     # different interpreter can relink some of the native libraries, so restore the saved ones before
     # the wheel is packaged.
+    # FindPython keeps the previous interpreter cached, which hides Python::Module and Python::NumPy.
+    sed -i '/^_Python_/d' /build/"$BUILD_CONFIG"/CMakeCache.txt
     # Without --build_wheel, build.py would otherwise reconfigure with onnxruntime_ENABLE_PYTHON=OFF.
     PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}" --update --build --enable_pybind --target onnxruntime_pybind11_state
     cp -a "$NATIVE_LIB_BACKUP"/. "$PACKAGE_CAPI_DIR"/
