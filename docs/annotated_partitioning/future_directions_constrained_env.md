@@ -309,6 +309,15 @@ To eliminate both the multiplier and arena waste for temp buffers, two problems 
 1. **Learn temp buffer sizes in advance** — e.g., a `DeclareWorkspaceRequirements(shapes)` method on kernels, queryable during `Initialize()` when shapes are static
 2. **Allocate temp buffers outside the arena** — once sizes are known, include them in the memory pattern plan alongside activations
 
+A subtlety not addressed above: many kernels (attention especially) can take **several routes**
+with very different workspace footprints, and a single node serves **multiple phases** (prefill /
+decode / chunk) that dispatch to different routes. A route-unaware estimate that bounds the
+worst route (e.g. GQA's quadratic unfused fallback) over-reserves by orders of magnitude and
+scales quadratically with context. See
+[`policy_based_workspace_estimation.md`](policy_based_workspace_estimation.md) for the
+policy-based, route-aware estimation/declaration design (committed dispatch policy, envelope-driven
+per-phase `max`, bounded fallback, and the user-configuration surface).
+
 ### What ORT Is Missing
 
 | Capability | llama.cpp | ORT Today | Gap |
