@@ -14,6 +14,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.BitmaskBiasDropout">com.microsoft.BitmaskBiasDropout</a>
   * <a href="#com.microsoft.BitmaskDropout">com.microsoft.BitmaskDropout</a>
+  * <a href="#com.microsoft.BranchwiseRMSNorm">com.microsoft.BranchwiseRMSNorm</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.CausalConvWithState">com.microsoft.CausalConvWithState</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
@@ -53,6 +54,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.GroupQueryAttention">com.microsoft.GroupQueryAttention</a>
+  * <a href="#com.microsoft.HyperConnectionPostMix">com.microsoft.HyperConnectionPostMix</a>
+  * <a href="#com.microsoft.HyperConnectionPreMix">com.microsoft.HyperConnectionPreMix</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LinearAttention">com.microsoft.LinearAttention</a>
@@ -115,6 +118,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.RotaryEmbedding">com.microsoft.RotaryEmbedding</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Sampling">com.microsoft.Sampling</a>
+  * <a href="#com.microsoft.ScaledSiLU">com.microsoft.ScaledSiLU</a>
   * <a href="#com.microsoft.SkipGroupNorm">com.microsoft.SkipGroupNorm</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
@@ -878,6 +882,52 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain 'training_mode' to boolean tensor.</dd>
 <dt><tt>T3</tt> : tensor(uint32)</dt>
 <dd>Constrain output 'mask' types to bit-packed uint32 tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BranchwiseRMSNorm"></a><a name="com.microsoft.branchwisermsnorm">**com.microsoft.BranchwiseRMSNorm**</a>
+
+  Applies RMS normalization independently to each branch. X may use grouped shape
+  (..., C, H), or flattened shape (..., C * H) when num_branches is specified.
+  The optional scale may have shape (C * H), (C, H), or (H). Arithmetic is
+  performed in float32 and the result is converted to T.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon added before reciprocal square root.</dd>
+<dt><tt>num_branches</tt> : int</dt>
+<dd>Number of branches for flattened input. Omit or set to zero for grouped input.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) input.</dd>
+<dt><tt>scale</tt> (optional) : M</dt>
+<dd>Optional scale with shape (C * H), (C, H), or (H).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>RMS-normalized output with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to floating-point tensors.</dd>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain scale to floating-point tensors.</dd>
 </dl>
 
 
@@ -2318,6 +2368,10 @@ This version of the operator has been available since version 1 of the 'com.micr
     key   [total_tokens, num_heads_k, head_size_qk]
     value [total_tokens, num_heads_v, head_size_v]
   
+  Alternatively, key and value may be omitted and query contains packed QKV with shape
+  `[total_tokens, 2 * num_heads_q * head_size_qk + num_heads_v * head_size_v]`.
+  `initial_state` is required for packed QKV to determine the head counts and head sizes.
+  
   The leading token axis may instead be spelled as an explicit `[batch_size, sequence_length]`
   pair, making query/key/value (and the output) rank 4 and decay/beta rank 3. The memory layout
   is identical; the rank-4 spelling exists so an exporter can round-trip a `[B, S, H*D]`
@@ -2401,14 +2455,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>One of: 'linear', 'gated', 'delta', 'gated_delta'. Default is 'gated_delta'.</dd>
 </dl>
 
-#### Inputs (3 - 11)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query, shape (total_tokens, num_heads_q, head_size_qk)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query or packed QKV, shaped as described above.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key, shape (total_tokens, num_heads_k, head_size_qk)</dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value, shape (total_tokens, num_heads_v, head_size_v)</dd>
 <dt><tt>cu_seqlens</tt> (optional) : TI</dt>
 <dd>Exclusive prefix sums of the per-request token counts, shape (batch_size + 1). Absent means uniform packing.</dd>
@@ -2417,7 +2471,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>beta</tt> (optional) : TS</dt>
 <dd>Update rate, shape (total_tokens, num_heads_v)</dd>
 <dt><tt>initial_state</tt> (optional) : TS</dt>
-<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. May alias final_state.</dd>
+<dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
 <dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=qwen.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
@@ -3200,6 +3254,102 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionPostMix"></a><a name="com.microsoft.hyperconnectionpostmix">**com.microsoft.HyperConnectionPostMix**</a>
+
+  Mixes existing streams and injects one branch output:
+  Y[..., k, h] = sum_c(stream_mix[..., c, k] * streams[..., c, h])
+                 + post_mix[..., k, h] * block_output[..., h].
+  stream_mix is optional and defaults to the identity. post_mix has shape
+  (..., C), (..., C, 1), or (..., C, H). No activation is applied.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_branches</tt> : int</dt>
+<dd>Number of branches for flattened streams. Omit or set to zero for grouped streams.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) streams.</dd>
+<dt><tt>block_output</tt> : T</dt>
+<dd>Feature tensor with shape (..., H).</dd>
+<dt><tt>post_mix</tt> : M</dt>
+<dd>Branch or feature injection gates.</dd>
+<dt><tt>stream_mix</tt> (optional) : M</dt>
+<dd>Optional stream matrix with shape (..., C, C).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Mixed streams with the same shape as streams.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain streams, block output, and output to floating-point tensors.</dd>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain mixing weights to floating-point tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.HyperConnectionPreMix"></a><a name="com.microsoft.hyperconnectionpremix">**com.microsoft.HyperConnectionPreMix**</a>
+
+  Reduces C streams to one feature tensor without applying an activation:
+  Y[..., h] = reduction_scale * sum_c(X[..., c, h] * pre_mix[..., c, h]).
+  pre_mix may have shape (..., C), (..., C, 1), (..., C, H), or (..., C * H)
+  for flattened X. X may be grouped (..., C, H), or flattened (..., C * H)
+  when num_branches is specified.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_branches</tt> : int</dt>
+<dd>Number of branches for flattened streams. Omit or set to zero for grouped streams.</dd>
+<dt><tt>reduction_scale</tt> : float</dt>
+<dd>Multiplier applied to the branch reduction.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>streams</tt> : T</dt>
+<dd>Grouped (..., C, H) or flattened (..., C * H) streams.</dd>
+<dt><tt>pre_mix</tt> : M</dt>
+<dd>Branch or feature gates with shape (..., C), (..., C, 1), (..., C, H), or (..., C * H) for flattened streams.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Reduced feature tensor with shape (..., H).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain streams and output to floating-point tensors.</dd>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain mixing weights to floating-point tensors.</dd>
 </dl>
 
 
@@ -7021,6 +7171,50 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.ScaledSiLU"></a><a name="com.microsoft.scaledsilu">**com.microsoft.ScaledSiLU**</a>
+
+  Computes SiLU after scaling, with explicit T rounding:
+  Z_T = cast_T(effective_scale * X), S_T = cast_T(sigmoid(Z_T)), and
+  Y = cast_T(Z_T * S_T). effective_scale is the scalar input when present,
+  otherwise it is the alpha attribute.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scale used when the optional scale input is absent.</dd>
+</dl>
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor.</dd>
+<dt><tt>scale</tt> (optional) : M</dt>
+<dd>Optional scalar scale that overrides alpha.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output with the same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to floating-point tensors.</dd>
+<dt><tt>M</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the optional scale to floating-point tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SkipGroupNorm"></a><a name="com.microsoft.skipgroupnorm">**com.microsoft.SkipGroupNorm**</a>
 
   This operator element-wise adds x, skip and bias, then apply group normalization and optional activation.
@@ -7921,9 +8115,21 @@ This version of the operator has been available since version 1 of the 'com.micr
   present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
   1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
   (batch_size), not by position in the packed buffer. Positions before the start of a request's whole
-  sequence use pad_id. Running NGramHashMapping once per sequence and running this op once over those
+  sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
   sequences packed together (optionally split into packed chunks with present_ids threaded into
   past_ids) produce identical hash ids.
+  
+  Optional inputs add Qwen4-Exp-style n-gram embedding support:
+  
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries. Missing history is also filled with eos_token_id.
+  - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
+    packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+    subsequent calls to preserve boundaries across chunked prefill and decode calls.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo. Addition wraps
+    in the input id type on overflow.
+  - capture_count enables compact prefix state capture when state_update_capacity is positive. For
+    each request, state_update contains the trailing state after each captured prefix token.
 
 #### Version
 
@@ -7938,30 +8144,48 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a request's sequence.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and eos_token_id is provided, reset causal n-gram history at EOS boundaries. Default is 0.</dd>
+<dt><tt>state_update_capacity</tt> : int</dt>
+<dd>Static number of compact contiguous-prefix states to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (4 - 5)
+#### Inputs (4 - 10)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Token-major packed compressed tokenizer ids with shape (total_tokens).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dd>Per-shift hash multipliers with at least max_ngram_size elements. Conventionally odd, but any value is accepted.</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each request.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
-<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id.</dd>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id, or eos_token_id when provided.</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo with wrapping arithmetic in the input id type.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id. When provided it replaces pad_id for missing history and enables reset_on_eos.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional token-major segment ids with shape (total_tokens), used to reset causal history at segment boundaries within each packed request.</dd>
+<dt><tt>past_segment_ids</tt> (optional) : S</dt>
+<dd>Optional segment ids corresponding to past_ids, with shape (batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call into this input to preserve segment boundaries across calls.</dd>
+<dt><tt>capture_count</tt> (optional) : S</dt>
+<dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local prefix states, clamped to the request length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
 </dl>
 
-#### Outputs (1 - 2)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
 <dd>Token-major packed hash ids with shape (total_tokens, (max_ngram_size - 1) * n_head_per_ngram).</dd>
 <dt><tt>present_ids</tt> (optional) : M</dt>
 <dd>Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
+<dt><tt>present_segment_ids</tt> (optional) : S</dt>
+<dd>Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.</dd>
+<dt><tt>state_update</tt> (optional) : M</dt>
+<dd>Optional trailing id states after each captured prefix token, with shape (batch_size, state_update_capacity, max_ngram_size - 1). Unused slots are pad_id.</dd>
 </dl>
 
 #### Type Constraints
@@ -7970,7 +8194,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
-<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
+<dd>Constrain cumulative_sequence_length and segment ids to device int32 tensors.</dd>
 </dl>
 
 
