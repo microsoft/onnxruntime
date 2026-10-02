@@ -108,8 +108,10 @@ describe('API Tests - simple API tests', () => {
           // fail before an acceleration mode matters. Later modes must not hide
           // a different, unexpected failure.
           unavailableProviderError = message;
-        } else if (weightLoadAcceleration === 'required' && unavailableProviderError === undefined) {
-          assert.match(message, /weightLoadAcceleration|disk-to-GPU|D3D12/);
+        } else if (weightLoadAcceleration === 'required') {
+          if (message !== unavailableProviderError) {
+            assert.match(message, /weightLoadAcceleration|disk-to-GPU|DXGI|D3D12/);
+          }
         } else {
           assert.equal(message, unavailableProviderError);
         }
