@@ -9,6 +9,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/providers/cpu/nn/conv_transpose.h"
 #include "core/session/inference_session.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/test_environment.h"
@@ -2081,7 +2082,30 @@ TEST(ConvTransposeTest, ZeroInputChannelsWithLargeSpatialDimensions) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(ConvTransposeTest, ZeroInputChannelsFillOutputWithBias) {
+  OpTester test("ConvTranspose", 11);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+  test.AddInput<float>("X", {2, 0, 2}, {});
+  test.AddInput<float>("W", {0, 3, 1}, {});
+  test.AddInput<float>("B", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddOutput<float>("Y", {2, 3, 2},
+                        {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f,
+                         1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
+TEST(ConvTransposeTest, NonzeroInputChannelsRejectColBufferSizeOverflow) {
+  constexpr int64_t kNonzeroInputImageSize = 2;
+  constexpr int64_t kOverflowingKernelDim = std::numeric_limits<int64_t>::max();
+  EXPECT_THROW(conv_transpose_internal::CalculateColBufferSize(
+                   sizeof(float), kOverflowingKernelDim, kNonzeroInputImageSize),
+               SafeIntException);
+}
+
 // Test that extreme attribute values causing arithmetic overflow are caught.
 // SafeInt throws on overflow; in no-exceptions builds this aborts, so skip there.
 TEST(ConvTransposeTest, ConvTranspose_OverflowInPadComputation) {
